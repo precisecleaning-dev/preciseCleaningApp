@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown, ClipboardCheck,
-  Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, UserCheck, DollarSign, Filter, CheckCircle, Calendar, Calculator, Percent, PlayCircle, BarChart3, FileImage
+  Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Calculator, Percent, PlayCircle, BarChart3, FileImage,
+  Save, XCircle, Layers, Settings, Receipt, CalendarClock
 } from 'lucide-react';
 
-// Importamos Property como BaseProperty para poder extenderlo
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
 
 import { propertiesService } from '../services/propertiesService';
@@ -16,7 +16,6 @@ import { payrollService } from '../services/payrollService';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
-// Extendemos el tipo localmente para que TypeScript no arroje errores
 type Property = BaseProperty & {
   employeeStartedBy?: string | null;
   employeeStartedAt?: string | null;
@@ -48,7 +47,6 @@ const collectionMap: Record<string, string> = {
   tax: 'settings_tax'
 };
 
-// --- SEARCHABLE SELECTOR (PARA EL CLIENTE) ---
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -60,7 +58,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
 
   return (
     <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', width: '100%', outline: 'none' }}>
-      <div style={{ backgroundColor: '#ffffff', padding: '0 14px 0 40px', border: '1px solid #e5e7eb', borderRadius: '6px', display: 'flex', alignItems: 'center', height: '42px', position: 'relative' }}>
+      <div style={{ backgroundColor: '#ffffff', padding: '0 14px 0 40px', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'flex', alignItems: 'center', height: '42px', position: 'relative' }}>
         <Icon size={16} style={{ position: 'absolute', left: '14px', color: '#6b7280' }} />
         <input
           style={{ border: 'none', outline: 'none', width: '100%', height: '100%', fontSize: '0.95rem', color: '#111827', backgroundColor: 'transparent' }}
@@ -75,7 +73,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
         <ChevronDown size={16} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', cursor: 'pointer' }} onClick={() => setIsOpen(!isOpen)} />
       </div>
       {isOpen && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
           {filteredOptions.length === 0 ? <div style={{padding: '12px 14px', color: '#9ca3af', fontSize: '0.9rem'}}>No results found</div> : null}
           {filteredOptions.map((o: any) => (
             <div
@@ -87,7 +85,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
                 setIsOpen(false);
                 setSearch('');
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               {o.name}
@@ -99,7 +97,6 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
   );
 };
 
-// --- CUSTOM SELECTORS NORMALES ---
 const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeValue = String(value || '').toLowerCase().trim();
@@ -112,12 +109,12 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
     <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', width: '100%', outline: 'none' }}>
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        style={{ backgroundColor: '#ffffff', padding: '12px 14px 12px 40px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', position: 'relative' }}
+        style={{ backgroundColor: '#ffffff', padding: '0 14px 0 40px', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'flex', alignItems: 'center', height: '42px', position: 'relative', cursor: 'pointer' }}
       >
         <Icon size={16} style={{ position: 'absolute', left: '14px', color: '#6b7280' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {selected?.color && <span style={{ backgroundColor: selected.color, width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-          <span style={{ color: selected ? '#111827' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
+          {selected?.color && <span style={{ backgroundColor: selected.color, width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block', flexShrink: 0 }}></span>}
+          <span style={{ color: selected ? '#111827' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.95rem' }}>
             {selected ? selected.name : placeholder}
           </span>
         </div>
@@ -125,7 +122,7 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
       </div>
 
       {isOpen && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
           <div style={{ padding: '12px 14px', cursor: 'pointer', color: '#9ca3af', borderBottom: '1px solid #f3f4f6' }} onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
             None / Unassigned
           </div>
@@ -134,7 +131,7 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
               key={o.id} 
               style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', backgroundColor: value === o.id ? '#f1f5f9' : 'transparent' }}
               onClick={() => { onChange(o[returnKey] || o.id); setIsOpen(false); }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = value === o.id ? '#f1f5f9' : 'transparent')}
             >
               {o.color && <span style={{ backgroundColor: o.color, display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></span>}
@@ -147,7 +144,6 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 };
 
-// --- INLINE STATUS PILL SELECTOR ---
 const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
@@ -208,7 +204,6 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled }: {
   );
 };
 
-// Helper Functions
 const getRelationName = (list: any[], idOrName: string, fallback = '-') => {
   if (!idOrName) return fallback;
   const safeVal = String(idOrName).toLowerCase().trim();
@@ -250,7 +245,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
-  const [selectedTeamView, setSelectedTeamView] = useState<Team | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('overview');
   
   const [statuses, setStatuses] = useState<Status[]>([]);
@@ -266,14 +260,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
 
-  // ESTADOS DE PAYROLL
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
   const [housePayrollRecords, setHousePayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollForm, setPayrollForm] = useState<PayrollRecord>({
     propertyId: '', date: new Date().toISOString().split('T')[0], employeeId: '', baseAmount: 0, extraAmount: 0, extraNote: '', discountAmount: 0, discountNote: '', totalAmount: 0
   });
 
-  // ESTADOS DE SERVICIOS FACTURADOS (Para detalle y formulario)
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isServiceFromForm, setIsServiceFromForm] = useState(false);
   const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
@@ -334,7 +326,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     fetchAllData();
   }, [setProperties]);
 
-  // CÁLCULOS EN TIEMPO REAL PARA EL FORMULARIO DE SERVICIOS
   useEffect(() => {
     if (!isServiceModalOpen) return;
     
@@ -388,27 +379,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return { client, address };
   }).sort((a, b) => a.client.localeCompare(b.client));
 
-  // APLICAMOS FILTROS Y ELIMINAMOS CASAS CON ESTATUS 'INVOICE'
   const filteredProperties = propertiesWithScope.filter(p => {
     const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
     const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-    
     if (isStatusInvoice) return false;
 
     let passStatus = true;
-    if (activeFilter !== 'All') {
-      passStatus = st?.name === activeFilter;
-    }
+    if (activeFilter !== 'All') passStatus = st?.name === activeFilter;
     
     let passHouse = true;
-    if (houseFilter !== 'All') {
-      passHouse = `${p.client || 'Unknown'}|${p.address || 'Unknown'}` === houseFilter;
-    }
+    if (houseFilter !== 'All') passHouse = `${p.client || 'Unknown'}|${p.address || 'Unknown'}` === houseFilter;
 
     let passInvoice = true;
-    if (invoiceFilter !== 'All') {
-      passInvoice = p.invoiceStatus === invoiceFilter;
-    }
+    if (invoiceFilter !== 'All') passInvoice = p.invoiceStatus === invoiceFilter;
     
     return passStatus && passHouse && passInvoice;
   });
@@ -435,17 +418,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const handleStartJob = async () => {
     if (!selectedHouse) return;
-    
     setIsSaving(true);
     try {
       const startedAt = new Date().toISOString();
       const startedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      
-      await propertiesService.update(selectedHouse.id, { 
-        employeeStartedAt: startedAt, 
-        employeeStartedBy: startedBy 
-      } as any);
-      
+      await propertiesService.update(selectedHouse.id, { employeeStartedAt: startedAt, employeeStartedBy: startedBy } as any);
       const updatedHouse = { ...selectedHouse, employeeStartedAt: startedAt, employeeStartedBy: startedBy };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -460,14 +437,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const handleUndoStart = async () => {
     if (!selectedHouse) return;
     if (!window.confirm("Undo start job?")) return;
-    
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { 
-        employeeStartedAt: null, 
-        employeeStartedBy: null 
-      } as any);
-      
+      await propertiesService.update(selectedHouse.id, { employeeStartedAt: null, employeeStartedBy: null } as any);
       const updatedHouse = { ...selectedHouse, employeeStartedAt: undefined, employeeStartedBy: undefined };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -491,12 +463,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       const finishedAt = new Date().toISOString();
       const finishedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      
-      await propertiesService.update(selectedHouse.id, { 
-        employeeFinishedAt: finishedAt, 
-        employeeFinishedBy: finishedBy 
-      } as any);
-      
+      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy } as any);
       const updatedHouse = { ...selectedHouse, employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -511,14 +478,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const handleUndoFinished = async () => {
     if (!selectedHouse) return;
     if (!window.confirm("Undo finished status?")) return;
-    
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { 
-        employeeFinishedAt: null, 
-        employeeFinishedBy: null 
-      } as any);
-      
+      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: null, employeeFinishedBy: null } as any);
       const updatedHouse = { ...selectedHouse, employeeFinishedAt: undefined, employeeFinishedBy: undefined };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -534,45 +496,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (!selectedHouse || !selectedHouse.scheduleDate || !selectedHouse.timeIn) {
       return alert("Por favor asegúrate de que la propiedad tenga fecha de Schedule y hora Time In.");
     }
-
     const datePart = selectedHouse.scheduleDate.replace(/-/g, '');
     const timePart = selectedHouse.timeIn.replace(/:/g, '') + '00';
     const startDateTime = `${datePart}T${timePart}`;
-    
     const [year, month, day] = selectedHouse.scheduleDate.split('-').map(Number);
     const [hour, min] = selectedHouse.timeIn.split(':').map(Number);
     const endDateObj = new Date(year, month - 1, day, hour + 2, min);
-    
     const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
     const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
     const endDateTime = `${endDatePart}T${endTimePart}`;
-
     const calendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + selectedHouse.client)}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&sf=true&output=xml`;
-    
     window.open(calendarUrl, '_blank');
   };
 
   const toggleWorkerAssignmentDetail = async (workerId: string) => {
     if (!selectedHouse || !canEdit) return;
     setIsSaving(true);
-
     try {
       const currentWorkers = selectedHouse.assignedWorkers || [];
       const isAssigned = currentWorkers.includes(workerId);
-      
-      let newWorkersList;
-      if (isAssigned) {
-        newWorkersList = currentWorkers.filter(id => id !== workerId);
-      } else {
-        newWorkersList = [...currentWorkers, workerId];
-      }
-
+      let newWorkersList = isAssigned ? currentWorkers.filter(id => id !== workerId) : [...currentWorkers, workerId];
       await propertiesService.update(selectedHouse.id, { assignedWorkers: newWorkersList } as any);
-      
       const updatedHouse = { ...selectedHouse, assignedWorkers: newWorkersList };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
-
     } catch (error) {
       console.error("Error updating workers:", error);
       alert("Failed to update assigned workers.");
@@ -584,16 +531,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const toggleWorkerAssignmentForm = (workerId: string) => {
     const currentWorkers = formData.assignedWorkers || [];
     const isAssigned = currentWorkers.includes(workerId);
-    let newWorkersList;
-    if (isAssigned) {
-      newWorkersList = currentWorkers.filter(id => id !== workerId);
-    } else {
-      newWorkersList = [...currentWorkers, workerId];
-    }
+    let newWorkersList = isAssigned ? currentWorkers.filter(id => id !== workerId) : [...currentWorkers, workerId];
     setFormData({ ...formData, assignedWorkers: newWorkersList });
   };
 
-  // --- PAYROLL FUNCTIONS ---
   const handleOpenPayrollForm = (houseId: string) => {
     if (!houseId) return alert("Must save the house first.");
     setPayrollForm({ propertyId: houseId, date: new Date().toISOString().split('T')[0], employeeId: '', baseAmount: 0, extraAmount: 0, extraNote: '', discountAmount: 0, discountNote: '', totalAmount: 0 });
@@ -603,12 +544,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const handleSavePayroll = async () => {
     if (!payrollForm.employeeId) return alert("Please select an employee.");
     if (Number(payrollForm.baseAmount) <= 0) return alert("Base amount must be greater than 0.");
-    
     setIsSaving(true);
     try {
       const total = Number(payrollForm.baseAmount) + Number(payrollForm.extraAmount) - Number(payrollForm.discountAmount);
       const dataToSave = { ...payrollForm, totalAmount: total, status: 'Pending' as const };
-      
       const newId = await payrollService.create(dataToSave);
       setHousePayrollRecords([...housePayrollRecords, { ...dataToSave, id: newId }]);
       setIsPayrollModalOpen(false);
@@ -635,11 +574,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  // --- BILLED SERVICES FUNCTIONS ---
   const handleOpenServiceForm = (record?: ServiceRecord, fromForm = false) => {
     setIsServiceFromForm(fromForm);
     const propId = selectedHouse?.id || formData?.id || '';
-    
     if (record) {
       setServiceForm(record);
     } else {
@@ -655,19 +592,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
     const dataToSave = { ...serviceForm, createdAt: serviceForm.createdAt || new Date().toISOString() };
 
-    // SI ESTÁ GUARDANDO DESDE EL FORMULARIO (LOCAL STATE)
     if (isServiceFromForm) {
       const newService = { ...dataToSave, id: serviceForm.id || `temp-${Date.now()}` };
-      if (serviceForm.id) {
-        setFormServices(prev => prev.map(s => s.id === serviceForm.id ? newService : s));
-      } else {
-        setFormServices(prev => [newService, ...prev]);
-      }
+      if (serviceForm.id) setFormServices(prev => prev.map(s => s.id === serviceForm.id ? newService : s));
+      else setFormServices(prev => [newService, ...prev]);
       setIsServiceModalOpen(false);
       return;
     }
 
-    // SI ESTÁ GUARDANDO DESDE EL DETALLE (DIRECTO A BASE DE DATOS)
     setIsSaving(true);
     try {
       if (serviceForm.id) {
@@ -701,9 +633,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const handleDeleteServiceLocal = (id: string) => {
     if (!window.confirm("Remove this service from the list?")) return;
-    if (!id.startsWith('temp-')) {
-      setServicesToDelete(prev => [...prev, id]);
-    }
+    if (!id.startsWith('temp-')) setServicesToDelete(prev => [...prev, id]);
     setFormServices(prev => prev.filter(s => s.id !== id));
   };
 
@@ -734,7 +664,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const handleDuplicate = () => {
     if (!selectedHouse) return;
     setFormData({ ...selectedHouse, id: '', beforePhotos: [], afterPhotos: [] });
-    // Duplicar también los servicios localmente
     setFormServices(houseServices.map(s => ({ ...s, id: `temp-${Math.random().toString(36).substring(2, 9)}`, propertyId: '' })));
     setServicesToDelete([]);
     setIsDetailModalOpen(false);
@@ -802,7 +731,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       if(!isNew) await propertiesService.update(workingId, finalDataToUpdate as any);
 
-      // --- GUARDADO DE SERVICIOS ---
       for (const srvId of servicesToDelete) {
         await deleteDoc(doc(db, 'billing_services', srvId)).catch(e => console.error(e));
       }
@@ -817,7 +745,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           await addDoc(collection(db, 'billing_services'), createData).catch(e => console.error(e));
         }
       }
-      // -----------------------------
 
       if (isNew) {
         const fullNewData = { ...finalDataToUpdate, id: workingId, description: `${formData.client} - ${formData.rooms} rooms`, city: 'TBD', size: 'TBD' };
@@ -840,9 +767,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const handleDelete = async () => {
     if(!selectedHouse) return;
-
-    const confirmDelete = window.confirm("Are you sure you want to completely delete this job and all its related payment records? This action cannot be undone.");
-    if (!confirmDelete) return;
+    if (!window.confirm("Are you sure you want to completely delete this job and all its related records?")) return;
 
     setIsSaving(true);
     try {
@@ -850,20 +775,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (relatedPayrolls.length > 0) {
         await Promise.all(relatedPayrolls.map(record => payrollService.delete(record.id as string)));
       }
-
-      // Also delete billed services
-      const relatedServices = houseServices;
-      if (relatedServices.length > 0) {
-        await Promise.all(relatedServices.map(record => deleteDoc(doc(db, 'billing_services', record.id as string))));
+      if (houseServices.length > 0) {
+        await Promise.all(houseServices.map(record => deleteDoc(doc(db, 'billing_services', record.id as string))));
       }
-
       await propertiesService.delete(selectedHouse.id);
-      
       setProperties(properties.filter(p => p.id !== selectedHouse.id));
       setIsDetailModalOpen(false);
     } catch (error) {
       console.error("Error deleting from Firebase:", error);
-      alert("Error trying to delete property and related records.");
+      alert("Error trying to delete property.");
     } finally {
       setIsSaving(false);
     }
@@ -896,7 +816,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (e.target.files && e.target.files.length > 0) {
       const filesArray = Array.from(e.target.files);
       const fileUrls = filesArray.map(file => URL.createObjectURL(file)); 
-      
       if (type === 'before') {
         setBeforeFiles(prev => [...prev, ...filesArray]); 
         setBeforePhotoURLs(prev => [...prev, ...fileUrls]); 
@@ -914,7 +833,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       const newUrls = [...beforePhotoURLs];
       newUrls.splice(index, 1);
       setBeforePhotoURLs(newUrls);
-      
       if (index >= storedCount) {
         const fileIndex = index - storedCount;
         const newFiles = [...beforeFiles];
@@ -925,7 +843,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       const newUrls = [...afterPhotoURLs];
       newUrls.splice(index, 1);
       setAfterPhotoURLs(newUrls);
-      
       if (index >= storedCount) {
         const fileIndex = index - storedCount;
         const newFiles = [...afterFiles];
@@ -947,10 +864,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const dateFormatted = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const dateCapitalized = dateFormatted.charAt(0).toUpperCase() + dateFormatted.slice(1);
 
-  // CÁLCULOS FINANCIEROS PARA EL DETALLE
   const totalBilled = houseServices.reduce((sum, r) => sum + r.total, 0);
   const totalPayroll = housePayrollRecords.reduce((sum, r) => sum + r.totalAmount, 0);
   const netProfit = totalBilled - totalPayroll;
+
+  const formTotalBilled = formServices.reduce((sum, r) => sum + r.total, 0);
 
   const s = {
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
@@ -959,25 +877,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     footer: { display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
     footerBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
 
-    label: { fontSize: '0.85rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'block' } as React.CSSProperties,
+    label: { fontSize: '0.8rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'block' } as React.CSSProperties,
     inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center', width: '100%' } as React.CSSProperties,
     icon: { position: 'absolute', left: '14px', color: '#6b7280', pointerEvents: 'none' } as React.CSSProperties,
-    input: { backgroundColor: '#ffffff', padding: '12px 14px 12px 40px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#111827', width: '100%', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.2s' } as React.CSSProperties,
+    input: { backgroundColor: '#ffffff', padding: '10px 14px 10px 40px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.95rem', color: '#111827', width: '100%', boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.2s' } as React.CSSProperties,
 
     actionBtn: { 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      gap: '6px', 
-      height: '36px', 
-      padding: '0 16px', 
-      borderRadius: '6px', 
-      fontWeight: 600, 
-      cursor: 'pointer', 
-      fontSize: '0.85rem', 
-      transition: 'all 0.2s', 
-      boxSizing: 'border-box' as const, 
-      whiteSpace: 'nowrap' as const 
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', padding: '0 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', transition: 'all 0.2s', boxSizing: 'border-box' as const, whiteSpace: 'nowrap' as const 
     },
 
     btnPrimary: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s', opacity: isSaving ? 0.7 : 1 } as React.CSSProperties,
@@ -998,14 +904,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
     kpiCard: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
     kpiIconBox: (color: string) => ({ backgroundColor: `${color}15`, color: color, width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
-    tableHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '16px' } as React.CSSProperties,
+    tableHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '16px', flexShrink: 0 } as React.CSSProperties,
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#10b981' : 'transparent', color: active ? 'white' : '#6b7280', transition: 'all 0.2s', whiteSpace: 'nowrap' as const }),
 
     th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
     td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
 
-    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px' } as React.CSSProperties,
-    mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start' } as React.CSSProperties,
+    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
+    mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', flex: 1, minHeight: 0, overflow: 'hidden' } as React.CSSProperties,
 
     segmentContainer: { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', gap: '4px' },
     segmentBtn: (active: boolean, type: 'yes' | 'no') => ({ 
@@ -1014,8 +920,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', 
       color: active ? (type === 'yes' ? '#10b981' : '#ef4444') : '#64748b'
     }),
-    
-    // Novedad: Pestañas para el modal de detalle
     detailTab: (active: boolean) => ({ 
       padding: '10px 4px', border: 'none', borderBottom: active ? '3px solid #3b82f6' : '3px solid transparent', 
       color: active ? '#1e40af' : '#64748b', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', 
@@ -1024,12 +928,22 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   };
 
   return (
-    <div className="fade-in" style={{ padding: '20px' }}>
+    <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <style>{`
-        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
+        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
         .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
         .modal-90 { background-color: #ffffff; width: 100%; max-width: 1300px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
         
+        .modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+        .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
+        .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
+
+        @media (max-width: 1024px) {
+          .modal-full { flex-direction: column; overflow-y: auto; }
+          .modal-full-left { padding: 1.5rem; overflow-y: visible; }
+          .modal-full-right { width: 100%; border-left: none; border-top: 1px solid #E2E8F0; }
+        }
+
         @media (min-width: 769px) { 
           .modal-70 { width: 70%; } 
           .modal-90 { width: 90%; }
@@ -1038,76 +952,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
         .col-span-full { grid-column: 1 / -1; }
         
-        .view-header-title-group {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
+        .view-header-title-group { display: flex; align-items: center; gap: 16px; }
 
-        .hamburger-btn {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 8px 12px;
-          cursor: pointer;
-          color: #111827;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        }
-
-        .hamburger-btn:hover {
-          background-color: #f8fafc;
-        }
+        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .hamburger-btn:hover { background-color: #f8fafc; }
         
-        .filters-section {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 16px;
-          align-items: center;
-          width: 100%;
-          justify-content: space-between;
-          margin-top: 16px;
-        }
-        .tabs-container {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          flex: 1;
-        }
-        .property-select-container {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          white-space: nowrap;
-          position: relative;
-        }
+        .filters-section { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; width: 100%; justify-content: space-between; margin-top: 16px; }
+        .tabs-container { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+        .property-select-container { display: flex; align-items: center; gap: 8px; white-space: nowrap; position: relative; }
 
-        .left-col {
-          flex: 1 1 0%;
-          min-width: 0;
-        }
-        .right-col {
-          flex: 0 0 280px;
-          width: 280px;
-        }
+        .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
+        .right-col { flex: 0 0 260px; width: 260px; display: flex; flex-direction: column; height: 100%; }
 
         @media (max-width: 1024px) {
-          .left-col, .right-col {
-            flex: 1 1 100%;
-            width: 100%;
-            max-width: 100%;
-          }
+          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
+          .main-columns { overflow: auto; }
         }
 
         @media (max-width: 768px) {
-          .view-header-title-group {
-            flex-direction: row-reverse;
-            justify-content: space-between;
-            width: 100%;
-          }
+          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
           .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
           .responsive-table thead { display: none; }
           .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -1115,23 +978,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .responsive-table td:last-child { border-bottom: none; padding-bottom: 0; }
           .responsive-table td::before { content: attr(data-label); font-weight: 700; color: #6b7280; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
           .mobile-client-cell { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
-          
-          .filters-section {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          .property-select-container {
-            width: 100%;
-          }
-          .property-select-container button {
-            width: 100%;
-            justify-content: center;
-          }
+          .filters-section { flex-direction: column; align-items: stretch; }
+          .property-select-container { width: 100%; }
+          .property-select-container button { width: 100%; justify-content: center; }
         }
       `}</style>
 
       {/* DASHBOARD HEADER */}
-      <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+      <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', flexShrink: 0 }}>
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
@@ -1181,7 +1035,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
         {/* LEFT COLUMN: DAILY JOBS */}
         <div className="left-col">
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', overflow: 'visible' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
             
             <div style={s.tableHeader}>
               <div>
@@ -1246,16 +1100,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
             </div>
 
-            <div style={{ overflow: 'visible', padding: '10px 20px 40px 20px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{...s.th, width: '100px'}}>Actions</th>
-                    <th style={s.th}>Client</th>
-                    <th style={s.th}>Time</th>
-                    <th style={s.th}>Type</th>
-                    <th style={s.th}>Team</th>
-                    <th style={{ ...s.th, textAlign: 'right' }}>Status</th>
+                    <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
+                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
+                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
+                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
+                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Team</th>
+                    <th style={{ ...s.th, textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1301,9 +1155,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
         {/* RIGHT COLUMN: ACTIVE TEAMS */}
         <div className="right-col">
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', padding: '20px' }}>
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', color: '#111827', fontWeight: 700 }}>Active Teams</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <h3 style={{ margin: '0', padding: '20px', fontSize: '1.1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {isLoading ? (
                 <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Loading teams...</div>
               ) : teamsWithScope.length === 0 ? (
@@ -1314,7 +1168,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   return (
                     <div 
                       key={team.id} 
-                      onClick={() => setSelectedTeamView(team)}
                       style={{ border: '1px solid #f1f5f9', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
@@ -1341,167 +1194,193 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       </div>
 
-      {/* --- FORM MODAL --- */}
+      {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
         <div className="modal-overlay-centered" onClick={handleCloseForm}>
-          <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>{formData.id ? 'Edit Property Details' : 'Register New Property'}</h3>
-              <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
-            </header>
-
-            <div style={s.body}>
-              <div className="grid-3-cols">
-
-                <div>
-                  <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="name" />
-                </div>
-                <div>
-                  <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <div style={s.inputWrapper}>
-                    <MapPin style={s.icon} size={16} />
-                    <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label style={s.label}>Status <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
-                </div>
-
-                <div>
-                  <label style={s.label}>Invoice Status</label>
-                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
-                </div>
-                <div>
-                  <label style={s.label}>Services</label>
-                  <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
-                </div>
-                <div>
-                  <label style={s.label}>Priority</label>
-                  <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
-                </div>
-
-                <div>
-                  <label style={s.label}>Receive Date</label>
-                  <div style={s.inputWrapper}>
-                    <CalendarDays style={s.icon} size={16} />
-                    <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label style={s.label}>Schedule Date</label>
-                  <div style={s.inputWrapper}>
-                    <CalendarDays style={s.icon} size={16} />
-                    <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label style={s.label}>Team</label>
-                  <CustomSelect 
-                    options={teams} 
-                    value={formData.teamId} 
-                    onChange={(val: string) => {
-                      const teamWorkers = employees.filter(emp => emp.teamId === val).map(emp => emp.id);
-                      setFormData({ ...formData, teamId: val, assignedWorkers: teamWorkers });
-                    }} 
-                    placeholder="Assign Team..." 
-                    icon={Users} 
-                  />
-                </div>
-
-                <div>
-                  <label style={s.label}>Time In</label>
-                  <div style={s.inputWrapper}>
-                    <Clock style={s.icon} size={16} />
-                    <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label style={s.label}>Time Out</label>
-                  <div style={s.inputWrapper}>
-                    <Clock style={s.icon} size={16} />
-                    <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label style={s.label}>Rooms</label>
-                  <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
-                </div>
+          <div className="modal-full" onClick={e => e.stopPropagation()}>
+            
+            {/* LADO IZQUIERDO: FORMULARIO */}
+            <div className="modal-full-left">
+              <div style={{ maxWidth: '900px', margin: '0 auto' }}>
                 
-                <div>
-                  <label style={s.label}>Bathrooms</label>
-                  <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                {/* Header Izquierdo */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+                  <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                    {formData.id ? 'Edit Property Details' : 'Register New Property'}
+                  </h2>
                 </div>
 
-                <div className="col-span-full" style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={s.label}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Assigned Workers</span>
-                    
-                    <div style={{ position: 'relative' }}>
-                      <button 
-                        type="button" 
-                        onClick={() => setIsAssigningWorkerForm(!isAssigningWorkerForm)} 
-                        disabled={isSaving}
-                        style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
-                      </button>
+                {/* CARD 1: GENERAL INFO */}
+                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
+                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                    <User size={20} color="#3B82F6"/> General Information
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                    <div>
+                      <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
+                      <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="name" />
+                    </div>
+                    <div>
+                      <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
+                      <div style={s.inputWrapper}>
+                        <MapPin style={s.icon} size={16} />
+                        <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                      {isAssigningWorkerForm && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
-                          <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
-                          {employees.map(emp => {
-                            const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
-                            return (
-                              <div 
-                                key={emp.id} 
-                                onClick={() => toggleWorkerAssignmentForm(emp.id)}
-                                style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
-                              >
-                                <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
-                                  {emp.firstName} {emp.lastName}
-                                </span>
-                                {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
+                {/* CARD 2: LOGISTICS & SETTINGS */}
+                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
+                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                    <Settings size={20} color="#8B5CF6"/> Logistics & Settings
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
+                    <div>
+                      <label style={s.label}>Status <span style={{ color: '#3b82f6' }}>*</span></label>
+                      <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
+                    </div>
+                    <div>
+                      <label style={s.label}>Invoice Status</label>
+                      <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                    </div>
+                    <div>
+                      <label style={s.label}>Services</label>
+                      <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
+                    </div>
+                    <div>
+                      <label style={s.label}>Priority</label>
+                      <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
+                    </div>
+                    <div>
+                      <label style={s.label}>Rooms</label>
+                      <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
+                    </div>
+                    <div>
+                      <label style={s.label}>Bathrooms</label>
+                      <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 3: SCHEDULE & TEAM */}
+                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
+                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                    <CalendarClock size={20} color="#10B981"/> Schedule & Team
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                    <div>
+                      <label style={s.label}>Receive Date</label>
+                      <div style={s.inputWrapper}>
+                        <CalendarDays style={s.icon} size={16} />
+                        <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={s.label}>Schedule Date</label>
+                      <div style={s.inputWrapper}>
+                        <CalendarDays style={s.icon} size={16} />
+                        <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={s.label}>Time In</label>
+                      <div style={s.inputWrapper}>
+                        <Clock style={s.icon} size={16} />
+                        <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={s.label}>Time Out</label>
+                      <div style={s.inputWrapper}>
+                        <Clock style={s.icon} size={16} />
+                        <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                      </div>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={s.label}>Team</label>
+                      <CustomSelect 
+                        options={teams} 
+                        value={formData.teamId} 
+                        onChange={(val: string) => {
+                          const teamWorkers = employees.filter(emp => emp.teamId === val).map(emp => emp.id);
+                          setFormData({ ...formData, teamId: val, assignedWorkers: teamWorkers });
+                        }} 
+                        placeholder="Assign Team..." 
+                        icon={Users} 
+                      />
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {!(formData.assignedWorkers && formData.assignedWorkers.length > 0) ? (
-                      <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned specifically for this job yet. Select a Team to auto-fill or add manually.</span>
-                    ) : (
-                      formData.assignedWorkers.map(workerId => {
-                        const emp = employees.find(e => e.id === workerId);
-                        if (!emp) return null;
-                        return (
-                          <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <User size={12} color="#64748b" />
-                            {emp.firstName} {emp.lastName}
-                            <button type="button" onClick={() => toggleWorkerAssignmentForm(workerId)} style={{ background: 'none', border: 'none', padding: 0, margin: 0, marginLeft: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
+                  {/* Assigned Workers Sub-block */}
+                  <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span style={s.label}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Assigned Workers</span>
+                      <div style={{ position: 'relative' }}>
+                        <button 
+                          type="button" 
+                          onClick={() => setIsAssigningWorkerForm(!isAssigningWorkerForm)} 
+                          disabled={isSaving}
+                          style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
+                        </button>
+                        {isAssigningWorkerForm && (
+                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
+                            <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
+                            {employees.map(emp => {
+                              const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
+                              return (
+                                <div 
+                                  key={emp.id} 
+                                  onClick={() => toggleWorkerAssignmentForm(emp.id)}
+                                  style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
+                                >
+                                  <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
+                                    {emp.firstName} {emp.lastName}
+                                  </span>
+                                  {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
+                                </div>
+                              )
+                            })}
                           </div>
-                        )
-                      })
-                    )}
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {!(formData.assignedWorkers && formData.assignedWorkers.length > 0) ? (
+                        <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned specifically for this job yet. Select a Team to auto-fill or add manually.</span>
+                      ) : (
+                        formData.assignedWorkers.map(workerId => {
+                          const emp = employees.find(e => e.id === workerId);
+                          if (!emp) return null;
+                          return (
+                            <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <User size={12} color="#64748b" />
+                              {emp.firstName} {emp.lastName}
+                              <button type="button" onClick={() => toggleWorkerAssignmentForm(workerId)} style={{ background: 'none', border: 'none', padding: 0, margin: 0, marginLeft: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* TABLA DE SERVICIOS FACTURADOS DENTRO DEL FORMULARIO */}
-                <div className="col-span-full" style={{ marginTop: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <h4 style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>Billed Services</h4>
-                    <button type="button" onClick={() => handleOpenServiceForm(undefined, true)} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Plus size={12} /> Add Service
+                {/* CARD 4: BILLED SERVICES */}
+                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: 0, fontSize: '1.1rem', color: '#1E293B' }}>
+                      <Layers size={20} color="#F59E0B"/> Billed Services
+                    </h3>
+                    <button type="button" onClick={() => handleOpenServiceForm(undefined, true)} className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.85rem' }}>
+                      <Plus size={16} /> Add Service
                     </button>
                   </div>
 
-                  <div style={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', overflowX: 'auto' }}>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                       <thead>
                         <tr>
@@ -1539,45 +1418,98 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           })
                         )}
                       </tbody>
-                      {formServices.length > 0 && (
-                        <tfoot>
-                          <tr>
-                            <td colSpan={4} style={{ padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>House Total:</td>
-                            <td colSpan={2} style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: '#047857', fontSize: '1.1rem', backgroundColor: '#ecfdf5' }}>
-                              ${formServices.reduce((sum, r) => sum + r.total, 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      )}
                     </table>
                   </div>
                 </div>
 
-                <div className="col-span-full">
-                  <label style={s.label}>Note</label>
-                  <div style={{ ...s.inputWrapper, alignItems: 'flex-start' }}>
-                    <StickyNote style={{ ...s.icon, top: '14px' }} size={16} />
-                    <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical' }} placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
-                  </div>
-                </div>
-
-                <div className="col-span-full">
-                  <label style={s.label}>Employee's Note</label>
-                  <div style={{ ...s.inputWrapper, alignItems: 'flex-start' }}>
-                    <PenTool style={{ ...s.icon, top: '14px' }} size={16} />
-                    <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical' }} placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
+                {/* CARD 5: NOTES */}
+                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
+                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                    <StickyNote size={20} color="#F43F5E"/> Notes
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div>
+                      <label style={s.label}>General Note</label>
+                      <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px' }} placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
+                    </div>
+                    <div>
+                      <label style={{...s.label, color: '#991B1B'}}>Employee's Note</label>
+                      <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px', backgroundColor: '#FEF2F2', borderColor: '#FECACA' }} placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
+                    </div>
                   </div>
                 </div>
 
               </div>
             </div>
             
-            <footer style={s.footer}>
-              <button style={s.btnOutline} onClick={handleCloseForm} disabled={isSaving}>Cancel</button>
-              <button style={s.btnPrimary} onClick={handleSave} disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save Property'}
-              </button>
-            </footer>
+            {/* LADO DERECHO: SUMMARY & ACTIONS */}
+            <aside className="modal-full-right">
+              <div style={{ padding: '2rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1E293B', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 0.5rem 0' }}>
+                    Job Summary
+                    <span style={{ padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: '#E0F2FE', color: '#1E40AF', textTransform: 'uppercase' }}>
+                      {getRelationName(statuses, formData.statusId, 'New')}
+                    </span>
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B', fontWeight: 500 }}>
+                    {formData.id ? 'Edit Job' : 'New Job'} • {getRelationName(services, formData.serviceId, 'Standard')}
+                  </p>
+                </div>
+
+                <div style={{ backgroundColor: '#F8FAFC', padding: '1.2rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
+                    <div style={{ padding: '0.4rem', backgroundColor: '#E0E7FF', borderRadius: '6px', color: '#4F46E5' }}><User size={16} /></div>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Client Details</h4>
+                  </div>
+                  <div style={{ paddingLeft: '2.4rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: formData.client ? '#0F172A' : '#94A3B8' }}>{formData.client || 'Not defined'}</p>
+                    {formData.address && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.address}</p>}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#F8FAFC', padding: '1.2rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
+                    <div style={{ padding: '0.4rem', backgroundColor: '#DCFCE7', borderRadius: '6px', color: '#059669' }}><CalendarClock size={16} /></div>
+                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Timing & Assignment</h4>
+                  </div>
+                  <div style={{ paddingLeft: '2.4rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>{formData.scheduleDate || 'No date set'}</p>
+                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.timeIn} {formData.timeOut ? `- ${formData.timeOut}` : ''}</p>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 'auto', paddingTop: '1.5rem', borderTop: '2px solid #F1F5F9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+                    <Receipt size={18} color="#0F172A" />
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0F172A' }}>Service Costs</h4>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
+                      <span>Items Count</span> <span>{formServices.length}</span>
+                    </div>
+                    <div style={{ margin: '0.5rem 0', borderTop: '1px dashed #CBD5E1' }}></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem' }}>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0F172A' }}>Total</span> 
+                      <span style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', lineHeight: 1 }}>${formTotalBilled.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div style={{ padding: '1.5rem', backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                <button onClick={handleSave} disabled={isSaving} style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                  <Save size={18} /> {isSaving ? 'Saving...' : 'Confirm & Save'}
+                </button>
+                <button onClick={handleCloseForm} disabled={isSaving} style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', backgroundColor: 'white', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <XCircle size={18} /> Cancel
+                </button>
+              </div>
+            </aside>
+
           </div>
         </div>
       )}
@@ -1641,7 +1573,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <Copy size={16} /> Duplicate
                   </button>
                 )}
-                <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
+                <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse as Property); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
                   <ClipboardCheck size={16} /> Q. Check
                 </button>
                 <button style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', borderRadius: '4px', marginLeft: '4px' }} onClick={() => setIsDetailModalOpen(false)}>
@@ -2036,7 +1968,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button style={{...s.actionBtn, ...s.btnOutline}} onClick={() => setIsDetailModalOpen(false)}>Close</button>
-                {canEdit && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse)}><Edit2 size={16} /> Edit Details</button>}
+                {canEdit && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
               </div>
             </footer>
           </div>
@@ -2199,11 +2131,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     onChange={(e) => setPayrollForm({ ...payrollForm, employeeId: e.target.value })}
                   >
                     <option value="">Select an employee...</option>
-                    {employees.filter(emp => (selectedHouse.assignedWorkers || []).includes(emp.id)).map(emp => (
+                    {employees.filter(emp => (selectedHouse?.assignedWorkers || []).includes(emp.id)).map(emp => (
                       <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
                     ))}
                   </select>
-                  {(!selectedHouse.assignedWorkers || selectedHouse.assignedWorkers.length === 0) && (
+                  {(!selectedHouse?.assignedWorkers || selectedHouse.assignedWorkers.length === 0) && (
                     <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '4px' }}>Please assign workers to this property first.</p>
                   )}
                 </div>
@@ -2254,89 +2186,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- TEAM OVERVIEW MODAL --- */}
-      {selectedTeamView && (
-        <div className="modal-overlay-centered" onClick={() => setSelectedTeamView(null)}>
-          <div className="modal-70" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: `${selectedTeamView.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: selectedTeamView.color }}>
-                  <Users size={16} />
-                </div>
-                <h3 style={s.title}>{selectedTeamView.name} Overview</h3>
-              </div>
-              <button style={s.closeBtn} onClick={() => setSelectedTeamView(null)}><X size={20} /></button>
-            </header>
-            
-            <div style={s.body}>
-              
-              <div>
-                <h4 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <UserCheck size={16} color="#3b82f6" /> Team Members
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {employees.filter(e => e.teamId === selectedTeamView.id).length === 0 ? (
-                    <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', color: '#64748b', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                      No employees assigned to this team.
-                    </div>
-                  ) : (
-                    employees.filter(e => e.teamId === selectedTeamView.id).map(emp => (
-                      <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e0f2fe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
-                          {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{emp.firstName} {emp.lastName}</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{emp.email}</div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div style={{ marginTop: '16px' }}>
-                <h4 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Briefcase size={16} color="#f59e0b" /> Assigned Jobs Today
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {propertiesWithScope.filter(p => p.teamId === selectedTeamView.id).length === 0 ? (
-                    <div style={{ padding: '12px', backgroundColor: '#fffbeb', borderRadius: '8px', color: '#b45309', fontSize: '0.9rem', fontStyle: 'italic' }}>
-                      No jobs assigned for today.
-                    </div>
-                  ) : (
-                    propertiesWithScope.filter(p => p.teamId === selectedTeamView.id).map(prop => (
-                      <div key={prop.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                        <div>
-                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem', marginBottom: '2px' }}>{prop.client}</div>
-                          <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <MapPin size={12} /> {prop.address}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.8rem', color: '#111827', fontWeight: 600, marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                            <Clock size={12} color="#64748b" /> {prop.timeIn || '08:00 AM'}
-                          </div>
-                          {statuses.find(s => s.id === prop.statusId) ? (
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', color: '#475569' }}>
-                              {statuses.find(s => s.id === prop.statusId)?.name}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-            </div>
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button style={s.btnOutline} onClick={() => setSelectedTeamView(null)}>Close</button>
-            </footer>
           </div>
         </div>
       )}
