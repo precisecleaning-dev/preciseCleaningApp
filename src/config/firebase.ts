@@ -5,12 +5,12 @@ import { getStorage } from "firebase/storage";
 
 // Tu configuración real de Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyCD38jSunojeuoE7T2c1witsvdkFnOuqe4",
-  authDomain: "precise-app-94dd6.firebaseapp.com",
-  projectId: "precise-app-94dd6",
-  storageBucket: "precise-app-94dd6.firebasestorage.app",
+  apiKey: "AIzaSyAU2ZPSROGJcf1NfamG-r5jWiOX13vOoe4",
+  authDomain: "bdprecise-2d4bc.firebaseapp.com",
+  projectId: "bdprecise-2d4bc",
+  storageBucket: "bdprecise-2d4bc.firebasestorage.app",
   messagingSenderId: "100110215031",
-  appId: "1:100110215031:web:d927cb693f2ce0828fa372"
+  appId: "1:697053380036:web:7343cab6d09ab258557891"
 };
 
 // Inicializar Firebase
@@ -20,5 +20,6 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app); 
 export const storage = getStorage(app);
-
 export default app;
+
+
