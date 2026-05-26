@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  Search, MapPin, CalendarDays, ChevronDown, FileText, Users
+  Search, MapPin, CalendarDays, ChevronDown, FileText, Users, Edit2, Trash2
 } from 'lucide-react';
 
 import type { Property, Team, SystemUser, Role } from '../types/index';
@@ -80,9 +80,10 @@ interface InvoicesViewProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  onEditProperty?: (property: Property) => void;
 }
 
-export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: InvoicesViewProps) {
+export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -97,6 +98,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [filterStatus, setFilterStatus] = useState('All');
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
+  const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -128,6 +130,21 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     } catch (error) {
       console.error("Error updating invoice status:", error);
       alert("Failed to update status.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (propertyId: string) => {
+    if (!window.confirm("Are you sure you want to completely delete this job?")) return;
+    setIsSaving(true);
+    try {
+      await propertiesService.delete(propertyId);
+      setProperties(properties.filter(p => p.id !== propertyId));
+      alert("Job deleted successfully.");
+    } catch (error) {
+      console.error("Error deleting property:", error);
+      alert("Failed to delete property.");
     } finally {
       setIsSaving(false);
     }
@@ -234,13 +251,14 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <th style={{...s.th, textAlign: 'right'}}>Total Cost</th>
               <th style={{...s.th, textAlign: 'right'}}>Payroll Total</th>
               <th style={{...s.th, textAlign: 'right'}}>Profit</th>
+              <th style={{...s.th, textAlign: 'center'}}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>Loading financial data...</td></tr>
+              <tr><td colSpan={8} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>Loading financial data...</td></tr>
             ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters.</td></tr>
+              <tr><td colSpan={8} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters.</td></tr>
             ) : filteredProperties.map(prop => {
               
               // Cálculos Financieros
@@ -290,6 +308,33 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
                   <td style={{ ...s.td, textAlign: 'right', fontWeight: 800, color: profit >= 0 ? '#047857' : '#e11d48', fontSize: '1.05rem' }}>
                     ${profit.toFixed(2)}
+                  </td>
+
+                  <td style={{ ...s.td, textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                      {canEdit && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); if(onEditProperty) onEditProperty(prop); }} 
+                          title="Edit Job"
+                          style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '4px' }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }} 
+                          title="Delete Job"
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '4px' }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                 </tr>

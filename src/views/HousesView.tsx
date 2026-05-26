@@ -694,6 +694,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
+  // ============================================================
+  // ⭐ FUNCIÓN handleSave CORREGIDA
+  // ============================================================
   const handleSave = async () => {
     if (!formData.client) return alert("Client is required.");
     if (!formData.address) return alert("Address is required.");
@@ -708,6 +711,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         finalAssignedWorkers = employees.filter(emp => emp.teamId === formData.teamId).map(emp => emp.id);
       }
 
+      // PASO 1: Si es nuevo, crear el documento primero para tener un ID válido
       if (!workingId) {
         const { id, ...restOfData } = formData;
         const dataToCreate = { 
@@ -715,35 +719,57 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           assignedWorkers: finalAssignedWorkers,
           description: `${formData.client} - ${formData.rooms} rooms`, 
           city: 'TBD', 
-          size: 'TBD' 
+          size: 'TBD',
+          beforePhotos: [],
+          afterPhotos: []
         };
         const docRef = await propertiesService.create(dataToCreate as any);
         workingId = docRef;
         isNew = true;
+        console.log('✅ New property created with ID:', workingId);
       }
 
+      // PASO 2: Subir fotos BEFORE a Storage
       let uploadedBeforeUrls: string[] = [];
       if (beforeFiles.length > 0) {
+        console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
         try {
-          uploadedBeforeUrls = await Promise.all(beforeFiles.map(file => storageService.uploadPropertyPhoto(file, workingId, 'before')));
-          console.log('Before photos uploaded:', uploadedBeforeUrls);
+          uploadedBeforeUrls = await Promise.all(
+            beforeFiles.map(async (file, idx) => {
+              console.log(`  → Uploading before photo ${idx + 1}/${beforeFiles.length}: ${file.name}`);
+              const url = await storageService.uploadPropertyPhoto(file, workingId, 'before');
+              console.log(`  ✅ Uploaded: ${url}`);
+              return url;
+            })
+          );
+          console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
         } catch (uploadError) {
-          console.error("Error uploading before photos:", uploadError);
-          alert("Failed to upload before photos. Please try again.");
+          console.error("❌ Error uploading before photos:", uploadError);
+          alert("Failed to upload before photos. Check console for details.");
         }
       }
 
+      // PASO 3: Subir fotos AFTER a Storage
       let uploadedAfterUrls: string[] = [];
       if (afterFiles.length > 0) {
+        console.log(`📤 Uploading ${afterFiles.length} after photos...`);
         try {
-          uploadedAfterUrls = await Promise.all(afterFiles.map(file => storageService.uploadPropertyPhoto(file, workingId, 'after')));
-          console.log('After photos uploaded:', uploadedAfterUrls);
+          uploadedAfterUrls = await Promise.all(
+            afterFiles.map(async (file, idx) => {
+              console.log(`  → Uploading after photo ${idx + 1}/${afterFiles.length}: ${file.name}`);
+              const url = await storageService.uploadPropertyPhoto(file, workingId, 'after');
+              console.log(`  ✅ Uploaded: ${url}`);
+              return url;
+            })
+          );
+          console.log('✅ All after photos uploaded:', uploadedAfterUrls);
         } catch (uploadError) {
-          console.error("Error uploading after photos:", uploadError);
-          alert("Failed to upload after photos. Please try again.");
+          console.error("❌ Error uploading after photos:", uploadError);
+          alert("Failed to upload after photos. Check console for details.");
         }
       }
 
+      // PASO 4: Armar el objeto final con TODAS las URLs (anteriores + nuevas)
       const finalDataToUpdate = {
         ...formData,
         assignedWorkers: finalAssignedWorkers,
@@ -751,8 +777,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls]
       };
 
-      if(!isNew) await propertiesService.update(workingId, finalDataToUpdate as any);
+      // PASO 5: ACTUALIZAR Firestore SIEMPRE (tanto si es nuevo como si es edición)
+      // ⚠️ ESTE ERA EL BUG: antes solo se actualizaba si !isNew
+      const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
+      await propertiesService.update(workingId, dataForFirestore as any);
+      console.log('✅ Property updated in Firestore with photo URLs');
 
+      // PASO 6: Sincronizar servicios facturados
       for (const srvId of servicesToDelete) {
         await deleteDoc(doc(db, 'billing_services', srvId)).catch(e => console.error(e));
       }
@@ -768,20 +799,126 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
+      // PASO 7: Actualizar el state local con los datos completos (incluyendo URLs)
       if (isNew) {
-        const fullNewData = { ...finalDataToUpdate, id: workingId, description: `${formData.client} - ${formData.rooms} rooms`, city: 'TBD', size: 'TBD' };
+        const fullNewData = { 
+          ...finalDataToUpdate, 
+          id: workingId, 
+          description: `${formData.client} - ${formData.rooms} rooms`, 
+          city: 'TBD', 
+          size: 'TBD' 
+        };
         setProperties([...properties, fullNewData as Property]);
       } else {
-        setProperties(properties.map(p => p.id === workingId ? { ...finalDataToUpdate } as Property : p));
+        setProperties(properties.map(p => 
+          p.id === workingId ? { ...finalDataToUpdate, id: workingId } as Property : p
+        ));
       }
 
-      setBeforeFiles([]); setAfterFiles([]);
-      setBeforePhotoURLs([]); setAfterPhotoURLs([]);
+      // PASO 8: Limpiar estados temporales
+      setBeforeFiles([]); 
+      setAfterFiles([]);
+      setBeforePhotoURLs([]); 
+      setAfterPhotoURLs([]);
       handleCloseForm();
 
     } catch (error) {
-      console.error("Error saving to Firebase:", error);
-      alert("Error trying to save property to Firebase.");
+      console.error("❌ Error saving to Firebase:", error);
+      alert("Error trying to save property to Firebase. Check console.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ============================================================
+  // ⭐ FUNCIÓN PARA GUARDAR SOLO FOTOS DESDE EL MODAL DE DETALLE
+  // ============================================================
+  const handleSavePhotosFromDetail = async () => {
+    if (!selectedHouse) return alert("No property selected.");
+
+    setIsSaving(true);
+    try {
+      const workingId = selectedHouse.id;
+
+      // Subir fotos BEFORE nuevas
+      let uploadedBeforeUrls: string[] = [];
+      if (beforeFiles.length > 0) {
+        console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
+        try {
+          uploadedBeforeUrls = await Promise.all(
+            beforeFiles.map(async (file, idx) => {
+              console.log(`  → Uploading before photo ${idx + 1}/${beforeFiles.length}: ${file.name}`);
+              const url = await storageService.uploadPropertyPhoto(file, workingId, 'before');
+              console.log(`  ✅ Uploaded: ${url}`);
+              return url;
+            })
+          );
+          console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
+        } catch (uploadError) {
+          console.error("❌ Error uploading before photos:", uploadError);
+          alert("Failed to upload before photos. Check console for details.");
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      // Subir fotos AFTER nuevas
+      let uploadedAfterUrls: string[] = [];
+      if (afterFiles.length > 0) {
+        console.log(`📤 Uploading ${afterFiles.length} after photos...`);
+        try {
+          uploadedAfterUrls = await Promise.all(
+            afterFiles.map(async (file, idx) => {
+              console.log(`  → Uploading after photo ${idx + 1}/${afterFiles.length}: ${file.name}`);
+              const url = await storageService.uploadPropertyPhoto(file, workingId, 'after');
+              console.log(`  ✅ Uploaded: ${url}`);
+              return url;
+            })
+          );
+          console.log('✅ All after photos uploaded:', uploadedAfterUrls);
+        } catch (uploadError) {
+          console.error("❌ Error uploading after photos:", uploadError);
+          alert("Failed to upload after photos. Check console for details.");
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      // Calcular las URLs finales (Storage = solo URLs que empiezan con http)
+      const existingBeforeFromStorage = (selectedHouse.beforePhotos || []).filter(u => u.startsWith('http'));
+      const existingAfterFromStorage = (selectedHouse.afterPhotos || []).filter(u => u.startsWith('http'));
+
+      const finalBeforePhotos = [...existingBeforeFromStorage, ...uploadedBeforeUrls];
+      const finalAfterPhotos = [...existingAfterFromStorage, ...uploadedAfterUrls];
+
+      // Actualizar Firestore con las URLs
+      await propertiesService.update(workingId, {
+        beforePhotos: finalBeforePhotos,
+        afterPhotos: finalAfterPhotos
+      } as any);
+      console.log('✅ Property updated in Firestore with photo URLs');
+
+      // Actualizar estados locales
+      const updatedHouse = {
+        ...selectedHouse,
+        beforePhotos: finalBeforePhotos,
+        afterPhotos: finalAfterPhotos
+      };
+      setSelectedHouse(updatedHouse);
+      setProperties(properties.map(p => p.id === workingId ? updatedHouse : p));
+
+      // Refrescar los URLs visuales
+      setBeforePhotoURLs(finalBeforePhotos);
+      setAfterPhotoURLs(finalAfterPhotos);
+
+      // Limpiar files temporales
+      setBeforeFiles([]);
+      setAfterFiles([]);
+
+      alert("Photos saved successfully!");
+    } catch (error) {
+      console.error("❌ Error saving photos:", error);
+      alert("Error saving photos. Check console.");
     } finally {
       setIsSaving(false);
     }
@@ -1538,7 +1675,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
                 </div>
 
-                {/* CARD 6: PHOTOS EN EL FORMULARIO (NUEVO) */}
+                {/* CARD 6: PHOTOS EN EL FORMULARIO */}
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
@@ -1874,7 +2011,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    {/* WORK LOG (NEW) */}
+                    {/* WORK LOG */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><Activity size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Work Log (Entry / Exit)</span>
@@ -2111,7 +2248,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
                   {canEdit && (beforeFiles.length > 0 || afterFiles.length > 0) && (
                     <div style={{ marginTop: '12px', textAlign: 'right' }}>
-                       <button onClick={handleSave} disabled={isSaving} style={{...s.btnPrimary, display: 'inline-flex'}}>{isSaving ? 'Uploading...' : 'Save Photos'}</button>
+                       <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{...s.btnPrimary, display: 'inline-flex'}}>{isSaving ? 'Uploading...' : 'Save Photos'}</button>
                     </div>
                   )}
                 </div>
@@ -2262,7 +2399,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
       )}
 
-      {/* --- NUEVO: MODAL DE PAYROLL --- */}
+      {/* --- MODAL DE PAYROLL --- */}
       {isPayrollModalOpen && selectedHouse && (
         <div className="modal-overlay-centered" onClick={() => setIsPayrollModalOpen(false)} style={{ zIndex: 10000 }}>
           <div className="modal-70" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
