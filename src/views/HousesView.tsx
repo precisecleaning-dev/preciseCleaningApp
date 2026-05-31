@@ -308,6 +308,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [customersList, setCustomersList] = useState<Customer[]>([]); 
   const [employees, setEmployees] = useState<any[]>([]); 
 
+  // ⭐ Lista de roles cargada directamente desde Firestore (no depende de la prop).
+  //    Inicialmente toma el valor del padre (si lo pasó), luego se sobrescribe con Firestore.
+  const [rolesList, setRolesList] = useState<Role[]>(roles);
+
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
@@ -489,6 +493,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       },
       (err) => { console.error("Error FormConfig:", err); setFormConfig(DEFAULT_FORM_CONFIG); }
+    ));
+
+    // 11) ⭐ Roles (settings_roles) — para el modal de Field Configuration
+    //     Esto permite que HousesView funcione sin depender de que el padre pase los roles
+    unsubscribes.push(onSnapshot(
+      collection(db, 'settings_roles'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Role[];
+        setRolesList(data);
+      },
+      (err) => { console.error("Error Roles:", err); }
     ));
 
     // Cleanup: desuscribir al desmontar el componente
@@ -3097,7 +3112,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             </header>
 
             <div className="modal-body-scroll" style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
-              {roles.length === 0 ? (
+              {rolesList.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                   No roles configured. Create some roles first in <strong>Roles & Permissions</strong>.
                 </div>
@@ -3135,7 +3150,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {roles.map(role => {
+                                {rolesList.map(role => {
                                   const isHidden = hiddenForRoles.includes(role.id);
                                   return (
                                     <label
@@ -3197,7 +3212,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                 )}
                               </div>
                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {roles.map(role => {
+                                {rolesList.map(role => {
                                   const isHidden = hiddenForRoles.includes(role.id);
                                   return (
                                     <label
