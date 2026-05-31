@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Edit2, Trash2 
+  ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Edit2, Trash2,
+  Upload, Printer, Loader2, Image as ImageIcon
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
+import { storageService } from '../services/storageService';
+import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
@@ -15,7 +18,7 @@ interface QCRecord {
   client: string;
   status: 'Finished' | 'Pending';
   inspector?: string;
-  qcData?: any; // Para guardar las respuestas de las tareas
+  qcData?: any;
 }
 
 interface QualityCheckViewProps {
@@ -33,16 +36,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished'>('All');
 
-  // Estados para los catálogos dinámicos
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Estructura de estado complejo
+  // ⭐ Estados nuevos para upload de fotos y exportar PDF
+  const [uploadingForPlace, setUploadingForPlace] = useState<string | null>(null);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
   const [qcData, setQcData] = useState<Record<string, any>>({});
 
-  // 1. CARGAMOS LOS PLACES, TASKS Y LOS REPORTES DESDE FIREBASE
   useEffect(() => {
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
@@ -65,7 +73,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           ...document.data() 
         } as QCRecord));
 
-        loadedQCs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Más recientes primero
+        loadedQCs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setQcList(loadedQCs);
       } catch (error) {
         console.error("Error loading QC data:", error);
@@ -76,7 +84,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     fetchAllData();
   }, []);
 
-  // Efecto para abrir el modal desde el Dashboard o HousesView
   useEffect(() => {
     if (houseToInspect && !isLoadingCatalogs) {
       handleOpenForm(houseToInspect);
@@ -107,11 +114,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setSelectedHouse(house);
     setEditingQcId(qc.id as string);
     
-    // Cargamos los datos previos o inicializamos vacíos si faltan campos
     const loadedData: any = qc.qcData || {};
     places.forEach(p => {
       if (!loadedData[p.id]) {
         loadedData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
+      } else if (!Array.isArray(loadedData[p.id].photos)) {
+        // ⭐ Asegurar que photos sea siempre un array (compatibilidad con registros viejos)
+        loadedData[p.id].photos = [];
       }
     });
     
@@ -129,7 +138,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (!selectedHouse) return;
     setIsSaving(true);
     
-    // Evaluamos si quedó alguna tarea sin contestar
     let isPending = false;
     places.forEach(p => {
       const placeTasks = tasks.filter(t => t.placeId === p.id);
@@ -178,7 +186,425 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // --- Funciones para manejar el estado del formulario ---
+  // ⭐ NUEVO: Subir fotos a Firebase Storage en la ruta:
+  //    {Address}/QualityCheck/{PlaceName}/photo_001.jpg
+  const handlePhotoUpload = async (placeId: string, placeName: string, files: FileList | null) => {
+    if (!files || files.length === 0 || !selectedHouse) return;
+
+    setUploadingForPlace(placeId);
+    try {
+      const filesArray = Array.from(files);
+
+      // 1) Comprimir imágenes (reduce tamaño antes de subir)
+      const compressed = await Promise.all(
+        filesArray.map(f => compressImage(f, { quality: 0.85, maxWidth: 1920, maxSizeMB: 1 }))
+      );
+
+      // 2) Subir a Firebase Storage
+      const urls = await storageService.uploadQualityCheckPhotos(
+        compressed,
+        selectedHouse.address,
+        placeName
+      );
+
+      // 3) Agregar las URLs al estado del QC
+      setQcData(prev => ({
+        ...prev,
+        [placeId]: {
+          ...prev[placeId],
+          photos: [...(prev[placeId]?.photos || []), ...urls]
+        }
+      }));
+
+      console.log(`✅ Uploaded ${urls.length} photo(s) for "${placeName}"`);
+    } catch (error) {
+      console.error('Error uploading QC photos:', error);
+      alert('Error subiendo fotos. Revisa la consola.');
+    } finally {
+      setUploadingForPlace(null);
+    }
+  };
+
+  // ⭐ NUEVO: Eliminar foto del estado (también la borra de Storage)
+  const handleRemovePhoto = async (placeId: string, index: number) => {
+    if (!window.confirm('¿Eliminar esta foto?')) return;
+
+    const photos = qcData[placeId]?.photos || [];
+    const urlToDelete = photos[index];
+
+    // Eliminar del estado primero (UX inmediato)
+    setQcData(prev => ({
+      ...prev,
+      [placeId]: {
+        ...prev[placeId],
+        photos: photos.filter((_: string, i: number) => i !== index)
+      }
+    }));
+
+    // Eliminar de Storage en segundo plano
+    if (urlToDelete?.startsWith('http')) {
+      await storageService.deletePhotoByUrl(urlToDelete);
+    }
+  };
+
+  // ⭐ NUEVO: Generar PDF profesional del Quality Check
+  const generateQCPDF = async () => {
+    if (!selectedHouse) return;
+
+    // Recoger SOLO los places que tengan fotos o tareas evaluadas
+    const placesWithData: { place: Place; photos: string[]; tasksData: any; notes: string; damage: string; score: any; corrections: string }[] = [];
+    
+    places.forEach(p => {
+      const data = qcData[p.id];
+      if (!data) return;
+      const hasPhotos = (data.photos || []).length > 0;
+      const hasTasks = Object.keys(data.tasks || {}).length > 0;
+      const hasNotes = (data.notes || data.damage || '').trim().length > 0;
+      if (hasPhotos || hasTasks || hasNotes) {
+        placesWithData.push({
+          place: p,
+          photos: data.photos || [],
+          tasksData: data.tasks || {},
+          notes: data.notes || '',
+          damage: data.damage || '',
+          score: data.score,
+          corrections: data.corrections
+        });
+      }
+    });
+
+    if (placesWithData.length === 0) {
+      alert('No hay datos para exportar. Completa al menos una sección primero.');
+      return;
+    }
+
+    setIsExportingPDF(true);
+
+    try {
+      // Convertir todas las imágenes a base64 (igual que en HousesView)
+      console.log(`📥 Preparing images for PDF...`);
+      const placesWithBase64 = await Promise.all(
+        placesWithData.map(async (pd) => ({
+          ...pd,
+          photosBase64: await Promise.all(
+            pd.photos.map(async (url) => {
+              try {
+                const response = await fetch(url, { mode: 'cors' });
+                const blob = await response.blob();
+                return await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result as string);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (err) {
+                console.error('Error loading image:', err);
+                return url;
+              }
+            })
+          )
+        }))
+      );
+      console.log(`✅ All images ready`);
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Por favor permite las ventanas emergentes para generar el PDF.');
+        setIsExportingPDF(false);
+        return;
+      }
+
+      const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
+      const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // Generar sección por cada place
+      const placeSections = placesWithBase64.map(pd => {
+        const placeTasks = tasks.filter(t => t.placeId === pd.place.id);
+        const tasksHtml = placeTasks.length > 0 ? `
+          <table class="tasks-table">
+            <thead>
+              <tr><th>Task</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              ${placeTasks.map(t => {
+                const val = pd.tasksData[t.id];
+                const cls = val === 'Yes' ? 'yes' : val === 'No' ? 'no' : 'na';
+                return `
+                  <tr>
+                    <td>${t.name}</td>
+                    <td class="${cls}">${val || '—'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        ` : '';
+
+        const scoreHtml = pd.score ? `
+          <div class="score-badge score-${pd.score}">
+            Score: ${pd.score}/3
+          </div>
+        ` : '';
+
+        const notesHtml = (pd.notes || pd.damage) ? `
+          <div class="notes-block">
+            ${pd.notes ? `<div><strong>Notes:</strong> ${pd.notes}</div>` : ''}
+            ${pd.damage ? `<div style="margin-top: 8px; color: #b91c1c;"><strong>Damage:</strong> ${pd.damage}</div>` : ''}
+          </div>
+        ` : '';
+
+        const photosHtml = pd.photosBase64.length > 0 ? `
+          <div class="photo-grid">
+            ${pd.photosBase64.map((src) => `
+              <div class="photo-item">
+                <img src="${src}" alt="QC photo" />
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <section class="place-section">
+            <div class="place-header">
+              <h2>${pd.place.name}</h2>
+              ${scoreHtml}
+            </div>
+            ${tasksHtml}
+            ${notesHtml}
+            ${photosHtml}
+          </section>
+        `;
+      }).join('');
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8" />
+            <title>Quality Check Report - ${selectedHouse.client}</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #f1f5f9;
+                padding: 24px;
+                color: #1e293b;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .container {
+                max-width: 1000px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 12px;
+                padding: 48px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+              }
+              .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                padding-bottom: 24px;
+                border-bottom: 1px solid #e2e8f0;
+                margin-bottom: 32px;
+              }
+              .logo-text {
+                font-size: 22px;
+                font-weight: 800;
+                color: #1e3a8a;
+                letter-spacing: 2px;
+                line-height: 1;
+              }
+              .logo-subtitle {
+                font-size: 10px;
+                font-weight: 500;
+                color: #64748b;
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                margin-top: 4px;
+              }
+              .meta-section {
+                text-align: right;
+                font-size: 13px;
+                color: #475569;
+                max-width: 60%;
+              }
+              .meta-label {
+                font-weight: 700;
+                color: #0f172a;
+              }
+              h1.report-title {
+                text-align: center;
+                font-size: 38px;
+                font-weight: 800;
+                color: #1e40af;
+                margin: 40px 0 16px 0;
+              }
+              .property-info {
+                text-align: center;
+                font-size: 14px;
+                color: #475569;
+                margin-bottom: 40px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #e2e8f0;
+              }
+              .property-info strong { color: #0f172a; }
+              .place-section {
+                margin-bottom: 40px;
+                page-break-inside: avoid;
+              }
+              .place-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding-bottom: 12px;
+                border-bottom: 2px solid #1e40af;
+                margin-bottom: 16px;
+              }
+              .place-header h2 {
+                font-size: 22px;
+                font-weight: 700;
+                color: #1e40af;
+              }
+              .score-badge {
+                padding: 6px 14px;
+                border-radius: 20px;
+                font-size: 13px;
+                font-weight: 700;
+              }
+              .score-1 { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+              .score-2 { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+              .score-3 { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+              .tasks-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 16px;
+                font-size: 13px;
+              }
+              .tasks-table th {
+                background: #f8fafc;
+                color: #64748b;
+                font-weight: 700;
+                text-align: left;
+                padding: 10px 12px;
+                border-bottom: 1px solid #e2e8f0;
+                text-transform: uppercase;
+                font-size: 11px;
+                letter-spacing: 0.5px;
+              }
+              .tasks-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #f1f5f9;
+              }
+              .tasks-table td.yes { color: #047857; font-weight: 700; }
+              .tasks-table td.no { color: #b91c1c; font-weight: 700; }
+              .tasks-table td.na { color: #94a3b8; }
+              .notes-block {
+                background: #f8fafc;
+                padding: 14px 16px;
+                border-left: 3px solid #1e40af;
+                border-radius: 4px;
+                font-size: 13px;
+                color: #334155;
+                margin-bottom: 16px;
+              }
+              .photo-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+                margin-top: 12px;
+              }
+              .photo-item {
+                aspect-ratio: 1 / 1;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+                background-color: #f1f5f9;
+                page-break-inside: avoid;
+              }
+              .photo-item img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+              }
+              .footer {
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 1px solid #e2e8f0;
+                text-align: center;
+                font-size: 11px;
+                color: #94a3b8;
+              }
+              @media print {
+                @page { margin: 12mm; size: A4; }
+                body { background: white; padding: 0; }
+                .container { box-shadow: none; padding: 0; max-width: 100%; }
+                .photo-item, .place-section { break-inside: avoid; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <div>
+                  <div class="logo-text">PRECISE CLEANING</div>
+                  <div class="logo-subtitle">Professional Services</div>
+                </div>
+                <div class="meta-section">
+                  <div><span class="meta-label">Inspector:</span> ${inspector}</div>
+                  <div><span class="meta-label">Date:</span> ${date}</div>
+                </div>
+              </div>
+
+              <h1 class="report-title">Quality Check Report</h1>
+              <div class="property-info">
+                <strong>${selectedHouse.client}</strong> • ${selectedHouse.address}
+              </div>
+
+              ${placeSections}
+
+              <div class="footer">
+                ${selectedHouse.client} • Generated on ${date} • Precise Cleaning Services
+              </div>
+            </div>
+            <script>
+              window.addEventListener('load', function() {
+                const images = document.querySelectorAll('img');
+                if (images.length === 0) {
+                  setTimeout(() => window.print(), 300);
+                  return;
+                }
+                let loaded = 0;
+                const checkDone = () => {
+                  loaded++;
+                  if (loaded >= images.length) {
+                    setTimeout(() => window.print(), 500);
+                  }
+                };
+                images.forEach(img => {
+                  if (img.complete) checkDone();
+                  else {
+                    img.addEventListener('load', checkDone);
+                    img.addEventListener('error', checkDone);
+                  }
+                });
+              });
+            </script>
+          </body>
+        </html>
+      `;
+
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) {
+      console.error('Error generating Quality Check PDF:', error);
+      alert('Error generando el PDF. Revisa la consola.');
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
   const setTaskValue = (placeId: string, taskId: string, value: 'Yes' | 'No') => {
     setQcData(prev => ({
       ...prev, [placeId]: { ...prev[placeId], tasks: { ...prev[placeId].tasks, [taskId]: value } }
@@ -204,13 +630,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  // --- Estilos Blindados ---
   const s = {
     th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
     td: { padding: '12px 16px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontSize: '0.95rem' },
     overlay: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(15, 23, 42, 0.5)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto', boxSizing: 'border-box' } as React.CSSProperties,
     modalWide: { backgroundColor: '#eaeff2', width: '100%', maxWidth: '900px', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' } as React.CSSProperties,
-    headerQC: { backgroundColor: '#3b82f6', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0 },
+    headerQC: { backgroundColor: '#3b82f6', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0, gap: '12px', flexWrap: 'wrap' as const },
     closeBtn: { background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
     cardQC: { backgroundColor: 'white', borderRadius: '10px', border: '1px solid #e1e4e8', padding: '20px', marginBottom: '20px' } as React.CSSProperties,
     cardTitle: { color: '#3b82f6', fontSize: '1.1rem', borderBottom: '2px solid #3b82f6', paddingBottom: '8px', marginTop: 0, fontWeight: 600 },
@@ -221,7 +646,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     extraFields: { marginTop: '15px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc' },
     labelQC: { display: 'block', fontWeight: 'bold' as const, fontSize: '11px', margin: '10px 0 5px', color: '#555', textTransform: 'uppercase' as const },
     textareaQC: { width: '100%', height: '60px', border: '1px solid #e1e4e8', borderRadius: '4px', padding: '8px', boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'inherit' },
-    uploadBox: { border: '2px dashed #bbb', borderRadius: '8px', padding: '15px', cursor: 'pointer', textAlign: 'center' as const, backgroundColor: '#fff', margin: '10px 0', color: '#555', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: '8px' },
     saveBar: { padding: '15px', textAlign: 'center' as const, borderTop: '3px solid #22c55e', backgroundColor: 'white', borderRadius: '0 0 12px 12px', flexShrink: 0 },
     btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 60px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', opacity: isSaving ? 0.7 : 1 },
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#3b82f6' : '#f1f5f9', color: active ? 'white' : '#64748b', transition: 'all 0.2s' })
@@ -229,8 +653,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   return (
     <div className="fade-in" style={{ padding: '20px' }}>
-      
-      {/* CABECERA Y FILTROS */}
+      <style>{`
+        .spin-qc { animation: spin-qc 1s linear infinite; }
+        @keyframes spin-qc { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
       <header className="main-header" style={{ marginBottom: '24px' }}>
         <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
@@ -243,14 +670,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       </header>
 
-      {/* FILTRO DE ESTATUS */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
         <button onClick={() => setStatusFilter('All')} style={s.pillBtn(statusFilter === 'All')}>All</button>
         <button onClick={() => setStatusFilter('Pending')} style={s.pillBtn(statusFilter === 'Pending')}>Pending</button>
         <button onClick={() => setStatusFilter('Finished')} style={s.pillBtn(statusFilter === 'Finished')}>Finished</button>
       </div>
 
-      {/* TABLA BLINDADA CON LOS REPORTES */}
       <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
@@ -300,14 +725,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       </div>
 
-      {/* --- EL MODAL PREMIUM DINÁMICO --- */}
+      {/* --- MODAL DE QUALITY CHECK --- */}
       {isFormModalOpen && selectedHouse && (
         <div style={s.overlay}>
           <div style={s.modalWide}>
             
-            {/* Header Actualizado */}
             <div style={s.headerQC}>
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <h1 style={{ margin: 0, fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <ClipboardCheck size={22}/> Quality Check Inspection
                 </h1>
@@ -318,10 +742,34 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   <User size={14} /> Inspector: {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User'}
                 </p>
               </div>
-              <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {/* ⭐ Botón Export PDF */}
+                <button
+                  onClick={generateQCPDF}
+                  disabled={isExportingPDF || isLoadingCatalogs}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    color: 'white',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: isExportingPDF ? 'wait' : 'pointer',
+                    opacity: isExportingPDF ? 0.7 : 1
+                  }}
+                  title="Generate PDF Report"
+                >
+                  {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
+                  {isExportingPDF ? 'Exporting...' : 'Export PDF'}
+                </button>
+                <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
+              </div>
             </div>
             
-            {/* Body desplazable */}
             <div style={{ padding: '20px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
               
               {isLoadingCatalogs ? (
@@ -334,8 +782,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 </div>
               ) : (
                 places.map(place => {
-                  const placeData = qcData[place.id] || { tasks: {} };
+                  const placeData = qcData[place.id] || { tasks: {}, photos: [] };
                   const placeTasks = tasks.filter(t => t.placeId === place.id);
+                  const placePhotos: string[] = placeData.photos || [];
+                  const isUploadingHere = uploadingForPlace === place.id;
 
                   if (placeTasks.length === 0) return null;
 
@@ -369,11 +819,110 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                           ))}
                         </div>
                         
-                        <div style={s.uploadBox}>
-                          <Camera size={24} color="#9ca3af"/>
-                          <span>Click to upload photos (Max 10)</span>
-                          <span style={{fontSize: '0.75rem', color: '#9ca3af'}}>*Integration pending*</span>
+                        {/* ⭐ NUEVO: Sección de fotos */}
+                        <label style={s.labelQC}>Photos ({placePhotos.length})</label>
+                        
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRefs.current[place.id]?.click()}
+                            disabled={isUploadingHere}
+                            style={{
+                              flex: 1,
+                              minWidth: '120px',
+                              padding: '10px 12px',
+                              backgroundColor: '#ecfdf5',
+                              color: '#059669',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.85rem',
+                              cursor: isUploadingHere ? 'wait' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Upload size={14} /> Cargar
+                          </button>
+                          <input
+                            ref={el => { fileInputRefs.current[place.id] = el; }}
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              handlePhotoUpload(place.id, place.name, e.target.files);
+                              if (e.target) e.target.value = '';
+                            }}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => cameraInputRefs.current[place.id]?.click()}
+                            disabled={isUploadingHere}
+                            style={{
+                              flex: 1,
+                              minWidth: '120px',
+                              padding: '10px 12px',
+                              backgroundColor: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.85rem',
+                              cursor: isUploadingHere ? 'wait' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Camera size={14} /> Cámara
+                          </button>
+                          <input
+                            ref={el => { cameraInputRefs.current[place.id] = el; }}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              handlePhotoUpload(place.id, place.name, e.target.files);
+                              if (e.target) e.target.value = '';
+                            }}
+                          />
                         </div>
+
+                        {isUploadingHere && (
+                          <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <Loader2 size={14} className="spin-qc" /> Subiendo fotos...
+                          </div>
+                        )}
+
+                        {placePhotos.length === 0 ? (
+                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', padding: '20px', backgroundColor: 'white', borderRadius: '6px', border: '2px dashed #cbd5e1' }}>
+                            <ImageIcon size={28} style={{ margin: '0 auto 6px', opacity: 0.4 }} />
+                            <div>No photos yet.</div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                            {placePhotos.map((url, i) => (
+                              <div key={i} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
+                                <img src={url} alt={`QC ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                <button
+                                  onClick={() => handleRemovePhoto(place.id, i)}
+                                  style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
+                                >
+                                  <X size={12} />
+                                </button>
+                                <div style={{ position: 'absolute', bottom: '3px', left: '3px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '1px 5px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 600 }}>
+                                  {String(i + 1).padStart(2, '0')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         <label style={s.labelQC}>Notas</label>
                         <textarea 
@@ -396,7 +945,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
             </div>
             
-            {/* Pie con el Botón Verde de Guardado */}
             <div style={s.saveBar}>
               <button style={s.btnSaveQC} onClick={handleSaveQC} disabled={isLoadingCatalogs || places.length === 0 || isSaving}>
                 {isSaving ? 'GUARDANDO...' : 'GUARDAR TODO'}
