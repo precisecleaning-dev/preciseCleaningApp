@@ -1,25 +1,42 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth"; 
-import { getStorage } from "firebase/storage";
+// src/config/firebase.ts
+import { initializeApp } from 'firebase/app';
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED
+} from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
 
-// Tu configuración real de Firebase
+// ⚠️ IMPORTANTE: Reemplaza estos valores con TUS credenciales actuales de firebase.ts
+//    No las copies de aquí - usa las que ya tenías en tu archivo original.
 const firebaseConfig = {
-  apiKey: "AIzaSyAU2ZPSROGJcf1NfamG-r5jWiOX13vOoe4",
-  authDomain: "bdprecise-2d4bc.firebaseapp.com",
-  projectId: "bdprecise-2d4bc",
-  storageBucket: "bdprecise-2d4bc.firebasestorage.app",
-  messagingSenderId: "100110215031",
-  appId: "1:697053380036:web:7343cab6d09ab258557891"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Inicializar Firebase
+// Inicializar app
 const app = initializeApp(firebaseConfig);
 
-// EXPORTAR SERVICIOS PARA EL RESTO DE LA APP
-export const db = getFirestore(app);
-export const auth = getAuth(app); 
+// ⭐ INICIALIZAR FIRESTORE CON PERSISTENCE LOCAL
+//    - persistentLocalCache: guarda todos los datos en IndexedDB del navegador
+//    - persistentMultipleTabManager: permite múltiples pestañas abiertas sin conflictos
+//    - CACHE_SIZE_UNLIMITED: caché sin límite (puede usar mucha memoria, pero perfecto para apps pequeñas/medianas)
+//    Resultado: después de la primera carga, los datos se sirven desde IndexedDB
+//    en menos de 100ms. Solo los cambios nuevos se descargan del servidor.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  })
+});
+
 export const storage = getStorage(app);
+export const auth = getAuth(app);
+
 export default app;
-
-

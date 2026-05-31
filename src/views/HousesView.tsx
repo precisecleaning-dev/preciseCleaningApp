@@ -17,7 +17,7 @@ import { photoConfigService, DEFAULT_PHOTO_CONFIG } from '../services/photoConfi
 import type { PhotoConfig } from '../services/photoConfigService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDoc } from 'firebase/firestore';
 
 type Property = BaseProperty & {
   employeeStartedBy?: string | null;
@@ -302,39 +302,130 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
+  // ⭐ Carga reactiva con onSnapshot — gracias a Firestore Persistence (IndexedDB),
+  //    las cargas posteriores son INSTANTÁNEAS porque vienen del caché local.
+  //    Además: cambios hechos por otros usuarios se reflejan automáticamente.
   useEffect(() => {
-    const fetchAllData = async () => {
-      setIsLoading(true);
-      try {
-        const [ propsData, statusData, teamData, prioData, servData, taxData, custData, usersData, photoCfg ] = await Promise.all([
-          propertiesService.getAll().catch(e => { console.error("Error Properties:", e); return []; }),
-          settingsService.getAll(collectionMap.status).catch(e => { console.error("Error Status:", e); return []; }),
-          settingsService.getAll(collectionMap.team).catch(e => { console.error("Error Teams:", e); return []; }),
-          settingsService.getAll(collectionMap.priority).catch(e => { console.error("Error Priorities:", e); return []; }),
-          settingsService.getAll(collectionMap.service).catch(e => { console.error("Error Services:", e); return []; }),
-          settingsService.getAll(collectionMap.tax).catch(e => { console.error("Error Taxes:", e); return []; }),
-          customersService.getAll().catch(e => { console.error("Error Customers:", e); return []; }),
-          getDocs(collection(db, 'system_users')).then(snap => snapshotToData(snap)).catch(() => []),
-          photoConfigService.get().catch(() => DEFAULT_PHOTO_CONFIG)
-        ]);
+    setIsLoading(true);
 
-        if (propsData) setProperties(propsData as Property[]);
-        if (statusData) setStatuses((statusData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
-        if (teamData) setTeams(teamData as Team[]);
-        if (prioData) setPriorities(prioData as Priority[]);
-        if (servData) setServices(servData as Service[]);
-        if (taxData) setTaxes(taxData as Tax[]);
-        if (custData) setCustomersList(custData);
-        if (usersData) setEmployees(usersData);
-        if (photoCfg) setPhotoConfig(photoCfg);
-
-      } catch (error) {
-        console.error("Critical error loading Firebase data:", error);
-      } finally {
-        setIsLoading(false); 
+    // Track de qué colecciones ya cargaron al menos una vez
+    const loadedCollections = new Set<string>();
+    const TOTAL_COLLECTIONS = 9;
+    const markLoaded = (name: string) => {
+      loadedCollections.add(name);
+      if (loadedCollections.size >= TOTAL_COLLECTIONS) {
+        setIsLoading(false);
       }
     };
-    fetchAllData();
+
+    const unsubscribes: (() => void)[] = [];
+
+    // 1) Properties
+    unsubscribes.push(onSnapshot(
+      collection(db, 'properties'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
+        setProperties(data);
+        markLoaded('properties');
+      },
+      (err) => { console.error("Error Properties:", err); markLoaded('properties'); }
+    ));
+
+    // 2) Statuses (settings_statuses) — ordenados por 'order'
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.status),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
+        setStatuses(data.sort((a, b) => Number(a.order) - Number(b.order)));
+        markLoaded('statuses');
+      },
+      (err) => { console.error("Error Statuses:", err); markLoaded('statuses'); }
+    ));
+
+    // 3) Teams
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.team),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[];
+        setTeams(data);
+        markLoaded('teams');
+      },
+      (err) => { console.error("Error Teams:", err); markLoaded('teams'); }
+    ));
+
+    // 4) Priorities
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.priority),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Priority[];
+        setPriorities(data);
+        markLoaded('priorities');
+      },
+      (err) => { console.error("Error Priorities:", err); markLoaded('priorities'); }
+    ));
+
+    // 5) Services
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.service),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Service[];
+        setServices(data);
+        markLoaded('services');
+      },
+      (err) => { console.error("Error Services:", err); markLoaded('services'); }
+    ));
+
+    // 6) Taxes
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.tax),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Tax[];
+        setTaxes(data);
+        markLoaded('taxes');
+      },
+      (err) => { console.error("Error Taxes:", err); markLoaded('taxes'); }
+    ));
+
+    // 7) Customers
+    unsubscribes.push(onSnapshot(
+      collection(db, 'customers'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setCustomersList(data as any);
+        markLoaded('customers');
+      },
+      (err) => { console.error("Error Customers:", err); markLoaded('customers'); }
+    ));
+
+    // 8) System Users (employees)
+    unsubscribes.push(onSnapshot(
+      collection(db, 'system_users'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setEmployees(data as any);
+        markLoaded('users');
+      },
+      (err) => { console.error("Error Users:", err); markLoaded('users'); }
+    ));
+
+    // 9) Photo Config (es un documento, no una colección)
+    unsubscribes.push(onSnapshot(
+      doc(db, 'app_settings', 'photo_config'),
+      (snap) => {
+        if (snap.exists()) {
+          setPhotoConfig(snap.data() as PhotoConfig);
+        } else {
+          setPhotoConfig(DEFAULT_PHOTO_CONFIG);
+        }
+        markLoaded('photoConfig');
+      },
+      (err) => { console.error("Error PhotoConfig:", err); setPhotoConfig(DEFAULT_PHOTO_CONFIG); markLoaded('photoConfig'); }
+    ));
+
+    // Cleanup: desuscribir al desmontar el componente
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+    };
   }, [setProperties]);
 
   useEffect(() => {
