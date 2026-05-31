@@ -360,15 +360,42 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const snapshotToData = (snapshot: any) => snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
-  const housePermission = activeRole?.permissions?.find(p => p.module === 'Houses');
+  // ⭐ Tipo extendido local: añade `allowedStatusIds` y `hiddenGroups` para evitar
+  //    errores de TypeScript si types/index.ts no se actualizó.
+  type PermissionExt = { module: string; canView?: boolean; canAdd?: boolean; canEdit?: boolean; canDelete?: boolean; scope?: 'All' | 'Own'; allowedStatusIds?: string[]; hiddenGroups?: string[] };
+
+  const housePermission = activeRole?.permissions?.find(p => p.module === 'Houses') as PermissionExt | undefined;
   const userScope = isSuperAdmin ? 'All' : (housePermission?.scope || 'Own');
-  
+  const allowedStatusIds: string[] = housePermission?.allowedStatusIds || [];
+  const hiddenGroups: string[] = housePermission?.hiddenGroups || [];
+
+  // ⭐ Helper: determina si un grupo de elementos es visible para el usuario actual.
+  //    SuperAdmin siempre ve todo. Si el grupo no está en hiddenGroups, es visible.
+  const isVisible = (groupId: string): boolean => {
+    if (isSuperAdmin) return true;
+    return !hiddenGroups.includes(groupId);
+  };
+
   const propertiesWithScope = properties.filter(prop => {
-    if (userScope === 'All') return true;
-    if (!currentUser) return false;
-    const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
-    const isSameTeam = currentUser.teamId && (prop.teamId === currentUser.teamId);
-    return isAssigned || isSameTeam;
+    // 1) Filtro de SCOPE (Own / All)
+    if (userScope !== 'All') {
+      if (!currentUser) return false;
+      const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
+      const isSameTeam = currentUser.teamId && (prop.teamId === currentUser.teamId);
+      if (!isAssigned && !isSameTeam) return false;
+    }
+
+    // 2) Filtro de STATUS permitidos (solo si NO es superAdmin y tiene lista configurada)
+    //    Si la lista está vacía o no existe = sin restricción (ver todos).
+    if (!isSuperAdmin && allowedStatusIds.length > 0) {
+      // statusId puede venir como ID o como nombre del status, comparamos contra ambos
+      const matchById = allowedStatusIds.includes(prop.statusId);
+      const propStatus = statuses.find(st => st.id === prop.statusId || st.name === prop.statusId);
+      const matchByName = propStatus ? allowedStatusIds.includes(propStatus.id) : false;
+      if (!matchById && !matchByName) return false;
+    }
+
+    return true;
   });
 
   const teamsWithScope = teams.filter(team => {
@@ -1311,7 +1338,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const s = {
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
     title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 },
-    body: { padding: '30px', overflowY: 'auto', paddingBottom: '60px' } as React.CSSProperties, 
+    body: { padding: '36px 40px', overflowY: 'auto', paddingBottom: '60px', flex: 1, minHeight: 0 } as React.CSSProperties, 
     footer: { display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
     footerBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
 
@@ -1369,7 +1396,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
         .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
-        .modal-90 { background-color: #ffffff; width: 100%; max-width: 1300px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
+        .modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
+        
+        /* ⭐ Scrollbar moderno y elegante para el modal body */
+        .modal-90 .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .modal-90 .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
+        .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 10px; }
+        .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.6); }
+        .modal-90 .modal-body-scroll { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) transparent; }
         
         .modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
         .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
@@ -1383,7 +1417,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
         @media (min-width: 769px) { 
           .modal-70 { width: 70%; } 
-          .modal-90 { width: 90%; }
+          .modal-90 { width: 95%; }
         }
         
         .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
@@ -1562,8 +1596,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                         <td data-label="Actions" style={s.td}>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            {canEdit && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
-                            {canDelete && <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>}
+                            {canEdit && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
+                            {canDelete && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>}
                           </div>
                         </td>
                         <td data-label="Client" style={s.td}>
@@ -1579,7 +1613,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
                         <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
                         <td data-label="Status" style={{ ...s.td, textAlign: 'right' }}>
-                          <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit} />
+                          <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} />
                         </td>
                       </tr>
                     );
@@ -1807,6 +1841,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 {/* CARD 4: BILLED SERVICES */}
+                {isVisible('financial') && (
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                     <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: 0, fontSize: '1.1rem', color: '#1E293B' }}>
@@ -1858,6 +1893,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </table>
                   </div>
                 </div>
+                )}
 
                 {/* CARD 5: NOTES */}
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
@@ -1877,6 +1913,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 {/* CARD 6: PHOTOS EN EL FORMULARIO */}
+                {isVisible('media') && (
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
@@ -1956,6 +1993,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   </div>
                 </div>
+                )}
 
               </div>
             </div>
@@ -2047,70 +2085,82 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 )}
               </div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button 
-                  onClick={handleGoogleCalendarSync} 
-                  style={{ ...s.actionBtn, backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}
-                >
-                  <Calendar size={16} /> Sync
-                </button>
-                <button 
-                  onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob} 
-                  disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy} 
-                  style={{ 
-                    ...s.actionBtn,
-                    backgroundColor: (selectedHouse as any).employeeStartedBy ? '#f8fafc' : '#eff6ff', 
-                    color: (selectedHouse as any).employeeStartedBy ? '#64748b' : '#3b82f6', 
-                    border: (selectedHouse as any).employeeStartedBy ? '1px solid #e2e8f0' : '1px solid #bfdbfe'
-                  }}
-                >
-                  <PlayCircle size={16} color={(selectedHouse as any).employeeStartedBy ? "#64748b" : "currentColor"} /> 
-                  {(selectedHouse as any).employeeStartedBy ? 'Undo Start' : 'Start Job'}
-                </button>
-                <button 
-                  onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished} 
-                  disabled={isSaving} 
-                  style={{ 
-                    ...s.actionBtn,
-                    backgroundColor: (selectedHouse as any).employeeFinishedBy ? '#f8fafc' : '#d1fae5', 
-                    color: (selectedHouse as any).employeeFinishedBy ? '#64748b' : '#047857', 
-                    border: (selectedHouse as any).employeeFinishedBy ? '1px solid #e2e8f0' : '1px solid #a7f3d0'
-                  }}
-                >
-                  <span title={(selectedHouse as any).employeeFinishedBy ? `Finished at ${formatDateTime((selectedHouse as any).employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
-                    <CheckCircle size={16} color={(selectedHouse as any).employeeFinishedBy ? "#10b981" : "currentColor"} /> 
-                  </span>
-                  {(selectedHouse as any).employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
-                </button>
-                {canEdit && (
+                {isVisible('workflow') && (
+                  <button 
+                    onClick={handleGoogleCalendarSync} 
+                    style={{ ...s.actionBtn, backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}
+                  >
+                    <Calendar size={16} /> Sync
+                  </button>
+                )}
+                {isVisible('workflow') && (
+                  <button 
+                    onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob} 
+                    disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy} 
+                    style={{ 
+                      ...s.actionBtn,
+                      backgroundColor: (selectedHouse as any).employeeStartedBy ? '#f8fafc' : '#eff6ff', 
+                      color: (selectedHouse as any).employeeStartedBy ? '#64748b' : '#3b82f6', 
+                      border: (selectedHouse as any).employeeStartedBy ? '1px solid #e2e8f0' : '1px solid #bfdbfe'
+                    }}
+                  >
+                    <PlayCircle size={16} color={(selectedHouse as any).employeeStartedBy ? "#64748b" : "currentColor"} /> 
+                    {(selectedHouse as any).employeeStartedBy ? 'Undo Start' : 'Start Job'}
+                  </button>
+                )}
+                {isVisible('workflow') && (
+                  <button 
+                    onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished} 
+                    disabled={isSaving} 
+                    style={{ 
+                      ...s.actionBtn,
+                      backgroundColor: (selectedHouse as any).employeeFinishedBy ? '#f8fafc' : '#d1fae5', 
+                      color: (selectedHouse as any).employeeFinishedBy ? '#64748b' : '#047857', 
+                      border: (selectedHouse as any).employeeFinishedBy ? '1px solid #e2e8f0' : '1px solid #a7f3d0'
+                    }}
+                  >
+                    <span title={(selectedHouse as any).employeeFinishedBy ? `Finished at ${formatDateTime((selectedHouse as any).employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
+                      <CheckCircle size={16} color={(selectedHouse as any).employeeFinishedBy ? "#10b981" : "currentColor"} /> 
+                    </span>
+                    {(selectedHouse as any).employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
+                  </button>
+                )}
+                {canEdit && isVisible('financial') && (
                   <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: '#ecfdf5', color: '#10b981', border: '1px solid #a7f3d0' }}>
                     <DollarSign size={16} /> Pay
                   </button>
                 )}
-                {canEdit && (
+                {canEdit && isVisible('admin') && (
                   <button onClick={handleDuplicate} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0' }}>
                     <Copy size={16} /> Duplicate
                   </button>
                 )}
-                <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse as Property); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
-                  <ClipboardCheck size={16} /> Q. Check
-                </button>
+                {isVisible('admin') && (
+                  <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse as Property); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
+                    <ClipboardCheck size={16} /> Q. Check
+                  </button>
+                )}
                 <button style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', borderRadius: '4px', marginLeft: '4px' }} onClick={() => setIsDetailModalOpen(false)}>
                   <X size={24} />
                 </button>
               </div>
             </header>
 
-            <div style={s.body}>
+            <div className="modal-body-scroll" style={s.body}>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '1rem', fontWeight: 500, paddingBottom: '16px' }}>
                 <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
               </div>
 
               {/* TABS NAVIGATION */}
-              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', overflowX: 'auto' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', flexWrap: 'wrap' }}>
                 <button style={s.detailTab(activeDetailTab === 'overview')} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Overview & Log</button>
-                <button style={s.detailTab(activeDetailTab === 'financials')} onClick={() => setActiveDetailTab('financials')}><BarChart3 size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Financials & Billing</button>
-                <button style={s.detailTab(activeDetailTab === 'media')} onClick={() => setActiveDetailTab('media')}><FileImage size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Notes & Photos</button>
+                {isVisible('financial') && (
+                  <button style={s.detailTab(activeDetailTab === 'financials')} onClick={() => setActiveDetailTab('financials')}><BarChart3 size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Financials & Billing</button>
+                )}
+                {isVisible('media') && (
+                  <button style={s.detailTab(activeDetailTab === 'media')} onClick={() => setActiveDetailTab('media')}><FileImage size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Notes & Photos</button>
+                )}
               </div>
 
               {/* TAB 1: OVERVIEW & LOG */}
@@ -2167,7 +2217,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <div style={s.infoHeader}><Activity size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Status & Assignment</div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Job Status</span>
-                        <div style={{textAlign: 'right'}}><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit} /></div>
+                        <div style={{textAlign: 'right'}}><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} /></div>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Invoice Status</span>
@@ -2189,7 +2239,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> SPECIFIC ASSIGNED WORKERS</span>
                         
-                        {canEdit && (
+                        {canEdit && isVisible('admin') && (
                           <div style={{ position: 'relative' }}>
                             <button 
                               onClick={() => setIsAssigningWorker(!isAssigningWorker)} 
@@ -2236,7 +2286,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                               <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <User size={12} color="#64748b" />
                                 {emp.firstName} {emp.lastName}
-                                {canEdit && (
+                                {canEdit && isVisible('admin') && (
                                   <button onClick={() => toggleWorkerAssignmentDetail(workerId)} style={{ background: 'none', border: 'none', padding: 0, margin: 0, marginLeft: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
                                 )}
                               </div>
@@ -2287,7 +2337,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               )}
 
               {/* TAB 2: FINANCIALS & BILLING */}
-              {activeDetailTab === 'financials' && (
+              {activeDetailTab === 'financials' && isVisible('financial') && (
                 <div className="fade-in">
                   
                   {/* FINANCIAL OVERVIEW (PROFIT) */}
@@ -2411,10 +2461,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               )}
 
               {/* TAB 3: NOTES & PHOTOS */}
-              {activeDetailTab === 'media' && (
+              {activeDetailTab === 'media' && isVisible('media') && (
                 <div className="fade-in">
-                  {/* NOTES */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+                  {/* NOTES - Lado a lado para mejor uso del espacio */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     <div style={s.noteBoxGray}>
                       <span style={s.detailLabel}><StickyNote size={14} /> GENERAL NOTE</span>
                       <span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No notes provided.'}</span>
@@ -2425,74 +2475,114 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   </div>
 
-                  {/* PHOTOS GRID */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                        <span style={s.detailLabel}><ImageIcon size={14} /> BEFORE PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <button onClick={() => generatePDF('before')} disabled={isSaving || beforePhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: (isSaving || beforePhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: beforePhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Printer size={12} /> Exportar PDF
+                  {/* PHOTOS GRID - Cada sección ocupa toda la fila para que las fotos se vean grandes */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
+                    <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ImageIcon size={18} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Before Photos</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{beforePhotoURLs.length} {beforePhotoURLs.length === 1 ? 'photo' : 'photos'}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button onClick={() => generatePDF('before')} disabled={isSaving || beforePhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: (isSaving || beforePhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: beforePhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Printer size={14} /> Exportar PDF
                           </button>
                           {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={12} /> Cargar</button>
+                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> Cargar</button>
                               <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                           {canEdit && photoConfig.allowTakePhoto && (
                             <>
-                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={12} /> Cámara</button>
+                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={14} /> Cámara</button>
                               <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.85rem', padding: '12px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><Loader2 size={16} className="spin" /> Optimizando imágenes...</div>}
+                      {beforePhotoURLs.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', padding: '40px 0', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
+                          <ImageIcon size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+                          <div>No photos uploaded yet.</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
                           {beforePhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="Before" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
+                            <div key={i} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
+                              <img src={url} alt={`Before ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              {canEdit && (
+                                <button onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                                  <X size={14} />
+                                </button>
+                              )}
+                              <div style={{ position: 'absolute', bottom: '6px', left: '6px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>
+                                {String(i + 1).padStart(2, '0')}
+                              </div>
                             </div>
                           ))}
                         </div>
-                      }
+                      )}
                     </div>
-                    
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                        <span style={s.detailLabel}><ImageIcon size={14} /> AFTER PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          <button onClick={() => generatePDF('after')} disabled={isSaving || afterPhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: (isSaving || afterPhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: afterPhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Printer size={12} /> Exportar PDF
+
+                    <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#d1fae5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <ImageIcon size={18} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>After Photos</div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{afterPhotoURLs.length} {afterPhotoURLs.length === 1 ? 'photo' : 'photos'}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button onClick={() => generatePDF('after')} disabled={isSaving || afterPhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: (isSaving || afterPhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: afterPhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Printer size={14} /> Exportar PDF
                           </button>
                           {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={12} /> Cargar</button>
+                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> Cargar</button>
                               <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                           {canEdit && photoConfig.allowTakePhoto && (
                             <>
-                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={12} /> Cámara</button>
+                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={14} /> Cámara</button>
                               <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.85rem', padding: '12px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><Loader2 size={16} className="spin" /> Optimizando imágenes...</div>}
+                      {afterPhotoURLs.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', padding: '40px 0', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
+                          <ImageIcon size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+                          <div>No photos uploaded yet.</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
                           {afterPhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="After" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
+                            <div key={i} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
+                              <img src={url} alt={`After ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              {canEdit && (
+                                <button onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
+                                  <X size={14} />
+                                </button>
+                              )}
+                              <div style={{ position: 'absolute', bottom: '6px', left: '6px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>
+                                {String(i + 1).padStart(2, '0')}
+                              </div>
                             </div>
                           ))}
                         </div>
-                      }
+                      )}
                     </div>
                   </div>
                   {canEdit && (beforeFiles.length > 0 || afterFiles.length > 0) && (
@@ -2507,11 +2597,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
             <footer style={s.footerBetween}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {canDelete && <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}><Trash2 size={16} style={{ marginRight: '6px' }} /> Delete Property</button>}
+                {canDelete && isVisible('admin') && <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}><Trash2 size={16} style={{ marginRight: '6px' }} /> Delete Property</button>}
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button style={{...s.actionBtn, ...s.btnOutline}} onClick={() => setIsDetailModalOpen(false)}>Close</button>
-                {canEdit && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
+                {canEdit && isVisible('admin') && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
               </div>
             </footer>
           </div>

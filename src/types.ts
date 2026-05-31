@@ -94,11 +94,16 @@ export interface Permission {
   canEdit: boolean;
   canDelete: boolean;
   scope: 'All' | 'Own';
+  // ⭐ NUEVO: IDs de status permitidos (solo aplica al módulo Houses)
+  // Si está vacío o undefined, no se aplica filtro (ver todos)
+  allowedStatusIds?: string[];
 }
 
 export interface Role {
   id: string;
   name: string;
+  // ⭐ NUEVO: descripción del rol (ya se usaba en RolesView pero no estaba en el tipo)
+  description?: string;
   permissions: Permission[];
 }
 
@@ -110,6 +115,7 @@ export interface SystemUser {
   roleId: string;
   teamId?: string;
   isActive: boolean;
+  status?: 'Active' | 'Pending Invite' | 'Inactive';
 }
 
 // --- TIPOS PARA FINANZAS Y FACTURACIÓN ---
