@@ -7,6 +7,7 @@ import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { compressImage } from '../utils/imageCompression';
+import { generatePDFFromHTML } from '../utils/pdfGenerator';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
@@ -307,13 +308,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       );
       console.log(`✅ All images ready`);
 
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        alert('Por favor permite las ventanas emergentes para generar el PDF.');
-        setIsExportingPDF(false);
-        return;
-      }
-
       const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
       const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -536,12 +530,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 font-size: 11px;
                 color: #94a3b8;
               }
-              @media print {
-                @page { margin: 12mm; size: A4; }
-                body { background: white; padding: 0; }
-                .container { box-shadow: none; padding: 0; max-width: 100%; }
-                .photo-item, .place-section { break-inside: avoid; }
-              }
             </style>
           </head>
           <body>
@@ -568,35 +556,19 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 ${selectedHouse.client} • Generated on ${date} • Precise Cleaning Services
               </div>
             </div>
-            <script>
-              window.addEventListener('load', function() {
-                const images = document.querySelectorAll('img');
-                if (images.length === 0) {
-                  setTimeout(() => window.print(), 300);
-                  return;
-                }
-                let loaded = 0;
-                const checkDone = () => {
-                  loaded++;
-                  if (loaded >= images.length) {
-                    setTimeout(() => window.print(), 500);
-                  }
-                };
-                images.forEach(img => {
-                  if (img.complete) checkDone();
-                  else {
-                    img.addEventListener('load', checkDone);
-                    img.addEventListener('error', checkDone);
-                  }
-                });
-              });
-            </script>
           </body>
         </html>
       `;
 
-      printWindow.document.write(html);
-      printWindow.document.close();
+      // ⭐ Generar PDF directamente con html2pdf.js (SIN diálogo de impresión)
+      // Esto elimina los headers/footers automáticos del navegador
+      const safeClient = (selectedHouse.client || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
+      const safeDate = new Date().toISOString().split('T')[0];
+      await generatePDFFromHTML(html, {
+        filename: `Quality-Check-${safeClient}-${safeDate}.pdf`,
+        format: 'a4',
+        orientation: 'portrait'
+      });
     } catch (error) {
       console.error('Error generating Quality Check PDF:', error);
       alert('Error generando el PDF. Revisa la consola.');
