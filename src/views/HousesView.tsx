@@ -13,6 +13,9 @@ import { settingsService } from '../services/settingsService';
 import { customersService } from '../services/customersService';
 import { storageService } from '../services/storageService';
 import { payrollService } from '../services/payrollService';
+import { photoConfigService, DEFAULT_PHOTO_CONFIG } from '../services/photoConfigService';
+import type { PhotoConfig } from '../services/photoConfigService';
+import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 
@@ -287,8 +290,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
-  const beforeInputRef = useRef<HTMLInputElement>(null);
-  const afterInputRef = useRef<HTMLInputElement>(null);
+  // Refs separados para "cargar archivo" y "tomar foto"
+  const beforeFileInputRef = useRef<HTMLInputElement>(null);
+  const beforeCameraInputRef = useRef<HTMLInputElement>(null);
+  const afterFileInputRef = useRef<HTMLInputElement>(null);
+  const afterCameraInputRef = useRef<HTMLInputElement>(null);
+  // Estado de la configuración de fotos (gestionado por el admin)
+  const [photoConfig, setPhotoConfig] = useState<PhotoConfig>(DEFAULT_PHOTO_CONFIG);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
@@ -297,7 +306,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const fetchAllData = async () => {
       setIsLoading(true);
       try {
-        const [ propsData, statusData, teamData, prioData, servData, taxData, custData, usersData ] = await Promise.all([
+        const [ propsData, statusData, teamData, prioData, servData, taxData, custData, usersData, photoCfg ] = await Promise.all([
           propertiesService.getAll().catch(e => { console.error("Error Properties:", e); return []; }),
           settingsService.getAll(collectionMap.status).catch(e => { console.error("Error Status:", e); return []; }),
           settingsService.getAll(collectionMap.team).catch(e => { console.error("Error Teams:", e); return []; }),
@@ -305,7 +314,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           settingsService.getAll(collectionMap.service).catch(e => { console.error("Error Services:", e); return []; }),
           settingsService.getAll(collectionMap.tax).catch(e => { console.error("Error Taxes:", e); return []; }),
           customersService.getAll().catch(e => { console.error("Error Customers:", e); return []; }),
-          getDocs(collection(db, 'system_users')).then(snap => snapshotToData(snap)).catch(() => []) 
+          getDocs(collection(db, 'system_users')).then(snap => snapshotToData(snap)).catch(() => []),
+          photoConfigService.get().catch(() => DEFAULT_PHOTO_CONFIG)
         ]);
 
         if (propsData) setProperties(propsData as Property[]);
@@ -316,6 +326,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         if (taxData) setTaxes(taxData as Tax[]);
         if (custData) setCustomersList(custData);
         if (usersData) setEmployees(usersData);
+        if (photoCfg) setPhotoConfig(photoCfg);
 
       } catch (error) {
         console.error("Critical error loading Firebase data:", error);
@@ -734,13 +745,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (beforeFiles.length > 0) {
         console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
         try {
-          uploadedBeforeUrls = await Promise.all(
-            beforeFiles.map(async (file, idx) => {
-              console.log(`  → Uploading before photo ${idx + 1}/${beforeFiles.length}: ${file.name}`);
-              const url = await storageService.uploadPropertyPhoto(file, workingId, 'before');
-              console.log(`  ✅ Uploaded: ${url}`);
-              return url;
-            })
+          uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
+            beforeFiles,
+            formData.client,
+            formData.address,
+            'before'
           );
           console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
         } catch (uploadError) {
@@ -754,13 +763,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (afterFiles.length > 0) {
         console.log(`📤 Uploading ${afterFiles.length} after photos...`);
         try {
-          uploadedAfterUrls = await Promise.all(
-            afterFiles.map(async (file, idx) => {
-              console.log(`  → Uploading after photo ${idx + 1}/${afterFiles.length}: ${file.name}`);
-              const url = await storageService.uploadPropertyPhoto(file, workingId, 'after');
-              console.log(`  ✅ Uploaded: ${url}`);
-              return url;
-            })
+          uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
+            afterFiles,
+            formData.client,
+            formData.address,
+            'after'
           );
           console.log('✅ All after photos uploaded:', uploadedAfterUrls);
         } catch (uploadError) {
@@ -845,13 +852,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (beforeFiles.length > 0) {
         console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
         try {
-          uploadedBeforeUrls = await Promise.all(
-            beforeFiles.map(async (file, idx) => {
-              console.log(`  → Uploading before photo ${idx + 1}/${beforeFiles.length}: ${file.name}`);
-              const url = await storageService.uploadPropertyPhoto(file, workingId, 'before');
-              console.log(`  ✅ Uploaded: ${url}`);
-              return url;
-            })
+          uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
+            beforeFiles,
+            selectedHouse.client,
+            selectedHouse.address,
+            'before'
           );
           console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
         } catch (uploadError) {
@@ -867,13 +872,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (afterFiles.length > 0) {
         console.log(`📤 Uploading ${afterFiles.length} after photos...`);
         try {
-          uploadedAfterUrls = await Promise.all(
-            afterFiles.map(async (file, idx) => {
-              console.log(`  → Uploading after photo ${idx + 1}/${afterFiles.length}: ${file.name}`);
-              const url = await storageService.uploadPropertyPhoto(file, workingId, 'after');
-              console.log(`  ✅ Uploaded: ${url}`);
-              return url;
-            })
+          uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
+            afterFiles,
+            selectedHouse.client,
+            selectedHouse.address,
+            'after'
           );
           console.log('✅ All after photos uploaded:', uploadedAfterUrls);
         } catch (uploadError) {
@@ -971,17 +974,45 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
-    if (e.target.files && e.target.files.length > 0) {
-      const filesArray = Array.from(e.target.files);
-      const fileUrls = filesArray.map(file => URL.createObjectURL(file)); 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const filesArray = Array.from(e.target.files);
+    setIsCompressing(true);
+
+    try {
+      console.log(`🗜️ Compressing ${filesArray.length} image(s)...`);
+
+      // Comprimir las imágenes en paralelo usando la config del admin
+      const compressedFiles = await Promise.all(
+        filesArray.map(file =>
+          compressImage(file, {
+            quality: photoConfig.compressionQuality,
+            maxWidth: photoConfig.maxImageWidth,
+            maxSizeMB: photoConfig.maxSizeMB
+          })
+        )
+      );
+
+      // Crear previews (URLs locales para mostrar las miniaturas)
+      const fileUrls = compressedFiles.map(file => URL.createObjectURL(file));
+
       if (type === 'before') {
-        setBeforeFiles(prev => [...prev, ...filesArray]); 
-        setBeforePhotoURLs(prev => [...prev, ...fileUrls]); 
+        setBeforeFiles(prev => [...prev, ...compressedFiles]);
+        setBeforePhotoURLs(prev => [...prev, ...fileUrls]);
       } else {
-        setAfterFiles(prev => [...prev, ...filesArray]);
+        setAfterFiles(prev => [...prev, ...compressedFiles]);
         setAfterPhotoURLs(prev => [...prev, ...fileUrls]);
       }
+
+      console.log(`✅ ${compressedFiles.length} image(s) ready for upload`);
+    } catch (error) {
+      console.error('Error compressing images:', error);
+      alert('Error al procesar las imágenes. Intenta de nuevo.');
+    } finally {
+      setIsCompressing(false);
+      // Limpiar el input para que pueda seleccionar el mismo archivo de nuevo si lo quita
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -1029,66 +1060,240 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  const generatePDF = (type: 'before' | 'after') => {
+  const generatePDF = async (type: 'before' | 'after') => {
     const urls = type === 'before' ? beforePhotoURLs : afterPhotoURLs;
-    
+
     if (urls.length === 0) {
       alert(`No hay fotos de tipo "${type.toUpperCase()}" subidas para generar el reporte.`);
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
-      return;
-    }
+    // Mostrar feedback al usuario mientras se preparan las imágenes
+    setIsSaving(true);
 
-    const title = type === 'before' ? 'BEFORE PHOTOS REPORT' : 'AFTER PHOTOS REPORT';
-    const accentColor = type === 'before' ? '#3b82f6' : '#10b981';
+    try {
+      // Convertir todas las URLs a base64 antes de pasarlas al PDF
+      // Esto asegura que las imágenes aparezcan SIEMPRE en el PDF
+      console.log(`📥 Preparing ${urls.length} images for PDF...`);
+      const base64Images = await Promise.all(
+        urls.map(async (url, idx) => {
+          try {
+            const response = await fetch(url, { mode: 'cors' });
+            const blob = await response.blob();
+            return await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          } catch (err) {
+            console.error(`Error loading image ${idx + 1}:`, err);
+            // Si falla, devolver la URL original como fallback
+            return url;
+          }
+        })
+      );
+      console.log(`✅ All images ready for PDF`);
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Reporte - ${selectedHouse?.client || 'Propiedad'}</title>
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #334155; text-align: center; }
-            .header { border-bottom: 2px solid ${accentColor}; padding-bottom: 20px; margin-bottom: 40px; text-align: left; }
-            h1 { margin: 0; color: #0f172a; font-size: 24px; text-transform: uppercase; }
-            h2 { margin: 8px 0 0 0; color: ${accentColor}; font-size: 16px; letter-spacing: 1px; }
-            .info { text-align: left; margin-bottom: 30px; font-size: 14px; color: #64748b; }
-            .photo-container { margin-bottom: 40px; page-break-inside: avoid; display: flex; justify-content: center; }
-            img { max-width: 100%; max-height: 800px; border-radius: 8px; border: 1px solid #e2e8f0; }
-            @media print {
-              @page { margin: 15mm; }
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${selectedHouse?.client || 'Cliente Desconocido'}</h1>
-            <h2>${title}</h2>
-          </div>
-          <div class="info">
-            <strong>Dirección:</strong> ${selectedHouse?.address || 'N/A'}<br/>
-            <strong>Fecha de Reporte:</strong> ${new Date().toLocaleDateString('es-ES')}
-          </div>
-          ${urls.map(url => `
-            <div class="photo-container">
-              <img src="${url}" crossorigin="anonymous" />
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert("Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
+        setIsSaving(false);
+        return;
+      }
+
+      const title = type === 'before' ? 'Before Photos' : 'After Photos';
+      const accentColor = type === 'before' ? '#1e3a8a' : '#047857';
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8" />
+            <title>${title} - ${selectedHouse?.client || 'Propiedad'}</title>
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background-color: #f1f5f9;
+                padding: 24px;
+                color: #1e293b;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .container {
+                max-width: 1000px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 12px;
+                padding: 48px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+              }
+              .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                padding-bottom: 24px;
+                border-bottom: 1px solid #e2e8f0;
+                margin-bottom: 32px;
+              }
+              .logo-section {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+              }
+              .logo-text {
+                font-size: 22px;
+                font-weight: 800;
+                color: #1e3a8a;
+                letter-spacing: 1px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+              }
+              .logo-icon {
+                width: 32px;
+                height: 32px;
+                background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 18px;
+                font-weight: 900;
+              }
+              .address-section {
+                text-align: right;
+                font-size: 13px;
+                color: #475569;
+                max-width: 60%;
+              }
+              .address-label {
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 2px;
+              }
+              h1.report-title {
+                text-align: center;
+                font-size: 38px;
+                font-weight: 800;
+                color: ${accentColor};
+                margin: 40px 0 32px 0;
+              }
+              .photo-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+              }
+              .photo-item {
+                aspect-ratio: 1 / 1;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+                background-color: #f1f5f9;
+                page-break-inside: avoid;
+              }
+              .photo-item img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+              }
+              .footer {
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 1px solid #e2e8f0;
+                text-align: center;
+                font-size: 11px;
+                color: #94a3b8;
+              }
+              @media print {
+                @page {
+                  margin: 12mm;
+                  size: A4;
+                }
+                body {
+                  background: white;
+                  padding: 0;
+                }
+                .container {
+                  box-shadow: none;
+                  padding: 0;
+                  max-width: 100%;
+                }
+                .photo-item {
+                  break-inside: avoid;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <div class="logo-section">
+                  <div class="logo-text">
+                    <span class="logo-icon">✦</span>
+                    PRECISE CLEANING
+                  </div>
+                </div>
+                <div class="address-section">
+                  <div class="address-label">Address:</div>
+                  <div>${selectedHouse?.address || 'N/A'}</div>
+                </div>
+              </div>
+
+              <h1 class="report-title">${title}</h1>
+
+              <div class="photo-grid">
+                ${base64Images.map(src => `
+                  <div class="photo-item">
+                    <img src="${src}" alt="${type} photo" />
+                  </div>
+                `).join('')}
+              </div>
+
+              <div class="footer">
+                ${selectedHouse?.client || ''} • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </div>
             </div>
-          `).join('')}
-          <script>
-            setTimeout(() => {
-              window.print();
-            }, 1500);
-          </script>
-        </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+            <script>
+              // Esperar a que todas las imágenes carguen antes de imprimir
+              window.addEventListener('load', function() {
+                const images = document.querySelectorAll('img');
+                if (images.length === 0) {
+                  setTimeout(() => window.print(), 300);
+                  return;
+                }
+                let loaded = 0;
+                const checkDone = () => {
+                  loaded++;
+                  if (loaded >= images.length) {
+                    setTimeout(() => window.print(), 500);
+                  }
+                };
+                images.forEach(img => {
+                  if (img.complete) {
+                    checkDone();
+                  } else {
+                    img.addEventListener('load', checkDone);
+                    img.addEventListener('error', checkDone);
+                  }
+                });
+              });
+            </script>
+          </body>
+        </html>
+      `;
+
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error al generar el PDF. Revisa la consola.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -1684,11 +1889,28 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     
                     {/* BEFORE PHOTOS INPUT */}
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
                         <span style={s.detailLabel}>BEFORE PHOTOS</span>
-                        <button type="button" onClick={() => beforeInputRef.current?.click()} disabled={isSaving} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Photo</button>
-                        <input type="file" multiple accept="image/*" ref={beforeInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {photoConfig.allowUploadFromDevice && (
+                            <>
+                              <button type="button" onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📁 Cargar
+                              </button>
+                              <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
+                            </>
+                          )}
+                          {photoConfig.allowTakePhoto && (
+                            <>
+                              <button type="button" onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📷 Cámara
+                              </button>
+                              <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
+                            </>
+                          )}
+                        </div>
                       </div>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
                       {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {beforePhotoURLs.map((url, i) => (
@@ -1703,11 +1925,28 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
                     {/* AFTER PHOTOS INPUT */}
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
                         <span style={s.detailLabel}>AFTER PHOTOS</span>
-                        <button type="button" onClick={() => afterInputRef.current?.click()} disabled={isSaving} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Photo</button>
-                        <input type="file" multiple accept="image/*" ref={afterInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {photoConfig.allowUploadFromDevice && (
+                            <>
+                              <button type="button" onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📁 Cargar
+                              </button>
+                              <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
+                            </>
+                          )}
+                          {photoConfig.allowTakePhoto && (
+                            <>
+                              <button type="button" onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                📷 Cámara
+                              </button>
+                              <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
+                            </>
+                          )}
+                        </div>
                       </div>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
                       {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {afterPhotoURLs.map((url, i) => (
@@ -2195,18 +2434,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                         <span style={s.detailLabel}><ImageIcon size={14} /> BEFORE PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           <button onClick={() => generatePDF('before')} disabled={isSaving || beforePhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: (isSaving || beforePhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: beforePhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Printer size={12} /> Exportar PDF
                           </button>
-                          {canEdit && (
+                          {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => beforeInputRef.current?.click()} disabled={isSaving} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Photo</button>
-                              <input type="file" multiple accept="image/*" ref={beforeInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
+                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📁 Cargar</button>
+                              <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
+                            </>
+                          )}
+                          {canEdit && photoConfig.allowTakePhoto && (
+                            <>
+                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📷 Cámara</button>
+                              <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                         </div>
                       </div>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
                       {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {beforePhotoURLs.map((url, i) => (
@@ -2222,18 +2468,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
                         <span style={s.detailLabel}><ImageIcon size={14} /> AFTER PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           <button onClick={() => generatePDF('after')} disabled={isSaving || afterPhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: (isSaving || afterPhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: afterPhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Printer size={12} /> Exportar PDF
                           </button>
-                          {canEdit && (
+                          {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => afterInputRef.current?.click()} disabled={isSaving} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Photo</button>
-                              <input type="file" multiple accept="image/*" ref={afterInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
+                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📁 Cargar</button>
+                              <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
+                            </>
+                          )}
+                          {canEdit && photoConfig.allowTakePhoto && (
+                            <>
+                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📷 Cámara</button>
+                              <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                         </div>
                       </div>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
                       {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {afterPhotoURLs.map((url, i) => (
