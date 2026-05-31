@@ -3,7 +3,7 @@ import {
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown, ClipboardCheck,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Calculator, Percent, PlayCircle, BarChart3, FileImage,
-  Save, XCircle, Layers, Settings, Receipt, CalendarClock, Printer
+  Save, XCircle, Layers, Settings, Receipt, CalendarClock, Printer, Upload, Camera, Loader2
 } from 'lucide-react';
 
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
@@ -981,7 +981,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setIsCompressing(true);
 
     try {
-      console.log(`🗜️ Compressing ${filesArray.length} image(s)...`);
+      console.log(`Compressing ${filesArray.length} image(s)...`);
 
       // Comprimir las imágenes en paralelo usando la config del admin
       const compressedFiles = await Promise.all(
@@ -1146,22 +1146,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 font-size: 22px;
                 font-weight: 800;
                 color: #1e3a8a;
-                letter-spacing: 1px;
-                display: flex;
-                align-items: center;
-                gap: 10px;
+                letter-spacing: 2px;
+                line-height: 1;
               }
-              .logo-icon {
-                width: 32px;
-                height: 32px;
-                background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
-                border-radius: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: white;
-                font-size: 18px;
-                font-weight: 900;
+              .logo-subtitle {
+                font-size: 10px;
+                font-weight: 500;
+                color: #64748b;
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                margin-top: 4px;
               }
               .address-section {
                 text-align: right;
@@ -1232,9 +1226,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             <div class="container">
               <div class="header">
                 <div class="logo-section">
-                  <div class="logo-text">
-                    <span class="logo-icon">✦</span>
-                    PRECISE CLEANING
+                  <div>
+                    <div class="logo-text">PRECISE CLEANING</div>
+                    <div class="logo-subtitle">Professional Services</div>
                   </div>
                 </div>
                 <div class="address-section">
@@ -1371,6 +1365,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   return (
     <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <style>{`
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
         .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
         .modal-90 { background-color: #ffffff; width: 100%; max-width: 1300px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
@@ -1894,23 +1890,23 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {photoConfig.allowUploadFromDevice && (
                             <>
-                              <button type="button" onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📁 Cargar
+                              <button type="button" onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Upload size={12} /> Cargar
                               </button>
                               <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                           {photoConfig.allowTakePhoto && (
                             <>
-                              <button type="button" onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📷 Cámara
+                              <button type="button" onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Camera size={12} /> Cámara
                               </button>
                               <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
                       {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {beforePhotoURLs.map((url, i) => (
@@ -1930,23 +1926,23 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {photoConfig.allowUploadFromDevice && (
                             <>
-                              <button type="button" onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📁 Cargar
+                              <button type="button" onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Upload size={12} /> Cargar
                               </button>
                               <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                           {photoConfig.allowTakePhoto && (
                             <>
-                              <button type="button" onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                📷 Cámara
+                              <button type="button" onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Camera size={12} /> Cámara
                               </button>
                               <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
                       {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {afterPhotoURLs.map((url, i) => (
@@ -2440,19 +2436,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           </button>
                           {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📁 Cargar</button>
+                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={12} /> Cargar</button>
                               <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                           {canEdit && photoConfig.allowTakePhoto && (
                             <>
-                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📷 Cámara</button>
+                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={12} /> Cámara</button>
                               <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
                       {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {beforePhotoURLs.map((url, i) => (
@@ -2474,19 +2470,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           </button>
                           {canEdit && photoConfig.allowUploadFromDevice && (
                             <>
-                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📁 Cargar</button>
+                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={12} /> Cargar</button>
                               <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                           {canEdit && photoConfig.allowTakePhoto && (
                             <>
-                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>📷 Cámara</button>
+                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={12} /> Cámara</button>
                               <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600 }}>🗜️ Optimizando imágenes...</div>}
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
                       {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
                         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {afterPhotoURLs.map((url, i) => (
