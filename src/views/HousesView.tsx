@@ -9,15 +9,13 @@ import {
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
 
 import { propertiesService } from '../services/propertiesService';
-import { settingsService } from '../services/settingsService';
-import { customersService } from '../services/customersService';
 import { storageService } from '../services/storageService';
 import { payrollService } from '../services/payrollService';
-import { photoConfigService, DEFAULT_PHOTO_CONFIG } from '../services/photoConfigService';
+import { DEFAULT_PHOTO_CONFIG } from '../services/photoConfigService';
 import type { PhotoConfig } from '../services/photoConfigService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc } from 'firebase/firestore';
 
 type Property = BaseProperty & {
   employeeStartedBy?: string | null;
@@ -49,6 +47,57 @@ const collectionMap: Record<string, string> = {
   service: 'settings_services',
   tax: 'settings_tax'
 };
+
+// ⭐ ELEMENTOS configurables del formulario y del detail modal.
+//    El admin puede definir qué roles ven cada elemento desde el botón ⚙️ del form.
+//    Los IDs deben coincidir con los usados en el JSX (helper `isElementVisible(id)`).
+type ConfigurableElement = { id: string; label: string; section: string };
+
+const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
+  { id: 'client', label: 'Client', section: 'General Info' },
+  { id: 'address', label: 'Address', section: 'General Info' },
+  { id: 'receiveDate', label: 'Receive Date', section: 'Schedule' },
+  { id: 'scheduleDate', label: 'Schedule Date', section: 'Schedule' },
+  { id: 'timeIn', label: 'Time In', section: 'Schedule' },
+  { id: 'timeOut', label: 'Time Out', section: 'Schedule' },
+  { id: 'serviceId', label: 'Service', section: 'Job Specs' },
+  { id: 'priorityId', label: 'Priority', section: 'Job Specs' },
+  { id: 'rooms', label: 'Rooms', section: 'Job Specs' },
+  { id: 'bathrooms', label: 'Bathrooms', section: 'Job Specs' },
+  { id: 'statusId', label: 'Status', section: 'Status & Assignment' },
+  { id: 'invoiceStatus', label: 'Invoice Status', section: 'Status & Assignment' },
+  { id: 'teamId', label: 'Team', section: 'Status & Assignment' },
+  { id: 'assignedWorkers', label: 'Assigned Workers', section: 'Status & Assignment' },
+  { id: 'note', label: 'General Note', section: 'Notes' },
+  { id: 'employeeNote', label: "Employee's Note", section: 'Notes' },
+  { id: 'card_billedServices', label: 'Billed Services (entire section)', section: 'Sections' },
+  { id: 'card_photos', label: 'Photos (entire section)', section: 'Sections' }
+];
+
+const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
+  { id: 'btn_sync', label: 'Sync (Google Calendar)', section: 'Workflow' },
+  { id: 'btn_startJob', label: 'Start Job', section: 'Workflow' },
+  { id: 'btn_markFinished', label: 'Mark Finished', section: 'Workflow' },
+  { id: 'btn_pay', label: 'Pay', section: 'Financial' },
+  { id: 'btn_duplicate', label: 'Duplicate', section: 'Admin' },
+  { id: 'btn_qcheck', label: 'Quality Check', section: 'Admin' },
+  { id: 'btn_editDetails', label: 'Edit Details', section: 'Admin' },
+  { id: 'btn_deleteProperty', label: 'Delete Property', section: 'Admin' },
+  { id: 'btn_exportPdf', label: 'Export PDF', section: 'Media' },
+  { id: 'btn_uploadPhoto', label: 'Upload Photo (Cargar)', section: 'Media' },
+  { id: 'btn_takePhoto', label: 'Take Photo (Cámara)', section: 'Media' },
+  { id: 'btn_tabFinancials', label: 'Financials & Billing Tab', section: 'Tabs' },
+  { id: 'btn_tabMedia', label: 'Notes & Photos Tab', section: 'Tabs' }
+];
+
+// ⭐ Estructura del documento Firestore: app_settings/houses_form_config
+//    { visibility: { 'client': ['roleId1', 'roleId2'], ... } }
+//    Los roleIds listados son los roles que NO ven ese elemento.
+type FormVisibilityConfig = {
+  visibility: Record<string, string[]>;
+};
+
+const DEFAULT_FORM_CONFIG: FormVisibilityConfig = { visibility: {} };
 
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -234,11 +283,12 @@ interface HousesViewProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  roles?: Role[];   // ⭐ Lista de roles disponibles para el modal de configuración de visibilidad
 }
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin }: HousesViewProps) {
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [] }: HousesViewProps) {
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -262,6 +312,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isLoading, setIsLoading] = useState(true);
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
+
+  // ⭐ Configuración de visibilidad de campos del form por rol
+  const [formConfig, setFormConfig] = useState<FormVisibilityConfig>(DEFAULT_FORM_CONFIG);
+  const [isFieldConfigOpen, setIsFieldConfigOpen] = useState(false);
+  const [fieldConfigDraft, setFieldConfigDraft] = useState<FormVisibilityConfig>(DEFAULT_FORM_CONFIG);
+  const [isSavingFieldConfig, setIsSavingFieldConfig] = useState(false);
 
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
   const [housePayrollRecords, setHousePayrollRecords] = useState<PayrollRecord[]>([]);
@@ -422,6 +478,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error PhotoConfig:", err); setPhotoConfig(DEFAULT_PHOTO_CONFIG); markLoaded('photoConfig'); }
     ));
 
+    // 10) Form Visibility Config (configuración de campos por rol)
+    unsubscribes.push(onSnapshot(
+      doc(db, 'app_settings', 'houses_form_config'),
+      (snap) => {
+        if (snap.exists()) {
+          setFormConfig(snap.data() as FormVisibilityConfig);
+        } else {
+          setFormConfig(DEFAULT_FORM_CONFIG);
+        }
+      },
+      (err) => { console.error("Error FormConfig:", err); setFormConfig(DEFAULT_FORM_CONFIG); }
+    ));
+
     // Cleanup: desuscribir al desmontar el componente
     return () => {
       unsubscribes.forEach(unsub => unsub());
@@ -449,8 +518,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   }, [serviceForm.quantity, serviceForm.price, serviceForm.taxPercentage, serviceForm.applyTax, serviceForm.minusTax, isServiceModalOpen]);
 
-  const snapshotToData = (snapshot: any) => snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-
   // ⭐ Tipo extendido local: añade `allowedStatusIds` y `hiddenGroups` para evitar
   //    errores de TypeScript si types/index.ts no se actualizó.
   type PermissionExt = { module: string; canView?: boolean; canAdd?: boolean; canEdit?: boolean; canDelete?: boolean; scope?: 'All' | 'Own'; allowedStatusIds?: string[]; hiddenGroups?: string[] };
@@ -465,6 +532,53 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const isVisible = (groupId: string): boolean => {
     if (isSuperAdmin) return true;
     return !hiddenGroups.includes(groupId);
+  };
+
+  // ⭐ Helper granular: determina si un elemento individual (campo o botón) es
+  //    visible para el rol del usuario actual. SuperAdmin siempre ve todo.
+  //    Usa la configuración guardada en app_settings/houses_form_config.
+  const isElementVisible = (elementId: string): boolean => {
+    if (isSuperAdmin) return true;
+    const userRoleId = (currentUser as any)?.roleId;
+    if (!userRoleId) return true;
+    const hiddenForRoles = formConfig?.visibility?.[elementId] || [];
+    return !hiddenForRoles.includes(userRoleId);
+  };
+
+  // ⭐ Toggle de visibilidad de un elemento para un rol en el draft
+  const toggleElementVisibilityForRole = (elementId: string, roleId: string) => {
+    setFieldConfigDraft(prev => {
+      const currentHidden = prev.visibility?.[elementId] || [];
+      const newHidden = currentHidden.includes(roleId)
+        ? currentHidden.filter(r => r !== roleId)
+        : [...currentHidden, roleId];
+      return {
+        ...prev,
+        visibility: { ...prev.visibility, [elementId]: newHidden }
+      };
+    });
+  };
+
+  // ⭐ Abrir el modal de configuración (copia config actual al draft)
+  const openFieldConfigModal = () => {
+    setFieldConfigDraft({ visibility: { ...(formConfig.visibility || {}) } });
+    setIsFieldConfigOpen(true);
+  };
+
+  // ⭐ Guardar la configuración del form en Firestore (usa setDoc con merge)
+  const saveFieldConfig = async () => {
+    setIsSavingFieldConfig(true);
+    try {
+      const ref = doc(db, 'app_settings', 'houses_form_config');
+      await setDoc(ref, { visibility: fieldConfigDraft.visibility }, { merge: true });
+      // El onSnapshot actualizará formConfig automáticamente
+      setIsFieldConfigOpen(false);
+    } catch (error) {
+      console.error("Error guardando configuración de campos:", error);
+      alert("Error al guardar la configuración. Revisa las reglas de Firestore.");
+    } finally {
+      setIsSavingFieldConfig(false);
+    }
   };
 
   const propertiesWithScope = properties.filter(prop => {
@@ -1766,10 +1880,33 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <div style={{ maxWidth: '900px', margin: '0 auto' }}>
                 
                 {/* Header Izquierdo */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '12px', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
                     {formData.id ? 'Edit Property Details' : 'Register New Property'}
                   </h2>
+                  {/* ⭐ Botón visible para SuperAdmin O para roles con permiso Edit en Roles & Permissions */}
+                  {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Roles & Permissions')?.canEdit) && (
+                    <button
+                      type="button"
+                      onClick={openFieldConfigModal}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: '#eff6ff',
+                        color: '#2563eb',
+                        border: '1px solid #bfdbfe',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '0.875rem',
+                        cursor: 'pointer'
+                      }}
+                      title="Configure which fields each role can see"
+                    >
+                      <Settings size={16} /> Configure Fields
+                    </button>
+                  )}
                 </div>
 
                 {/* CARD 1: GENERAL INFO */}
@@ -1778,17 +1915,21 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <User size={20} color="#3B82F6"/> General Information
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                    <div>
-                      <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                      <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="name" />
-                    </div>
-                    <div>
-                      <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
-                      <div style={s.inputWrapper}>
-                        <MapPin style={s.icon} size={16} />
-                        <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                    {isElementVisible('client') && (
+                      <div>
+                        <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
+                        <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="name" />
                       </div>
-                    </div>
+                    )}
+                    {isElementVisible('address') && (
+                      <div>
+                        <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
+                        <div style={s.inputWrapper}>
+                          <MapPin style={s.icon} size={16} />
+                          <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1806,22 +1947,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <label style={s.label}>Invoice Status</label>
                       <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                     </div>
-                    <div>
-                      <label style={s.label}>Services</label>
-                      <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
-                    </div>
-                    <div>
-                      <label style={s.label}>Priority</label>
-                      <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
-                    </div>
-                    <div>
-                      <label style={s.label}>Rooms</label>
-                      <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
-                    </div>
-                    <div>
-                      <label style={s.label}>Bathrooms</label>
-                      <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
-                    </div>
+                    {isElementVisible('serviceId') && (
+                      <div>
+                        <label style={s.label}>Services</label>
+                        <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
+                      </div>
+                    )}
+                    {isElementVisible('priorityId') && (
+                      <div>
+                        <label style={s.label}>Priority</label>
+                        <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
+                      </div>
+                    )}
+                    {isElementVisible('rooms') && (
+                      <div>
+                        <label style={s.label}>Rooms</label>
+                        <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
+                      </div>
+                    )}
+                    {isElementVisible('bathrooms') && (
+                      <div>
+                        <label style={s.label}>Bathrooms</label>
+                        <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1831,34 +1980,43 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <CalendarClock size={20} color="#10B981"/> Schedule & Team
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-                    <div>
-                      <label style={s.label}>Receive Date</label>
-                      <div style={s.inputWrapper}>
-                        <CalendarDays style={s.icon} size={16} />
-                        <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                    {isElementVisible('receiveDate') && (
+                      <div>
+                        <label style={s.label}>Receive Date</label>
+                        <div style={s.inputWrapper}>
+                          <CalendarDays style={s.icon} size={16} />
+                          <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <label style={s.label}>Schedule Date</label>
-                      <div style={s.inputWrapper}>
-                        <CalendarDays style={s.icon} size={16} />
-                        <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                    )}
+                    {isElementVisible('scheduleDate') && (
+                      <div>
+                        <label style={s.label}>Schedule Date</label>
+                        <div style={s.inputWrapper}>
+                          <CalendarDays style={s.icon} size={16} />
+                          <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <label style={s.label}>Time In</label>
-                      <div style={s.inputWrapper}>
-                        <Clock style={s.icon} size={16} />
-                        <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                    )}
+                    {isElementVisible('timeIn') && (
+                      <div>
+                        <label style={s.label}>Time In</label>
+                        <div style={s.inputWrapper}>
+                          <Clock style={s.icon} size={16} />
+                          <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <label style={s.label}>Time Out</label>
-                      <div style={s.inputWrapper}>
-                        <Clock style={s.icon} size={16} />
-                        <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                    )}
+                    {isElementVisible('timeOut') && (
+                      <div>
+                        <label style={s.label}>Time Out</label>
+                        <div style={s.inputWrapper}>
+                          <Clock style={s.icon} size={16} />
+                          <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                        </div>
                       </div>
-                    </div>
+                    )}
+                    {isElementVisible('teamId') && (
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={s.label}>Team</label>
                       <CustomSelect 
@@ -1872,9 +2030,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         icon={Users} 
                       />
                     </div>
+                    )}
                   </div>
 
                   {/* Assigned Workers Sub-block */}
+                  {isElementVisible('assignedWorkers') && (
                   <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                       <span style={s.label}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Assigned Workers</span>
@@ -1929,10 +2089,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
 
                 {/* CARD 4: BILLED SERVICES */}
-                {isVisible('financial') && (
+                {isVisible('financial') && isElementVisible('card_billedServices') && (
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                     <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: 0, fontSize: '1.1rem', color: '#1E293B' }}>
@@ -1992,19 +2153,23 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <StickyNote size={20} color="#F43F5E"/> Notes
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {isElementVisible('note') && (
                     <div>
                       <label style={s.label}>General Note</label>
                       <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px' }} placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
                     </div>
+                    )}
+                    {isElementVisible('employeeNote') && (
                     <div>
                       <label style={{...s.label, color: '#991B1B'}}>Employee's Note</label>
                       <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px', backgroundColor: '#FEF2F2', borderColor: '#FECACA' }} placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
                     </div>
+                    )}
                   </div>
                 </div>
 
                 {/* CARD 6: PHOTOS EN EL FORMULARIO */}
-                {isVisible('media') && (
+                {isVisible('media') && isElementVisible('card_photos') && (
                 <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
@@ -2176,7 +2341,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 )}
               </div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {isVisible('workflow') && (
+                {isVisible('workflow') && isElementVisible('btn_sync') && (
                   <button 
                     onClick={handleGoogleCalendarSync} 
                     style={{ ...s.actionBtn, backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}
@@ -2184,7 +2349,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <Calendar size={16} /> Sync
                   </button>
                 )}
-                {isVisible('workflow') && (
+                {isVisible('workflow') && isElementVisible('btn_startJob') && (
                   <button 
                     onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob} 
                     disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy} 
@@ -2199,7 +2364,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {(selectedHouse as any).employeeStartedBy ? 'Undo Start' : 'Start Job'}
                   </button>
                 )}
-                {isVisible('workflow') && (
+                {isVisible('workflow') && isElementVisible('btn_markFinished') && (
                   <button 
                     onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished} 
                     disabled={isSaving} 
@@ -2216,17 +2381,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {(selectedHouse as any).employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
                   </button>
                 )}
-                {canEdit && isVisible('financial') && (
+                {canEdit && isVisible('financial') && isElementVisible('btn_pay') && (
                   <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: '#ecfdf5', color: '#10b981', border: '1px solid #a7f3d0' }}>
                     <DollarSign size={16} /> Pay
                   </button>
                 )}
-                {canEdit && isVisible('admin') && (
+                {canEdit && isVisible('admin') && isElementVisible('btn_duplicate') && (
                   <button onClick={handleDuplicate} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0' }}>
                     <Copy size={16} /> Duplicate
                   </button>
                 )}
-                {isVisible('admin') && (
+                {isVisible('admin') && isElementVisible('btn_qcheck') && (
                   <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse as Property); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
                     <ClipboardCheck size={16} /> Q. Check
                   </button>
@@ -2246,10 +2411,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               {/* TABS NAVIGATION */}
               <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', flexWrap: 'wrap' }}>
                 <button style={s.detailTab(activeDetailTab === 'overview')} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Overview & Log</button>
-                {isVisible('financial') && (
+                {isVisible('financial') && isElementVisible('btn_tabFinancials') && (
                   <button style={s.detailTab(activeDetailTab === 'financials')} onClick={() => setActiveDetailTab('financials')}><BarChart3 size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Financials & Billing</button>
                 )}
-                {isVisible('media') && (
+                {isVisible('media') && isElementVisible('btn_tabMedia') && (
                   <button style={s.detailTab(activeDetailTab === 'media')} onClick={() => setActiveDetailTab('media')}><FileImage size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Notes & Photos</button>
                 )}
               </div>
@@ -2688,11 +2853,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
             <footer style={s.footerBetween}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {canDelete && isVisible('admin') && <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}><Trash2 size={16} style={{ marginRight: '6px' }} /> Delete Property</button>}
+                {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}><Trash2 size={16} style={{ marginRight: '6px' }} /> Delete Property</button>}
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button style={{...s.actionBtn, ...s.btnOutline}} onClick={() => setIsDetailModalOpen(false)}>Close</button>
-                {canEdit && isVisible('admin') && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
+                {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
               </div>
             </footer>
           </div>
@@ -2910,6 +3075,175 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⭐ --- FIELD CONFIGURATION MODAL --- */}
+      {isFieldConfigOpen && (
+        <div className="modal-overlay-centered" onClick={() => setIsFieldConfigOpen(false)} style={{ zIndex: 10000 }}>
+          <div onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', width: '95%', maxWidth: '1100px', maxHeight: '90vh', borderRadius: '16px', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <header style={{ padding: '20px 28px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Settings size={20} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>Form Field Configuration</h2>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Configure which fields and buttons each role can see</p>
+                </div>
+              </div>
+              <button onClick={() => setIsFieldConfigOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={24} /></button>
+            </header>
+
+            <div className="modal-body-scroll" style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
+              {roles.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                  No roles configured. Create some roles first in <strong>Roles & Permissions</strong>.
+                </div>
+              ) : (
+                <>
+                  <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 16px', marginBottom: '24px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <AlertTriangle size={18} color="#1e40af" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <div style={{ fontSize: '0.85rem', color: '#1e3a8a', lineHeight: 1.5 }}>
+                      For each element below, <strong>check the roles that should NOT see it</strong>. Unchecked roles will see the element normally.
+                      SuperAdmin always sees everything regardless of this configuration.
+                    </div>
+                  </div>
+
+                  {/* SECCIÓN: CAMPOS DEL FORM */}
+                  <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={18} color="#3b82f6" /> Form Fields
+                  </h3>
+
+                  {Array.from(new Set(CONFIGURABLE_FIELDS.map(f => f.section))).map(sectionName => (
+                    <div key={sectionName} style={{ marginBottom: '20px' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
+                        {sectionName}
+                      </div>
+                      <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
+                        {CONFIGURABLE_FIELDS.filter(f => f.section === sectionName).map((field, idx) => {
+                          const hiddenForRoles = fieldConfigDraft.visibility?.[field.id] || [];
+                          return (
+                            <div key={field.id} style={{ padding: '14px 16px', borderBottom: idx < CONFIGURABLE_FIELDS.filter(f => f.section === sectionName).length - 1 ? '1px solid #f1f5f9' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                              <div style={{ flex: '1 1 200px' }}>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{field.label}</div>
+                                {hiddenForRoles.length > 0 && (
+                                  <div style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '2px' }}>
+                                    Hidden for {hiddenForRoles.length} {hiddenForRoles.length === 1 ? 'role' : 'roles'}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                {roles.map(role => {
+                                  const isHidden = hiddenForRoles.includes(role.id);
+                                  return (
+                                    <label
+                                      key={role.id}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        backgroundColor: isHidden ? '#fef2f2' : '#f8fafc',
+                                        border: isHidden ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        color: isHidden ? '#991b1b' : '#475569',
+                                        transition: 'all 0.15s'
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isHidden}
+                                        onChange={() => toggleElementVisibilityForRole(field.id, role.id)}
+                                        style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#dc2626' }}
+                                      />
+                                      Hide for {role.name}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* SECCIÓN: BOTONES */}
+                  <h3 style={{ margin: '24px 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CheckSquare size={18} color="#3b82f6" /> Action Buttons
+                  </h3>
+
+                  {Array.from(new Set(CONFIGURABLE_BUTTONS.map(b => b.section))).map(sectionName => (
+                    <div key={sectionName} style={{ marginBottom: '20px' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
+                        {sectionName}
+                      </div>
+                      <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
+                        {CONFIGURABLE_BUTTONS.filter(b => b.section === sectionName).map((btn, idx) => {
+                          const hiddenForRoles = fieldConfigDraft.visibility?.[btn.id] || [];
+                          return (
+                            <div key={btn.id} style={{ padding: '14px 16px', borderBottom: idx < CONFIGURABLE_BUTTONS.filter(b => b.section === sectionName).length - 1 ? '1px solid #f1f5f9' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                              <div style={{ flex: '1 1 200px' }}>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{btn.label}</div>
+                                {hiddenForRoles.length > 0 && (
+                                  <div style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '2px' }}>
+                                    Hidden for {hiddenForRoles.length} {hiddenForRoles.length === 1 ? 'role' : 'roles'}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                {roles.map(role => {
+                                  const isHidden = hiddenForRoles.includes(role.id);
+                                  return (
+                                    <label
+                                      key={role.id}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '6px 10px',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        backgroundColor: isHidden ? '#fef2f2' : '#f8fafc',
+                                        border: isHidden ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        color: isHidden ? '#991b1b' : '#475569',
+                                        transition: 'all 0.15s'
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isHidden}
+                                        onChange={() => toggleElementVisibilityForRole(btn.id, role.id)}
+                                        style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#dc2626' }}
+                                      />
+                                      Hide for {role.name}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <footer style={{ padding: '16px 28px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 16px 16px' }}>
+              <button onClick={() => setIsFieldConfigOpen(false)} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={saveFieldConfig} disabled={isSavingFieldConfig} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: isSavingFieldConfig ? 'wait' : 'pointer', opacity: isSavingFieldConfig ? 0.7 : 1 }}>
+                <Save size={16} /> {isSavingFieldConfig ? 'Saving...' : 'Save Configuration'}
+              </button>
+            </footer>
           </div>
         </div>
       )}
