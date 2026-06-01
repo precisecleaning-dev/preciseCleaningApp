@@ -16,13 +16,17 @@ import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
 
 import { auth, db } from './config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, getDocs, query, where } from 'firebase/firestore';
+
+// ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false); // ⭐ Para evitar flash de LoginView al recargar
   const [isBypass, setIsBypass] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   
@@ -64,11 +68,65 @@ export default function App() {
           console.error("Error fetching user profile:", error);
         }
       } else {
+        setIsAuthenticated(false);
+        setIsBypass(false);
         setCurrentUser(null);
       }
+      // ⭐ Marcar que ya verificamos la sesión (ya sea que haya o no usuario)
+      // Esto evita el "flash" del LoginView al recargar cuando hay sesión guardada.
+      setIsAuthChecked(true);
     });
     return () => unsubscribe();
   }, []);
+
+  // ⭐ AUTO-LOGOUT POR INACTIVIDAD (15 minutos)
+  // Escucha eventos del usuario y resetea un timer. Si pasa 15 min sin actividad,
+  // cierra sesión automáticamente. Solo activo cuando el usuario está autenticado.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+
+    const handleAutoLogout = async () => {
+      console.log('🕒 Sesión cerrada por inactividad (15 min)');
+      try {
+        if (auth.currentUser) {
+          await signOut(auth);
+        }
+      } catch (err) {
+        console.error('Error cerrando sesión por inactividad:', err);
+      }
+      // Limpiar estado local
+      setIsAuthenticated(false);
+      setIsBypass(false);
+      setCurrentUser(null);
+      // Avisar al usuario
+      alert('Tu sesión se cerró por inactividad (15 minutos). Por favor inicia sesión nuevamente.');
+    };
+
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(handleAutoLogout, INACTIVITY_TIMEOUT_MS);
+    };
+
+    // Eventos que cuentan como "actividad del usuario"
+    const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
+
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer, { passive: true });
+    });
+
+    // Iniciar el timer al montar
+    resetTimer();
+
+    // Cleanup: remover listeners y limpiar timer al desmontar/cambiar auth
+    return () => {
+      clearTimeout(timer);
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
+  }, [isAuthenticated]);
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
@@ -96,6 +154,39 @@ export default function App() {
   };
 
   const toggleMenu = () => setIsSidebarOpen(!isSidebarOpen);
+
+  // ⭐ Mientras Firebase verifica si hay sesión guardada en localStorage,
+  // mostramos una pantalla de carga. Esto evita el "flash" del LoginView
+  // al recargar la página cuando hay una sesión activa.
+  if (!isAuthChecked) {
+    return (
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f8fafc',
+        gap: '16px'
+      }}>
+        <style>{`
+          @keyframes spin-load { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        `}</style>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          border: '4px solid #e2e8f0',
+          borderTopColor: '#3b82f6',
+          borderRadius: '50%',
+          animation: 'spin-load 0.8s linear infinite'
+        }} />
+        <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>
+          Verificando sesión...
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
