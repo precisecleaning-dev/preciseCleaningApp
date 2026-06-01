@@ -74,14 +74,15 @@ export async function generatePDFFromHTML(
     // Pequeño delay extra para asegurar render completo
     await new Promise(res => setTimeout(res, 300));
 
-    // Configuración de html2pdf
-    const opt = {
-      margin: [10, 10, 10, 10],  // mm: top, left, bottom, right
+    // Configuración de html2pdf (tipo `any` para evitar conflictos con
+    // los tipos estrictos que html2pdf.js trae internamente)
+    const opt: any = {
+      margin: 10,                    // mm uniforme en los 4 lados
       filename: options.filename,
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: {
-        scale: 2,                  // mayor calidad
-        useCORS: true,             // permitir imágenes externas
+        scale: 2,                    // mayor calidad
+        useCORS: true,               // permitir imágenes externas
         allowTaint: true,
         logging: false,
         backgroundColor: '#ffffff',
