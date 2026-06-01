@@ -22,18 +22,22 @@ export default function Sidebar({
   isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin 
 }: SidebarProps) {
   
-  const canView = (moduleName: string) => {
+  // ⭐ Helper centralizado para chequear permisos por módulo.
+  //    SuperAdmin siempre ve todo. Si no hay role cargado todavía, NO mostrar
+  //    nada (evita el "flash" de items visibles mientras carga).
+  const canView = (moduleName: string): boolean => {
     if (isSuperAdmin) return true; 
     if (!activeRole) return false;
-    
-    // Aquí solucionamos el error de la variable "p" agregando el tipo (p: Permission)
     const permission = activeRole.permissions?.find((p: Permission) => p.module === moduleName);
-    return permission ? permission.canView : false;
+    return permission ? !!permission.canView : false;
   };
 
-  const canViewAdmin = isSuperAdmin || canView('Settings');
-  const canViewPayroll = isSuperAdmin || canView('Settings'); 
-  const canViewQC = isSuperAdmin || canView('Houses'); 
+  // ⭐ Helper para saber si mostrar el header "ADMIN" en el menú.
+  //    Solo aparece si al menos UNO de los módulos admin está visible.
+  const canViewRoles    = canView('Roles & Permissions');
+  const canViewUsers    = canView('System Users');
+  const canViewSettings = canView('Settings');
+  const showAdminSection = canViewRoles || canViewUsers || canViewSettings;
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
@@ -55,9 +59,9 @@ export default function Sidebar({
         .sidebar-container { background-color: #0f172a; color: white; display: flex; flex-direction: column; height: 100vh; width: 260px; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow-x: hidden; flex-shrink: 0; border-right: 1px solid rgba(255,255,255,0.05); }
         .sidebar-container.closed { width: 80px; }
         .mobile-close-btn { display: none; }
-        .sidebar-header { padding: 20px; display: flex; alignItems: center; justify-content: space-between; min-height: 70px; }
-        .logo-container { display: flex; alignItems: center; gap: 12px; overflow: hidden; white-space: nowrap; }
-        .nav-item { display: flex; alignItems: center; gap: 16px; padding: 12px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.95rem; font-weight: 500; white-space: nowrap; }
+        .sidebar-header { padding: 20px; display: flex; align-items: center; justify-content: space-between; min-height: 70px; }
+        .logo-container { display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; }
+        .nav-item { display: flex; align-items: center; gap: 16px; padding: 12px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.95rem; font-weight: 500; white-space: nowrap; }
         .nav-item:hover { color: white; background-color: rgba(255,255,255,0.05); }
         .nav-item.active { color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); border-right: 3px solid #3b82f6; }
         .menu-label { color: #475569; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; padding: 0 20px; margin-bottom: 8px; }
@@ -84,26 +88,31 @@ export default function Sidebar({
 
         <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', paddingTop: '10px' }}>
           
+          {/* ⭐ HOUSES — check propio */}
           {canView('Houses') && (
-            <>
-              <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
-                <Home size={20} className="nav-icon" />
-                {isSidebarOpen && <span className="nav-text">Houses</span>}
-              </button>
-
-              <button className={`nav-item ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => handleNavClick('invoices')}>
-                <FileText size={20} className="nav-icon" />
-                {isSidebarOpen && <span className="nav-text">Invoices</span>}
-              </button>
-            </>
+            <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
+              <Home size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Houses</span>}
+            </button>
           )}
 
-          {/* EL MURO DE ANUNCIOS */}
-          <button className={`nav-item ${activeTab === 'board' ? 'active' : ''}`} onClick={() => handleNavClick('board')}>
-            <Megaphone size={20} className="nav-icon" />
-            {isSidebarOpen && <span className="nav-text">Notice Board</span>}
-          </button>
+          {/* ⭐ INVOICES — check INDEPENDIENTE de Houses */}
+          {canView('Invoices') && (
+            <button className={`nav-item ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => handleNavClick('invoices')}>
+              <FileText size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Invoices</span>}
+            </button>
+          )}
 
+          {/* ⭐ NOTICE BOARD — check propio (antes no tenía) */}
+          {canView('Notice Board') && (
+            <button className={`nav-item ${activeTab === 'board' ? 'active' : ''}`} onClick={() => handleNavClick('board')}>
+              <Megaphone size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Notice Board</span>}
+            </button>
+          )}
+
+          {/* ⭐ CALENDAR */}
           {canView('Calendar') && (
             <button className={`nav-item ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => handleNavClick('calendar')}>
               <CalendarDays size={20} className="nav-icon" />
@@ -111,20 +120,23 @@ export default function Sidebar({
             </button>
           )}
 
-          {canViewQC && (
+          {/* ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses") */}
+          {canView('Quality Check') && (
             <button className={`nav-item ${activeTab === 'qc_report' ? 'active' : ''}`} onClick={() => handleNavClick('qc_report')}>
               <ClipboardCheck size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Quality Check</span>}
             </button>
           )}
 
-          {canViewPayroll && (
+          {/* ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings") */}
+          {canView('Payroll') && (
             <button className={`nav-item ${activeTab === 'payroll' ? 'active' : ''}`} onClick={() => handleNavClick('payroll')}>
               <DollarSign size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Payroll</span>}
             </button>
           )}
 
+          {/* ⭐ CUSTOMERS */}
           {canView('Customers') && (
             <button className={`nav-item ${activeTab === 'customers' ? 'active' : ''}`} onClick={() => handleNavClick('customers')}>
               <Users size={20} className="nav-icon" />
@@ -132,25 +144,30 @@ export default function Sidebar({
             </button>
           )}
 
-          {canViewAdmin && (
-            <>
-              {isSidebarOpen && <div className="menu-label" style={{ marginTop: '24px' }}>ADMIN</div>}
+          {/* ⭐ ADMIN SECTION — Header solo aparece si al menos uno está visible */}
+          {showAdminSection && isSidebarOpen && (
+            <div className="menu-label" style={{ marginTop: '24px' }}>ADMIN</div>
+          )}
 
-              <button className={`nav-item ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => handleNavClick('roles')}>
-                <ShieldCheck size={20} className="nav-icon" />
-                {isSidebarOpen && <span className="nav-text">Roles & Permissions</span>}
-              </button>
+          {canViewRoles && (
+            <button className={`nav-item ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => handleNavClick('roles')}>
+              <ShieldCheck size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Roles & Permissions</span>}
+            </button>
+          )}
 
-              <button className={`nav-item ${activeTab === 'users' ? 'active' : ''}`} onClick={() => handleNavClick('users')}>
-                <UserPlus size={20} className="nav-icon" />
-                {isSidebarOpen && <span className="nav-text">System Users</span>}
-              </button>
-              
-              <button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}>
-                <SettingsIcon size={20} className="nav-icon" />
-                {isSidebarOpen && <span className="nav-text">Settings</span>}
-              </button>
-            </>
+          {canViewUsers && (
+            <button className={`nav-item ${activeTab === 'users' ? 'active' : ''}`} onClick={() => handleNavClick('users')}>
+              <UserPlus size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">System Users</span>}
+            </button>
+          )}
+          
+          {canViewSettings && (
+            <button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}>
+              <SettingsIcon size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Settings</span>}
+            </button>
           )}
         </nav>
 

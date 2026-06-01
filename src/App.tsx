@@ -17,7 +17,7 @@ import './App.css';
 
 import { auth, db } from './config/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -39,44 +39,71 @@ export default function App() {
 
   const [roles, setRoles] = useState<Role[]>([]);
 
+  // ⭐ Cargar roles con onSnapshot — aprovecha el cache de Firestore Persistence
+  // (IndexedDB). Primera carga normal, siguientes son INSTANTÁNEAS desde el cache.
+  // Además, si un admin modifica un rol, se actualiza en tiempo real sin recargar.
   useEffect(() => {
-    const fetchRoles = async () => {
-      try {
-        const snapshot = await getDocs(collection(db, 'settings_roles'));
+    const unsub = onSnapshot(
+      collection(db, 'settings_roles'),
+      (snapshot) => {
         const loadedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
         setRoles(loadedRoles);
-      } catch (error) {
+      },
+      (error) => {
         console.error("Error loading roles globally:", error);
       }
-    };
-    fetchRoles();
+    );
+    return () => unsub();
   }, []);
 
   useEffect(() => {
+    // ⭐ Mantenemos una referencia al unsubscribe del onSnapshot del usuario
+    // para limpiarlo cuando cambie la sesión.
+    let userProfileUnsub: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      // Limpiar listener previo del usuario si existe
+      if (userProfileUnsub) {
+        userProfileUnsub();
+        userProfileUnsub = null;
+      }
+
       if (user && user.email) {
         setIsAuthenticated(true);
         setIsBypass(false);
+        // ⭐ Usar onSnapshot en lugar de getDocs aprovecha el cache local.
+        //    En cargas posteriores el perfil viene INSTANTÁNEO del IndexedDB.
         try {
           const q = query(collection(db, 'system_users'), where('email', '==', user.email.toLowerCase().trim()));
-          const snapshot = await getDocs(q);
-          if (!snapshot.empty) {
-            const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as SystemUser;
-            setCurrentUser(userData);
-          }
+          userProfileUnsub = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+              const userData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as SystemUser;
+              setCurrentUser(userData);
+            } else {
+              setCurrentUser(null);
+            }
+            setIsAuthChecked(true);
+          }, (error) => {
+            console.error("Error fetching user profile:", error);
+            setIsAuthChecked(true);
+          });
         } catch (error) {
-          console.error("Error fetching user profile:", error);
+          console.error("Error setting up user profile listener:", error);
+          setIsAuthChecked(true);
         }
       } else {
         setIsAuthenticated(false);
         setIsBypass(false);
         setCurrentUser(null);
+        // ⭐ Marcar que ya verificamos la sesión (ya sea que haya o no usuario)
+        // Esto evita el "flash" del LoginView al recargar cuando hay sesión guardada.
+        setIsAuthChecked(true);
       }
-      // ⭐ Marcar que ya verificamos la sesión (ya sea que haya o no usuario)
-      // Esto evita el "flash" del LoginView al recargar cuando hay sesión guardada.
-      setIsAuthChecked(true);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (userProfileUnsub) userProfileUnsub();
+    };
   }, []);
 
   // ⭐ AUTO-LOGOUT POR INACTIVIDAD (15 minutos)
