@@ -45,6 +45,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Estados nuevos para upload de fotos y exportar PDF
   const [uploadingForPlace, setUploadingForPlace] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [exportingForQcId, setExportingForQcId] = useState<string | null>(null); // ⭐ Para mostrar loading por fila en la tabla
 
   // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -248,15 +249,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // ⭐ NUEVO: Generar PDF profesional del Quality Check
-  const generateQCPDF = async () => {
-    if (!selectedHouse) return;
-
+  // ⭐ Generar PDF profesional del Quality Check.
+  //    Acepta datos como parámetros (no del estado) para que pueda usarse
+  //    tanto desde el modal en edición como desde la tabla (registros guardados).
+  const buildAndExportQCPDF = async (
+    house: Property,
+    qcDataObj: Record<string, any>,
+    inspectorName: string,
+    recordDate?: string,
+    setLoading?: (loading: boolean) => void
+  ) => {
     // Recoger SOLO los places que tengan fotos o tareas evaluadas
     const placesWithData: { place: Place; photos: string[]; tasksData: any; notes: string; damage: string; score: any; corrections: string }[] = [];
     
     places.forEach(p => {
-      const data = qcData[p.id];
+      const data = qcDataObj[p.id];
       if (!data) return;
       const hasPhotos = (data.photos || []).length > 0;
       const hasTasks = Object.keys(data.tasks || {}).length > 0;
@@ -275,14 +282,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     });
 
     if (placesWithData.length === 0) {
-      alert('No hay datos para exportar. Completa al menos una sección primero.');
+      alert('No hay datos para exportar. Este Quality Check no tiene tareas evaluadas, notas ni fotos.');
       return;
     }
 
-    setIsExportingPDF(true);
+    if (setLoading) setLoading(true);
 
     try {
-      // Convertir todas las imágenes a base64 (igual que en HousesView)
+      // Convertir todas las imágenes a base64
       console.log(`📥 Preparing images for PDF...`);
       const placesWithBase64 = await Promise.all(
         placesWithData.map(async (pd) => ({
@@ -308,8 +315,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       );
       console.log(`✅ All images ready`);
 
-      const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const inspector = inspectorName || 'Unknown';
+      // Si viene una fecha guardada, parsearla; sino usar hoy
+      const displayDate = recordDate 
+        ? new Date(recordDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      // Pasar adelante el nombre de variable "date" como antes (el HTML lo usa)
+      const date = displayDate;
 
       // Generar sección por cada place
       const placeSections = placesWithBase64.map(pd => {
@@ -375,7 +387,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <html>
           <head>
             <meta charset="UTF-8" />
-            <title>Quality Check Report - ${selectedHouse.client}</title>
+            <title>Quality Check Report - ${house.client}</title>
             <style>
               * { box-sizing: border-box; margin: 0; padding: 0; }
               body {
@@ -547,13 +559,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
               <h1 class="report-title">Quality Check Report</h1>
               <div class="property-info">
-                <strong>${selectedHouse.client}</strong> • ${selectedHouse.address}
+                <strong>${house.client}</strong> • ${house.address}
               </div>
 
               ${placeSections}
 
               <div class="footer">
-                ${selectedHouse.client} • Generated on ${date} • Precise Cleaning Services
+                ${house.client} • Generated on ${date} • Precise Cleaning Services
               </div>
             </div>
           </body>
@@ -562,8 +574,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       // ⭐ Generar PDF directamente con html2pdf.js (SIN diálogo de impresión)
       // Esto elimina los headers/footers automáticos del navegador
-      const safeClient = (selectedHouse.client || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
-      const safeDate = new Date().toISOString().split('T')[0];
+      const safeClient = (house.client || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
+      const safeDate = recordDate || new Date().toISOString().split('T')[0];
       await generatePDFFromHTML(html, {
         filename: `Quality-Check-${safeClient}-${safeDate}.pdf`,
         format: 'a4',
@@ -573,7 +585,33 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       console.error('Error generating Quality Check PDF:', error);
       alert('Error generando el PDF. Revisa la consola.');
     } finally {
-      setIsExportingPDF(false);
+      if (setLoading) setLoading(false);
+    }
+  };
+
+  // ⭐ Wrapper: Exportar PDF desde el MODAL (usa datos del estado actual)
+  const handleExportFromModal = async () => {
+    if (!selectedHouse) return;
+    const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
+    await buildAndExportQCPDF(selectedHouse, qcData, inspector, undefined, setIsExportingPDF);
+  };
+
+  // ⭐ Wrapper: Exportar PDF desde la TABLA (usa datos guardados del registro QC)
+  const handleExportFromTable = async (qc: QCRecord) => {
+    const house = properties.find(p => p.id === qc.houseId);
+    if (!house) {
+      alert('No se encontró la propiedad asociada a este reporte.');
+      return;
+    }
+    const inspector = qc.inspector || 'Unknown';
+    const recordQcData = (qc.qcData as Record<string, any>) || {};
+    
+    // Setear loading para esta fila específica
+    setExportingForQcId(qc.id as string);
+    try {
+      await buildAndExportQCPDF(house, recordQcData, inspector, qc.date);
+    } finally {
+      setExportingForQcId(null);
     }
   };
 
@@ -653,7 +691,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
             <thead>
               <tr>
-                <th style={{...s.th, width: '100px'}}>Actions</th>
+                <th style={{...s.th, width: '130px'}}>Actions</th>
                 <th style={{...s.th, width: '120px'}}><CalendarDays size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Date</th>
                 <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
                 <th style={s.th}><MapPin size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Address</th>
@@ -669,9 +707,43 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 filteredQcList.map((qc) => (
                   <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                     <td style={s.td}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => handleEditQC(qc)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px' }}><Edit2 size={16} /></button>
-                        <button onClick={() => handleDeleteQC(qc.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}><Trash2 size={16} /></button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button 
+                          onClick={() => handleEditQC(qc)} 
+                          title="Edit Quality Check"
+                          style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        {/* ⭐ Botón Export PDF — usa el qcData guardado en este registro */}
+                        <button 
+                          onClick={() => handleExportFromTable(qc)} 
+                          disabled={exportingForQcId === qc.id}
+                          title="Export PDF Report"
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#059669', 
+                            cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', 
+                            padding: '4px',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            opacity: exportingForQcId === qc.id ? 0.6 : 1
+                          }}
+                        >
+                          {exportingForQcId === qc.id 
+                            ? <Loader2 size={16} className="spin-qc" /> 
+                            : <Printer size={16} />
+                          }
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteQC(qc.id as string)} 
+                          title="Delete Quality Check"
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </td>
                     <td style={s.td}>{formatDate(qc.date)}</td>
@@ -717,7 +789,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {/* ⭐ Botón Export PDF */}
                 <button
-                  onClick={generateQCPDF}
+                  onClick={handleExportFromModal}
                   disabled={isExportingPDF || isLoadingCatalogs}
                   style={{
                     display: 'flex',
