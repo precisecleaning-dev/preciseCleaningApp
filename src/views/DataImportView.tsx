@@ -7,27 +7,188 @@ import Papa from 'papaparse';
 import { db } from '../config/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 
+type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
+
 // ⭐ Colecciones disponibles en el proyecto Precise Cleaning.
-//    Si necesitas más, solo agrégalas al array.
-const AVAILABLE_COLLECTIONS = [
-  { id: 'customers', name: 'Customers', description: 'List of clients' },
-  { id: 'properties', name: 'Properties (Houses)', description: 'Properties to clean' },
-  { id: 'system_users', name: 'System Users', description: 'Employees / users' },
-  { id: 'settings_teams', name: 'Settings: Teams', description: 'Work teams' },
-  { id: 'settings_priorities', name: 'Settings: Priorities', description: 'Priority levels' },
-  { id: 'settings_statuses', name: 'Settings: Statuses', description: 'Job statuses' },
-  { id: 'settings_services', name: 'Settings: Services', description: 'Services catalog' },
-  { id: 'settings_tax', name: 'Settings: Tax', description: 'Tax rates' },
-  { id: 'settings_places', name: 'Settings: Places', description: 'Rooms / places' },
-  { id: 'settings_tasks', name: 'Settings: Tasks', description: 'Tasks per place' },
-  { id: 'settings_roles', name: 'Settings: Roles', description: 'User roles' },
-  { id: 'billing_services', name: 'Billing Services', description: 'Billed services' },
-  { id: 'payroll', name: 'Payroll', description: 'Payment records' },
-  { id: 'quality_checks', name: 'Quality Checks', description: 'QC reports' },
-  { id: 'notice_board', name: 'Notice Board', description: 'Announcements' }
+//    `fields` define los campos conocidos de Firestore para esa colección.
+//    El usuario podrá seleccionarlos desde un dropdown en el step de mapeo,
+//    o escribir un nombre custom si su sheet tiene otro campo.
+type CollectionDef = {
+  id: string;
+  name: string;
+  description: string;
+  fields: { name: string; type: FieldType; label?: string }[];
+};
+
+const AVAILABLE_COLLECTIONS: CollectionDef[] = [
+  {
+    id: 'customers', name: 'Customers', description: 'List of clients',
+    fields: [
+      { name: 'name', type: 'string', label: 'Full name' },
+      { name: 'email', type: 'string' },
+      { name: 'phone', type: 'string' },
+      { name: 'address', type: 'string' },
+      { name: 'city', type: 'string' },
+      { name: 'notes', type: 'string' },
+      { name: 'createdAt', type: 'date' }
+    ]
+  },
+  {
+    id: 'properties', name: 'Properties (Houses)', description: 'Properties to clean',
+    fields: [
+      { name: 'client', type: 'string', label: 'Client name' },
+      { name: 'address', type: 'string' },
+      { name: 'city', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'size', type: 'string' },
+      { name: 'rooms', type: 'string' },
+      { name: 'bathrooms', type: 'string' },
+      { name: 'statusId', type: 'string', label: 'Status (ID or name)' },
+      { name: 'invoiceStatus', type: 'string' },
+      { name: 'priorityId', type: 'string' },
+      { name: 'serviceId', type: 'string' },
+      { name: 'teamId', type: 'string' },
+      { name: 'assignedWorkers', type: 'array', label: 'Workers (comma-separated)' },
+      { name: 'receiveDate', type: 'date' },
+      { name: 'scheduleDate', type: 'date' },
+      { name: 'timeIn', type: 'string' },
+      { name: 'timeOut', type: 'string' },
+      { name: 'note', type: 'string', label: 'General note' },
+      { name: 'employeeNote', type: 'string' }
+    ]
+  },
+  {
+    id: 'system_users', name: 'System Users', description: 'Employees / users',
+    fields: [
+      { name: 'firstName', type: 'string' },
+      { name: 'lastName', type: 'string' },
+      { name: 'email', type: 'string' },
+      { name: 'phone', type: 'string' },
+      { name: 'roleId', type: 'string' },
+      { name: 'teamId', type: 'string' },
+      { name: 'active', type: 'boolean' },
+      { name: 'createdAt', type: 'date' }
+    ]
+  },
+  {
+    id: 'settings_teams', name: 'Settings: Teams', description: 'Work teams',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'color', type: 'string', label: 'Hex color (#RRGGBB)' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_priorities', name: 'Settings: Priorities', description: 'Priority levels',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'color', type: 'string' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_statuses', name: 'Settings: Statuses', description: 'Job statuses',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'color', type: 'string' },
+      { name: 'order', type: 'number' },
+      { name: 'showInDashboard', type: 'boolean' },
+      { name: 'dashboardOrder', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_services', name: 'Settings: Services', description: 'Services catalog',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'price', type: 'number' },
+      { name: 'description', type: 'string' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_tax', name: 'Settings: Tax', description: 'Tax rates',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'percentage', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_places', name: 'Settings: Places', description: 'Rooms / places',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_tasks', name: 'Settings: Tasks', description: 'Tasks per place',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'placeId', type: 'string' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
+    id: 'settings_roles', name: 'Settings: Roles', description: 'User roles',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'permissions', type: 'array' }
+    ]
+  },
+  {
+    id: 'billing_services', name: 'Billing Services', description: 'Billed services',
+    fields: [
+      { name: 'propertyId', type: 'string' },
+      { name: 'serviceId', type: 'string' },
+      { name: 'quantity', type: 'number' },
+      { name: 'price', type: 'number' },
+      { name: 'subtotal', type: 'number' },
+      { name: 'applyTax', type: 'string', label: 'Apply Tax (Yes/No)' },
+      { name: 'minusTax', type: 'string' },
+      { name: 'taxPercentage', type: 'number' },
+      { name: 'taxAmount', type: 'number' },
+      { name: 'total', type: 'number' },
+      { name: 'notes', type: 'string' },
+      { name: 'createdAt', type: 'date' }
+    ]
+  },
+  {
+    id: 'payroll', name: 'Payroll', description: 'Payment records',
+    fields: [
+      { name: 'propertyId', type: 'string' },
+      { name: 'employeeId', type: 'string' },
+      { name: 'date', type: 'date' },
+      { name: 'baseAmount', type: 'number' },
+      { name: 'extraAmount', type: 'number' },
+      { name: 'extraNote', type: 'string' },
+      { name: 'discountAmount', type: 'number' },
+      { name: 'discountNote', type: 'string' },
+      { name: 'totalAmount', type: 'number' },
+      { name: 'status', type: 'string', label: 'Status (Pending/Paid)' }
+    ]
+  },
+  {
+    id: 'quality_checks', name: 'Quality Checks', description: 'QC reports',
+    fields: [
+      { name: 'propertyId', type: 'string' },
+      { name: 'inspectorId', type: 'string' },
+      { name: 'date', type: 'date' },
+      { name: 'score', type: 'number' },
+      { name: 'notes', type: 'string' }
+    ]
+  },
+  {
+    id: 'notice_board', name: 'Notice Board', description: 'Announcements',
+    fields: [
+      { name: 'title', type: 'string' },
+      { name: 'content', type: 'string' },
+      { name: 'authorId', type: 'string' },
+      { name: 'createdAt', type: 'date' },
+      { name: 'pinned', type: 'boolean' }
+    ]
+  }
 ];
 
-type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
 type Step = 'upload' | 'mapping' | 'preview' | 'importing' | 'done';
 
 interface FieldMapping {
@@ -64,6 +225,48 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ⭐ Devuelve la definición completa de la colección seleccionada
+  const getCollectionDef = (): CollectionDef | undefined => {
+    return AVAILABLE_COLLECTIONS.find(c => c.id === selectedCollection);
+  };
+
+  // ⭐ Busca el mejor field match para un header del CSV. Comparación insensible
+  //    a mayúsculas, espacios y guiones bajos. Si encuentra match exacto en
+  //    nombre o label, lo devuelve. Si no, devuelve null.
+  const findBestFieldMatch = (csvHeader: string, fields: CollectionDef['fields']): string | null => {
+    const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+    const target = norm(csvHeader);
+    const exact = fields.find(f => norm(f.name) === target || (f.label && norm(f.label) === target));
+    return exact ? exact.name : null;
+  };
+
+  // ⭐ Cuando el usuario elige una colección destino, re-mapea automáticamente
+  //    los headers que coincidan con campos conocidos de esa colección.
+  //    Los que no coincidan quedan como camelCase (custom) y el usuario puede
+  //    ajustarlos manualmente.
+  const handleSelectCollection = (collectionId: string) => {
+    setSelectedCollection(collectionId);
+    const def = AVAILABLE_COLLECTIONS.find(c => c.id === collectionId);
+    if (!def || csvHeaders.length === 0) return;
+
+    setFieldMappings(prev => {
+      const next: Record<string, FieldMapping> = { ...prev };
+      csvHeaders.forEach(h => {
+        const match = findBestFieldMatch(h, def.fields);
+        if (match) {
+          // Match encontrado: usa el field conocido + el tipo declarado en el schema
+          const fieldDef = def.fields.find(f => f.name === match)!;
+          next[h] = { firestoreField: match, type: fieldDef.type };
+        } else if (!prev[h] || !prev[h].firestoreField) {
+          // Sin match: deja el camelCase auto-generado
+          next[h] = { firestoreField: toCamelCase(h), type: detectType(csvData, h) };
+        }
+        // Si ya había un mapeo manual del usuario, lo respeta
+      });
+      return next;
+    });
+  };
 
   // ─────────────────────────────────────────────────────────────
   // HELPERS
@@ -286,24 +489,25 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   };
 
   // ─────────────────────────────────────────────────────────────
-  // ESTILOS
+  // ESTILOS — Refinados para look profesional y compacto
   // ─────────────────────────────────────────────────────────────
 
   const s = {
-    card: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
-    label: { fontSize: '0.8rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: '6px', display: 'block' },
-    input: { backgroundColor: '#ffffff', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', color: '#111827', width: '100%', boxSizing: 'border-box' as const, outline: 'none' },
-    select: { backgroundColor: '#ffffff', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', color: '#111827', width: '100%', boxSizing: 'border-box' as const, outline: 'none', cursor: 'pointer' },
-    btnPrimary: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' },
-    btnSecondary: { backgroundColor: 'white', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' },
+    card: { backgroundColor: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '20px' },
+    label: { fontSize: '0.7rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.6px', marginBottom: '6px', display: 'block' },
+    input: { backgroundColor: '#ffffff', padding: '7px 11px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.825rem', color: '#0f172a', width: '100%', boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.15s, box-shadow 0.15s' },
+    select: { backgroundColor: '#ffffff', padding: '7px 11px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.825rem', color: '#0f172a', width: '100%', boxSizing: 'border-box' as const, outline: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'border-color 0.15s' },
+    btnPrimary: { backgroundColor: '#1e293b', color: 'white', border: '1px solid #1e293b', padding: '8px 16px', borderRadius: '7px', fontWeight: 500, cursor: 'pointer', fontSize: '0.825rem', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' },
+    btnSecondary: { backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#475569', padding: '8px 16px', borderRadius: '7px', fontWeight: 500, cursor: 'pointer', fontSize: '0.825rem', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' },
     stepBadge: (active: boolean, complete: boolean) => ({
-      width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem',
-      backgroundColor: complete ? '#10b981' : (active ? '#3b82f6' : '#e2e8f0'),
+      width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.75rem',
+      backgroundColor: complete ? '#10b981' : (active ? '#0f172a' : '#f1f5f9'),
       color: complete || active ? 'white' : '#94a3b8',
-      transition: 'all 0.2s'
+      transition: 'all 0.2s',
+      flexShrink: 0
     }),
-    th: { padding: '10px 14px', textAlign: 'left' as const, fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', whiteSpace: 'nowrap' as const },
-    td: { padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: '0.85rem', color: '#111827' }
+    th: { padding: '9px 12px', textAlign: 'left' as const, fontSize: '0.65rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e2e8f0', backgroundColor: '#f8fafc', whiteSpace: 'nowrap' as const },
+    td: { padding: '8px 12px', borderBottom: '1px solid #f1f5f9', fontSize: '0.8rem', color: '#0f172a' }
   };
 
   const STEPS = ['Upload CSV', 'Map Fields', 'Preview', 'Import'];
@@ -314,36 +518,40 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   // ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="fade-in" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="fade-in" style={{ padding: '24px', maxWidth: '1180px', margin: '0 auto' }}>
       <style>{`
         .spin-import { animation: spin-import 1s linear infinite; }
         @keyframes spin-import { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; }
-        .hamburger-btn:hover { background-color: #f8fafc; }
+        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px 10px; cursor: pointer; color: #475569; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .hamburger-btn:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+        .di-btn-primary:hover { background-color: #0f172a !important; }
+        .di-btn-secondary:hover { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
+        .di-input:focus { border-color: #0f172a !important; box-shadow: 0 0 0 3px rgba(15,23,42,0.06) !important; }
+        .di-row:hover { background-color: #fafbfc !important; }
       `}</style>
 
       {/* HEADER */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
         <button className="hamburger-btn" onClick={onOpenMenu}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#111827', fontWeight: 700 }}>Data Import</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>Import CSV files from Google Sheets into Firestore</p>
+          <h1 style={{ margin: 0, fontSize: '1.35rem', color: '#0f172a', fontWeight: 600, letterSpacing: '-0.02em' }}>Data Import</h1>
+          <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.825rem' }}>Import CSV files from Google Sheets into Firestore</p>
         </div>
       </header>
 
       {/* PROGRESS BAR */}
-      <div style={{ ...s.card, marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+      <div style={{ ...s.card, marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', padding: '16px 20px' }}>
         {STEPS.map((label, idx) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '120px' }}>
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '110px' }}>
             <div style={s.stepBadge(idx === currentStepIndex, idx < currentStepIndex)}>
-              {idx < currentStepIndex ? <CheckCircle size={16} /> : idx + 1}
+              {idx < currentStepIndex ? <CheckCircle size={14} /> : idx + 1}
             </div>
-            <div style={{ fontSize: '0.85rem', fontWeight: idx === currentStepIndex ? 700 : 500, color: idx === currentStepIndex ? '#0f172a' : '#94a3b8' }}>
+            <div style={{ fontSize: '0.775rem', fontWeight: idx === currentStepIndex ? 600 : 500, color: idx === currentStepIndex ? '#0f172a' : '#94a3b8' }}>
               {label}
             </div>
-            {idx < STEPS.length - 1 && <div style={{ flex: 1, height: '2px', backgroundColor: idx < currentStepIndex ? '#10b981' : '#e2e8f0', marginLeft: '8px' }} />}
+            {idx < STEPS.length - 1 && <div style={{ flex: 1, height: '1px', backgroundColor: idx < currentStepIndex ? '#10b981' : '#e2e8f0', marginLeft: '6px' }} />}
           </div>
         ))}
       </div>
@@ -351,9 +559,9 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       {/* ─────────── STEP 1: UPLOAD ─────────── */}
       {step === 'upload' && (
         <div style={s.card}>
-          <h2 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#0f172a' }}>Step 1: Upload your CSV file</h2>
-          <p style={{ margin: '0 0 24px 0', color: '#64748b', fontSize: '0.9rem' }}>
-            Export your Google Sheet as CSV (File → Download → Comma Separated Values) and drag it here.
+          <h2 style={{ margin: '0 0 4px 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: 600 }}>Upload your CSV file</h2>
+          <p style={{ margin: '0 0 18px 0', color: '#64748b', fontSize: '0.825rem' }}>
+            Export your Google Sheet as CSV (File → Download → Comma Separated Values) and drop it here.
           </p>
 
           <div
@@ -362,21 +570,21 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             onDragLeave={() => setIsDragging(false)}
             onClick={() => fileInputRef.current?.click()}
             style={{
-              border: `2px dashed ${isDragging ? '#3b82f6' : '#cbd5e1'}`,
-              borderRadius: '12px',
-              padding: '60px 20px',
+              border: `1.5px dashed ${isDragging ? '#0f172a' : '#cbd5e1'}`,
+              borderRadius: '10px',
+              padding: '44px 20px',
               textAlign: 'center',
               cursor: 'pointer',
-              backgroundColor: isDragging ? '#eff6ff' : '#f8fafc',
-              transition: 'all 0.2s'
+              backgroundColor: isDragging ? '#f1f5f9' : '#fafbfc',
+              transition: 'all 0.18s'
             }}
           >
-            <Upload size={48} style={{ color: isDragging ? '#3b82f6' : '#94a3b8', margin: '0 auto 16px', display: 'block' }} />
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+            <Upload size={32} strokeWidth={1.5} style={{ color: isDragging ? '#0f172a' : '#94a3b8', margin: '0 auto 12px', display: 'block' }} />
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a', marginBottom: '3px' }}>
               {isDragging ? 'Drop the CSV here' : 'Click to select or drag a CSV file'}
             </div>
-            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-              Only .csv files. First row must be column headers.
+            <div style={{ fontSize: '0.775rem', color: '#94a3b8' }}>
+              Only .csv files · First row must be column headers
             </div>
           </div>
 
@@ -393,11 +601,11 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
           />
 
           {/* INSTRUCCIONES */}
-          <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#fefce8', border: '1px solid #fde68a', borderRadius: '8px', display: 'flex', gap: '12px' }}>
-            <AlertCircle size={18} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ fontSize: '0.85rem', color: '#713f12', lineHeight: 1.5 }}>
-              <strong>How to export from Google Sheets:</strong>
-              <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+          <div style={{ marginTop: '18px', padding: '14px 16px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', display: 'flex', gap: '10px' }}>
+            <AlertCircle size={15} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '0.8rem', color: '#78350f', lineHeight: 1.55 }}>
+              <strong style={{ fontWeight: 600 }}>How to export from Google Sheets:</strong>
+              <ol style={{ margin: '4px 0 0 16px', padding: 0 }}>
                 <li>Open your Google Sheet</li>
                 <li>Make sure the <strong>first row</strong> contains column names (e.g., "First Name", "Email", "Phone")</li>
                 <li>Click <strong>File → Download → Comma-separated values (.csv)</strong></li>
@@ -413,57 +621,100 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
         <div style={s.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
-              <h2 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#0f172a' }}>Step 2: Map columns to Firestore fields</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-                <FileSpreadsheet size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
-                <strong>{csvFile?.name}</strong> • {csvData.length} rows • {csvHeaders.length} columns
+              <h2 style={{ margin: '0 0 3px 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: 600 }}>Map columns to Firestore fields</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.775rem' }}>
+                <FileSpreadsheet size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} />
+                <strong style={{ color: '#0f172a', fontWeight: 600 }}>{csvFile?.name}</strong> · {csvData.length} rows · {csvHeaders.length} columns
               </p>
             </div>
-            <button onClick={handleReset} style={s.btnSecondary}><RotateCcw size={14} /> Start Over</button>
+            <button onClick={handleReset} className="di-btn-secondary" style={s.btnSecondary}><RotateCcw size={13} /> Start Over</button>
           </div>
 
           {/* SELECCIONAR COLECCIÓN */}
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '16px' }}>
             <label style={s.label}>
-              <Database size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
+              <Database size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} />
               Target Firestore Collection
             </label>
-            <select style={s.select} value={selectedCollection} onChange={(e) => setSelectedCollection(e.target.value)}>
-              <option value="">-- Select a collection --</option>
+            <select className="di-input" style={s.select} value={selectedCollection} onChange={(e) => handleSelectCollection(e.target.value)}>
+              <option value="">— Select a collection —</option>
               {AVAILABLE_COLLECTIONS.map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.description})</option>
               ))}
             </select>
+            {selectedCollection && (
+              <p style={{ margin: '6px 0 0 0', fontSize: '0.7rem', color: '#94a3b8' }}>
+                {getCollectionDef()?.fields.length} known fields for this collection. Matching columns were auto-mapped below.
+              </p>
+            )}
           </div>
 
           {/* OPCIÓN: USAR ID DEL CSV */}
-          <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <div style={{ marginBottom: '16px', padding: '14px 16px', backgroundColor: '#fafbfc', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: useExistingId ? '12px' : 0 }}>
-              <input type="checkbox" checked={useExistingId} onChange={(e) => setUseExistingId(e.target.checked)} />
-              <span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#0f172a' }}>Use a column from CSV as the Firestore document ID</span>
+              <input type="checkbox" checked={useExistingId} onChange={(e) => setUseExistingId(e.target.checked)} style={{ accentColor: '#0f172a', cursor: 'pointer' }} />
+              <span style={{ fontWeight: 500, fontSize: '0.825rem', color: '#0f172a' }}>Use a column from CSV as the Firestore document ID</span>
             </label>
             {useExistingId && (
               <div>
                 <label style={s.label}>Column to use as document ID</label>
-                <select style={s.select} value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
-                  <option value="">-- Select column --</option>
+                <select className="di-input" style={s.select} value={idColumn} onChange={(e) => setIdColumn(e.target.value)}>
+                  <option value="">— Select column —</option>
                   {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
-                <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                  If unchecked, Firestore will auto-generate random IDs (recommended for most cases).
+                <p style={{ margin: '6px 0 0 0', fontSize: '0.7rem', color: '#94a3b8' }}>
+                  If unchecked, Firestore will auto-generate random IDs (recommended).
                 </p>
               </div>
             )}
           </div>
 
+          {/* RESUMEN DEL MAPEO — campos del schema sin asignar / columnas extra */}
+          {(() => {
+            const def = getCollectionDef();
+            if (!def) return null;
+            const mappingValues: FieldMapping[] = Object.values(fieldMappings);
+            const usedFieldNames = new Set(mappingValues.filter(m => m.type !== 'skip' && m.firestoreField).map(m => m.firestoreField));
+            const unmappedKnownFields = def.fields.filter(f => !usedFieldNames.has(f.name));
+            const extraColumns = csvHeaders.filter(h => {
+              const m = fieldMappings[h];
+              if (!m || m.type === 'skip' || !m.firestoreField) return false;
+              return !def.fields.some(f => f.name === m.firestoreField);
+            });
+            return (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                {unmappedKnownFields.length > 0 && (
+                  <div style={{ flex: '1 1 240px', padding: '10px 14px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '7px', fontSize: '0.75rem', color: '#78350f' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '3px' }}>
+                      {unmappedKnownFields.length} schema {unmappedKnownFields.length === 1 ? 'field' : 'fields'} not in CSV
+                    </div>
+                    <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '0.7rem', opacity: 0.85 }}>
+                      {unmappedKnownFields.map(f => f.name).join(', ')}
+                    </div>
+                  </div>
+                )}
+                {extraColumns.length > 0 && (
+                  <div style={{ flex: '1 1 240px', padding: '10px 14px', backgroundColor: '#eff6ff', border: '1px solid #dbeafe', borderRadius: '7px', fontSize: '0.75rem', color: '#1e3a8a' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '3px' }}>
+                      {extraColumns.length} custom {extraColumns.length === 1 ? 'field' : 'fields'} (not in schema)
+                    </div>
+                    <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '0.7rem', opacity: 0.85 }}>
+                      {extraColumns.map(h => fieldMappings[h]?.firestoreField).join(', ')}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* TABLA DE MAPEO */}
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflowX: 'auto' }}>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
               <thead>
                 <tr>
                   <th style={s.th}>CSV Column</th>
                   <th style={s.th}>Sample Value</th>
-                  <th style={{ ...s.th, width: '50px' }}></th>
+                  <th style={{ ...s.th, width: '40px' }}></th>
                   <th style={s.th}>Firestore Field Name</th>
                   <th style={s.th}>Type</th>
                 </tr>
@@ -473,29 +724,95 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                   const mapping = fieldMappings[header];
                   const sampleValue = csvData[0]?.[header] || '';
                   const isSkipped = mapping?.type === 'skip';
+                  const collectionDef = getCollectionDef();
+                  const knownFields = collectionDef?.fields || [];
+                  // ¿El field actual es uno conocido de la colección, o uno custom?
+                  const isKnownField = knownFields.some(f => f.name === mapping?.firestoreField);
+                  // Valor del dropdown: el field name si es conocido, "__custom__" si es uno custom, "" si vacío
+                  const dropdownValue = !mapping?.firestoreField ? '' : (isKnownField ? mapping.firestoreField : '__custom__');
+
                   return (
-                    <tr key={header} style={{ opacity: isSkipped ? 0.5 : 1 }}>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{header}</td>
-                      <td style={{ ...s.td, color: '#64748b', fontStyle: 'italic', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <tr key={header} className="di-row" style={{ opacity: isSkipped ? 0.4 : 1, transition: 'background-color 0.15s' }}>
+                      <td style={{ ...s.td, fontWeight: 600, color: '#0f172a' }}>{header}</td>
+                      <td style={{ ...s.td, color: '#94a3b8', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: '0.75rem' }}>
                         {String(sampleValue).substring(0, 50)}
                       </td>
-                      <td style={s.td}><ArrowRight size={14} color="#94a3b8" /></td>
+                      <td style={s.td}><ArrowRight size={13} color="#cbd5e1" strokeWidth={2} /></td>
                       <td style={s.td}>
-                        <input
-                          type="text"
-                          style={{ ...s.input, padding: '6px 10px', fontSize: '0.85rem' }}
-                          value={mapping?.firestoreField || ''}
-                          onChange={(e) => setFieldMappings(prev => ({
-                            ...prev,
-                            [header]: { ...prev[header], firestoreField: e.target.value }
-                          }))}
-                          disabled={isSkipped}
-                          placeholder="fieldName"
-                        />
+                        {/* ⭐ Si hay una colección elegida, mostramos un DROPDOWN con sus campos
+                            conocidos + opción Custom. Si no hay colección o el field actual no
+                            está en el schema (custom), mostramos también un input de texto debajo. */}
+                        {collectionDef ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <select
+                              className="di-input"
+                              style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem' }}
+                              value={dropdownValue}
+                              disabled={isSkipped}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '') {
+                                  setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: '' } }));
+                                } else if (v === '__custom__') {
+                                  // Mantiene lo que tenga (o vacía para que escriba)
+                                  setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: isKnownField ? '' : (prev[header]?.firestoreField || '') } }));
+                                } else {
+                                  // Field conocido elegido: actualiza también el type según el schema
+                                  const fieldDef = knownFields.find(f => f.name === v);
+                                  setFieldMappings(prev => ({
+                                    ...prev,
+                                    [header]: { firestoreField: v, type: fieldDef?.type || prev[header]?.type || 'string' }
+                                  }));
+                                }
+                              }}
+                            >
+                              <option value="">— Don't map —</option>
+                              <optgroup label={`${collectionDef.name} fields`}>
+                                {knownFields.map(f => (
+                                  <option key={f.name} value={f.name}>
+                                    {f.name}{f.label ? ` · ${f.label}` : ''} ({f.type})
+                                  </option>
+                                ))}
+                              </optgroup>
+                              <option value="__custom__">✎ Custom field name…</option>
+                            </select>
+                            {/* Si la opción elegida es Custom, mostramos input para escribir el nombre */}
+                            {dropdownValue === '__custom__' && (
+                              <input
+                                type="text"
+                                className="di-input"
+                                style={{ ...s.input, padding: '5px 10px', fontSize: '0.75rem' }}
+                                value={mapping?.firestoreField || ''}
+                                onChange={(e) => setFieldMappings(prev => ({
+                                  ...prev,
+                                  [header]: { ...prev[header], firestoreField: e.target.value }
+                                }))}
+                                disabled={isSkipped}
+                                placeholder="customFieldName"
+                                autoFocus
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          // Sin colección elegida → input de texto simple
+                          <input
+                            type="text"
+                            className="di-input"
+                            style={{ ...s.input, padding: '6px 10px', fontSize: '0.8rem' }}
+                            value={mapping?.firestoreField || ''}
+                            onChange={(e) => setFieldMappings(prev => ({
+                              ...prev,
+                              [header]: { ...prev[header], firestoreField: e.target.value }
+                            }))}
+                            disabled={isSkipped}
+                            placeholder="Select collection first"
+                          />
+                        )}
                       </td>
                       <td style={s.td}>
                         <select
-                          style={{ ...s.select, padding: '6px 10px', fontSize: '0.85rem' }}
+                          className="di-input"
+                          style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem' }}
                           value={mapping?.type || 'string'}
                           onChange={(e) => setFieldMappings(prev => ({
                             ...prev,
@@ -517,9 +834,14 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             </table>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', gap: '12px' }}>
-            <button onClick={() => setStep('preview')} disabled={!selectedCollection} style={{ ...s.btnPrimary, opacity: !selectedCollection ? 0.5 : 1, cursor: !selectedCollection ? 'not-allowed' : 'pointer' }}>
-              Preview Data <ArrowRight size={16} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', gap: '10px' }}>
+            <button 
+              onClick={() => setStep('preview')} 
+              disabled={!selectedCollection} 
+              className="di-btn-primary"
+              style={{ ...s.btnPrimary, opacity: !selectedCollection ? 0.4 : 1, cursor: !selectedCollection ? 'not-allowed' : 'pointer' }}
+            >
+              Preview Data <ArrowRight size={14} />
             </button>
           </div>
         </div>
@@ -528,28 +850,32 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       {/* ─────────── STEP 3: PREVIEW ─────────── */}
       {step === 'preview' && (
         <div style={s.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
-              <h2 style={{ margin: '0 0 4px 0', fontSize: '1.1rem', color: '#0f172a' }}>Step 3: Preview before importing</h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-                First 5 rows transformed as they will be saved in <strong>{selectedCollection}</strong>
+              <h2 style={{ margin: '0 0 3px 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: 600 }}>Preview before importing</h2>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.775rem' }}>
+                First 5 rows transformed as they will be saved in <strong style={{ color: '#0f172a', fontWeight: 600 }}>{selectedCollection}</strong>
               </p>
             </div>
-            <button onClick={() => setStep('mapping')} style={s.btnSecondary}><ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} /> Back to Mapping</button>
+            <button onClick={() => setStep('mapping')} className="di-btn-secondary" style={s.btnSecondary}>
+              <ChevronDown size={13} style={{ transform: 'rotate(90deg)' }} /> Back to Mapping
+            </button>
           </div>
 
           {/* CARDS DE PREVIEW */}
-          <div style={{ display: 'grid', gap: '12px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
             {csvData.slice(0, 5).map((row, idx) => {
               const transformed = transformRow(row);
               const docId = useExistingId && idColumn ? String(row[idColumn] || '(empty!)').trim() : '(auto-generated)';
               return (
-                <div key={idx} style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Row {idx + 1}</span>
-                    <span style={{ fontSize: '0.75rem', color: '#3b82f6', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>ID: {docId}</span>
+                <div key={idx} style={{ backgroundColor: '#fafbfc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Row {idx + 1}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#475569', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontWeight: 500, fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace' }}>
+                      ID: {docId}
+                    </span>
                   </div>
-                  <pre style={{ margin: 0, fontSize: '0.8rem', color: '#0f172a', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'Menlo, Monaco, Consolas, monospace' }}>
+                  <pre style={{ margin: 0, fontSize: '0.75rem', color: '#0f172a', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', lineHeight: 1.55 }}>
                     {JSON.stringify(transformed, null, 2)}
                   </pre>
                 </div>
@@ -558,24 +884,29 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
           </div>
 
           {csvData.length > 5 && (
-            <p style={{ textAlign: 'center', color: '#64748b', fontSize: '0.85rem', marginBottom: '20px' }}>
-              ...and <strong>{csvData.length - 5}</strong> more rows will be imported similarly.
+            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.775rem', marginBottom: '16px' }}>
+              and <strong style={{ color: '#475569', fontWeight: 600 }}>{csvData.length - 5}</strong> more rows will be imported similarly
             </p>
           )}
 
           {/* CONFIRMACIÓN */}
-          <div style={{ padding: '16px', backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '12px' }}>
-            <AlertCircle size={20} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ fontSize: '0.9rem', color: '#713f12', lineHeight: 1.5 }}>
-              <strong>About to import {csvData.length} documents into "{selectedCollection}"</strong>
-              <div style={{ marginTop: '4px', fontSize: '0.8rem' }}>This action cannot be undone from this view. Make sure the mapping is correct.</div>
+          <div style={{ padding: '14px 16px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', marginBottom: '18px', display: 'flex', gap: '10px' }}>
+            <AlertCircle size={16} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '0.8rem', color: '#78350f', lineHeight: 1.5 }}>
+              <strong style={{ fontWeight: 600 }}>About to import {csvData.length} documents into "{selectedCollection}"</strong>
+              <div style={{ marginTop: '3px', fontSize: '0.75rem', opacity: 0.85 }}>This action cannot be undone from this view. Make sure the mapping is correct.</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button onClick={handleReset} style={s.btnSecondary}>Cancel</button>
-            <button onClick={handleImport} style={{ ...s.btnPrimary, backgroundColor: '#10b981' }}>
-              <Upload size={16} /> Import {csvData.length} records
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button onClick={handleReset} className="di-btn-secondary" style={s.btnSecondary}>Cancel</button>
+            <button 
+              onClick={handleImport} 
+              style={{ ...s.btnPrimary, backgroundColor: '#10b981', borderColor: '#10b981' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              <Upload size={14} /> Import {csvData.length} records
             </button>
           </div>
         </div>
@@ -585,26 +916,26 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       {step === 'importing' && (
         <div style={s.card}>
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <Loader2 size={48} className="spin-import" style={{ color: '#3b82f6', margin: '0 auto 20px', display: 'block' }} />
-            <h2 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', color: '#0f172a' }}>Importing data...</h2>
-            <p style={{ margin: '0 0 24px 0', color: '#64748b' }}>
+            <Loader2 size={32} strokeWidth={1.75} className="spin-import" style={{ color: '#0f172a', margin: '0 auto 16px', display: 'block' }} />
+            <h2 style={{ margin: '0 0 4px 0', fontSize: '1rem', color: '#0f172a', fontWeight: 600 }}>Importing data</h2>
+            <p style={{ margin: '0 0 22px 0', color: '#64748b', fontSize: '0.8rem' }}>
               {importProgress.current} of {importProgress.total} records processed
             </p>
 
             {/* PROGRESS BAR */}
-            <div style={{ maxWidth: '400px', margin: '0 auto' }}>
-              <div style={{ height: '12px', backgroundColor: '#e2e8f0', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ maxWidth: '360px', margin: '0 auto' }}>
+              <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
                 <div
                   style={{
                     width: `${(importProgress.current / importProgress.total) * 100}%`,
                     height: '100%',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: '#0f172a',
                     transition: 'width 0.3s ease',
-                    borderRadius: '6px'
+                    borderRadius: '3px'
                   }}
                 />
               </div>
-              <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
+              <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#475569', fontWeight: 500, fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace' }}>
                 {Math.round((importProgress.current / importProgress.total) * 100)}%
               </div>
             </div>
@@ -615,36 +946,36 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       {/* ─────────── STEP 5: DONE ─────────── */}
       {step === 'done' && (
         <div style={s.card}>
-          <div style={{ textAlign: 'center', padding: '20px' }}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <CheckCircle size={36} color="#10b981" />
+          <div style={{ textAlign: 'center', padding: '20px 16px' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+              <CheckCircle size={26} strokeWidth={2} color="#10b981" />
             </div>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: '1.3rem', color: '#0f172a' }}>Import Complete!</h2>
-            <p style={{ margin: '0 0 24px 0', color: '#64748b' }}>
-              <strong style={{ color: '#10b981' }}>{importProgress.successCount}</strong> records imported successfully to <strong>{selectedCollection}</strong>
+            <h2 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#0f172a', fontWeight: 600 }}>Import complete</h2>
+            <p style={{ margin: '0 0 22px 0', color: '#64748b', fontSize: '0.8rem' }}>
+              <strong style={{ color: '#10b981', fontWeight: 600 }}>{importProgress.successCount}</strong> records imported successfully to <strong style={{ color: '#0f172a', fontWeight: 600 }}>{selectedCollection}</strong>
               {importProgress.errors.length > 0 && (
-                <span>, <strong style={{ color: '#ef4444' }}>{importProgress.errors.length}</strong> errors</span>
+                <span>, <strong style={{ color: '#ef4444', fontWeight: 600 }}>{importProgress.errors.length}</strong> errors</span>
               )}
             </p>
 
             {/* ERRORES SI HAY */}
             {importProgress.errors.length > 0 && (
-              <details style={{ textAlign: 'left', maxWidth: '600px', margin: '0 auto 24px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px' }}>
-                <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#991b1b', fontSize: '0.9rem' }}>
+              <details style={{ textAlign: 'left', maxWidth: '560px', margin: '0 auto 22px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 14px' }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#991b1b', fontSize: '0.8rem' }}>
                   Show {importProgress.errors.length} errors
                 </summary>
-                <div style={{ marginTop: '12px', maxHeight: '200px', overflowY: 'auto' }}>
+                <div style={{ marginTop: '10px', maxHeight: '200px', overflowY: 'auto' }}>
                   {importProgress.errors.map((err, i) => (
-                    <div key={i} style={{ fontSize: '0.8rem', color: '#7f1d1d', padding: '4px 0', borderBottom: '1px solid #fecaca' }}>
-                      <strong>Row {err.row}:</strong> {err.message}
+                    <div key={i} style={{ fontSize: '0.75rem', color: '#7f1d1d', padding: '4px 0', borderBottom: i < importProgress.errors.length - 1 ? '1px solid #fecaca' : 'none' }}>
+                      <strong style={{ fontWeight: 600 }}>Row {err.row}:</strong> {err.message}
                     </div>
                   ))}
                 </div>
               </details>
             )}
 
-            <button onClick={handleReset} style={s.btnPrimary}>
-              <RotateCcw size={16} /> Import Another File
+            <button onClick={handleReset} className="di-btn-primary" style={s.btnPrimary}>
+              <RotateCcw size={14} /> Import Another File
             </button>
           </div>
         </div>
