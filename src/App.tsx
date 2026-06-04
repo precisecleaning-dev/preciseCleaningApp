@@ -11,6 +11,7 @@ import NoticeBoardView from './views/NoticeBoardView';
 import LoginView from './views/auth/LoginView';
 import RolesView from './views/admin/RolesView';
 import UsersView from './views/admin/UsersView';
+import DataImportView from './views/DataImportView'; // ⭐ Vista de importación de CSV (solo SuperAdmin)
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -22,7 +23,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users';
+export type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -291,6 +292,11 @@ export default function App() {
         {activeTab === 'roles' && <RolesView onOpenMenu={toggleMenu} roles={roles} setRoles={setRoles} />}
         
         {activeTab === 'users' && <UsersView onOpenMenu={toggleMenu} roles={roles} />}
+
+        {/* ⭐ DATA IMPORT — Solo accesible si es SuperAdmin (el Sidebar ya lo oculta para otros).
+            Doble verificación aquí por seguridad: aunque alguien hackee el state, no podrá
+            ver la vista si no es SuperAdmin. */}
+        {activeTab === 'data_import' && isSuperAdmin && <DataImportView onOpenMenu={toggleMenu} />}
 
         {(activeTab === 'done' || activeTab === 'qc_route') && (
           <div className="fade-in" style={{ padding: '40px', textAlign: 'center', color: '#6b7280', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>

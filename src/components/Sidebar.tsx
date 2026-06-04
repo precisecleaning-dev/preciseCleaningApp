@@ -1,12 +1,12 @@
 import { 
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone 
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database
 } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
 
-type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users';
+type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -34,10 +34,11 @@ export default function Sidebar({
 
   // ⭐ Helper para saber si mostrar el header "ADMIN" en el menú.
   //    Solo aparece si al menos UNO de los módulos admin está visible.
+  //    Data Import también cuenta porque vive en la sección Admin.
   const canViewRoles    = canView('Roles & Permissions');
   const canViewUsers    = canView('System Users');
   const canViewSettings = canView('Settings');
-  const showAdminSection = canViewRoles || canViewUsers || canViewSettings;
+  const showAdminSection = canViewRoles || canViewUsers || canViewSettings || isSuperAdmin;
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
@@ -160,6 +161,14 @@ export default function Sidebar({
             <button className={`nav-item ${activeTab === 'users' ? 'active' : ''}`} onClick={() => handleNavClick('users')}>
               <UserPlus size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">System Users</span>}
+            </button>
+          )}
+
+          {/* ⭐ DATA IMPORT — Solo SuperAdmin. Útil para migrar datos de Google Sheets a Firestore. */}
+          {isSuperAdmin && (
+            <button className={`nav-item ${activeTab === 'data_import' ? 'active' : ''}`} onClick={() => handleNavClick('data_import')}>
+              <Database size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Data Import</span>}
             </button>
           )}
           
