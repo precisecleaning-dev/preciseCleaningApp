@@ -715,7 +715,12 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                   <th style={s.th}>CSV Column</th>
                   <th style={s.th}>Sample Value</th>
                   <th style={{ ...s.th, width: '40px' }}></th>
-                  <th style={s.th}>Firestore Field Name</th>
+                  <th style={s.th}>
+                    {(() => {
+                      const def = getCollectionDef();
+                      return def ? `→ Maps to Field in ${def.name}` : '→ Target Field (select collection first)';
+                    })()}
+                  </th>
                   <th style={s.th}>Type</th>
                 </tr>
               </thead>
@@ -728,8 +733,13 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                   const knownFields = collectionDef?.fields || [];
                   // ¿El field actual es uno conocido de la colección, o uno custom?
                   const isKnownField = knownFields.some(f => f.name === mapping?.firestoreField);
-                  // Valor del dropdown: el field name si es conocido, "__custom__" si es uno custom, "" si vacío
-                  const dropdownValue = !mapping?.firestoreField ? '' : (isKnownField ? mapping.firestoreField : '__custom__');
+                  // Valor del dropdown:
+                  //   - "" si no hay nada mapeado
+                  //   - field name conocido si match con schema de la colección
+                  //   - "__custom__" si tiene valor pero no está en el schema (o no hay colección elegida)
+                  const dropdownValue = !mapping?.firestoreField
+                    ? ''
+                    : (isKnownField ? mapping.firestoreField : '__custom__');
 
                   return (
                     <tr key={header} className="di-row" style={{ opacity: isSkipped ? 0.4 : 1, transition: 'background-color 0.15s' }}>
@@ -739,75 +749,62 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                       </td>
                       <td style={s.td}><ArrowRight size={13} color="#cbd5e1" strokeWidth={2} /></td>
                       <td style={s.td}>
-                        {/* ⭐ Si hay una colección elegida, mostramos un DROPDOWN con sus campos
-                            conocidos + opción Custom. Si no hay colección o el field actual no
-                            está en el schema (custom), mostramos también un input de texto debajo. */}
-                        {collectionDef ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <select
-                              className="di-input"
-                              style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem' }}
-                              value={dropdownValue}
-                              disabled={isSkipped}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '') {
-                                  setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: '' } }));
-                                } else if (v === '__custom__') {
-                                  // Mantiene lo que tenga (o vacía para que escriba)
-                                  setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: isKnownField ? '' : (prev[header]?.firestoreField || '') } }));
-                                } else {
-                                  // Field conocido elegido: actualiza también el type según el schema
-                                  const fieldDef = knownFields.find(f => f.name === v);
-                                  setFieldMappings(prev => ({
-                                    ...prev,
-                                    [header]: { firestoreField: v, type: fieldDef?.type || prev[header]?.type || 'string' }
-                                  }));
-                                }
-                              }}
-                            >
-                              <option value="">— Don't map —</option>
-                              <optgroup label={`${collectionDef.name} fields`}>
+                        {/* ⭐ Dropdown SIEMPRE visible. Las opciones cambian según haya
+                            colección elegida o no. El input custom aparece debajo cuando
+                            el usuario quiere escribir un nombre que no está en el schema. */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <select
+                            className="di-input"
+                            style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem' }}
+                            value={dropdownValue}
+                            disabled={isSkipped}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === '') {
+                                setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: '' } }));
+                              } else if (v === '__custom__') {
+                                // Al elegir Custom, vacía el campo para que el usuario escriba
+                                setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: isKnownField ? '' : (prev[header]?.firestoreField || '') } }));
+                              } else {
+                                // Field conocido elegido: actualiza también el type según el schema
+                                const fieldDef = knownFields.find(f => f.name === v);
+                                setFieldMappings(prev => ({
+                                  ...prev,
+                                  [header]: { firestoreField: v, type: fieldDef?.type || prev[header]?.type || 'string' }
+                                }));
+                              }
+                            }}
+                          >
+                            <option value="">— Don't map this column —</option>
+                            {collectionDef && knownFields.length > 0 && (
+                              <optgroup label={`📋 ${collectionDef.name} fields`}>
                                 {knownFields.map(f => (
                                   <option key={f.name} value={f.name}>
                                     {f.name}{f.label ? ` · ${f.label}` : ''} ({f.type})
                                   </option>
                                 ))}
                               </optgroup>
-                              <option value="__custom__">✎ Custom field name…</option>
-                            </select>
-                            {/* Si la opción elegida es Custom, mostramos input para escribir el nombre */}
-                            {dropdownValue === '__custom__' && (
-                              <input
-                                type="text"
-                                className="di-input"
-                                style={{ ...s.input, padding: '5px 10px', fontSize: '0.75rem' }}
-                                value={mapping?.firestoreField || ''}
-                                onChange={(e) => setFieldMappings(prev => ({
-                                  ...prev,
-                                  [header]: { ...prev[header], firestoreField: e.target.value }
-                                }))}
-                                disabled={isSkipped}
-                                placeholder="customFieldName"
-                                autoFocus
-                              />
                             )}
-                          </div>
-                        ) : (
-                          // Sin colección elegida → input de texto simple
-                          <input
-                            type="text"
-                            className="di-input"
-                            style={{ ...s.input, padding: '6px 10px', fontSize: '0.8rem' }}
-                            value={mapping?.firestoreField || ''}
-                            onChange={(e) => setFieldMappings(prev => ({
-                              ...prev,
-                              [header]: { ...prev[header], firestoreField: e.target.value }
-                            }))}
-                            disabled={isSkipped}
-                            placeholder="Select collection first"
-                          />
-                        )}
+                            <option value="__custom__">✎ Custom field name…</option>
+                          </select>
+
+                          {/* Input para escribir nombre custom — aparece cuando se elige Custom O cuando no hay colección y el usuario ya tiene un valor */}
+                          {(dropdownValue === '__custom__' || (!collectionDef && mapping?.firestoreField)) && (
+                            <input
+                              type="text"
+                              className="di-input"
+                              style={{ ...s.input, padding: '5px 10px', fontSize: '0.75rem' }}
+                              value={mapping?.firestoreField || ''}
+                              onChange={(e) => setFieldMappings(prev => ({
+                                ...prev,
+                                [header]: { ...prev[header], firestoreField: e.target.value }
+                              }))}
+                              disabled={isSkipped}
+                              placeholder={collectionDef ? 'customFieldName' : 'Select collection above to use schema'}
+                              autoFocus={dropdownValue === '__custom__'}
+                            />
+                          )}
+                        </div>
                       </td>
                       <td style={s.td}>
                         <select
