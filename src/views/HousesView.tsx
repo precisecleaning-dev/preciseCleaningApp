@@ -48,9 +48,6 @@ const collectionMap: Record<string, string> = {
   tax: 'settings_tax'
 };
 
-// ⭐ ELEMENTOS configurables del formulario y del detail modal.
-//    El admin puede definir qué roles ven cada elemento desde el botón ⚙️ del form.
-//    Los IDs deben coincidir con los usados en el JSX (helper `isElementVisible(id)`).
 type ConfigurableElement = { id: string; label: string; section: string };
 
 const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
@@ -90,9 +87,6 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
   { id: 'btn_tabMedia', label: 'Notes & Photos Tab', section: 'Tabs' }
 ];
 
-// ⭐ Estructura del documento Firestore: app_settings/houses_form_config
-//    { visibility: { 'client': ['roleId1', 'roleId2'], ... } }
-//    Los roleIds listados son los roles que NO ven ese elemento.
 type FormVisibilityConfig = {
   visibility: Record<string, string[]>;
 };
@@ -283,7 +277,7 @@ interface HousesViewProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
-  roles?: Role[];   // ⭐ Lista de roles disponibles para el modal de configuración de visibilidad
+  roles?: Role[];
 }
 
 type DetailTab = 'overview' | 'financials' | 'media';
@@ -293,7 +287,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
   const [invoiceFilter, setInvoiceFilter] = useState('All'); 
+  // ⭐ CAMBIO 2: nuevo filtro de status (todos los statuses, no sólo los del dashboard)
+  const [statusFilter, setStatusFilter] = useState('All');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  // ⭐ CAMBIO 1: estado para saber qué team está desplegado en la columna derecha
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -308,8 +306,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [customersList, setCustomersList] = useState<Customer[]>([]); 
   const [employees, setEmployees] = useState<any[]>([]); 
 
-  // ⭐ Lista de roles cargada directamente desde Firestore (no depende de la prop).
-  //    Inicialmente toma el valor del padre (si lo pasó), luego se sobrescribe con Firestore.
   const [rolesList, setRolesList] = useState<Role[]>(roles);
 
   const [isSaving, setIsSaving] = useState(false);
@@ -317,7 +313,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
 
-  // ⭐ Configuración de visibilidad de campos del form por rol
   const [formConfig, setFormConfig] = useState<FormVisibilityConfig>(DEFAULT_FORM_CONFIG);
   const [isFieldConfigOpen, setIsFieldConfigOpen] = useState(false);
   const [fieldConfigDraft, setFieldConfigDraft] = useState<FormVisibilityConfig>(DEFAULT_FORM_CONFIG);
@@ -350,25 +345,26 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
-  // Refs separados para "cargar archivo" y "tomar foto"
   const beforeFileInputRef = useRef<HTMLInputElement>(null);
   const beforeCameraInputRef = useRef<HTMLInputElement>(null);
   const afterFileInputRef = useRef<HTMLInputElement>(null);
   const afterCameraInputRef = useRef<HTMLInputElement>(null);
-  // Estado de la configuración de fotos (gestionado por el admin)
   const [photoConfig, setPhotoConfig] = useState<PhotoConfig>(DEFAULT_PHOTO_CONFIG);
   const [isCompressing, setIsCompressing] = useState(false);
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
-  // ⭐ Carga reactiva con onSnapshot — gracias a Firestore Persistence (IndexedDB),
-  //    las cargas posteriores son INSTANTÁNEAS porque vienen del caché local.
-  //    Además: cambios hechos por otros usuarios se reflejan automáticamente.
+  // ⭐ CAMBIO 3: helper que resuelve el NOMBRE del cliente a partir del ID guardado en
+  //    la propiedad. Compatible con datos antiguos: si el valor ya era un nombre, lo devuelve igual.
+  const getClientName = (clientIdOrName?: string | null) => {
+    if (!clientIdOrName) return 'Unknown';
+    return getRelationName(customersList, clientIdOrName, String(clientIdOrName));
+  };
+
   useEffect(() => {
     setIsLoading(true);
 
-    // Track de qué colecciones ya cargaron al menos una vez
     const loadedCollections = new Set<string>();
     const TOTAL_COLLECTIONS = 9;
     const markLoaded = (name: string) => {
@@ -380,7 +376,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
     const unsubscribes: (() => void)[] = [];
 
-    // 1) Properties
     unsubscribes.push(onSnapshot(
       collection(db, 'properties'),
       (snap) => {
@@ -391,7 +386,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Properties:", err); markLoaded('properties'); }
     ));
 
-    // 2) Statuses (settings_statuses) — ordenados por 'order'
     unsubscribes.push(onSnapshot(
       collection(db, collectionMap.status),
       (snap) => {
@@ -402,7 +396,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Statuses:", err); markLoaded('statuses'); }
     ));
 
-    // 3) Teams
     unsubscribes.push(onSnapshot(
       collection(db, collectionMap.team),
       (snap) => {
@@ -413,7 +406,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Teams:", err); markLoaded('teams'); }
     ));
 
-    // 4) Priorities
     unsubscribes.push(onSnapshot(
       collection(db, collectionMap.priority),
       (snap) => {
@@ -424,7 +416,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Priorities:", err); markLoaded('priorities'); }
     ));
 
-    // 5) Services
     unsubscribes.push(onSnapshot(
       collection(db, collectionMap.service),
       (snap) => {
@@ -435,7 +426,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Services:", err); markLoaded('services'); }
     ));
 
-    // 6) Taxes
     unsubscribes.push(onSnapshot(
       collection(db, collectionMap.tax),
       (snap) => {
@@ -446,7 +436,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Taxes:", err); markLoaded('taxes'); }
     ));
 
-    // 7) Customers
     unsubscribes.push(onSnapshot(
       collection(db, 'customers'),
       (snap) => {
@@ -457,7 +446,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Customers:", err); markLoaded('customers'); }
     ));
 
-    // 8) System Users (employees)
     unsubscribes.push(onSnapshot(
       collection(db, 'system_users'),
       (snap) => {
@@ -468,7 +456,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Users:", err); markLoaded('users'); }
     ));
 
-    // 9) Photo Config (es un documento, no una colección)
     unsubscribes.push(onSnapshot(
       doc(db, 'app_settings', 'photo_config'),
       (snap) => {
@@ -482,7 +469,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error PhotoConfig:", err); setPhotoConfig(DEFAULT_PHOTO_CONFIG); markLoaded('photoConfig'); }
     ));
 
-    // 10) Form Visibility Config (configuración de campos por rol)
     unsubscribes.push(onSnapshot(
       doc(db, 'app_settings', 'houses_form_config'),
       (snap) => {
@@ -495,8 +481,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error FormConfig:", err); setFormConfig(DEFAULT_FORM_CONFIG); }
     ));
 
-    // 11) ⭐ Roles (settings_roles) — para el modal de Field Configuration
-    //     Esto permite que HousesView funcione sin depender de que el padre pase los roles
     unsubscribes.push(onSnapshot(
       collection(db, 'settings_roles'),
       (snap) => {
@@ -506,7 +490,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       (err) => { console.error("Error Roles:", err); }
     ));
 
-    // Cleanup: desuscribir al desmontar el componente
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
@@ -533,8 +516,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   }, [serviceForm.quantity, serviceForm.price, serviceForm.taxPercentage, serviceForm.applyTax, serviceForm.minusTax, isServiceModalOpen]);
 
-  // ⭐ Tipo extendido local: añade `allowedStatusIds` y `hiddenGroups` para evitar
-  //    errores de TypeScript si types/index.ts no se actualizó.
   type PermissionExt = { module: string; canView?: boolean; canAdd?: boolean; canEdit?: boolean; canDelete?: boolean; scope?: 'All' | 'Own'; allowedStatusIds?: string[]; hiddenGroups?: string[] };
 
   const housePermission = activeRole?.permissions?.find(p => p.module === 'Houses') as PermissionExt | undefined;
@@ -542,16 +523,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const allowedStatusIds: string[] = housePermission?.allowedStatusIds || [];
   const hiddenGroups: string[] = housePermission?.hiddenGroups || [];
 
-  // ⭐ Helper: determina si un grupo de elementos es visible para el usuario actual.
-  //    SuperAdmin siempre ve todo. Si el grupo no está en hiddenGroups, es visible.
   const isVisible = (groupId: string): boolean => {
     if (isSuperAdmin) return true;
     return !hiddenGroups.includes(groupId);
   };
 
-  // ⭐ Helper granular: determina si un elemento individual (campo o botón) es
-  //    visible para el rol del usuario actual. SuperAdmin siempre ve todo.
-  //    Usa la configuración guardada en app_settings/houses_form_config.
   const isElementVisible = (elementId: string): boolean => {
     if (isSuperAdmin) return true;
     const userRoleId = (currentUser as any)?.roleId;
@@ -560,7 +536,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return !hiddenForRoles.includes(userRoleId);
   };
 
-  // ⭐ Toggle de visibilidad de un elemento para un rol en el draft
   const toggleElementVisibilityForRole = (elementId: string, roleId: string) => {
     setFieldConfigDraft(prev => {
       const currentHidden = prev.visibility?.[elementId] || [];
@@ -574,19 +549,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     });
   };
 
-  // ⭐ Abrir el modal de configuración (copia config actual al draft)
   const openFieldConfigModal = () => {
     setFieldConfigDraft({ visibility: { ...(formConfig.visibility || {}) } });
     setIsFieldConfigOpen(true);
   };
 
-  // ⭐ Guardar la configuración del form en Firestore (usa setDoc con merge)
   const saveFieldConfig = async () => {
     setIsSavingFieldConfig(true);
     try {
       const ref = doc(db, 'app_settings', 'houses_form_config');
       await setDoc(ref, { visibility: fieldConfigDraft.visibility }, { merge: true });
-      // El onSnapshot actualizará formConfig automáticamente
       setIsFieldConfigOpen(false);
     } catch (error) {
       console.error("Error guardando configuración de campos:", error);
@@ -597,7 +569,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   };
 
   const propertiesWithScope = properties.filter(prop => {
-    // 1) Filtro de SCOPE (Own / All)
     if (userScope !== 'All') {
       if (!currentUser) return false;
       const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
@@ -605,10 +576,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       if (!isAssigned && !isSameTeam) return false;
     }
 
-    // 2) Filtro de STATUS permitidos (solo si NO es superAdmin y tiene lista configurada)
-    //    Si la lista está vacía o no existe = sin restricción (ver todos).
     if (!isSuperAdmin && allowedStatusIds.length > 0) {
-      // statusId puede venir como ID o como nombre del status, comparamos contra ambos
       const matchById = allowedStatusIds.includes(prop.statusId);
       const propStatus = statuses.find(st => st.id === prop.statusId || st.name === prop.statusId);
       const matchByName = propStatus ? allowedStatusIds.includes(propStatus.id) : false;
@@ -650,8 +618,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
     let passInvoice = true;
     if (invoiceFilter !== 'All') passInvoice = p.invoiceStatus === invoiceFilter;
+
+    // ⭐ CAMBIO 2: aplicar filtro de status (comparando por id o por nombre)
+    let passStatusFilter = true;
+    if (statusFilter !== 'All') {
+      const stObj = statuses.find(stt => stt.id === statusFilter);
+      passStatusFilter = p.statusId === statusFilter || (!!stObj && p.statusId === stObj.name);
+    }
     
-    return passStatus && passHouse && passInvoice;
+    return passStatus && passHouse && passInvoice && passStatusFilter;
   });
 
   const dashboardTabs = statuses
@@ -763,7 +738,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
     const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
     const endDateTime = `${endDatePart}T${endTimePart}`;
-    const calendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + selectedHouse.client)}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&sf=true&output=xml`;
+    // ⭐ CAMBIO 3: el título usa el nombre del cliente resuelto desde customers
+    const calendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&sf=true&output=xml`;
     window.open(calendarUrl, '_blank');
   };
 
@@ -943,18 +919,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setSelectedHouse(null);
   };
 
-  const handleCustomerSelect = (customerName: string) => {
-    const selectedCust = customersList.find(c => c.name === customerName);
+  // ⭐ CAMBIO 3: ahora `client` guarda el ID del customer, no el nombre.
+  const handleCustomerSelect = (customerId: string) => {
+    const selectedCust = customersList.find(c => c.id === customerId);
     if (selectedCust) {
-      setFormData({ ...formData, client: customerName, address: selectedCust.address || formData.address });
+      setFormData({ ...formData, client: customerId, address: (selectedCust as any).address || formData.address });
     } else {
-      setFormData({ ...formData, client: customerName });
+      setFormData({ ...formData, client: customerId });
     }
   };
 
-  // ============================================================
-  // ⭐ FUNCIÓN handleSave CORREGIDA
-  // ============================================================
   const handleSave = async () => {
     if (!formData.client) return alert("Client is required.");
     if (!formData.address) return alert("Address is required.");
@@ -969,13 +943,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         finalAssignedWorkers = employees.filter(emp => emp.teamId === formData.teamId).map(emp => emp.id);
       }
 
-      // PASO 1: Si es nuevo, crear el documento primero para tener un ID válido
+      // ⭐ CAMBIO 3: la descripción usa el nombre del cliente resuelto desde customers
       if (!workingId) {
         const { id, ...restOfData } = formData;
         const dataToCreate = { 
           ...restOfData,
           assignedWorkers: finalAssignedWorkers,
-          description: `${formData.client} - ${formData.rooms} rooms`, 
+          description: `${getClientName(formData.client)} - ${formData.rooms} rooms`, 
           city: 'TBD', 
           size: 'TBD',
           beforePhotos: [],
@@ -987,14 +961,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         console.log('✅ New property created with ID:', workingId);
       }
 
-      // PASO 2: Subir fotos BEFORE a Storage
+      // ⭐ CAMBIO 3: las rutas de Storage usan el NOMBRE del cliente, no el id
       let uploadedBeforeUrls: string[] = [];
       if (beforeFiles.length > 0) {
         console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
         try {
           uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
             beforeFiles,
-            formData.client,
+            getClientName(formData.client),
             formData.address,
             'before'
           );
@@ -1005,14 +979,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
-      // PASO 3: Subir fotos AFTER a Storage
       let uploadedAfterUrls: string[] = [];
       if (afterFiles.length > 0) {
         console.log(`📤 Uploading ${afterFiles.length} after photos...`);
         try {
           uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
             afterFiles,
-            formData.client,
+            getClientName(formData.client),
             formData.address,
             'after'
           );
@@ -1023,7 +996,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
-      // PASO 4: Armar el objeto final con TODAS las URLs (anteriores + nuevas)
       const finalDataToUpdate = {
         ...formData,
         assignedWorkers: finalAssignedWorkers,
@@ -1031,13 +1003,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls]
       };
 
-      // PASO 5: ACTUALIZAR Firestore SIEMPRE (tanto si es nuevo como si es edición)
-      // ⚠️ ESTE ERA EL BUG: antes solo se actualizaba si !isNew
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
       await propertiesService.update(workingId, dataForFirestore as any);
       console.log('✅ Property updated in Firestore with photo URLs');
 
-      // PASO 6: Sincronizar servicios facturados
       for (const srvId of servicesToDelete) {
         await deleteDoc(doc(db, 'billing_services', srvId)).catch(e => console.error(e));
       }
@@ -1053,12 +1022,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
-      // PASO 7: Actualizar el state local con los datos completos (incluyendo URLs)
       if (isNew) {
         const fullNewData = { 
           ...finalDataToUpdate, 
           id: workingId, 
-          description: `${formData.client} - ${formData.rooms} rooms`, 
+          description: `${getClientName(formData.client)} - ${formData.rooms} rooms`, 
           city: 'TBD', 
           size: 'TBD' 
         };
@@ -1069,7 +1037,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         ));
       }
 
-      // PASO 8: Limpiar estados temporales
       setBeforeFiles([]); 
       setAfterFiles([]);
       setBeforePhotoURLs([]); 
@@ -1084,9 +1051,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  // ============================================================
-  // ⭐ FUNCIÓN PARA GUARDAR SOLO FOTOS DESDE EL MODAL DE DETALLE
-  // ============================================================
   const handleSavePhotosFromDetail = async () => {
     if (!selectedHouse) return alert("No property selected.");
 
@@ -1094,14 +1058,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       const workingId = selectedHouse.id;
 
-      // Subir fotos BEFORE nuevas
+      // ⭐ CAMBIO 3: las rutas de Storage usan el NOMBRE del cliente
       let uploadedBeforeUrls: string[] = [];
       if (beforeFiles.length > 0) {
         console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
         try {
           uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
             beforeFiles,
-            selectedHouse.client,
+            getClientName(selectedHouse.client),
             selectedHouse.address,
             'before'
           );
@@ -1114,14 +1078,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
-      // Subir fotos AFTER nuevas
       let uploadedAfterUrls: string[] = [];
       if (afterFiles.length > 0) {
         console.log(`📤 Uploading ${afterFiles.length} after photos...`);
         try {
           uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
             afterFiles,
-            selectedHouse.client,
+            getClientName(selectedHouse.client),
             selectedHouse.address,
             'after'
           );
@@ -1134,21 +1097,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
 
-      // Calcular las URLs finales (Storage = solo URLs que empiezan con http)
       const existingBeforeFromStorage = (selectedHouse.beforePhotos || []).filter(u => u.startsWith('http'));
       const existingAfterFromStorage = (selectedHouse.afterPhotos || []).filter(u => u.startsWith('http'));
 
       const finalBeforePhotos = [...existingBeforeFromStorage, ...uploadedBeforeUrls];
       const finalAfterPhotos = [...existingAfterFromStorage, ...uploadedAfterUrls];
 
-      // Actualizar Firestore con las URLs
       await propertiesService.update(workingId, {
         beforePhotos: finalBeforePhotos,
         afterPhotos: finalAfterPhotos
       } as any);
       console.log('✅ Property updated in Firestore with photo URLs');
 
-      // Actualizar estados locales
       const updatedHouse = {
         ...selectedHouse,
         beforePhotos: finalBeforePhotos,
@@ -1157,11 +1117,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === workingId ? updatedHouse : p));
 
-      // Refrescar los URLs visuales
       setBeforePhotoURLs(finalBeforePhotos);
       setAfterPhotoURLs(finalAfterPhotos);
 
-      // Limpiar files temporales
       setBeforeFiles([]);
       setAfterFiles([]);
 
@@ -1230,7 +1188,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       console.log(`Compressing ${filesArray.length} image(s)...`);
 
-      // Comprimir las imágenes en paralelo usando la config del admin
       const compressedFiles = await Promise.all(
         filesArray.map(file =>
           compressImage(file, {
@@ -1241,7 +1198,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         )
       );
 
-      // Crear previews (URLs locales para mostrar las miniaturas)
       const fileUrls = compressedFiles.map(file => URL.createObjectURL(file));
 
       if (type === 'before') {
@@ -1258,7 +1214,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       alert('Error al procesar las imágenes. Intenta de nuevo.');
     } finally {
       setIsCompressing(false);
-      // Limpiar el input para que pueda seleccionar el mismo archivo de nuevo si lo quita
       if (e.target) e.target.value = '';
     }
   };
@@ -1315,12 +1270,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       return;
     }
 
-    // Mostrar feedback al usuario mientras se preparan las imágenes
     setIsSaving(true);
 
     try {
-      // Convertir todas las URLs a base64 antes de pasarlas al PDF
-      // Esto asegura que las imágenes aparezcan SIEMPRE en el PDF
       console.log(`📥 Preparing ${urls.length} images for PDF...`);
       const base64Images = await Promise.all(
         urls.map(async (url, idx) => {
@@ -1335,7 +1287,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             });
           } catch (err) {
             console.error(`Error loading image ${idx + 1}:`, err);
-            // Si falla, devolver la URL original como fallback
             return url;
           }
         })
@@ -1351,13 +1302,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       const title = type === 'before' ? 'Before Photos' : 'After Photos';
       const accentColor = type === 'before' ? '#1e3a8a' : '#047857';
+      // ⭐ CAMBIO 3: nombre del cliente resuelto para el PDF
+      const clientLabel = selectedHouse?.client ? getClientName(selectedHouse.client) : 'Propiedad';
 
       const html = `
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="UTF-8" />
-            <title>${title} - ${selectedHouse?.client || 'Propiedad'}</title>
+            <title>${title} - ${clientLabel}</title>
             <style>
               * { box-sizing: border-box; margin: 0; padding: 0; }
               body {
@@ -1384,88 +1337,38 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 border-bottom: 1px solid #e2e8f0;
                 margin-bottom: 32px;
               }
-              .logo-section {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-              }
+              .logo-section { display: flex; align-items: center; gap: 12px; }
               .logo-text {
-                font-size: 22px;
-                font-weight: 800;
-                color: #1e3a8a;
-                letter-spacing: 2px;
-                line-height: 1;
+                font-size: 22px; font-weight: 800; color: #1e3a8a;
+                letter-spacing: 2px; line-height: 1;
               }
               .logo-subtitle {
-                font-size: 10px;
-                font-weight: 500;
-                color: #64748b;
-                letter-spacing: 3px;
-                text-transform: uppercase;
-                margin-top: 4px;
+                font-size: 10px; font-weight: 500; color: #64748b;
+                letter-spacing: 3px; text-transform: uppercase; margin-top: 4px;
               }
-              .address-section {
-                text-align: right;
-                font-size: 13px;
-                color: #475569;
-                max-width: 60%;
-              }
-              .address-label {
-                font-weight: 700;
-                color: #0f172a;
-                margin-bottom: 2px;
-              }
+              .address-section { text-align: right; font-size: 13px; color: #475569; max-width: 60%; }
+              .address-label { font-weight: 700; color: #0f172a; margin-bottom: 2px; }
               h1.report-title {
-                text-align: center;
-                font-size: 38px;
-                font-weight: 800;
-                color: ${accentColor};
-                margin: 40px 0 32px 0;
+                text-align: center; font-size: 38px; font-weight: 800;
+                color: ${accentColor}; margin: 40px 0 32px 0;
               }
-              .photo-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 20px;
-              }
+              .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
               .photo-item {
-                aspect-ratio: 1 / 1;
-                border-radius: 8px;
-                overflow: hidden;
+                aspect-ratio: 1 / 1; border-radius: 8px; overflow: hidden;
                 box-shadow: 0 4px 8px rgba(0,0,0,0.12);
-                background-color: #f1f5f9;
-                page-break-inside: avoid;
+                background-color: #f1f5f9; page-break-inside: avoid;
               }
-              .photo-item img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-              }
+              .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
               .footer {
-                margin-top: 40px;
-                padding-top: 20px;
+                margin-top: 40px; padding-top: 20px;
                 border-top: 1px solid #e2e8f0;
-                text-align: center;
-                font-size: 11px;
-                color: #94a3b8;
+                text-align: center; font-size: 11px; color: #94a3b8;
               }
               @media print {
-                @page {
-                  margin: 12mm;
-                  size: A4;
-                }
-                body {
-                  background: white;
-                  padding: 0;
-                }
-                .container {
-                  box-shadow: none;
-                  padding: 0;
-                  max-width: 100%;
-                }
-                .photo-item {
-                  break-inside: avoid;
-                }
+                @page { margin: 12mm; size: A4; }
+                body { background: white; padding: 0; }
+                .container { box-shadow: none; padding: 0; max-width: 100%; }
+                .photo-item { break-inside: avoid; }
               }
             </style>
           </head>
@@ -1495,11 +1398,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
 
               <div class="footer">
-                ${selectedHouse?.client || ''} • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                ${clientLabel} • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </div>
             </div>
             <script>
-              // Esperar a que todas las imágenes carguen antes de imprimir
               window.addEventListener('load', function() {
                 const images = document.querySelectorAll('img');
                 if (images.length === 0) {
@@ -1514,9 +1416,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   }
                 };
                 images.forEach(img => {
-                  if (img.complete) {
-                    checkDone();
-                  } else {
+                  if (img.complete) { checkDone(); }
+                  else {
                     img.addEventListener('load', checkDone);
                     img.addEventListener('error', checkDone);
                   }
@@ -1584,15 +1485,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
     noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
 
-    kpiCard: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
-    kpiIconBox: (color: string) => ({ backgroundColor: `${color}15`, color: color, width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
+    // ⭐ CAMBIO 1: KPI cards más compactas y armoniosas
+    kpiCard: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
+    kpiIconBox: (color: string) => ({ backgroundColor: `${color}15`, color: color, width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
     tableHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '16px', flexShrink: 0 } as React.CSSProperties,
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#10b981' : 'transparent', color: active ? 'white' : '#6b7280', transition: 'all 0.2s', whiteSpace: 'nowrap' as const }),
 
     th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
     td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
 
-    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
+    // ⭐ CAMBIO 1: grilla de KPIs con tarjetas más juntas y proporcionadas
+    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
     mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', flex: 1, minHeight: 0, overflow: 'hidden' } as React.CSSProperties,
 
     segmentContainer: { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', gap: '4px' },
@@ -1618,7 +1521,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
         .modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
         
-        /* ⭐ Scrollbar moderno y elegante para el modal body */
         .modal-90 .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
         .modal-90 .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
         .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 10px; }
@@ -1653,7 +1555,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .property-select-container { display: flex; align-items: center; gap: 8px; white-space: nowrap; position: relative; }
 
         .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
-        .right-col { flex: 0 0 260px; width: 260px; display: flex; flex-direction: column; height: 100%; }
+        /* ⭐ CAMBIO 1: columna de equipos un poco más ancha para alojar el detalle desplegable */
+        .right-col { flex: 0 0 300px; width: 300px; display: flex; flex-direction: column; height: 100%; }
 
         @media (max-width: 1024px) {
           .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
@@ -1701,7 +1604,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
       </header>
 
-      {/* KPI CARDS */}
+      {/* ⭐ CAMBIO 1: KPI CARDS — texto más pequeño y proporcionado */}
       <div className="dash-grid" style={s.dashGrid}>
         {isLoading ? (
           <div style={{ color: '#6b7280' }}>Loading metrics...</div>
@@ -1711,10 +1614,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             const count = propertiesWithScope.filter(p => p.statusId === status.id || p.statusId === status.name).length;
             return (
               <div style={s.kpiCard} key={status.id}>
-                <div style={s.kpiIconBox(status.color)}><Icon size={22} /></div>
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>{status.name}</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#111827', lineHeight: '1.2' }}>{count}</div>
+                <div style={s.kpiIconBox(status.color)}><Icon size={18} /></div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.name}</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#111827', lineHeight: '1.2' }}>{count}</div>
                 </div>
               </div>
             );
@@ -1734,7 +1637,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>{dateCapitalized}</p>
               </div>
 
-              {/* FILTROS DE DASHBOARD Y CASA MEJORADOS */}
               <div className="filters-section">
                 <div className="tabs-container">
                   <button onClick={() => setActiveFilter('All')} style={s.pillBtn(activeFilter === 'All')}>All</button>
@@ -1750,11 +1652,27 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                     style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
-                    <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
+                    {/* ⭐ CAMBIO 2: indicador del botón incluye statusFilter */}
+                    <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
                   </button>
 
                   {isFilterMenuOpen && (
                     <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                      {/* ⭐ CAMBIO 2: nuevo selector de Status (todos los statuses configurados) */}
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
+                        <select 
+                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                          value={statusFilter} 
+                          onChange={e => setStatusFilter(e.target.value)}
+                        >
+                          <option value="All">All Statuses</option>
+                          {statuses.map(st => (
+                            <option key={st.id} value={st.id}>{st.name}</option>
+                          ))}
+                        </select>
+                      </div>
                       
                       <div>
                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Property</label>
@@ -1764,8 +1682,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           onChange={e => setHouseFilter(e.target.value)}
                         >
                           <option value="All">All Properties</option>
+                          {/* ⭐ CAMBIO 3: mostrar el NOMBRE del cliente en la opción */}
                           {uniqueHouses.map((h, idx) => (
-                            <option key={idx} value={`${h.client}|${h.address}`}>{h.client} - {h.address}</option>
+                            <option key={idx} value={`${h.client}|${h.address}`}>{getClientName(h.client)} - {h.address}</option>
                           ))}
                         </select>
                       </div>
@@ -1823,7 +1742,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <td data-label="Client" style={s.td}>
                           <div className="mobile-client-cell">
                             <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {prop.client}
+                              {/* ⭐ CAMBIO 3: muestra el nombre del cliente resuelto desde customers */}
+                              {getClientName(prop.client)}
                               {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12} /> {prop.address}</div>
@@ -1844,7 +1764,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           </div>
         </div>
 
-        {/* RIGHT COLUMN: ACTIVE TEAMS */}
+        {/* ⭐ CAMBIO 1: RIGHT COLUMN — ACTIVE TEAMS desplegables al hacer click */}
         <div className="right-col">
           <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <h3 style={{ margin: '0', padding: '20px', fontSize: '1.1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
@@ -1856,14 +1776,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               ) : (
                 teamsWithScope.map(team => {
                   const assignedProps = propertiesWithScope.filter(p => p.teamId === team.id || p.teamId === team.name);
+                  const isExpanded = expandedTeamId === team.id;
                   return (
                     <div 
                       key={team.id} 
-                      style={{ border: '1px solid #f1f5f9', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
+                      onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
+                      style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = isExpanded ? team.color : '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={18} /></div>
                           <div>
@@ -1871,10 +1793,33 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs today` : 'Free'}</div>
                           </div>
                         </div>
+                        <ChevronDown size={18} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
                       </div>
                       <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '12px' }}>
                         <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
                       </div>
+
+                      {/* ⭐ CAMBIO 1: panel desplegable con las casas asignadas al equipo */}
+                      {isExpanded && (
+                        <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {assignedProps.length === 0 ? (
+                            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No hay casas asignadas a este equipo.</span>
+                          ) : (
+                            assignedProps.map(prop => (
+                              <div 
+                                key={prop.id} 
+                                onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
+                                style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                              >
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getClientName(prop.client)}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -1890,32 +1835,22 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         <div className="modal-overlay-centered" onClick={handleCloseForm}>
           <div className="modal-full" onClick={e => e.stopPropagation()}>
             
-            {/* LADO IZQUIERDO: FORMULARIO */}
             <div className="modal-full-left">
               <div style={{ maxWidth: '900px', margin: '0 auto' }}>
                 
-                {/* Header Izquierdo */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '12px', flexWrap: 'wrap' }}>
                   <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
                     {formData.id ? 'Edit Property Details' : 'Register New Property'}
                   </h2>
-                  {/* ⭐ Botón visible para SuperAdmin O para roles con permiso Edit en Roles & Permissions */}
                   {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Roles & Permissions')?.canEdit) && (
                     <button
                       type="button"
                       onClick={openFieldConfigModal}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        backgroundColor: '#eff6ff',
-                        color: '#2563eb',
-                        border: '1px solid #bfdbfe',
-                        padding: '10px 16px',
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '0.875rem',
-                        cursor: 'pointer'
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        backgroundColor: '#eff6ff', color: '#2563eb',
+                        border: '1px solid #bfdbfe', padding: '10px 16px',
+                        borderRadius: '8px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer'
                       }}
                       title="Configure which fields each role can see"
                     >
@@ -1933,7 +1868,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('client') && (
                       <div>
                         <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                        <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="name" />
+                        {/* ⭐ CAMBIO 3: el SearchableSelect devuelve el ID del customer */}
+                        <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
                       </div>
                     )}
                     {isElementVisible('address') && (
@@ -2048,7 +1984,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     )}
                   </div>
 
-                  {/* Assigned Workers Sub-block */}
                   {isElementVisible('assignedWorkers') && (
                   <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -2191,7 +2126,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
                     
-                    {/* BEFORE PHOTOS INPUT */}
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
                         <span style={s.detailLabel}>BEFORE PHOTOS</span>
@@ -2227,7 +2161,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       }
                     </div>
 
-                    {/* AFTER PHOTOS INPUT */}
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
                         <span style={s.detailLabel}>AFTER PHOTOS</span>
@@ -2291,7 +2224,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Client Details</h4>
                   </div>
                   <div style={{ paddingLeft: '2.4rem' }}>
-                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: formData.client ? '#0F172A' : '#94A3B8' }}>{formData.client || 'Not defined'}</p>
+                    {/* ⭐ CAMBIO 3: mostrar nombre resuelto del cliente */}
+                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: formData.client ? '#0F172A' : '#94A3B8' }}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>
                     {formData.address && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.address}</p>}
                   </div>
                 </div>
@@ -2347,7 +2281,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           <div className="modal-90" onClick={e => e.stopPropagation()}>
             <header style={s.header}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <h3 style={s.title}>{selectedHouse.client}</h3>
+                {/* ⭐ CAMBIO 3: nombre del cliente resuelto */}
+                <h3 style={s.title}>{getClientName(selectedHouse.client)}</h3>
                 {(selectedHouse as any).employeeFinishedBy && (
                   <span style={{ backgroundColor: '#d1fae5', color: '#047857', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <CheckCircle size={14} /> 
@@ -2423,7 +2358,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
               </div>
 
-              {/* TABS NAVIGATION */}
               <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', flexWrap: 'wrap' }}>
                 <button style={s.detailTab(activeDetailTab === 'overview')} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Overview & Log</button>
                 {isVisible('financial') && isElementVisible('btn_tabFinancials') && (
@@ -2434,11 +2368,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 )}
               </div>
 
-              {/* TAB 1: OVERVIEW & LOG */}
               {activeDetailTab === 'overview' && (
                 <div className="fade-in">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-                    {/* TABLE CARD 1: SCHEDULE */}
                     <div style={s.infoCard}>
                       <div style={s.infoHeader}><CalendarDays size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Schedule & Timing</div>
                       <div style={s.infoRow}>
@@ -2459,7 +2391,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    {/* TABLE CARD 2: SPECS */}
                     <div style={s.infoCard}>
                       <div style={s.infoHeader}><Wrench size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Job Specifications</div>
                       <div style={s.infoRow}>
@@ -2483,7 +2414,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    {/* TABLE CARD 3: STATUS & TEAM */}
                     <div style={s.infoCard}>
                       <div style={s.infoHeader}><Activity size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Status & Assignment</div>
                       <div style={s.infoRow}>
@@ -2505,7 +2435,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                    {/* ASSIGNED WORKERS FULL WIDTH */}
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> SPECIFIC ASSIGNED WORKERS</span>
@@ -2567,7 +2496,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    {/* WORK LOG */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><Activity size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Work Log (Entry / Exit)</span>
@@ -2607,11 +2535,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               )}
 
-              {/* TAB 2: FINANCIALS & BILLING */}
               {activeDetailTab === 'financials' && isVisible('financial') && (
                 <div className="fade-in">
-                  
-                  {/* FINANCIAL OVERVIEW (PROFIT) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                     <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Revenue (Billed)</div>
@@ -2628,7 +2553,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
-                    {/* TABLA DE SERVICIOS FACTURADOS */}
                     {canEdit && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2688,7 +2612,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     )}
 
-                    {/* PAYMENTS */}
                     {canEdit && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2731,531 +2654,376 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               )}
 
-              {/* TAB 3: NOTES & PHOTOS */}
               {activeDetailTab === 'media' && isVisible('media') && (
                 <div className="fade-in">
-                  {/* NOTES - Lado a lado para mejor uso del espacio */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px', marginBottom: '32px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                     <div style={s.noteBoxGray}>
-                      <span style={s.detailLabel}><StickyNote size={14} /> GENERAL NOTE</span>
-                      <span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No notes provided.'}</span>
+                      <span style={s.detailLabel}><StickyNote size={14}/> GENERAL NOTE</span>
+                      <p style={{...s.detailValue, marginTop: '8px'}}>{selectedHouse.note || '-'}</p>
                     </div>
                     <div style={s.noteBoxOrange}>
-                      <span style={{ ...s.detailLabel, color: '#c2410c' }}><PenTool size={14} /> EMPLOYEE'S NOTE</span>
-                      <span style={{ ...s.detailValue, fontSize: '0.95rem', color: '#7c2d12' }}>{selectedHouse.employeeNote || 'No employee notes provided.'}</span>
+                      <span style={{...s.detailLabel, color: '#9a3412'}}><PenTool size={14}/> EMPLOYEE'S NOTE</span>
+                      <p style={{...s.detailValue, color: '#9a3412', marginTop: '8px'}}>{selectedHouse.employeeNote || '-'}</p>
                     </div>
                   </div>
 
-                  {/* PHOTOS GRID - Cada sección ocupa toda la fila para que las fotos se vean grandes */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
-                    <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <ImageIcon size={18} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Before Photos</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{beforePhotoURLs.length} {beforePhotoURLs.length === 1 ? 'photo' : 'photos'}</div>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button onClick={() => generatePDF('before')} disabled={isSaving || beforePhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: (isSaving || beforePhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: beforePhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Printer size={14} /> Exportar PDF
-                          </button>
-                          {canEdit && photoConfig.allowUploadFromDevice && (
+                  {(beforeFiles.length > 0 || afterFiles.length > 0) && (
+                    <div style={{ marginBottom: '20px', padding: '12px 16px', backgroundColor: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#92400e', fontSize: '0.9rem', fontWeight: 600 }}>
+                        ⚠️ Tienes {beforeFiles.length + afterFiles.length} foto(s) pendiente(s) por guardar
+                      </span>
+                      <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Save size={14} /> {isSaving ? 'Guardando...' : 'Guardar Fotos'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={s.detailLabel}>BEFORE PHOTOS</span>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {photoConfig.allowUploadFromDevice && isElementVisible('btn_uploadPhoto') && (
                             <>
-                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> Cargar</button>
+                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Upload size={12} /> Cargar
+                              </button>
                               <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
-                          {canEdit && photoConfig.allowTakePhoto && (
+                          {photoConfig.allowTakePhoto && isElementVisible('btn_takePhoto') && (
                             <>
-                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={14} /> Cámara</button>
+                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Camera size={12} /> Cámara
+                              </button>
                               <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
                             </>
                           )}
+                          {isElementVisible('btn_exportPdf') && (
+                            <button onClick={() => generatePDF('before')} style={{ background: '#eff6ff', color: '#1e3a8a', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Printer size={12} /> Export PDF
+                            </button>
+                          )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.85rem', padding: '12px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><Loader2 size={16} className="spin" /> Optimizando imágenes...</div>}
-                      {beforePhotoURLs.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', padding: '40px 0', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
-                          <ImageIcon size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-                          <div>No photos uploaded yet.</div>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
+                      {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
+                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {beforePhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-                              <img src={url} alt={`Before ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              {canEdit && (
-                                <button onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                                  <X size={14} />
-                                </button>
-                              )}
-                              <div style={{ position: 'absolute', bottom: '6px', left: '6px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>
-                                {String(i + 1).padStart(2, '0')}
-                              </div>
+                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                              <img src={url} alt="Before" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
                             </div>
                           ))}
                         </div>
-                      )}
+                      }
                     </div>
 
-                    <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#d1fae5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <ImageIcon size={18} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>After Photos</div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{afterPhotoURLs.length} {afterPhotoURLs.length === 1 ? 'photo' : 'photos'}</div>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                          <button onClick={() => generatePDF('after')} disabled={isSaving || afterPhotoURLs.length === 0} style={{ background: 'white', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: (isSaving || afterPhotoURLs.length === 0) ? 'not-allowed' : 'pointer', opacity: afterPhotoURLs.length === 0 ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Printer size={14} /> Exportar PDF
-                          </button>
-                          {canEdit && photoConfig.allowUploadFromDevice && (
+                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={s.detailLabel}>AFTER PHOTOS</span>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {photoConfig.allowUploadFromDevice && isElementVisible('btn_uploadPhoto') && (
                             <>
-                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> Cargar</button>
+                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Upload size={12} /> Cargar
+                              </button>
                               <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
-                          {canEdit && photoConfig.allowTakePhoto && (
+                          {photoConfig.allowTakePhoto && isElementVisible('btn_takePhoto') && (
                             <>
-                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Camera size={14} /> Cámara</button>
+                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Camera size={12} /> Cámara
+                              </button>
                               <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
                             </>
                           )}
+                          {isElementVisible('btn_exportPdf') && (
+                            <button onClick={() => generatePDF('after')} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Printer size={12} /> Export PDF
+                            </button>
+                          )}
                         </div>
                       </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.85rem', padding: '12px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><Loader2 size={16} className="spin" /> Optimizando imágenes...</div>}
-                      {afterPhotoURLs.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem', padding: '40px 0', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
-                          <ImageIcon size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-                          <div>No photos uploaded yet.</div>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '14px' }}>
+                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
+                      {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
+                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
                           {afterPhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-                              <img src={url} alt={`After ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              {canEdit && (
-                                <button onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                                  <X size={14} />
-                                </button>
-                              )}
-                              <div style={{ position: 'absolute', bottom: '6px', left: '6px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>
-                                {String(i + 1).padStart(2, '0')}
-                              </div>
+                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                              <img src={url} alt="After" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
                             </div>
                           ))}
                         </div>
-                      )}
+                      }
                     </div>
                   </div>
-                  {canEdit && (beforeFiles.length > 0 || afterFiles.length > 0) && (
-                    <div style={{ marginTop: '12px', textAlign: 'right' }}>
-                       <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{...s.btnPrimary, display: 'inline-flex'}}>{isSaving ? 'Uploading...' : 'Save Photos'}</button>
-                    </div>
-                  )}
                 </div>
               )}
 
             </div>
 
             <footer style={s.footerBetween}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}><Trash2 size={16} style={{ marginRight: '6px' }} /> Delete Property</button>}
+              <div>
+                {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && <button onClick={handleDelete} disabled={isSaving} style={s.btnDangerLight}><Trash2 size={16} /> Delete Property</button>}
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <button style={{...s.actionBtn, ...s.btnOutline}} onClick={() => setIsDetailModalOpen(false)}>Close</button>
-                {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={() => handleOpenForm(selectedHouse as Property)}><Edit2 size={16} /> Edit Details</button>}
+                <button onClick={() => setIsDetailModalOpen(false)} style={s.btnOutline}>Close</button>
+                {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && <button onClick={() => handleOpenForm(selectedHouse as Property)} style={s.btnPrimary}><Edit2 size={16} /> Edit Details</button>}
               </div>
             </footer>
           </div>
         </div>
       )}
 
-      {/* --- MODAL ADD / EDIT SERVICE --- */}
+      {/* --- SERVICE MODAL --- */}
       {isServiceModalOpen && (
-        <div className="modal-overlay-centered" onClick={() => setIsServiceModalOpen(false)} style={{ zIndex: 10001 }}>
-          <div className="modal-70" style={{ maxWidth: '650px' }} onClick={e => e.stopPropagation()}>
-            <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Calculator size={20} color="#3b82f6" /> {serviceForm.id ? 'Edit Service Record' : 'Add Service Record'}
-              </h3>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }} onClick={() => setIsServiceModalOpen(false)}><X size={24} /></button>
+        <div className="modal-overlay-centered" onClick={() => setIsServiceModalOpen(false)}>
+          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <header style={s.header}>
+              <h3 style={s.title}>{serviceForm.id ? 'Edit Service Record' : 'Add Service Record'}</h3>
+              <button style={s.closeBtn} onClick={() => setIsServiceModalOpen(false)}><X size={24} /></button>
             </header>
-
-            <div style={{ padding: '30px', overflowY: 'auto', backgroundColor: '#f8fafc' }}>
-              
-              {/* BLOCK 1: DETAILS */}
-              <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>1. Item Details</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-                  <div>
-                    <label style={s.label}>Product / Service <span style={{ color: '#3b82f6' }}>*</span></label>
-                    <CustomSelect 
-                      options={services} 
-                      value={serviceForm.serviceId} 
-                      onChange={(val: string) => setServiceForm({ ...serviceForm, serviceId: val })} 
-                      placeholder="Select from catalog..." 
-                      icon={Wrench} 
-                    />
+            <div style={s.body}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <label style={s.label}>Service <span style={{ color: '#ef4444' }}>*</span></label>
+                  <CustomSelect options={services} value={serviceForm.serviceId} onChange={(val: string) => {
+                    const srv = services.find(c => c.id === val);
+                    setServiceForm({ ...serviceForm, serviceId: val, price: srv ? Number((srv as any).price || 0) : serviceForm.price });
+                  }} placeholder="Select a service..." icon={Wrench} />
+                </div>
+                <div>
+                  <label style={s.label}>Quantity</label>
+                  <div style={s.inputWrapper}>
+                    <Hash style={s.icon} size={16} />
+                    <input type="number" min="1" style={s.input} value={serviceForm.quantity} onChange={e => setServiceForm({ ...serviceForm, quantity: Number(e.target.value) })} />
                   </div>
-                  <div style={{ display: 'flex', gap: '16px' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={s.label}>Quantity <span style={{ color: '#3b82f6' }}>*</span></label>
-                      <div style={{ position: 'relative' }}>
-                        <Hash size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                        <input type="number" min="1" step="1" style={{...s.input, paddingLeft: '36px'}} value={serviceForm.quantity} onChange={(e) => setServiceForm({ ...serviceForm, quantity: Number(e.target.value) })} />
-                      </div>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={s.label}>Unit Price ($) <span style={{ color: '#3b82f6' }}>*</span></label>
-                      <div style={{ position: 'relative' }}>
-                        <DollarSign size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                        <input type="number" step="0.01" style={{...s.input, paddingLeft: '36px'}} value={serviceForm.price || ''} onChange={(e) => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
-                      </div>
-                    </div>
+                </div>
+                <div>
+                  <label style={s.label}>Unit Price</label>
+                  <div style={s.inputWrapper}>
+                    <DollarSign style={s.icon} size={16} />
+                    <input type="number" step="0.01" style={s.input} value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
                   </div>
-                  <div>
-                    <label style={s.label}>Notes</label>
-                    <div style={{ position: 'relative' }}>
-                      <StickyNote size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                      <textarea style={{...s.input, paddingLeft: '36px', minHeight: '60px', resize: 'vertical'}} placeholder="Add descriptions..." value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })}></textarea>
-                    </div>
+                </div>
+                <div>
+                  <label style={s.label}>Tax %</label>
+                  <div style={s.inputWrapper}>
+                    <Percent style={s.icon} size={16} />
+                    <input type="number" step="0.01" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
                   </div>
                 </div>
               </div>
 
-              {/* BLOCK 2: TAX SETTINGS */}
-              <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>2. Tax Settings</h4>
-                
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={s.label}>Apply Tax?</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <label style={s.label}>Apply Tax (+)</label>
                   <div style={s.segmentContainer}>
-                    <button type="button" onClick={() => setServiceForm({...serviceForm, applyTax: 'Yes'})} style={s.segmentBtn(serviceForm.applyTax === 'Yes', 'yes')}>Yes, Add Tax</button>
-                    <button type="button" onClick={() => setServiceForm({...serviceForm, applyTax: 'No'})} style={s.segmentBtn(serviceForm.applyTax === 'No', 'no')}>No</button>
+                    <button type="button" style={s.segmentBtn(serviceForm.applyTax === 'Yes', 'yes')} onClick={() => setServiceForm({ ...serviceForm, applyTax: 'Yes', minusTax: 'No' })}>Yes</button>
+                    <button type="button" style={s.segmentBtn(serviceForm.applyTax === 'No', 'no')} onClick={() => setServiceForm({ ...serviceForm, applyTax: 'No' })}>No</button>
                   </div>
                 </div>
-
-                {serviceForm.applyTax === 'Yes' && (
-                  <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                    <label style={s.label}>Tax Percentage (%)</label>
-                    <div style={{ position: 'relative', width: '50%' }}>
-                      <Percent size={16} color="#3b82f6" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                      <input type="number" step="0.1" style={{...s.input, paddingLeft: '36px'}} value={serviceForm.taxPercentage} onChange={(e) => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
-                    </div>
-                  </div>
-                )}
-
                 {serviceForm.applyTax === 'No' && (
-                  <div style={{ backgroundColor: '#fff1f2', padding: '16px', borderRadius: '8px', border: '1px dashed #fecaca' }}>
-                    <label style={{...s.label, color: '#991b1b'}}>Minus Tax? (Deduct from subtotal)</label>
-                    <div style={{...s.segmentContainer, backgroundColor: '#fef2f2', marginBottom: serviceForm.minusTax === 'Yes' ? '16px' : '0' }}>
-                      <button type="button" onClick={() => setServiceForm({...serviceForm, minusTax: 'Yes'})} style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'no')}>Yes, Deduct</button>
-                      <button type="button" onClick={() => setServiceForm({...serviceForm, minusTax: 'No'})} style={{...s.segmentBtn(serviceForm.minusTax === 'No', 'no'), color: serviceForm.minusTax === 'No' ? '#64748b' : '#94a3b8'}}>No, Keep Subtotal</button>
+                  <div>
+                    <label style={s.label}>Subtract Tax (−)</label>
+                    <div style={s.segmentContainer}>
+                      <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'yes')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })}>Yes</button>
+                      <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'No', 'no')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })}>No</button>
                     </div>
-
-                    {serviceForm.minusTax === 'Yes' && (
-                      <>
-                        <label style={{...s.label, color: '#991b1b'}}>Tax Percentage to Deduct (%)</label>
-                        <div style={{ position: 'relative', width: '50%' }}>
-                          <Percent size={16} color="#ef4444" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                          <input type="number" step="0.1" style={{...s.input, paddingLeft: '36px', borderColor: '#fca5a5'}} value={serviceForm.taxPercentage} onChange={(e) => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* BLOCK 3: SUMMARY */}
-              <div style={{ backgroundColor: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>3. Summary</h4>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#64748b', fontSize: '0.95rem' }}>
-                  <span>Subtotal</span>
-                  <span style={{ fontWeight: 600, color: '#1e293b' }}>${serviceForm.subtotal.toFixed(2)}</span>
+              <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Subtotal</span>
+                  <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 600 }}>${Number(serviceForm.subtotal).toFixed(2)}</span>
                 </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', color: '#64748b', fontSize: '0.95rem' }}>
-                  <span>Tax Amount</span>
-                  <span style={{ fontWeight: 600, color: serviceForm.taxAmount > 0 ? '#ef4444' : '#1e293b' }}>
-                    {serviceForm.taxAmount > 0 ? '+' : (serviceForm.minusTax === 'Yes' && serviceForm.applyTax === 'No') ? '-' : ''}${Math.abs(serviceForm.taxAmount).toFixed(2)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Tax {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '(−)' : '(+)'}</span>
+                  <span style={{ color: serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '#ef4444' : '#10b981', fontSize: '0.95rem', fontWeight: 600 }}>
+                    {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '-' : '+'}${Math.abs(Number(serviceForm.taxAmount)).toFixed(2)}
                   </span>
                 </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '16px', borderTop: '2px dashed #cbd5e1', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                  <span>Total</span>
-                  <span style={{ color: '#047857' }}>${serviceForm.total.toFixed(2)}</span>
+                <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '8px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 700 }}>Total</span>
+                  <span style={{ color: '#047857', fontSize: '1.4rem', fontWeight: 800 }}>${Number(serviceForm.total).toFixed(2)}</span>
                 </div>
               </div>
 
+              <div>
+                <label style={s.label}>Notes</label>
+                <textarea style={{ ...s.input, minHeight: '60px', padding: '10px 14px', resize: 'vertical' }} value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })} />
+              </div>
             </div>
-
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button style={{...s.actionBtn, ...s.btnOutline}} onClick={() => setIsServiceModalOpen(false)} disabled={isSaving}>Cancel</button>
-              <button style={{...s.actionBtn, ...s.btnPrimary}} onClick={handleSaveService} disabled={isSaving}>
-                {isSaving ? 'Processing...' : 'Save Record'}
-              </button>
+            <footer style={s.footer}>
+              <button onClick={() => setIsServiceModalOpen(false)} style={s.btnOutline}>Cancel</button>
+              <button onClick={handleSaveService} disabled={isSaving} style={s.btnPrimary}><Save size={16} /> {isSaving ? 'Saving...' : 'Save Service'}</button>
             </footer>
           </div>
         </div>
       )}
 
-      {/* --- MODAL DE PAYROLL --- */}
+      {/* --- PAYROLL MODAL --- */}
       {isPayrollModalOpen && selectedHouse && (
-        <div className="modal-overlay-centered" onClick={() => setIsPayrollModalOpen(false)} style={{ zIndex: 10000 }}>
-          <div className="modal-70" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay-centered" onClick={() => setIsPayrollModalOpen(false)}>
+          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
             <header style={s.header}>
               <h3 style={s.title}>Register Payment</h3>
-              <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={20} /></button>
+              <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={24} /></button>
             </header>
-            
             <div style={s.body}>
-              
-              <div style={{ padding: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>PROPERTY</div>
-                <div style={{ fontSize: '1rem', color: '#1e293b', fontWeight: 700 }}>{selectedHouse.client} - {selectedHouse.address}</div>
+              {/* ⭐ CAMBIO 3: header de la propiedad con nombre del cliente resuelto */}
+              <div style={{ backgroundColor: '#eff6ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Property</div>
+                <div style={{ fontSize: '1rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-                
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
-                  <label style={s.label}>Employee <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <select 
-                    style={{ ...s.input, cursor: 'pointer' }}
-                    value={payrollForm.employeeId}
-                    onChange={(e) => setPayrollForm({ ...payrollForm, employeeId: e.target.value })}
-                  >
-                    <option value="">Select an employee...</option>
-                    {employees.filter(emp => (selectedHouse?.assignedWorkers || []).includes(emp.id)).map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                    ))}
-                  </select>
-                  {(!selectedHouse?.assignedWorkers || selectedHouse.assignedWorkers.length === 0) && (
-                    <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '4px' }}>Please assign workers to this property first.</p>
-                  )}
+                  <label style={s.label}>Employee <span style={{ color: '#ef4444' }}>*</span></label>
+                  <CustomSelect 
+                    options={employees.map(e => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }))} 
+                    value={payrollForm.employeeId} 
+                    onChange={(val: string) => setPayrollForm({ ...payrollForm, employeeId: val })} 
+                    placeholder="Select Employee..." 
+                    icon={User} 
+                  />
                 </div>
-
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Date <span style={{ color: '#3b82f6' }}>*</span></label>
-                    <input type="date" style={s.input} value={payrollForm.date} onChange={(e) => setPayrollForm({ ...payrollForm, date: e.target.value })} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Base Amount ($) <span style={{ color: '#3b82f6' }}>*</span></label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={payrollForm.baseAmount || ''} onChange={(e) => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
+                <div>
+                  <label style={s.label}>Payment Date</label>
+                  <div style={s.inputWrapper}>
+                    <CalendarDays style={s.icon} size={16} />
+                    <input type="date" style={s.input} value={payrollForm.date} onChange={e => setPayrollForm({ ...payrollForm, date: e.target.value })} />
                   </div>
                 </div>
+              </div>
 
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Extra ($)</label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={payrollForm.extraAmount || ''} onChange={(e) => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={s.label}>Extra Note</label>
-                    <input type="text" style={s.input} placeholder="Reason for extra..." value={payrollForm.extraNote} onChange={(e) => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Discount ($)</label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={payrollForm.discountAmount || ''} onChange={(e) => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={s.label}>Discount Note</label>
-                    <input type="text" style={s.input} placeholder="Reason for discount..." value={payrollForm.discountNote} onChange={(e) => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <label style={s.label}>Base Amount <span style={{ color: '#ef4444' }}>*</span></label>
+                  <div style={s.inputWrapper}>
+                    <DollarSign style={s.icon} size={16} />
+                    <input type="number" step="0.01" style={s.input} value={payrollForm.baseAmount} onChange={e => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
                   </div>
                 </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ecfdf5', border: '1px solid #10b981', borderRadius: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#047857' }}>TOTAL TO PAY:</span>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#047857' }}>${payrollForm.totalAmount.toFixed(2)}</span>
+                <div>
+                  <label style={s.label}>Extra Amount (+)</label>
+                  <div style={s.inputWrapper}>
+                    <DollarSign style={s.icon} size={16} />
+                    <input type="number" step="0.01" style={s.input} value={payrollForm.extraAmount} onChange={e => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
+                  </div>
                 </div>
-
-                <div style={{ textAlign: 'right', marginTop: '8px' }}>
-                  <button style={{ ...s.btnPrimary, backgroundColor: '#10b981', display: 'inline-flex' }} onClick={handleSavePayroll} disabled={isSaving}>
-                    {isSaving ? 'Processing...' : 'Save Payment'}
-                  </button>
+                <div>
+                  <label style={s.label}>Discount Amount (−)</label>
+                  <div style={s.inputWrapper}>
+                    <DollarSign style={s.icon} size={16} />
+                    <input type="number" step="0.01" style={s.input} value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
+                  </div>
                 </div>
+              </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                <div>
+                  <label style={s.label}>Extra Note</label>
+                  <input type="text" style={{...s.input, paddingLeft: '14px'}} placeholder="Reason for extra..." value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} />
+                </div>
+                <div>
+                  <label style={s.label}>Discount Note</label>
+                  <input type="text" style={{...s.input, paddingLeft: '14px'}} placeholder="Reason for discount..." value={payrollForm.discountNote} onChange={e => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#ecfdf5', padding: '16px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calculator size={20} color="#047857" />
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#065f46' }}>Total to Pay</span>
+                </div>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#047857' }}>${Number(payrollForm.totalAmount).toFixed(2)}</span>
               </div>
             </div>
+            <footer style={s.footer}>
+              <button onClick={() => setIsPayrollModalOpen(false)} style={s.btnOutline}>Cancel</button>
+              <button onClick={handleSavePayroll} disabled={isSaving} style={s.btnPrimary}><Save size={16} /> {isSaving ? 'Saving...' : 'Register Payment'}</button>
+            </footer>
           </div>
         </div>
       )}
 
-      {/* ⭐ --- FIELD CONFIGURATION MODAL --- */}
+      {/* --- FIELD CONFIGURATION MODAL --- */}
       {isFieldConfigOpen && (
-        <div className="modal-overlay-centered" onClick={() => setIsFieldConfigOpen(false)} style={{ zIndex: 10000 }}>
-          <div onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', width: '95%', maxWidth: '1100px', maxHeight: '90vh', borderRadius: '16px', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
-            <header style={{ padding: '20px 28px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Settings size={20} />
-                </div>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}>Form Field Configuration</h2>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>Configure which fields and buttons each role can see</p>
-                </div>
+        <div className="modal-overlay-centered" onClick={() => setIsFieldConfigOpen(false)}>
+          <div className="modal-90" onClick={e => e.stopPropagation()} style={{ maxWidth: '1100px' }}>
+            <header style={s.header}>
+              <div>
+                <h3 style={s.title}>Configure Field Visibility</h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Define which fields and buttons each role can see in this form and in the detail modal.</p>
               </div>
-              <button onClick={() => setIsFieldConfigOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={24} /></button>
+              <button style={s.closeBtn} onClick={() => setIsFieldConfigOpen(false)}><X size={24} /></button>
             </header>
-
-            <div className="modal-body-scroll" style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
+            <div style={s.body}>
               {rolesList.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                  No roles configured. Create some roles first in <strong>Roles & Permissions</strong>.
+                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                  No roles configured. Go to <b>Roles & Permissions</b> to create roles first.
                 </div>
               ) : (
                 <>
-                  <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 16px', marginBottom: '24px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                    <AlertTriangle size={18} color="#1e40af" style={{ flexShrink: 0, marginTop: '2px' }} />
-                    <div style={{ fontSize: '0.85rem', color: '#1e3a8a', lineHeight: 1.5 }}>
-                      For each element below, <strong>check the roles that should NOT see it</strong>. Unchecked roles will see the element normally.
-                      SuperAdmin always sees everything regardless of this configuration.
-                    </div>
+                  <div style={{ backgroundColor: '#eff6ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#1e40af' }}>
+                      <b>How to use:</b> tick a checkbox to <b>HIDE</b> that element for the corresponding role. SuperAdmin always sees everything.
+                    </p>
                   </div>
 
-                  {/* SECCIÓN: CAMPOS DEL FORM */}
-                  <h3 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FileText size={18} color="#3b82f6" /> Form Fields
-                  </h3>
-
-                  {Array.from(new Set(CONFIGURABLE_FIELDS.map(f => f.section))).map(sectionName => (
-                    <div key={sectionName} style={{ marginBottom: '20px' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
-                        {sectionName}
-                      </div>
-                      <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
-                        {CONFIGURABLE_FIELDS.filter(f => f.section === sectionName).map((field, idx) => {
-                          const hiddenForRoles = fieldConfigDraft.visibility?.[field.id] || [];
-                          return (
-                            <div key={field.id} style={{ padding: '14px 16px', borderBottom: idx < CONFIGURABLE_FIELDS.filter(f => f.section === sectionName).length - 1 ? '1px solid #f1f5f9' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                              <div style={{ flex: '1 1 200px' }}>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{field.label}</div>
-                                {hiddenForRoles.length > 0 && (
-                                  <div style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '2px' }}>
-                                    Hidden for {hiddenForRoles.length} {hiddenForRoles.length === 1 ? 'role' : 'roles'}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {rolesList.map(role => {
-                                  const isHidden = hiddenForRoles.includes(role.id);
+                  {[
+                    { title: 'Form Fields', list: CONFIGURABLE_FIELDS },
+                    { title: 'Action Buttons', list: CONFIGURABLE_BUTTONS }
+                  ].map(group => (
+                    <div key={group.title} style={{ marginBottom: '28px' }}>
+                      <h4 style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 700, margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.title}</h4>
+                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${300 + rolesList.length * 140}px` }}>
+                          <thead>
+                            <tr style={{ backgroundColor: '#f8fafc' }}>
+                              <th style={{ ...s.th, position: 'sticky', left: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>Element</th>
+                              {rolesList.map(r => (
+                                <th key={r.id} style={{ ...s.th, textAlign: 'center', minWidth: '120px' }}>{r.name}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.list.map(el => (
+                              <tr key={el.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ ...s.td, padding: '12px 16px' }}>
+                                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{el.label}</div>
+                                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>{el.section}</div>
+                                </td>
+                                {rolesList.map(r => {
+                                  const hidden = (fieldConfigDraft.visibility?.[el.id] || []).includes(r.id);
                                   return (
-                                    <label
-                                      key={role.id}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '6px 10px',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        backgroundColor: isHidden ? '#fef2f2' : '#f8fafc',
-                                        border: isHidden ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                        color: isHidden ? '#991b1b' : '#475569',
-                                        transition: 'all 0.15s'
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isHidden}
-                                        onChange={() => toggleElementVisibilityForRole(field.id, role.id)}
-                                        style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#dc2626' }}
-                                      />
-                                      Hide for {role.name}
-                                    </label>
+                                    <td key={r.id} style={{ ...s.td, textAlign: 'center', padding: '12px 16px' }}>
+                                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={hidden} onChange={() => toggleElementVisibilityForRole(el.id, r.id)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                                        <span style={{ fontSize: '0.75rem', color: hidden ? '#ef4444' : '#94a3b8', fontWeight: 600 }}>{hidden ? 'Hidden' : 'Visible'}</span>
+                                      </label>
+                                    </td>
                                   );
                                 })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* SECCIÓN: BOTONES */}
-                  <h3 style={{ margin: '24px 0 16px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckSquare size={18} color="#3b82f6" /> Action Buttons
-                  </h3>
-
-                  {Array.from(new Set(CONFIGURABLE_BUTTONS.map(b => b.section))).map(sectionName => (
-                    <div key={sectionName} style={{ marginBottom: '20px' }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '4px' }}>
-                        {sectionName}
-                      </div>
-                      <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
-                        {CONFIGURABLE_BUTTONS.filter(b => b.section === sectionName).map((btn, idx) => {
-                          const hiddenForRoles = fieldConfigDraft.visibility?.[btn.id] || [];
-                          return (
-                            <div key={btn.id} style={{ padding: '14px 16px', borderBottom: idx < CONFIGURABLE_BUTTONS.filter(b => b.section === sectionName).length - 1 ? '1px solid #f1f5f9' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                              <div style={{ flex: '1 1 200px' }}>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{btn.label}</div>
-                                {hiddenForRoles.length > 0 && (
-                                  <div style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '2px' }}>
-                                    Hidden for {hiddenForRoles.length} {hiddenForRoles.length === 1 ? 'role' : 'roles'}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                {rolesList.map(role => {
-                                  const isHidden = hiddenForRoles.includes(role.id);
-                                  return (
-                                    <label
-                                      key={role.id}
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '6px 10px',
-                                        borderRadius: '6px',
-                                        cursor: 'pointer',
-                                        backgroundColor: isHidden ? '#fef2f2' : '#f8fafc',
-                                        border: isHidden ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                        color: isHidden ? '#991b1b' : '#475569',
-                                        transition: 'all 0.15s'
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isHidden}
-                                        onChange={() => toggleElementVisibilityForRole(btn.id, role.id)}
-                                        style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#dc2626' }}
-                                      />
-                                      Hide for {role.name}
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   ))}
                 </>
               )}
             </div>
-
-            <footer style={{ padding: '16px 28px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 16px 16px' }}>
-              <button onClick={() => setIsFieldConfigOpen(false)} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={saveFieldConfig} disabled={isSavingFieldConfig} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#2563eb', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: isSavingFieldConfig ? 'wait' : 'pointer', opacity: isSavingFieldConfig ? 0.7 : 1 }}>
+            <footer style={s.footer}>
+              <button onClick={() => setIsFieldConfigOpen(false)} style={s.btnOutline}>Cancel</button>
+              <button onClick={saveFieldConfig} disabled={isSavingFieldConfig} style={s.btnPrimary}>
                 <Save size={16} /> {isSavingFieldConfig ? 'Saving...' : 'Save Configuration'}
               </button>
             </footer>
