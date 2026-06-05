@@ -4,10 +4,8 @@ import {
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
-import { propertiesService } from '../services/propertiesService';
-import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
-import { collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 
 interface PayrollViewProps {
