@@ -292,6 +292,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   // ⭐ CAMBIO 1: estado para saber qué team está desplegado en la columna derecha
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  // ⭐ Nuevo: buscador funcional (dirección + cliente)
+  const [searchTerm, setSearchTerm] = useState('');
+  // ⭐ Nuevo: filtro de prioridad
+  const [priorityFilter, setPriorityFilter] = useState('All');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -626,7 +630,32 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       passStatusFilter = p.statusId === statusFilter || (!!stObj && p.statusId === stObj.name);
     }
     
-    return passStatus && passHouse && passInvoice && passStatusFilter;
+    // ⭐ Nuevo: filtro de prioridad
+    let passPriority = true;
+    if (priorityFilter !== 'All') {
+      const prObj = priorities.find(pp => pp.id === priorityFilter);
+      passPriority = p.priorityId === priorityFilter || (!!prObj && p.priorityId === prObj.name);
+    }
+
+    // ⭐ Nuevo: buscador funcional (busca por dirección y por nombre de cliente)
+    let passSearch = true;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      const addressMatch = (p.address || '').toLowerCase().includes(q);
+      const clientName = getClientName(p.client);
+      const clientMatch = clientName.toLowerCase().includes(q);
+      passSearch = addressMatch || clientMatch;
+    }
+    
+    return passStatus && passHouse && passInvoice && passStatusFilter && passPriority && passSearch;
+  }).sort((a, b) => {
+    // ⭐ Ordenar por Schedule Date ascendente; las casas sin fecha van al final
+    const dateA = a.scheduleDate || '';
+    const dateB = b.scheduleDate || '';
+    if (!dateA && !dateB) return 0;
+    if (!dateA) return 1;
+    if (!dateB) return -1;
+    return dateA.localeCompare(dateB);
   });
 
   const dashboardTabs = statuses
@@ -1609,7 +1638,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         <div className="dashboard-actions-wrapper" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <div className="search-box-container" style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '0 16px', height: '42px', flex: 1, minWidth: '200px' }}>
             <Search size={16} color="#9ca3af" />
-            <input type="text" placeholder="Search job..." style={{ backgroundColor: 'transparent', border: 'none', outline: 'none', padding: '10px', fontSize: '0.9rem', width: '100%', color: '#111827' }} />
+            <input 
+              type="text" 
+              placeholder="Buscar por dirección o cliente..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ backgroundColor: 'transparent', border: 'none', outline: 'none', padding: '10px', fontSize: '0.9rem', width: '100%', color: '#111827' }} 
+            />
           </div>
           
           {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canAdd) && (
@@ -1686,7 +1721,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
                     {/* ⭐ CAMBIO 2: indicador del botón incluye statusFilter */}
-                    <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
+                    <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
                   </button>
 
                   {isFilterMenuOpen && (
@@ -1703,6 +1738,21 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           <option value="All">All Statuses</option>
                           {statuses.map(st => (
                             <option key={st.id} value={st.id}>{st.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* ⭐ Nuevo: selector de Priority */}
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Priority</label>
+                        <select 
+                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                          value={priorityFilter} 
+                          onChange={e => setPriorityFilter(e.target.value)}
+                        >
+                          <option value="All">All Priorities</option>
+                          {priorities.map(pr => (
+                            <option key={pr.id} value={pr.id}>{pr.name}</option>
                           ))}
                         </select>
                       </div>
@@ -1763,9 +1813,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   ) : filteredProperties.map((prop) => {
                     const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
                     const serviceName = getRelationName(services, prop.serviceId, 'Regular');
+                    // ⭐ Detectar prioridad HIGH para el indicador visual
+                    const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
+                    const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
 
                     return (
-                      <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
                         <td data-label="Actions" style={s.td}>
                           <div style={{ display: 'flex', gap: '4px' }}>
                             {canEdit && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
@@ -1774,7 +1827,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </td>
                         <td data-label="Client" style={s.td}>
                           <div className="mobile-client-cell">
-                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {/* ⭐ Icono HIGH priority */}
+                              {isHighPriority && (
+                                <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                  <AlertTriangle size={11} /> HIGH
+                                </span>
+                              )}
                               {/* ⭐ CAMBIO 3: muestra el nombre del cliente resuelto desde customers */}
                               {getClientName(prop.client)}
                               {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
@@ -1807,7 +1866,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               ) : teamsWithScope.length === 0 ? (
                 <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
               ) : (
-                teamsWithScope.map(team => {
+                teamsWithScope
+                  // ⭐ Nuevo: ocultar teams "Free" (sin casas activas, excluyendo Invoice)
+                  .filter(team => propertiesWithScope.some(p => {
+                    const isAssignedToTeam = p.teamId === team.id || p.teamId === team.name;
+                    if (!isAssignedToTeam) return false;
+                    const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
+                    const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
+                    return !isStatusInvoice;
+                  }))
+                  .map(team => {
                   // ⭐ Filtrar casas del team: excluir Invoice, ordenar Recall primero
                   const assignedProps = propertiesWithScope
                     .filter(p => {
@@ -1857,19 +1925,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             assignedProps.map(prop => {
                               const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
                               const isRecall = stProp?.name?.toLowerCase() === 'recall' || prop.statusId?.toLowerCase() === 'recall';
+                              // ⭐ Detectar HIGH priority también en panel del team
+                              const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
+                              const isHigh = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
                               return (
                                 <div 
                                   key={prop.id} 
                                   onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
-                                  style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
+                                  style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : isHigh ? '#fdba74' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
                                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
                                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                                 >
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
                                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{getClientName(prop.client)}</div>
-                                    {isRecall && (
-                                      <span style={{ flexShrink: 0, backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
-                                    )}
+                                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                      {isRecall && (
+                                        <span style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
+                                      )}
+                                      {isHigh && (
+                                        <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', backgroundColor: '#fff7ed', color: '#c2410c', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                          <AlertTriangle size={10} /> High
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                   <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
                                 </div>
