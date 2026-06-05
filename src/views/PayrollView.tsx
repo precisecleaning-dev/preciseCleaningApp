@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db } from '../config/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 
 interface PayrollViewProps {
@@ -79,13 +79,16 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     const TOTAL = 8;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
-    // Listener directo a 'payroll' (no usamos payrollService.getAll para evitar
-    // cualquier filtro o transformación oculta del servicio durante el diagnóstico)
+    // ⭐ FIX (lecturas): traemos solo los últimos 100 registros ordenados por fecha
+    //    descendente. Esto limita la lectura inicial a 100 documentos como máximo
+    //    (en lugar de toda la colección) para cuidar la cuota del plan gratuito,
+    //    manteniendo el tiempo real dentro de esa ventana de 100.
+    //    NOTA: orderBy('date') excluye documentos que NO tengan el campo `date`.
     unsubscribes.push(onSnapshot(
-      collection(db, 'payroll'),
+      query(collection(db, 'payroll'), orderBy('date', 'desc'), limit(100)),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as PayrollRecord[];
-        console.log(`[PayrollView] Loaded ${data.length} payroll records`, data);
+        console.log(`[PayrollView] Loaded ${data.length} payroll records (max 100)`, data);
         setRecords(data);
         tick();
       },
