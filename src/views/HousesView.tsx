@@ -1517,6 +1517,22 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       <style>{`
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* ⭐ Scrollbars elegantes y modernos para TODA la vista de Houses */
+        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
+        .fade-in *::-webkit-scrollbar-track { background: transparent; }
+        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
+        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
+        .fade-in *::-webkit-scrollbar-corner { background: transparent; }
+        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
+
+        /* Variantes para los modales también */
+        .modal-overlay-centered *::-webkit-scrollbar { width: 6px; height: 6px; }
+        .modal-overlay-centered *::-webkit-scrollbar-track { background: transparent; }
+        .modal-overlay-centered *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
+        .modal-overlay-centered *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
+        .modal-overlay-centered *::-webkit-scrollbar-corner { background: transparent; }
+        .modal-overlay-centered * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
         .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
         .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
         .modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
