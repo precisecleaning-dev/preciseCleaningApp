@@ -1572,7 +1572,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
         .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
         /* ⭐ CAMBIO 1: columna de equipos un poco más ancha para alojar el detalle desplegable */
-        .right-col { flex: 0 0 300px; width: 300px; display: flex; flex-direction: column; height: 100%; }
+        .right-col { flex: 0 0 240px; width: 240px; display: flex; flex-direction: column; height: 100%; }
 
         @media (max-width: 1024px) {
           .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
@@ -1628,8 +1628,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           statuses.slice(0, 4).map((status, index) => {
             const Icon = kpiIcons[index % kpiIcons.length];
             const count = propertiesWithScope.filter(p => p.statusId === status.id || p.statusId === status.name).length;
+            // ⭐ KPI clickeable: filtra la tabla Daily Jobs por este status
+            const isActive = activeFilter === status.name;
             return (
-              <div style={s.kpiCard} key={status.id}>
+              <div 
+                style={{ 
+                  ...s.kpiCard, 
+                  cursor: 'pointer', 
+                  border: `1px solid ${isActive ? status.color : '#e5e7eb'}`,
+                  boxShadow: isActive 
+                    ? `0 0 0 2px ${status.color}30, 0 1px 3px rgba(0,0,0,0.05)` 
+                    : '0 1px 3px rgba(0,0,0,0.03)',
+                  transition: 'all 0.2s ease'
+                }} 
+                key={status.id}
+                onClick={() => setActiveFilter(isActive ? 'All' : status.name)}
+                title={isActive ? 'Click para limpiar filtro' : `Filtrar trabajos por ${status.name}`}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.borderColor = status.color; }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.borderColor = '#e5e7eb'; }}
+              >
                 <div style={s.kpiIconBox(status.color)}><Icon size={18} /></div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.name}</div>
@@ -1783,35 +1800,51 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         {/* ⭐ CAMBIO 1: RIGHT COLUMN — ACTIVE TEAMS desplegables al hacer click */}
         <div className="right-col">
           <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <h3 style={{ margin: '0', padding: '20px', fontSize: '1.1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ margin: '0', padding: '14px 16px', fontSize: '1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {isLoading ? (
                 <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Loading teams...</div>
               ) : teamsWithScope.length === 0 ? (
                 <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
               ) : (
                 teamsWithScope.map(team => {
-                  const assignedProps = propertiesWithScope.filter(p => p.teamId === team.id || p.teamId === team.name);
+                  // ⭐ Filtrar casas del team: excluir Invoice, ordenar Recall primero
+                  const assignedProps = propertiesWithScope
+                    .filter(p => {
+                      if (p.teamId !== team.id && p.teamId !== team.name) return false;
+                      const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
+                      const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
+                      return !isStatusInvoice;
+                    })
+                    .sort((a, b) => {
+                      const stA = statuses.find(s => s.id === a.statusId || s.name === a.statusId);
+                      const stB = statuses.find(s => s.id === b.statusId || s.name === b.statusId);
+                      const isRecallA = stA?.name?.toLowerCase() === 'recall' || a.statusId?.toLowerCase() === 'recall';
+                      const isRecallB = stB?.name?.toLowerCase() === 'recall' || b.statusId?.toLowerCase() === 'recall';
+                      if (isRecallA && !isRecallB) return -1;
+                      if (!isRecallA && isRecallB) return 1;
+                      return 0;
+                    });
                   const isExpanded = expandedTeamId === team.id;
                   return (
                     <div 
                       key={team.id} 
                       onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
-                      style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
+                      style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
                       onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.borderColor = isExpanded ? team.color : '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={18} /></div>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={16} /></div>
                           <div>
-                            <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.95rem' }}>{team.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs today` : 'Free'}</div>
+                            <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem' }}>{team.name}</div>
+                            <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs` : 'Free'}</div>
                           </div>
                         </div>
-                        <ChevronDown size={18} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+                        <ChevronDown size={16} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
                       </div>
-                      <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '12px' }}>
+                      <div style={{ width: '100%', height: '3px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
                         <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
                       </div>
 
@@ -1821,18 +1854,27 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           {assignedProps.length === 0 ? (
                             <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No hay casas asignadas a este equipo.</span>
                           ) : (
-                            assignedProps.map(prop => (
-                              <div 
-                                key={prop.id} 
-                                onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
-                                style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                              >
-                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getClientName(prop.client)}</div>
-                                <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
-                              </div>
-                            ))
+                            assignedProps.map(prop => {
+                              const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
+                              const isRecall = stProp?.name?.toLowerCase() === 'recall' || prop.statusId?.toLowerCase() === 'recall';
+                              return (
+                                <div 
+                                  key={prop.id} 
+                                  onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
+                                  style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
+                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{getClientName(prop.client)}</div>
+                                    {isRecall && (
+                                      <span style={{ flexShrink: 0, backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       )}
