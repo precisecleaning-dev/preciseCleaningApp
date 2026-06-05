@@ -70,6 +70,16 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
+  // ⭐ FIX (amount): el documento en Firestore NO guarda `totalAmount`, solo
+  //    baseAmount / extraAmount / discountAmount. Calculamos el total al vuelo:
+  //    base + extra - discount. Si existiera totalAmount guardado y distinto de 0,
+  //    se respeta ese valor.
+  const getTotal = (r?: Partial<PayrollRecord> | null) => {
+    if (!r) return 0;
+    if (r.totalAmount != null && Number(r.totalAmount) !== 0) return Number(r.totalAmount);
+    return Number(r.baseAmount || 0) + Number(r.extraAmount || 0) - Number(r.discountAmount || 0);
+  };
+
   // ⭐ FIX: usar onSnapshot para carga viva. Esto también significa que los cambios
   //         hechos desde otras vistas (Houses, Invoices) se reflejan en tiempo real.
   useEffect(() => {
@@ -161,8 +171,8 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   }, [records, startDate, endDate, selectedEmployee, selectedStatus]);
 
   // Cálculos dinámicos
-  const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0);
-  const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0);
+  const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
+  const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
 
   const handleMarkAsPaid = async (id: string) => {
     if (!window.confirm("Mark this record as Paid?")) return;
@@ -403,7 +413,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                     
                     <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
                     
-                    <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${Number(record.totalAmount || 0).toFixed(2)}</td>
+                    <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${getTotal(record).toFixed(2)}</td>
                     
                     <td style={{...s.td, textAlign: 'center'}}>
                       {isPaid ? (
@@ -494,7 +504,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                       </div>
                       <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>TOTAL PAYOUT</span>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>${Number(selectedPayroll.totalAmount || 0).toFixed(2)}</span>
+                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>${getTotal(selectedPayroll).toFixed(2)}</span>
                       </div>
                     </div>
                   </>
