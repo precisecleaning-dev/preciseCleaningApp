@@ -99,8 +99,16 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       query(collection(db, 'payroll'), limit(100)),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as PayrollRecord[];
-        // Orden descendente por fecha (string 'YYYY-MM-DD'); los sin fecha van al final.
-        data.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        // ⭐ Orden de más reciente a más antigua. Convertimos la fecha a un valor de
+        //    tiempo real para que funcione tanto con strings 'YYYY-MM-DD' como con
+        //    Timestamps de Firestore u otros formatos parseables. Sin fecha => al final.
+        const toTime = (val: any): number => {
+          if (!val) return 0;
+          if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
+          const t = new Date(val).getTime();
+          return isNaN(t) ? 0 : t;
+        };
+        data.sort((a, b) => toTime((b as any).date) - toTime((a as any).date));
         console.log(`[PayrollView] Loaded ${data.length} payroll records (max 100)`, data);
         setRecords(data);
         tick();
