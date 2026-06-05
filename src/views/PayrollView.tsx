@@ -7,8 +7,8 @@ import { payrollService } from '../services/payrollService';
 import { propertiesService } from '../services/propertiesService';
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
-import { collection, getDocs } from 'firebase/firestore';
-import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service } from '../types/index';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
+import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -22,14 +22,14 @@ const collectionMap: Record<string, string> = {
 };
 
 // Helper Functions
-const getRelationName = (list: any[], idOrName: string, fallback = '-') => {
+const getRelationName = (list: any[], idOrName?: string | null, fallback = '-') => {
   if (!idOrName) return fallback;
   const safeVal = String(idOrName).toLowerCase().trim();
   const found = list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal);
   return found ? found.name : fallback;
 };
 
-const getRelationColor = (list: any[], idOrName: string) => {
+const getRelationColor = (list: any[], idOrName?: string | null) => {
   if (!idOrName) return undefined;
   const safeVal = String(idOrName).toLowerCase().trim();
   return list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal)?.color;
@@ -45,6 +45,8 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  // ⭐ FIX: cargar customers para resolver el nombre del cliente desde el ID
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -57,63 +59,112 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   // Formulario temporal de edición
   const [editForm, setEditForm] = useState<PayrollRecord | null>(null);
 
-  // Filtros (Iniciamos Status en 'Pending' por defecto)
+  // ⭐ FIX: default a '' (All Statuses) en vez de 'Pending', para que se vean los registros
+  //         existentes que aún no tienen el campo `status` o lo tienen como 'Paid'.
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('Pending'); 
+  const [selectedStatus, setSelectedStatus] = useState(''); 
 
+  // ⭐ Resolver el nombre del cliente desde la colección customers (retrocompatible)
+  const getClientName = (clientIdOrName?: string | null) => {
+    if (!clientIdOrName) return 'Unknown';
+    return getRelationName(customers, clientIdOrName, String(clientIdOrName));
+  };
+
+  // ⭐ FIX: usar onSnapshot para carga viva. Esto también significa que los cambios
+  //         hechos desde otras vistas (Houses, Invoices) se reflejan en tiempo real.
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [payrollData, propsData, usersSnap, statusData, teamData, prioData, servData] = await Promise.all([
-          payrollService.getAll(),
-          propertiesService.getAll(),
-          getDocs(collection(db, 'system_users')),
-          settingsService.getAll(collectionMap.status).catch(() => []),
-          settingsService.getAll(collectionMap.team).catch(() => []),
-          settingsService.getAll(collectionMap.priority).catch(() => []),
-          settingsService.getAll(collectionMap.service).catch(() => [])
-        ]);
-        
-        setRecords(payrollData);
-        setProperties(propsData);
-        setEmployees(usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as SystemUser)));
-        
-        setStatuses((statusData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
-        setTeams(teamData as Team[]);
-        setPriorities(prioData as Priority[]);
-        setServices(servData as Service[]);
-      } catch (error) {
-        console.error("Error fetching payroll data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
+    setIsLoading(true);
+    const unsubscribes: (() => void)[] = [];
+    let loaded = 0;
+    const TOTAL = 8;
+    const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
+
+    // Listener directo a 'payroll' (no usamos payrollService.getAll para evitar
+    // cualquier filtro o transformación oculta del servicio durante el diagnóstico)
+    unsubscribes.push(onSnapshot(
+      collection(db, 'payroll'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as PayrollRecord[];
+        console.log(`[PayrollView] Loaded ${data.length} payroll records`, data);
+        setRecords(data);
+        tick();
+      },
+      (err) => { console.error("[PayrollView] Error payroll:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, 'properties'),
+      (snap) => { setProperties(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[]); tick(); },
+      (err) => { console.error("Error properties:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, 'system_users'),
+      (snap) => { setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })) as SystemUser[]); tick(); },
+      (err) => { console.error("Error users:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.status),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
+        setStatuses(data.sort((a, b) => Number((a as any).order || 0) - Number((b as any).order || 0)));
+        tick();
+      },
+      (err) => { console.error("Error statuses:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.team),
+      (snap) => { setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]); tick(); },
+      (err) => { console.error("Error teams:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.priority),
+      (snap) => { setPriorities(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Priority[]); tick(); },
+      (err) => { console.error("Error priorities:", err); tick(); }
+    ));
+
+    unsubscribes.push(onSnapshot(
+      collection(db, collectionMap.service),
+      (snap) => { setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Service[]); tick(); },
+      (err) => { console.error("Error services:", err); tick(); }
+    ));
+
+    // ⭐ NUEVO: customers
+    unsubscribes.push(onSnapshot(
+      collection(db, 'customers'),
+      (snap) => { setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[]); tick(); },
+      (err) => { console.error("Error customers:", err); tick(); }
+    ));
+
+    return () => unsubscribes.forEach(u => u());
   }, []);
 
   // Lógica de Filtros
   const filteredRecords = useMemo(() => {
     return records.filter(record => {
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
+      // ⭐ Comparación tolerante a campo ausente: si no hay status, lo tratamos como 'Pending'
       if (selectedStatus && (record.status || 'Pending') !== selectedStatus) return false;
-      if (startDate && record.date < startDate) return false;
-      if (endDate && record.date > endDate) return false;
+      if (startDate && record.date && record.date < startDate) return false;
+      if (endDate && record.date && record.date > endDate) return false;
       return true;
     });
   }, [records, startDate, endDate, selectedEmployee, selectedStatus]);
 
   // Cálculos dinámicos
-  const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.totalAmount, 0);
-  const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + r.totalAmount, 0);
+  const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0);
+  const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0);
 
   const handleMarkAsPaid = async (id: string) => {
     if (!window.confirm("Mark this record as Paid?")) return;
     try {
       await payrollService.update(id, { status: 'Paid' });
-      setRecords(records.map(r => r.id === id ? { ...r, status: 'Paid' } : r));
+      // onSnapshot actualizará records automáticamente
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
@@ -124,7 +175,6 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     if (!window.confirm("Change status back to Pending?")) return;
     try {
       await payrollService.update(id, { status: 'Pending' });
-      setRecords(records.map(r => r.id === id ? { ...r, status: 'Pending' } : r));
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
@@ -136,7 +186,6 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     setIsSaving(true);
     try {
       await payrollService.delete(id);
-      setRecords(records.filter(r => r.id !== id));
     } catch (error) {
       console.error("Error deleting payroll record:", error);
       alert("Failed to delete record.");
@@ -147,21 +196,19 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
   const handleOpenEditModal = (record: PayrollRecord) => {
     setEditForm({ ...record });
-    setSelectedPayroll(null); // Cerramos el de vista previa si estaba abierto
+    setSelectedPayroll(null);
     setIsEditingPayroll(true);
   };
 
   const handleSaveEdit = async () => {
     if (!editForm || !editForm.id) return;
     
-    // Recalcular total por si las moscas
     const total = Number(editForm.baseAmount || 0) + Number(editForm.extraAmount || 0) - Number(editForm.discountAmount || 0);
     const finalData = { ...editForm, totalAmount: total };
 
     setIsSaving(true);
     try {
       await payrollService.update(editForm.id, finalData);
-      setRecords(records.map(r => r.id === editForm.id ? finalData : r));
       setIsEditingPayroll(false);
       setEditForm(null);
     } catch (error) {
@@ -189,7 +236,6 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, borderBottom: '1px solid #f1f5f9' },
     td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
     
-    // Estilos del Modal
     header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
     title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 },
     body: { padding: '30px', overflowY: 'auto', paddingBottom: '30px' } as React.CSSProperties, 
@@ -217,12 +263,18 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
         .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .hamburger-btn:hover { background-color: #f8fafc; }
         
+        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
+        .fade-in *::-webkit-scrollbar-track { background: transparent; }
+        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; }
+        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
+        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
+
         @media (max-width: 768px) {
           .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
         }
       `}</style>
 
-      {/* HEADER DINÁMICO */}
+      {/* HEADER */}
       <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
         <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
@@ -266,7 +318,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
           <div style={{ position: 'relative' }}>
             <Activity size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
             <select style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
-              <option value="">All Statuses...</option>
+              <option value="">All Statuses</option>
               <option value="Pending">Pending</option>
               <option value="Paid">Paid</option>
             </select>
@@ -306,55 +358,65 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading payroll data...</td></tr> : 
-             filteredRecords.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No records found for this filter.</td></tr> :
-             filteredRecords.map(record => {
-               const emp = employees.find(e => e.id === record.employeeId);
-               const prop = properties.find(p => p.id === record.propertyId);
-               const isPaid = record.status === 'Paid';
+            {isLoading ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading payroll data...</td></tr>
+            ) : records.length === 0 ? (
+              // ⭐ Distinguir entre "BD vacía" y "filtros excluyen todo"
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No payroll records in database yet. Register payments from the Houses view.</td></tr>
+            ) : filteredRecords.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>
+                {records.length} records loaded but none match the current filters. Try resetting Status to "All Statuses" or clearing dates.
+              </td></tr>
+            ) : (
+              filteredRecords.map(record => {
+                const emp = employees.find(e => e.id === record.employeeId);
+                const prop = properties.find(p => p.id === record.propertyId);
+                const isPaid = record.status === 'Paid';
+                // ⭐ Resolver nombre del cliente
+                const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
 
-               return (
-                 <tr 
-                   key={record.id} 
-                   onClick={() => setSelectedPayroll(record)}
-                   style={{ transition: 'background-color 0.2s', cursor: 'pointer' }} 
-                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
-                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                 >
-                   <td style={s.td} onClick={(e) => e.stopPropagation()}>
-                     <div style={{ display: 'flex', gap: '4px' }}>
-                       <button onClick={() => handleOpenEditModal(record)} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>
-                       <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>
-                     </div>
-                   </td>
+                return (
+                  <tr 
+                    key={record.id} 
+                    onClick={() => setSelectedPayroll(record)}
+                    style={{ transition: 'background-color 0.2s', cursor: 'pointer' }} 
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <td style={s.td} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button onClick={() => handleOpenEditModal(record)} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>
+                        <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>
+                      </div>
+                    </td>
 
-                   <td style={s.td}>
-                     <div style={{ fontWeight: 600, color: '#111827' }}>{prop ? prop.client : 'Unknown Property'}</div>
-                     <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
-                   </td>
-                   
-                   <td style={s.td}>{record.date}</td>
-                   
-                   <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
-                   
-                   <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${record.totalAmount.toFixed(2)}</td>
-                   
-                   <td style={{...s.td, textAlign: 'center'}}>
-                     {isPaid ? (
-                       <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record.id as string); }} style={{ background: 'none', border: 'none', color: '#10b981', padding: '6px 12px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', margin: '0 auto' }}>
-                         <CheckCircle size={14}/> Paid
-                       </button>
-                     ) : (
-                       <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record.id as string); }} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', margin: '0 auto', display: 'block' }}>
-                         Mark Paid
-                       </button>
-                     )}
-                   </td>
-                   
-                 </tr>
-               )
-             })
-            }
+                    <td style={s.td}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{clientName}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
+                    </td>
+                    
+                    <td style={s.td}>{record.date}</td>
+                    
+                    <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
+                    
+                    <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${Number(record.totalAmount || 0).toFixed(2)}</td>
+                    
+                    <td style={{...s.td, textAlign: 'center'}}>
+                      {isPaid ? (
+                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record.id as string); }} style={{ background: 'none', border: 'none', color: '#10b981', padding: '6px 12px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', margin: '0 auto' }}>
+                          <CheckCircle size={14}/> Paid
+                        </button>
+                      ) : (
+                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record.id as string); }} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', margin: '0 auto', display: 'block' }}>
+                          Mark Paid
+                        </button>
+                      )}
+                    </td>
+                    
+                  </tr>
+                )
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -373,6 +435,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                 const emp = employees.find(e => e.id === selectedPayroll.employeeId);
                 const prop = properties.find(p => p.id === selectedPayroll.propertyId);
                 const isPaid = selectedPayroll.status === 'Paid';
+                const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
 
                 return (
                   <>
@@ -394,7 +457,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                       <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <span style={{ ...s.detailLabel, color: '#1e40af' }}><Home size={14} /> PROPERTY COMPLETED</span>
-                          <span style={{ fontSize: '1.15rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{prop ? prop.client : 'Unknown Property'}</span>
+                          <span style={{ fontSize: '1.15rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{clientName}</span>
                           <span style={{ fontSize: '0.85rem', color: '#3b82f6', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <MapPin size={14}/> {prop ? prop.address : 'Unknown Address'}
                           </span>
@@ -536,7 +599,8 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                 </div>
                 <div style={s.detailItem}>
                   <span style={s.detailLabel}><User size={14} /> CLIENT</span>
-                  <span style={s.detailValue}>{selectedHouse.client || '-'}</span>
+                  {/* ⭐ FIX: nombre del cliente resuelto desde customers */}
+                  <span style={s.detailValue}>{getClientName(selectedHouse.client)}</span>
                 </div>
 
                 <div style={s.detailItem}>

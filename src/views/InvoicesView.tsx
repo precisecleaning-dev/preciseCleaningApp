@@ -208,8 +208,20 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsLoading(true);
     const unsubscribes: (() => void)[] = [];
     let loaded = 0;
-    const TOTAL = 5;
+    const TOTAL = 6;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
+
+    // ⭐ FIX: cargar properties acá también, no sólo en HousesView.
+    //    Esto resuelve el caso "entré directo a Invoices y no veo nada".
+    unsubscribes.push(onSnapshot(
+      collection(db, 'properties'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
+        setProperties(data);
+        tick();
+      },
+      (err) => { console.error("Error properties:", err); tick(); }
+    ));
 
     unsubscribes.push(onSnapshot(
       collection(db, 'settings_teams'),
@@ -246,7 +258,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     ));
 
     return () => unsubscribes.forEach(u => u());
-  }, []);
+  }, [setProperties]);
 
   // Cambiar status de invoice
   const handleStatusChange = async (propertyId: string, newStatus: string) => {
@@ -441,8 +453,10 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <tbody>
             {isLoading ? (
               <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>Loading financial data...</td></tr>
+            ) : properties.length === 0 ? (
+              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties in database. Add one from the Houses view.</td></tr>
             ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters.</td></tr>
+              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
             ) : filteredProperties.map(prop => {
 
               // Cálculos financieros
