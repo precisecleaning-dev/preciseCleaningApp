@@ -368,7 +368,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   }, {} as Record<string, number>);
   const totalScopedCount = properties.filter(inScope).length;
 
-  // Filtrado completo + ordenado por Schedule Date ascendente
+  // Filtrado completo + ordenado por Schedule Date DESCENDENTE (más reciente primero)
   const filteredProperties = properties.filter(prop => {
     if (!inScope(prop)) return false;
     if (filterStatus !== 'All' && prop.invoiceStatus !== filterStatus) return false;
@@ -381,7 +381,16 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     if (startDate && prop.scheduleDate && prop.scheduleDate < startDate) return false;
     if (endDate && prop.scheduleDate && prop.scheduleDate > endDate) return false;
     return true;
-  }).sort((a, b) => parseDateForSort(a.scheduleDate) - parseDateForSort(b.scheduleDate));
+  }).sort((a, b) => {
+    // Sin fecha => siempre al final, sin importar la dirección del orden
+    const hasA = !!a.scheduleDate;
+    const hasB = !!b.scheduleDate;
+    if (!hasA && !hasB) return 0;
+    if (!hasA) return 1;
+    if (!hasB) return -1;
+    // Ambas con fecha: descendente (más reciente primero)
+    return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
+  });
 
   // Estilos compartidos
   const s = {
