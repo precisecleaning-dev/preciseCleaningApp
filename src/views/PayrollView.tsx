@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 
 interface PayrollViewProps {
@@ -79,15 +79,18 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     const TOTAL = 8;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
-    // ⭐ FIX (lecturas): traemos solo los últimos 100 registros ordenados por fecha
-    //    descendente. Esto limita la lectura inicial a 100 documentos como máximo
-    //    (en lugar de toda la colección) para cuidar la cuota del plan gratuito,
-    //    manteniendo el tiempo real dentro de esa ventana de 100.
-    //    NOTA: orderBy('date') excluye documentos que NO tengan el campo `date`.
+    // ⭐ FIX (lecturas + visibilidad): traemos hasta 100 registros con `limit(100)`,
+    //    SIN orderBy en el servidor. Motivo: orderBy('date') en Firestore EXCLUYE los
+    //    documentos que no tengan ese campo exacto (y puede exigir un índice), lo que
+    //    dejaba la tabla vacía. El límite de 100 cuida la cuota del plan gratuito, y el
+    //    orden por fecha (más reciente primero) se hace en el cliente, tolerando que
+    //    algún documento no tenga `date`.
     unsubscribes.push(onSnapshot(
-      query(collection(db, 'payroll'), orderBy('date', 'desc'), limit(100)),
+      query(collection(db, 'payroll'), limit(100)),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as PayrollRecord[];
+        // Orden descendente por fecha (string 'YYYY-MM-DD'); los sin fecha van al final.
+        data.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
         console.log(`[PayrollView] Loaded ${data.length} payroll records (max 100)`, data);
         setRecords(data);
         tick();
