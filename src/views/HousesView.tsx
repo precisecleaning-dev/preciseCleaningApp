@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown, ClipboardCheck,
@@ -19,6 +19,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot
 
 // Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
+import PipelineBoardView from '../components/PipelineBoardView';
 import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
 
 type Property = BaseProperty & {
@@ -283,12 +284,14 @@ interface HousesViewProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
-  roles?: Role[];
+ roles?: Role[];
+  viewMode?: 'table' | 'board';
+  
 }
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [] }: HousesViewProps) {
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -1570,7 +1573,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   };
 
   return (
-    <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+    <div className="fade-in houses-view" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <style>{`
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1602,10 +1605,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
         .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
 
-        @media (max-width: 1024px) {
-          .modal-full { flex-direction: column; overflow-y: auto; }
-          .modal-full-left { padding: 1.5rem; overflow-y: visible; }
-          .modal-full-right { width: 100%; border-left: none; border-top: 1px solid #E2E8F0; }
+     @media (max-width: 1024px) {
+          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
+          .main-columns { overflow: visible; }
+          .houses-view { height: auto !important; min-height: 100%; }
+          .left-col > div, .right-col > div { height: auto !important; }
         }
 
         @media (min-width: 769px) { 
@@ -1728,10 +1732,24 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         )}
       </div>
 
+{viewMode === 'board' ? (
+        <PipelineBoardView
+          properties={filteredProperties}
+          statuses={statuses}
+          teams={teams}
+          priorities={priorities}
+          getClientName={getClientName}
+          onOpenDetail={handleOpenDetail}
+          onQuickStatusChange={handleQuickStatusChange}
+          canEdit={!!canEdit}
+          isSaving={isSaving}
+        />
+      ) : (
       <div className="main-columns" style={s.mainColumns}>
 
         {/* LEFT COLUMN: DAILY JOBS */}
         <div className="left-col">
+
           <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
             
             <div style={s.tableHeader}>
@@ -1829,6 +1847,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <thead>
                   <tr>
                     <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
+                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Schedule</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
@@ -1838,9 +1857,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
+                    <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
                   ) : filteredProperties.length === 0 ? (
-                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
+                    <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
                   ) : filteredProperties.map((prop) => {
                     const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
                     const serviceName = getRelationName(services, prop.serviceId, 'Regular');
@@ -1854,6 +1873,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             {canEdit && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
                             {canDelete && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>}
                           </div>
+                       </td>
+                        <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
+                          <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate || '-'}
                         </td>
                         <td data-label="Client" style={s.td}>
                           <div className="mobile-client-cell">
@@ -1988,7 +2010,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           </div>
         </div>
 
-      </div>
+    </div>
+
+      )}
+
+
 
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
@@ -2227,7 +2253,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </thead>
                       <tbody>
                         {formServices.length === 0 ? (
-                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
+                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
                         ) : (
                           formServices.map(record => {
                             const srv = services.find(c => c.id === record.serviceId);

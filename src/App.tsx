@@ -23,7 +23,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -32,7 +32,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   
   const [activeTab, setActiveTab] = useState<TabOptions>('houses');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') return window.innerWidth > 768;
+    return true;
+  });
   
   const [properties, setProperties] = useState<Property[]>([]);
   const [currentSettingView, setCurrentSettingView] = useState<string>('menu');
@@ -235,6 +238,19 @@ export default function App() {
       <main className="main-content">
         {activeTab === 'houses' && (
           <HousesView 
+            properties={visibleProperties as any} 
+            setProperties={setProperties as any} 
+            onOpenMenu={toggleMenu} 
+            onCheckHouse={handleCheckHouse} 
+            currentUser={currentUser}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
+
+        {activeTab === 'pipeline' && (
+          <HousesView 
+            viewMode="board"
             properties={visibleProperties as any} 
             setProperties={setProperties as any} 
             onOpenMenu={toggleMenu} 

@@ -20,11 +20,22 @@
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Mejor sensación táctil en toda la app (sin cambiar aspecto) */
+button, a, .nav-item, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Animaciones Generales */
 .fade-in { animation: fadeIn 0.3s ease; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Animación de los modales antiguos (.modal-content) — faltaba definirla */
+@keyframes modalScaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* --- Layout Principal --- */
@@ -228,52 +239,172 @@
 }
 .dashboard-filters::-webkit-scrollbar { display: none; /* Safari y Chrome */ }
 
-/* =========================================
-   MEDIA QUERIES (DISEÑO RESPONSIVO)
-   ========================================= */
 
+/* ============================================================
+   MEDIA QUERIES (DISEÑO RESPONSIVO)
+   ------------------------------------------------------------
+   Incluye las optimizaciones móviles (touch targets de 44–48px,
+   modales a pantalla completa, safe areas de iPhone, arreglo de
+   scroll y de los KPIs). No cambia ningún color.
+   Los !important son necesarios para ganarle a los estilos inline.
+   ============================================================ */
+
+/* ---------- TABLETS Y MÓVILES (≤ 1024px) ---------- */
 @media (max-width: 1024px) {
-  /* Habilitar botón de menú desde iPad en vertical */
+  /* Botón de menú visible desde iPad vertical */
   .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
 
-  /* Sidebar Fixed para que no empuje el contenido */
+  /* Sidebar fijo para que no empuje el contenido */
   .sidebar { position: fixed; height: 100vh; left: 0; top: 0; transform: translateX(-100%); z-index: 1000; }
   .sidebar.open { transform: translateX(0); width: 320px; box-shadow: 4px 0 25px rgba(0,0,0,0.15); }
   .sidebar.collapsed { transform: translateX(-100%); }
-  
+
   .main-content { padding: 20px; }
-  
+
   /* Cabecera del Dashboard responsiva para iPad */
   .dashboard-header-container { flex-direction: column; align-items: flex-start; gap: 16px; }
   .dashboard-actions-wrapper { width: 100%; }
   .search-box-container { flex: 1; }
 
-  /* Forzamos que las columnas del Dashboard se apilen en iPad Vertical y Celulares */
+  /* Columnas del Dashboard apiladas */
   .left-col, .right-col { flex: 1 1 100%; }
-  
-  /* Ajuste de los KPIs a 2 columnas en Tablets */
+
+  /* KPIs a 2 columnas en tablets */
   .dash-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Menú lateral más cómodo de tocar con el dedo */
+  .mobile-menu-btn,
+  .sidebar-toggle-btn { min-height: 48px; }
+  .nav-item { padding: 14px 12px; }   /* ~48px de alto */
+
+  /* ===== ARREGLO DE SCROLL (HousesView) =====
+     El layout usaba altura fija + scroll interno, y en móvil el
+     scroll se quedaba atascado. Dejamos que la página crezca y que
+     .main-content haga el scroll normal de toda la pantalla. */
+  .houses-view { height: auto !important; overflow: visible !important; }
+  .houses-view .main-columns { overflow: visible !important; }
 }
 
+/* ---------- MÓVILES (≤ 768px) ---------- */
 @media (max-width: 768px) {
-  /* En teléfonos móviles el menú ocupa toda la pantalla */
+  /* El menú ocupa toda la pantalla */
   .sidebar.open { width: 100%; box-shadow: none; }
   .main-content { padding: 16px; }
 
-  /* Cabecera de vista general en móviles */
-  .main-header { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 20px;}
+  /* Cabecera general */
+  .main-header { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 20px; }
   .header-titles { flex-direction: row; justify-content: space-between; width: 100%; align-items: center; }
-  .dashboard-actions-wrapper { flex-wrap: wrap; gap: 12px; }
-  .search-box-container { width: 100%; order: 1; }
-  
-  /* El botón Add pasa abajo junto a la campana */
-  .add-btn-mobile { flex: 1; justify-content: center; order: 2; }
-  .bell-btn-mobile { order: 3; }
 
-  /* Ajustar grid del dashboard para móviles pequeños */
-  .dash-grid { grid-template-columns: 1fr; gap: 12px;}
-  
-  /* Modales ocupan casi toda la pantalla en móvil */
-  .modalWide, .modal-content { max-height: 95vh; margin: 10px; }
+  /* Anti-zoom de iOS: subir SOLO la fuente del campo a 16px */
+  .search-box-container input,
+  .modal-overlay-centered input,
+  .modal-overlay-centered textarea,
+  .modal-overlay-centered select { font-size: 16px !important; }
+
+  /* Acciones de la cabecera del Dashboard */
+  .dashboard-actions-wrapper { width: 100%; flex-wrap: wrap; gap: 12px; }
+
+  /* Búsqueda: primera, a todo el ancho y alta */
+  .search-box-container {
+    order: -1;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    height: 48px !important;
+  }
+  /* "New Job" y hamburguesa: grandes y fáciles de presionar */
+  .add-btn-mobile { flex: 1 1 auto !important; height: 48px !important; justify-content: center; order: 2; }
+  .bell-btn-mobile { order: 3; }
+  .hamburger-btn { min-width: 44px; min-height: 44px; }
+
+  /* Punto 1: el menú (hamburguesa) deja de ser un botón protagonista
+     y pasa a ser un ícono discreto; el título "Pipeline" manda. */
+  .houses-view .hamburger-btn {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--text-secondary);
+  }
+
+  /* KPIs: 2 por fila, parejos y SIN cortarse */
+  .dash-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+
+  /* Filtros / pestañas de "Daily Jobs" */
+  .filters-section { flex-direction: column; align-items: stretch; }
+  .filters-section .tabs-container button,
+  .property-select-container > button { min-height: 44px !important; }
+  .property-select-container { width: 100%; }
+  .property-select-container > button { width: 100%; justify-content: center; }
+
+  /* Tabla que se vuelve tarjetas: acciones tocables */
+  .responsive-table td button { min-width: 44px; min-height: 44px; }
+
+  /* MODALES a pantalla completa (más espacio, más pro) */
+  .modal-overlay-centered { padding: 0 !important; }
   .modal-overlay { padding: 10px; }
+  .modalWide, .modal-content { max-height: 95vh; margin: 10px; }
+
+  .modal-70,
+  .modal-90,
+  .modal-full {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  /* Scroll suave en iOS */
+  .modal-body-scroll,
+  .modal-full-left,
+  .modal-full-right { -webkit-overflow-scrolling: touch; }
+
+  /* Respeta el notch / barra superior */
+  .modal-70 > header,
+  .modal-90 > header { padding-top: calc(20px + env(safe-area-inset-top)) !important; }
+  .modal-full-left { padding-top: calc(1.5rem + env(safe-area-inset-top)) !important; }
+
+  /* Botón X de cerrar (modales simples) */
+  .modal-70 > header > button,
+  .modal-90 > header > button { min-width: 44px; min-height: 44px; }
+
+  /* Detail modal (.modal-90): barra de acciones en rejilla 2 columnas. */
+  .modal-90 > header { flex-wrap: wrap; gap: 12px !important; }
+  .modal-90 > header > div:last-child {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px !important;
+  }
+  .modal-90 > header > div:last-child > button { width: 100%; min-height: 48px !important; }
+
+  /* Pies de modal: botones apilados a todo el ancho (principal arriba) */
+  .modal-70 > footer,
+  .modal-90 > footer {
+    flex-direction: column-reverse !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important;
+  }
+  .modal-70 > footer > button,
+  .modal-90 > footer > button { width: 100% !important; min-height: 48px !important; justify-content: center; }
+  .modal-90 > footer > div { width: 100%; display: flex; gap: 10px; }
+  .modal-90 > footer > div > button { flex: 1; min-height: 48px !important; justify-content: center; }
+
+  /* Form modal (.modal-full): Guardar / Cancelar */
+  .modal-full-right button { min-height: 48px !important; }
+  .modal-full-right > div:last-child { padding-bottom: calc(1.5rem + env(safe-area-inset-bottom)) !important; }
+
+  /* Inputs de formulario un poco más altos */
+  .modal-overlay-centered input,
+  .modal-overlay-centered select { min-height: 46px; }
+}
+
+/* ---------- MÓVILES PEQUEÑOS (≤ 380px) ---------- */
+@media (max-width: 380px) {
+  /* Si 2 KPIs por fila aprietan demasiado, 1 por fila.
+     (Comenta esta regla si prefieres mantener 2 columnas.) */
+  .dash-grid { grid-template-columns: 1fr !important; }
+
+  /* Acciones del detalle a 1 columna en pantallas muy chicas */
+  .modal-90 > header > div:last-child { grid-template-columns: 1fr; }
 }

@@ -1,12 +1,12 @@
 import { 
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database
+ ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid
 } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
 
-type TabOptions = 'houses' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
+type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -94,6 +94,13 @@ export default function Sidebar({
             <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
               <Home size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Houses</span>}
+            </button>
+          )}
+
+          {canView('Houses') && (
+            <button className={`nav-item ${activeTab === 'pipeline' ? 'active' : ''}`} onClick={() => handleNavClick('pipeline')}>
+              <LayoutGrid size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Pipeline</span>}
             </button>
           )}
 
