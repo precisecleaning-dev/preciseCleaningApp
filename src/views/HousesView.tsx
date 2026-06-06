@@ -3,7 +3,7 @@ import {
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown, ClipboardCheck,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Calculator, Percent, PlayCircle, BarChart3, FileImage,
-  Save, XCircle, Layers, Settings, Receipt, CalendarClock, Printer, Upload, Camera, Loader2
+  Save, XCircle, Layers, Settings, Receipt, CalendarClock, Printer, Upload, Camera, Loader2, CloudOff
 } from 'lucide-react';
 
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
@@ -15,13 +15,19 @@ import { DEFAULT_PHOTO_CONFIG } from '../services/photoConfigService';
 import type { PhotoConfig } from '../services/photoConfigService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc, getDoc } from 'firebase/firestore';
+
+// Importación corregida a ../components/PhotoSection
+import PhotoSection from '../components/PhotoSection';
+import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
 
 type Property = BaseProperty & {
   employeeStartedBy?: string | null;
   employeeStartedAt?: string | null;
   employeeFinishedBy?: string | null;
   employeeFinishedAt?: string | null;
+  beforePhotosExcluded?: string[]; // URLs que NO van al PDF
+  afterPhotosExcluded?: string[];
 };
 
 interface ServiceRecord {
@@ -287,14 +293,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
   const [invoiceFilter, setInvoiceFilter] = useState('All'); 
-  // ⭐ CAMBIO 2: nuevo filtro de status (todos los statuses, no sólo los del dashboard)
   const [statusFilter, setStatusFilter] = useState('All');
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-  // ⭐ CAMBIO 1: estado para saber qué team está desplegado en la columna derecha
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
-  // ⭐ Nuevo: buscador funcional (dirección + cliente)
   const [searchTerm, setSearchTerm] = useState('');
-  // ⭐ Nuevo: filtro de prioridad
   const [priorityFilter, setPriorityFilter] = useState('All');
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -349,22 +351,125 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
-  const beforeFileInputRef = useRef<HTMLInputElement>(null);
-  const beforeCameraInputRef = useRef<HTMLInputElement>(null);
-  const afterFileInputRef = useRef<HTMLInputElement>(null);
-  const afterCameraInputRef = useRef<HTMLInputElement>(null);
+
+  const [beforeExcluded, setBeforeExcluded] = useState<string[]>([]);
+  const [afterExcluded, setAfterExcluded] = useState<string[]>([]);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [pendingForHouse, setPendingForHouse] = useState<{ before: number; after: number }>({ before: 0, after: 0 });
+
   const [photoConfig, setPhotoConfig] = useState<PhotoConfig>(DEFAULT_PHOTO_CONFIG);
   const [isCompressing, setIsCompressing] = useState(false);
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
-  // ⭐ CAMBIO 3: helper que resuelve el NOMBRE del cliente a partir del ID guardado en
-  //    la propiedad. Compatible con datos antiguos: si el valor ya era un nombre, lo devuelve igual.
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
     return getRelationName(customersList, clientIdOrName, String(clientIdOrName));
   };
+
+  const refreshPendingCounts = async () => {
+    try {
+      setPendingTotal(await countPending());
+      const hid = selectedHouse?.id || formData?.id;
+      if (hid) {
+        const list = await getPendingByProperty(hid);
+        setPendingForHouse({
+          before: list.filter(p => p.type === 'before').length,
+          after: list.filter(p => p.type === 'after').length,
+        });
+      } else {
+        setPendingForHouse({ before: 0, after: 0 });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  // Sube las fotos en cola cuando hay internet y las elimina de IndexedDB.
+  const syncPendingPhotos = async () => {
+    if (!navigator.onLine) return;
+    let pending: PendingPhoto[] = [];
+    try { pending = await getAllPending(); } catch { return; }
+    if (pending.length === 0) return;
+    const groups = new Map<string, PendingPhoto[]>();
+    pending.forEach(p => {
+      const k = `${p.propertyId}__${p.type}`;
+      groups.set(k, [...(groups.get(k) || []), p]);
+    });
+    for (const [, items] of groups) {
+      const { propertyId, type, clientName, address } = items[0];
+      try {
+        const files = items.map(it => new File([it.blob], it.fileName, { type: it.blob.type || 'image/jpeg' }));
+        const urls = await storageService.uploadMultiplePropertyPhotos(files, clientName, address, type);
+        const snap = await getDoc(doc(db, 'properties', propertyId));
+        const data: any = snap.exists() ? snap.data() : {};
+        const field = type === 'before' ? 'beforePhotos' : 'afterPhotos';
+        const merged = [...(data[field] || []), ...urls];
+        await updateDoc(doc(db, 'properties', propertyId), { [field]: merged } as any);
+        for (const it of items) await removePending(it.id);
+      } catch (err) {
+        console.error('Error sincronizando fotos pendientes:', err); // se reintenta luego
+      }
+    }
+    await refreshPendingCounts();
+  };
+
+  // Sube si hay internet; si no, encola y devuelve {queued}
+  const uploadOrQueue = async (
+    files: File[], clientName: string, address: string,
+    type: 'before' | 'after', propertyId: string,
+  ): Promise<{ urls: string[]; queued: number }> => {
+    if (files.length === 0) return { urls: [], queued: 0 };
+    if (navigator.onLine) {
+      try {
+        const urls = await storageService.uploadMultiplePropertyPhotos(files, clientName, address, type);
+        return { urls, queued: 0 };
+      } catch (e) { console.error('Subida online falló, se encola:', e); }
+    }
+    const entries: PendingPhoto[] = files.map(f => ({
+      id: makePendingId(), propertyId, clientName, address, type,
+      blob: f, fileName: f.name || `${type}-${Date.now()}.jpg`,
+      inReport: true, createdAt: Date.now(),
+    }));
+    await enqueuePhotos(entries);
+    return { urls: [], queued: entries.length };
+  };
+
+  const addPhotoFiles = async (files: FileList | null, type: 'before' | 'after') => {
+    if (!files || files.length === 0) return;
+    const arr = Array.from(files);
+    setIsCompressing(true);
+    try {
+      const compressed = await Promise.all(arr.map(f => compressImage(f, {
+        quality: photoConfig.compressionQuality,
+        maxWidth: photoConfig.maxImageWidth,
+        maxSizeMB: photoConfig.maxSizeMB,
+      })));
+      const fileUrls = compressed.map(f => URL.createObjectURL(f));
+      if (type === 'before') { setBeforeFiles(p => [...p, ...compressed]); setBeforePhotoURLs(p => [...p, ...fileUrls]); }
+      else { setAfterFiles(p => [...p, ...compressed]); setAfterPhotoURLs(p => [...p, ...fileUrls]); }
+    } catch (e) { console.error(e); alert('Error al procesar las imágenes. Intenta de nuevo.'); }
+    finally { setIsCompressing(false); }
+  };
+
+  const toggleReportPhoto = (url: string, type: 'before' | 'after') => {
+    const setter = type === 'before' ? setBeforeExcluded : setAfterExcluded;
+    setter(prev => prev.includes(url) ? prev.filter(u => u !== url) : [...prev, url]);
+  };
+
+  useEffect(() => {
+    const goOnline = () => { setIsOnline(true); syncPendingPhotos(); };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    refreshPendingCounts();
+    if (navigator.onLine) syncPendingPhotos();
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setIsLoading(true);
@@ -623,21 +728,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     let passInvoice = true;
     if (invoiceFilter !== 'All') passInvoice = p.invoiceStatus === invoiceFilter;
 
-    // ⭐ CAMBIO 2: aplicar filtro de status (comparando por id o por nombre)
     let passStatusFilter = true;
     if (statusFilter !== 'All') {
       const stObj = statuses.find(stt => stt.id === statusFilter);
       passStatusFilter = p.statusId === statusFilter || (!!stObj && p.statusId === stObj.name);
     }
     
-    // ⭐ Nuevo: filtro de prioridad
     let passPriority = true;
     if (priorityFilter !== 'All') {
       const prObj = priorities.find(pp => pp.id === priorityFilter);
       passPriority = p.priorityId === priorityFilter || (!!prObj && p.priorityId === prObj.name);
     }
 
-    // ⭐ Nuevo: buscador funcional (busca por dirección y por nombre de cliente)
     let passSearch = true;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
@@ -649,7 +751,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     
     return passStatus && passHouse && passInvoice && passStatusFilter && passPriority && passSearch;
   }).sort((a, b) => {
-    // ⭐ Ordenar por Schedule Date ascendente; las casas sin fecha van al final
     const dateA = a.scheduleDate || '';
     const dateB = b.scheduleDate || '';
     if (!dateA && !dateB) return 0;
@@ -767,7 +868,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
     const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
     const endDateTime = `${endDatePart}T${endTimePart}`;
-    // ⭐ CAMBIO 3: el título usa el nombre del cliente resuelto desde customers
     const calendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&sf=true&output=xml`;
     window.open(calendarUrl, '_blank');
   };
@@ -910,6 +1010,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setAfterPhotoURLs(house.afterPhotos || []);
       setBeforeFiles([]);
       setAfterFiles([]);
+      setBeforeExcluded(house.beforePhotosExcluded || []);
+      setAfterExcluded(house.afterPhotosExcluded || []);
+      refreshPendingCounts();
       try {
         const q = query(collection(db, 'billing_services'), where('propertyId', '==', house.id));
         const srvSnap = await getDocs(q);
@@ -926,6 +1029,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setAfterPhotoURLs([]);
       setBeforeFiles([]);
       setAfterFiles([]);
+      setBeforeExcluded([]); 
+      setAfterExcluded([]); 
+      setPendingForHouse({before:0, after:0});
     }
     setSelectedHouse(house || null);
     setIsDetailModalOpen(false);
@@ -937,6 +1043,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setFormData({ ...selectedHouse, id: '', beforePhotos: [], afterPhotos: [] });
     setBeforePhotoURLs([]);
     setAfterPhotoURLs([]);
+    setBeforeExcluded([]); 
+    setAfterExcluded([]);
     setFormServices(houseServices.map(s => ({ ...s, id: `temp-${Math.random().toString(36).substring(2, 9)}`, propertyId: '' })));
     setServicesToDelete([]);
     setIsDetailModalOpen(false);
@@ -948,7 +1056,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setSelectedHouse(null);
   };
 
-  // ⭐ CAMBIO 3: ahora `client` guarda el ID del customer, no el nombre.
   const handleCustomerSelect = (customerId: string) => {
     const selectedCust = customersList.find(c => c.id === customerId);
     if (selectedCust) {
@@ -972,7 +1079,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         finalAssignedWorkers = employees.filter(emp => emp.teamId === formData.teamId).map(emp => emp.id);
       }
 
-      // ⭐ CAMBIO 3: la descripción usa el nombre del cliente resuelto desde customers
       if (!workingId) {
         const { id, ...restOfData } = formData;
         const dataToCreate = { 
@@ -990,46 +1096,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         console.log('✅ New property created with ID:', workingId);
       }
 
-      // ⭐ CAMBIO 3: las rutas de Storage usan el NOMBRE del cliente, no el id
-      let uploadedBeforeUrls: string[] = [];
-      if (beforeFiles.length > 0) {
-        console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
-        try {
-          uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
-            beforeFiles,
-            getClientName(formData.client),
-            formData.address,
-            'before'
-          );
-          console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
-        } catch (uploadError) {
-          console.error("❌ Error uploading before photos:", uploadError);
-          alert("Failed to upload before photos. Check console for details.");
-        }
-      }
-
-      let uploadedAfterUrls: string[] = [];
-      if (afterFiles.length > 0) {
-        console.log(`📤 Uploading ${afterFiles.length} after photos...`);
-        try {
-          uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
-            afterFiles,
-            getClientName(formData.client),
-            formData.address,
-            'after'
-          );
-          console.log('✅ All after photos uploaded:', uploadedAfterUrls);
-        } catch (uploadError) {
-          console.error("❌ Error uploading after photos:", uploadError);
-          alert("Failed to upload after photos. Check console for details.");
-        }
-      }
+      const beforeRes = await uploadOrQueue(beforeFiles, getClientName(formData.client), formData.address, 'before', workingId!);
+      const afterRes  = await uploadOrQueue(afterFiles,  getClientName(formData.client), formData.address, 'after',  workingId!);
+      const uploadedBeforeUrls = beforeRes.urls;
+      const uploadedAfterUrls  = afterRes.urls;
 
       const finalDataToUpdate = {
         ...formData,
         assignedWorkers: finalAssignedWorkers,
         beforePhotos: [...(formData.beforePhotos || []), ...uploadedBeforeUrls],
-        afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls]
+        afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls],
+        beforePhotosExcluded: beforeExcluded,
+        afterPhotosExcluded: afterExcluded,
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
@@ -1070,6 +1148,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setAfterFiles([]);
       setBeforePhotoURLs([]); 
       setAfterPhotoURLs([]);
+
+      const queued = beforeRes.queued + afterRes.queued;
+      if (queued > 0) alert(`Sin conexión: ${queued} foto(s) se subirán automáticamente al recuperar internet.`);
+      await refreshPendingCounts();
+
       handleCloseForm();
 
     } catch (error) {
@@ -1087,44 +1170,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       const workingId = selectedHouse.id;
 
-      // ⭐ CAMBIO 3: las rutas de Storage usan el NOMBRE del cliente
-      let uploadedBeforeUrls: string[] = [];
-      if (beforeFiles.length > 0) {
-        console.log(`📤 Uploading ${beforeFiles.length} before photos...`);
-        try {
-          uploadedBeforeUrls = await storageService.uploadMultiplePropertyPhotos(
-            beforeFiles,
-            getClientName(selectedHouse.client),
-            selectedHouse.address,
-            'before'
-          );
-          console.log('✅ All before photos uploaded:', uploadedBeforeUrls);
-        } catch (uploadError) {
-          console.error("❌ Error uploading before photos:", uploadError);
-          alert("Failed to upload before photos. Check console for details.");
-          setIsSaving(false);
-          return;
-        }
-      }
-
-      let uploadedAfterUrls: string[] = [];
-      if (afterFiles.length > 0) {
-        console.log(`📤 Uploading ${afterFiles.length} after photos...`);
-        try {
-          uploadedAfterUrls = await storageService.uploadMultiplePropertyPhotos(
-            afterFiles,
-            getClientName(selectedHouse.client),
-            selectedHouse.address,
-            'after'
-          );
-          console.log('✅ All after photos uploaded:', uploadedAfterUrls);
-        } catch (uploadError) {
-          console.error("❌ Error uploading after photos:", uploadError);
-          alert("Failed to upload after photos. Check console for details.");
-          setIsSaving(false);
-          return;
-        }
-      }
+      const beforeRes = await uploadOrQueue(beforeFiles, getClientName(selectedHouse.client), selectedHouse.address, 'before', workingId);
+      const afterRes  = await uploadOrQueue(afterFiles,  getClientName(selectedHouse.client), selectedHouse.address, 'after',  workingId);
+      const uploadedBeforeUrls = beforeRes.urls;
+      const uploadedAfterUrls  = afterRes.urls;
 
       const existingBeforeFromStorage = (selectedHouse.beforePhotos || []).filter(u => u.startsWith('http'));
       const existingAfterFromStorage = (selectedHouse.afterPhotos || []).filter(u => u.startsWith('http'));
@@ -1134,7 +1183,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       await propertiesService.update(workingId, {
         beforePhotos: finalBeforePhotos,
-        afterPhotos: finalAfterPhotos
+        afterPhotos: finalAfterPhotos,
+        beforePhotosExcluded: beforeExcluded,
+        afterPhotosExcluded: afterExcluded
       } as any);
       console.log('✅ Property updated in Firestore with photo URLs');
 
@@ -1152,7 +1203,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setBeforeFiles([]);
       setAfterFiles([]);
 
-      alert("Photos saved successfully!");
+      const queued = beforeRes.queued + afterRes.queued;
+      await refreshPendingCounts();
+      alert(queued > 0 
+        ? `Guardado. ${queued} foto(s) se subirán al recuperar conexión.` 
+        : 'Photos saved successfully!');
+      return; 
     } catch (error) {
       console.error("❌ Error saving photos:", error);
       alert("Error saving photos. Check console.");
@@ -1196,6 +1252,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setIsDetailModalOpen(true);
 
     try {
+      setBeforeExcluded(house.beforePhotosExcluded || []);
+      setAfterExcluded(house.afterPhotosExcluded || []);
+      const pend = await getPendingByProperty(house.id);
+      setPendingForHouse({
+        before: pend.filter(p => p.type === 'before').length,
+        after: pend.filter(p => p.type === 'after').length,
+      });
+
       const pRecords = await payrollService.getByPropertyId(house.id);
       setHousePayrollRecords(pRecords);
 
@@ -1208,46 +1272,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
-    if (!e.target.files || e.target.files.length === 0) return;
-
-    const filesArray = Array.from(e.target.files);
-    setIsCompressing(true);
-
-    try {
-      console.log(`Compressing ${filesArray.length} image(s)...`);
-
-      const compressedFiles = await Promise.all(
-        filesArray.map(file =>
-          compressImage(file, {
-            quality: photoConfig.compressionQuality,
-            maxWidth: photoConfig.maxImageWidth,
-            maxSizeMB: photoConfig.maxSizeMB
-          })
-        )
-      );
-
-      const fileUrls = compressedFiles.map(file => URL.createObjectURL(file));
-
-      if (type === 'before') {
-        setBeforeFiles(prev => [...prev, ...compressedFiles]);
-        setBeforePhotoURLs(prev => [...prev, ...fileUrls]);
-      } else {
-        setAfterFiles(prev => [...prev, ...compressedFiles]);
-        setAfterPhotoURLs(prev => [...prev, ...fileUrls]);
-      }
-
-      console.log(`✅ ${compressedFiles.length} image(s) ready for upload`);
-    } catch (error) {
-      console.error('Error compressing images:', error);
-      alert('Error al procesar las imágenes. Intenta de nuevo.');
-    } finally {
-      setIsCompressing(false);
-      if (e.target) e.target.value = '';
-    }
-  };
-
   const handleRemovePhoto = (index: number, type: 'before' | 'after') => {
+    const removedUrl = (type === 'before' ? beforePhotoURLs : afterPhotoURLs)[index];
     const isFormOpen = isFormModalOpen;
 
     if (type === 'before') {
@@ -1289,10 +1315,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         }
       }
     }
+
+    if (type === 'before') setBeforeExcluded(prev => prev.filter(u => u !== removedUrl));
+    else setAfterExcluded(prev => prev.filter(u => u !== removedUrl));
   };
 
   const generatePDF = async (type: 'before' | 'after') => {
-    const urls = type === 'before' ? beforePhotoURLs : afterPhotoURLs;
+    const excluded = type === 'before' ? beforeExcluded : afterExcluded;
+    const urls = (type === 'before' ? beforePhotoURLs : afterPhotoURLs)
+      .filter(u => !excluded.includes(u));
 
     if (urls.length === 0) {
       alert(`No hay fotos de tipo "${type.toUpperCase()}" subidas para generar el reporte.`);
@@ -1331,7 +1362,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       const title = type === 'before' ? 'Before Photos' : 'After Photos';
       const accentColor = type === 'before' ? '#1e3a8a' : '#047857';
-      // ⭐ CAMBIO 3: nombre del cliente resuelto para el PDF
       const clientLabel = selectedHouse?.client ? getClientName(selectedHouse.client) : 'Propiedad';
 
       const html = `
@@ -1514,7 +1544,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
     noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
 
-    // ⭐ CAMBIO 1: KPI cards más compactas y armoniosas
     kpiCard: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
     kpiIconBox: (color: string) => ({ backgroundColor: `${color}15`, color: color, width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
     tableHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '16px', flexShrink: 0 } as React.CSSProperties,
@@ -1523,7 +1552,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
     td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
 
-    // ⭐ CAMBIO 1: grilla de KPIs con tarjetas más juntas y proporcionadas
     dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
     mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', flex: 1, minHeight: 0, overflow: 'hidden' } as React.CSSProperties,
 
@@ -1547,7 +1575,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-        /* ⭐ Scrollbars elegantes y modernos para TODA la vista de Houses */
         .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
         .fade-in *::-webkit-scrollbar-track { background: transparent; }
         .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
@@ -1555,7 +1582,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .fade-in *::-webkit-scrollbar-corner { background: transparent; }
         .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
 
-        /* Variantes para los modales también */
         .modal-overlay-centered *::-webkit-scrollbar { width: 6px; height: 6px; }
         .modal-overlay-centered *::-webkit-scrollbar-track { background: transparent; }
         .modal-overlay-centered *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
@@ -1600,7 +1626,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .property-select-container { display: flex; align-items: center; gap: 8px; white-space: nowrap; position: relative; }
 
         .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
-        /* ⭐ CAMBIO 1: columna de equipos un poco más ancha para alojar el detalle desplegable */
         .right-col { flex: 0 0 240px; width: 240px; display: flex; flex-direction: column; height: 100%; }
 
         @media (max-width: 1024px) {
@@ -1636,6 +1661,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
 
         <div className="dashboard-actions-wrapper" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          
+          {(!isOnline || pendingTotal > 0) && (
+            <div title={isOnline ? 'Subiendo fotos pendientes…' : 'Sin conexión'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 42, padding: '0 14px',
+                borderRadius: 20, fontSize: '0.8rem', fontWeight: 700,
+                background: isOnline ? '#fffbeb' : '#fef2f2',
+                color: isOnline ? '#b45309' : '#b91c1c',
+                border: `1px solid ${isOnline ? '#fde68a' : '#fecaca'}` }}>
+              <CloudOff size={14} /> {isOnline ? `${pendingTotal} por subir` : 'Offline'}
+            </div>
+          )}
+
           <div className="search-box-container" style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '0 16px', height: '42px', flex: 1, minWidth: '200px' }}>
             <Search size={16} color="#9ca3af" />
             <input 
@@ -1655,7 +1692,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
       </header>
 
-      {/* ⭐ CAMBIO 1: KPI CARDS — texto más pequeño y proporcionado */}
       <div className="dash-grid" style={s.dashGrid}>
         {isLoading ? (
           <div style={{ color: '#6b7280' }}>Loading metrics...</div>
@@ -1663,7 +1699,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           statuses.slice(0, 4).map((status, index) => {
             const Icon = kpiIcons[index % kpiIcons.length];
             const count = propertiesWithScope.filter(p => p.statusId === status.id || p.statusId === status.name).length;
-            // ⭐ KPI clickeable: filtra la tabla Daily Jobs por este status
             const isActive = activeFilter === status.name;
             return (
               <div 
@@ -1720,14 +1755,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                     style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
-                    {/* ⭐ CAMBIO 2: indicador del botón incluye statusFilter */}
                     <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
                   </button>
 
                   {isFilterMenuOpen && (
                     <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                      {/* ⭐ CAMBIO 2: nuevo selector de Status (todos los statuses configurados) */}
                       <div>
                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
                         <select 
@@ -1742,7 +1775,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </select>
                       </div>
 
-                      {/* ⭐ Nuevo: selector de Priority */}
                       <div>
                         <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Priority</label>
                         <select 
@@ -1765,7 +1797,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           onChange={e => setHouseFilter(e.target.value)}
                         >
                           <option value="All">All Properties</option>
-                          {/* ⭐ CAMBIO 3: mostrar el NOMBRE del cliente en la opción */}
                           {uniqueHouses.map((h, idx) => (
                             <option key={idx} value={`${h.client}|${h.address}`}>{getClientName(h.client)} - {h.address}</option>
                           ))}
@@ -1813,7 +1844,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   ) : filteredProperties.map((prop) => {
                     const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
                     const serviceName = getRelationName(services, prop.serviceId, 'Regular');
-                    // ⭐ Detectar prioridad HIGH para el indicador visual
                     const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
                     const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
 
@@ -1828,13 +1858,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <td data-label="Client" style={s.td}>
                           <div className="mobile-client-cell">
                             <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              {/* ⭐ Icono HIGH priority */}
                               {isHighPriority && (
                                 <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                                   <AlertTriangle size={11} /> HIGH
                                 </span>
                               )}
-                              {/* ⭐ CAMBIO 3: muestra el nombre del cliente resuelto desde customers */}
                               {getClientName(prop.client)}
                               {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
                             </div>
@@ -1856,7 +1884,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           </div>
         </div>
 
-        {/* ⭐ CAMBIO 1: RIGHT COLUMN — ACTIVE TEAMS desplegables al hacer click */}
+        {/* RIGHT COLUMN: ACTIVE TEAMS */}
         <div className="right-col">
           <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
             <h3 style={{ margin: '0', padding: '14px 16px', fontSize: '1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
@@ -1867,7 +1895,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
               ) : (
                 teamsWithScope
-                  // ⭐ Nuevo: ocultar teams "Free" (sin casas activas, excluyendo Invoice)
                   .filter(team => propertiesWithScope.some(p => {
                     const isAssignedToTeam = p.teamId === team.id || p.teamId === team.name;
                     if (!isAssignedToTeam) return false;
@@ -1876,7 +1903,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     return !isStatusInvoice;
                   }))
                   .map(team => {
-                  // ⭐ Filtrar casas del team: excluir Invoice, ordenar Recall primero
                   const assignedProps = propertiesWithScope
                     .filter(p => {
                       if (p.teamId !== team.id && p.teamId !== team.name) return false;
@@ -1916,7 +1942,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
                       </div>
 
-                      {/* ⭐ CAMBIO 1: panel desplegable con las casas asignadas al equipo */}
                       {isExpanded && (
                         <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {assignedProps.length === 0 ? (
@@ -1925,7 +1950,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             assignedProps.map(prop => {
                               const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
                               const isRecall = stProp?.name?.toLowerCase() === 'recall' || prop.statusId?.toLowerCase() === 'recall';
-                              // ⭐ Detectar HIGH priority también en panel del team
                               const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
                               const isHigh = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
                               return (
@@ -2004,7 +2028,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('client') && (
                       <div>
                         <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                        {/* ⭐ CAMBIO 3: el SearchableSelect devuelve el ID del customer */}
                         <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
                       </div>
                     )}
@@ -2261,76 +2284,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
-                    
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={s.detailLabel}>BEFORE PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {photoConfig.allowUploadFromDevice && (
-                            <>
-                              <button type="button" onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Upload size={12} /> Cargar
-                              </button>
-                              <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
-                            </>
-                          )}
-                          {photoConfig.allowTakePhoto && (
-                            <>
-                              <button type="button" onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Camera size={12} /> Cámara
-                              </button>
-                              <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
-                          {beforePhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="Before" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              <button type="button" onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                            </div>
-                          ))}
-                        </div>
-                      }
-                    </div>
-
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={s.detailLabel}>AFTER PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {photoConfig.allowUploadFromDevice && (
-                            <>
-                              <button type="button" onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Upload size={12} /> Cargar
-                              </button>
-                              <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
-                            </>
-                          )}
-                          {photoConfig.allowTakePhoto && (
-                            <>
-                              <button type="button" onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Camera size={12} /> Cámara
-                              </button>
-                              <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
-                          {afterPhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="After" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              <button type="button" onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-                            </div>
-                          ))}
-                        </div>
-                      }
-                    </div>
+                    <PhotoSection label="Before" type="before"
+                      urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
+                      canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
+                      onRemove={(i: number) => handleRemovePhoto(i, 'before')}
+                      onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
+                    <PhotoSection label="After" type="after"
+                      urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
+                      canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
+                      onRemove={(i: number) => handleRemovePhoto(i, 'after')}
+                      onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
                   </div>
                 </div>
                 )}
@@ -2360,7 +2325,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Client Details</h4>
                   </div>
                   <div style={{ paddingLeft: '2.4rem' }}>
-                    {/* ⭐ CAMBIO 3: mostrar nombre resuelto del cliente */}
                     <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: formData.client ? '#0F172A' : '#94A3B8' }}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>
                     {formData.address && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.address}</p>}
                   </div>
@@ -2417,7 +2381,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           <div className="modal-90" onClick={e => e.stopPropagation()}>
             <header style={s.header}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                {/* ⭐ CAMBIO 3: nombre del cliente resuelto */}
                 <h3 style={s.title}>{getClientName(selectedHouse.client)}</h3>
                 {(selectedHouse as any).employeeFinishedBy && (
                   <span style={{ backgroundColor: '#d1fae5', color: '#047857', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2815,85 +2778,23 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={s.detailLabel}>BEFORE PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {photoConfig.allowUploadFromDevice && isElementVisible('btn_uploadPhoto') && (
-                            <>
-                              <button onClick={() => beforeFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Upload size={12} /> Cargar
-                              </button>
-                              <input type="file" multiple accept="image/*" ref={beforeFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
-                            </>
-                          )}
-                          {photoConfig.allowTakePhoto && isElementVisible('btn_takePhoto') && (
-                            <>
-                              <button onClick={() => beforeCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Camera size={12} /> Cámara
-                              </button>
-                              <input type="file" accept="image/*" capture="environment" ref={beforeCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'before')} />
-                            </>
-                          )}
-                          {isElementVisible('btn_exportPdf') && (
-                            <button onClick={() => generatePDF('before')} style={{ background: '#eff6ff', color: '#1e3a8a', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Printer size={12} /> Export PDF
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {beforePhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
-                          {beforePhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="Before" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'before')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
-                            </div>
-                          ))}
-                        </div>
-                      }
-                    </div>
-
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
-                        <span style={s.detailLabel}>AFTER PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {photoConfig.allowUploadFromDevice && isElementVisible('btn_uploadPhoto') && (
-                            <>
-                              <button onClick={() => afterFileInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Upload size={12} /> Cargar
-                              </button>
-                              <input type="file" multiple accept="image/*" ref={afterFileInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
-                            </>
-                          )}
-                          {photoConfig.allowTakePhoto && isElementVisible('btn_takePhoto') && (
-                            <>
-                              <button onClick={() => afterCameraInputRef.current?.click()} disabled={isSaving || isCompressing} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Camera size={12} /> Cámara
-                              </button>
-                              <input type="file" accept="image/*" capture="environment" ref={afterCameraInputRef} style={{ display: 'none' }} onChange={(e) => handlePhotoUpload(e, 'after')} />
-                            </>
-                          )}
-                          {isElementVisible('btn_exportPdf') && (
-                            <button onClick={() => generatePDF('after')} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Printer size={12} /> Export PDF
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {isCompressing && <div style={{ textAlign: 'center', color: '#3b82f6', fontSize: '0.8rem', padding: '8px 0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><Loader2 size={14} className="spin" /> Optimizando imágenes...</div>}
-                      {afterPhotoURLs.length === 0 ? <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '20px 0' }}>No photos uploaded.</div> : 
-                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
-                          {afterPhotoURLs.map((url, i) => (
-                            <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                              <img src={url} alt="After" style={{ height: '80px', width: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                              {canEdit && <button onClick={() => handleRemovePhoto(i, 'after')} style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
-                            </div>
-                          ))}
-                        </div>
-                      }
-                    </div>
+                    <PhotoSection label="Before" type="before"
+                      urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
+                      canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                      showUpload={isElementVisible('btn_uploadPhoto')} showCamera={isElementVisible('btn_takePhoto')} showExportPdf={isElementVisible('btn_exportPdf')}
+                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
+                      onRemove={(i: number) => handleRemovePhoto(i, 'before')}
+                      onToggleReport={(u: string) => toggleReportPhoto(u, 'before')}
+                      onExportPdf={() => generatePDF('before')} />
+                      
+                    <PhotoSection label="After" type="after"
+                      urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
+                      canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                      showUpload={isElementVisible('btn_uploadPhoto')} showCamera={isElementVisible('btn_takePhoto')} showExportPdf={isElementVisible('btn_exportPdf')}
+                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
+                      onRemove={(i: number) => handleRemovePhoto(i, 'after')}
+                      onToggleReport={(u: string) => toggleReportPhoto(u, 'after')}
+                      onExportPdf={() => generatePDF('after')} />
                   </div>
                 </div>
               )}
@@ -3012,7 +2913,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={24} /></button>
             </header>
             <div style={s.body}>
-              {/* ⭐ CAMBIO 3: header de la propiedad con nombre del cliente resuelto */}
               <div style={{ backgroundColor: '#eff6ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
                 <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Property</div>
                 <div style={{ fontSize: '1rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</div>
