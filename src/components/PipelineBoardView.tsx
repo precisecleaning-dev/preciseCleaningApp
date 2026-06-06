@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 
 /* ------------------------------------------------------------------
@@ -14,6 +14,7 @@ import type { Property as BaseProperty, Status, Team, Priority } from '../types/
 
 type Property = BaseProperty & {
   employeeFinishedBy?: string | null;
+  scheduleDate?: string | null;
 };
 
 interface PipelineBoardViewProps {
@@ -194,6 +195,12 @@ export default function PipelineBoardView({
                         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.address}</span>
                       </div>
                     )}
+
+                    {/* Schedule date */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#6b7280' }}>
+                      <CalendarDays size={12} style={{ flexShrink: 0 }} />
+                      <span>{(p as any).scheduleDate || 'Sin fecha'}</span>
+                    </div>
 
                     {/* Monto (si se provee) */}
                     {getAmount && (
