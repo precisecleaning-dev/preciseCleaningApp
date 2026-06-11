@@ -19,6 +19,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot
 
 // Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
+import PipelineBoardView from '../components/PipelineBoardView';
 import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
 
 type Property = BaseProperty & {
@@ -284,11 +285,12 @@ interface HousesViewProps {
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   roles?: Role[];
-  viewMode?: string; // <-- DEBES AGREGAR ESTA LÍNEA (o tiparlo de forma estricta)
+  viewMode?: 'table' | 'board';
 }
+
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [] }: HousesViewProps) {
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -385,7 +387,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     } catch (e) { console.error(e); }
   };
 
-  // Sube las fotos en cola cuando hay internet y las elimina de IndexedDB.
   const syncPendingPhotos = async () => {
     if (!navigator.onLine) return;
     let pending: PendingPhoto[] = [];
@@ -408,13 +409,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         await updateDoc(doc(db, 'properties', propertyId), { [field]: merged } as any);
         for (const it of items) await removePending(it.id);
       } catch (err) {
-        console.error('Error sincronizando fotos pendientes:', err); // se reintenta luego
+        console.error('Error sincronizando fotos pendientes:', err);
       }
     }
     await refreshPendingCounts();
   };
 
-  // Sube si hay internet; si no, encola y devuelve {queued}
   const uploadOrQueue = async (
     files: File[], clientName: string, address: string,
     type: 'before' | 'after', propertyId: string,
@@ -1570,7 +1570,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   };
 
   return (
-    <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+    <div className="fade-in houses-view" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <style>{`
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1603,9 +1603,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
 
         @media (max-width: 1024px) {
-          .modal-full { flex-direction: column; overflow-y: auto; }
-          .modal-full-left { padding: 1.5rem; overflow-y: visible; }
-          .modal-full-right { width: 100%; border-left: none; border-top: 1px solid #E2E8F0; }
+          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
+          .main-columns { overflow: visible; }
+          .houses-view { height: auto !important; min-height: 100%; }
+          .left-col > div, .right-col > div { height: auto !important; }
         }
 
         @media (min-width: 769px) { 
@@ -1633,18 +1634,31 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .main-columns { overflow: auto; }
         }
 
+        .jobs-cards-wrap { display: none; }
+
         @media (max-width: 768px) {
           .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
           .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
-          .responsive-table thead { display: none; }
-          .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-          .responsive-table td { display: flex; justify-content: space-between; alignItems: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; text-align: right; white-space: normal !important; }
-          .responsive-table td:last-child { border-bottom: none; padding-bottom: 0; }
-          .responsive-table td::before { content: attr(data-label); font-weight: 700; color: #6b7280; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-          .mobile-client-cell { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+
+          /* ===== Controles superiores ===== */
+          .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 12px !important; }
+          .search-box-container { height: 48px !important; }
           .filters-section { flex-direction: column; align-items: stretch; }
           .property-select-container { width: 100%; }
-          .property-select-container button { width: 100%; justify-content: center; }
+          .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
+
+          /* ===== Tarjetas de trabajos (Mobile) ===== */
+          .jobs-table-wrap { display: none !important; }
+          .jobs-cards-wrap { display: flex !important; }
+
+          /* ===== Botones de modales más grandes ===== */
+          .modal-90 > header > div:last-child > button {
+            height: 44px !important; min-height: 44px !important;
+            padding: 0 16px !important; border-radius: 10px !important; font-size: 0.9rem !important;
+          }
+          .modal-full-right button { padding: 1rem !important; font-size: 1rem !important; min-height: 50px; }
+          .modal-70 footer button,
+          .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
         }
       `}</style>
 
@@ -1728,267 +1742,386 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         )}
       </div>
 
-      <div className="main-columns" style={s.mainColumns}>
+      {viewMode === 'board' ? (
+        <PipelineBoardView
+          properties={filteredProperties}
+          statuses={statuses}
+          teams={teams}
+          priorities={priorities}
+          getClientName={getClientName}
+          onOpenDetail={handleOpenDetail}
+          onQuickStatusChange={handleQuickStatusChange}
+          canEdit={!!canEdit}
+          isSaving={isSaving}
+        />
+      ) : (
+        <div className="main-columns" style={s.mainColumns}>
 
-        {/* LEFT COLUMN: DAILY JOBS */}
-        <div className="left-col">
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            
-            <div style={s.tableHeader}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111827', fontWeight: 700 }}>Daily Jobs</h2>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>{dateCapitalized}</p>
-              </div>
-
-              <div className="filters-section">
-                <div className="tabs-container">
-                  <button onClick={() => setActiveFilter('All')} style={s.pillBtn(activeFilter === 'All')}>All</button>
-                  {dashboardTabs.map(st => (
-                    <button key={st.id} onClick={() => setActiveFilter(st.name)} style={s.pillBtn(activeFilter === st.name)}>
-                      {st.name}
-                    </button>
-                  ))}
+          {/* LEFT COLUMN: DAILY JOBS */}
+          <div className="left-col">
+            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              
+              <div style={s.tableHeader}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111827', fontWeight: 700 }}>Daily Jobs</h2>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>{dateCapitalized}</p>
                 </div>
 
-                <div className="property-select-container">
-                  <button 
-                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                    style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
-                  </button>
+                <div className="filters-section">
+                  <div className="tabs-container">
+                    <button onClick={() => setActiveFilter('All')} style={s.pillBtn(activeFilter === 'All')}>All</button>
+                    {dashboardTabs.map(st => (
+                      <button key={st.id} onClick={() => setActiveFilter(st.name)} style={s.pillBtn(activeFilter === st.name)}>
+                        {st.name}
+                      </button>
+                    ))}
+                  </div>
 
-                  {isFilterMenuOpen && (
-                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="property-select-container">
+                    <button 
+                      onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                      style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
+                    </button>
 
-                      <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
-                        <select 
-                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                          value={statusFilter} 
-                          onChange={e => setStatusFilter(e.target.value)}
-                        >
-                          <option value="All">All Statuses</option>
-                          {statuses.map(st => (
-                            <option key={st.id} value={st.id}>{st.name}</option>
-                          ))}
-                        </select>
+                    {isFilterMenuOpen && (
+                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                        <div>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
+                          <select 
+                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                            value={statusFilter} 
+                            onChange={e => setStatusFilter(e.target.value)}
+                          >
+                            <option value="All">All Statuses</option>
+                            {statuses.map(st => (
+                              <option key={st.id} value={st.id}>{st.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Priority</label>
+                          <select 
+                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                            value={priorityFilter} 
+                            onChange={e => setPriorityFilter(e.target.value)}
+                          >
+                            <option value="All">All Priorities</option>
+                            {priorities.map(pr => (
+                              <option key={pr.id} value={pr.id}>{pr.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Property</label>
+                          <select 
+                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                            value={houseFilter} 
+                            onChange={e => setHouseFilter(e.target.value)}
+                          >
+                            <option value="All">All Properties</option>
+                            {uniqueHouses.map((h, idx) => (
+                              <option key={idx} value={`${h.client}|${h.address}`}>{getClientName(h.client)} - {h.address}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Invoice Status</label>
+                          <select 
+                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
+                            value={invoiceFilter} 
+                            onChange={e => setInvoiceFilter(e.target.value)}
+                          >
+                            <option value="All">All Invoices</option>
+                            <option value="Pre-Paid">Pre-Paid</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Paid">Paid</option>
+                            <option value="Needs Invoice">Needs Invoice</option>
+                          </select>
+                        </div>
+
                       </div>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-                      <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Priority</label>
-                        <select 
-                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                          value={priorityFilter} 
-                          onChange={e => setPriorityFilter(e.target.value)}
-                        >
-                          <option value="All">All Priorities</option>
-                          {priorities.map(pr => (
-                            <option key={pr.id} value={pr.id}>{pr.name}</option>
-                          ))}
-                        </select>
+              {/* ====== VISTA TABLA (ESCRITORIO) ====== */}
+              <div className="jobs-table-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Schedule</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Team</th>
+                      <th style={{ ...s.th, textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
+                    ) : filteredProperties.length === 0 ? (
+                      <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
+                    ) : filteredProperties.map((prop) => {
+                      const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
+                      const serviceName = getRelationName(services, prop.serviceId, 'Regular');
+                      const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
+                      const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
+
+                      return (
+                        <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
+                          <td data-label="Actions" style={s.td}>
+                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                              {canEdit && isVisible('admin') && (
+                                <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Edit2 size={16} /> <span className="mobile-action-text">Editar</span>
+                                </button>
+                              )}
+                              {canDelete && isVisible('admin') && (
+                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
+                            <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate || '-'}
+                          </td>
+                          <td data-label="Client" style={s.td}>
+                            <div className="mobile-client-cell">
+                              <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {isHighPriority && (
+                                  <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                    <AlertTriangle size={11} /> HIGH
+                                  </span>
+                                )}
+                                {getClientName(prop.client)}
+                                {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12} /> {prop.address}</div>
+                            </div>
+                          </td>
+                          <td data-label="Time" style={{ ...s.td, color: '#6b7280' }}><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.timeIn || '08:00 AM'}</td>
+                          <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
+                          <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
+                          <td data-label="Status" style={{ ...s.td, textAlign: 'right' }}>
+                            <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* ====== VISTA TARJETAS KANBAN (MÓVIL) ====== */}
+              <div className="jobs-cards-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '16px', flexDirection: 'column', gap: '16px', backgroundColor: '#f8fafc' }}>
+                {isLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading database...</div>
+                ) : filteredProperties.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic' }}>No jobs to display for your team.</div>
+                ) : filteredProperties.map((prop) => {
+                  const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
+                  const teamColor = getRelationColor(teams, prop.teamId);
+                  const serviceName = getRelationName(services, prop.serviceId, 'Regular');
+                  const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
+                  const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
+                  const stObj = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
+                  
+                  return (
+                    <div
+                      key={prop.id}
+                      onClick={() => handleOpenDetail(prop)}
+                      style={{
+                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px',
+                        cursor: 'pointer', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
+                        display: 'flex', flexDirection: 'column', gap: '12px',
+                        borderLeft: `5px solid ${stObj?.color || '#e2e8f0'}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.3 }}>
+                          {getClientName(prop.client)}
+                        </span>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                          {(prop as any).employeeFinishedBy && <CheckCircle size={18} color="#10b981" />}
+                          {isHighPriority && <AlertTriangle size={18} color="#dc2626" />}
+                        </div>
                       </div>
                       
-                      <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Property</label>
-                        <select 
-                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                          value={houseFilter} 
-                          onChange={e => setHouseFilter(e.target.value)}
-                        >
-                          <option value="All">All Properties</option>
-                          {uniqueHouses.map((h, idx) => (
-                            <option key={idx} value={`${h.client}|${h.address}`}>{getClientName(h.client)} - {h.address}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Invoice Status</label>
-                        <select 
-                          style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                          value={invoiceFilter} 
-                          onChange={e => setInvoiceFilter(e.target.value)}
-                        >
-                          <option value="All">All Invoices</option>
-                          <option value="Pre-Paid">Pre-Paid</option>
-                          <option value="Pending">Pending</option>
-                          <option value="Paid">Paid</option>
-                          <option value="Needs Invoice">Needs Invoice</option>
-                        </select>
-                      </div>
-
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
-                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
-                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
-                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
-                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Team</th>
-                    <th style={{ ...s.th, textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
-                  ) : filteredProperties.length === 0 ? (
-                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
-                  ) : filteredProperties.map((prop) => {
-                    const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
-                    const serviceName = getRelationName(services, prop.serviceId, 'Regular');
-                    const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
-                    const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
-
-                    return (
-                      <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
-                        <td data-label="Actions" style={s.td}>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            {canEdit && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
-                            {canDelete && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>}
-                          </div>
-                        </td>
-                        <td data-label="Client" style={s.td}>
-                          <div className="mobile-client-cell">
-                            <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              {isHighPriority && (
-                                <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                                  <AlertTriangle size={11} /> HIGH
-                                </span>
-                              )}
-                              {getClientName(prop.client)}
-                              {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12} /> {prop.address}</div>
-                          </div>
-                        </td>
-                        <td data-label="Time" style={{ ...s.td, color: '#6b7280' }}><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.timeIn || '08:00 AM'}</td>
-                        <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
-                        <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
-                        <td data-label="Status" style={{ ...s.td, textAlign: 'right' }}>
-                          <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: ACTIVE TEAMS */}
-        <div className="right-col">
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <h3 style={{ margin: '0', padding: '14px 16px', fontSize: '1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {isLoading ? (
-                <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Loading teams...</div>
-              ) : teamsWithScope.length === 0 ? (
-                <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
-              ) : (
-                teamsWithScope
-                  .filter(team => propertiesWithScope.some(p => {
-                    const isAssignedToTeam = p.teamId === team.id || p.teamId === team.name;
-                    if (!isAssignedToTeam) return false;
-                    const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-                    const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-                    return !isStatusInvoice;
-                  }))
-                  .map(team => {
-                  const assignedProps = propertiesWithScope
-                    .filter(p => {
-                      if (p.teamId !== team.id && p.teamId !== team.name) return false;
-                      const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-                      const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-                      return !isStatusInvoice;
-                    })
-                    .sort((a, b) => {
-                      const stA = statuses.find(s => s.id === a.statusId || s.name === a.statusId);
-                      const stB = statuses.find(s => s.id === b.statusId || s.name === b.statusId);
-                      const isRecallA = stA?.name?.toLowerCase() === 'recall' || a.statusId?.toLowerCase() === 'recall';
-                      const isRecallB = stB?.name?.toLowerCase() === 'recall' || b.statusId?.toLowerCase() === 'recall';
-                      if (isRecallA && !isRecallB) return -1;
-                      if (!isRecallA && isRecallB) return 1;
-                      return 0;
-                    });
-                  const isExpanded = expandedTeamId === team.id;
-                  return (
-                    <div 
-                      key={team.id} 
-                      onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
-                      style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = isExpanded ? team.color : '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={16} /></div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem' }}>{team.name}</div>
-                            <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs` : 'Free'}</div>
-                          </div>
+                      {prop.address && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#475569' }}>
+                          <MapPin size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'normal' }}>{prop.address}</span>
                         </div>
-                        <ChevronDown size={16} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+                      )}
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.9rem', color: '#475569', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
+                          <CalendarDays size={15} color="#3b82f6" style={{ flexShrink: 0 }} /> {prop.scheduleDate || 'No date'}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
+                          <Clock size={15} color="#3b82f6" style={{ flexShrink: 0 }} /> {prop.timeIn || '08:00 AM'}
+                        </span>
                       </div>
-                      <div style={{ width: '100%', height: '3px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
-                        <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600 }}>{serviceName}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
+                          <span style={{ width: 24, height: 24, borderRadius: '50%', background: `${teamColor || '#64748b'}20`, color: teamColor || '#64748b', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            <Users size={12} />
+                          </span>
+                          {teamName}
+                        </div>
                       </div>
-
-                      {isExpanded && (
-                        <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {assignedProps.length === 0 ? (
-                            <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No hay casas asignadas a este equipo.</span>
-                          ) : (
-                            assignedProps.map(prop => {
-                              const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
-                              const isRecall = stProp?.name?.toLowerCase() === 'recall' || prop.statusId?.toLowerCase() === 'recall';
-                              const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
-                              const isHigh = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
-                              return (
-                                <div 
-                                  key={prop.id} 
-                                  onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
-                                  style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : isHigh ? '#fdba74' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                >
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{getClientName(prop.client)}</div>
-                                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                                      {isRecall && (
-                                        <span style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
-                                      )}
-                                      {isHigh && (
-                                        <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', backgroundColor: '#fff7ed', color: '#c2410c', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                                          <AlertTriangle size={10} /> High
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
-                                </div>
-                              );
-                            })
+                      
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '4px' }}>
+                        <StatusPillSelector
+                          currentStatusId={prop.statusId}
+                          statuses={statuses}
+                          onChange={(newId) => handleQuickStatusChange(prop.id, newId)}
+                          disabled={isSaving || !canEdit || !isVisible('workflow')}
+                        />
+                      </div>
+                      
+                      {(canEdit || canDelete) && isVisible('admin') && (
+                        <div style={{ display: 'flex', gap: '12px', borderTop: '1px dashed #e2e8f0', paddingTop: '16px', marginTop: '8px' }}>
+                          {canEdit && (
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}
+                              style={{ flex: 1, height: '44px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                              <Edit2 size={16} /> Editar
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}
+                              style={{ flex: 1, height: '44px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                              <Trash2 size={16} /> Eliminar
+                            </button>
                           )}
                         </div>
                       )}
                     </div>
                   );
-                })
-              )}
+                })}
+              </div>
+
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: ACTIVE TEAMS */}
+          <div className="right-col">
+            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <h3 style={{ margin: '0', padding: '14px 16px', fontSize: '1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {isLoading ? (
+                  <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Loading teams...</div>
+                ) : teamsWithScope.length === 0 ? (
+                  <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
+                ) : (
+                  teamsWithScope
+                    .filter(team => propertiesWithScope.some(p => {
+                      const isAssignedToTeam = p.teamId === team.id || p.teamId === team.name;
+                      if (!isAssignedToTeam) return false;
+                      const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
+                      const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
+                      return !isStatusInvoice;
+                    }))
+                    .map(team => {
+                    const assignedProps = propertiesWithScope
+                      .filter(p => {
+                        if (p.teamId !== team.id && p.teamId !== team.name) return false;
+                        const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
+                        const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
+                        return !isStatusInvoice;
+                      })
+                      .sort((a, b) => {
+                        const stA = statuses.find(s => s.id === a.statusId || s.name === a.statusId);
+                        const stB = statuses.find(s => s.id === b.statusId || s.name === b.statusId);
+                        const isRecallA = stA?.name?.toLowerCase() === 'recall' || a.statusId?.toLowerCase() === 'recall';
+                        const isRecallB = stB?.name?.toLowerCase() === 'recall' || b.statusId?.toLowerCase() === 'recall';
+                        if (isRecallA && !isRecallB) return -1;
+                        if (!isRecallA && isRecallB) return 1;
+                        return 0;
+                      });
+                    const isExpanded = expandedTeamId === team.id;
+                    return (
+                      <div 
+                        key={team.id} 
+                        onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
+                        style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = isExpanded ? team.color : '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={16} /></div>
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem' }}>{team.name}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs` : 'Free'}</div>
+                            </div>
+                          </div>
+                          <ChevronDown size={16} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+                        </div>
+                        <div style={{ width: '100%', height: '3px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
+                          <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {assignedProps.length === 0 ? (
+                              <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No hay casas asignadas a este equipo.</span>
+                            ) : (
+                              assignedProps.map(prop => {
+                                const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
+                                const isRecall = stProp?.name?.toLowerCase() === 'recall' || prop.statusId?.toLowerCase() === 'recall';
+                                const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
+                                const isHigh = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
+                                return (
+                                  <div 
+                                    key={prop.id} 
+                                    onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
+                                    style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : isHigh ? '#fdba74' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{getClientName(prop.client)}</div>
+                                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                        {isRecall && (
+                                          <span style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
+                                        )}
+                                        {isHigh && (
+                                          <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', backgroundColor: '#fff7ed', color: '#c2410c', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                            <AlertTriangle size={10} /> High
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
             </div>
           </div>
         </div>
 
       </div>
+      )}
 
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
@@ -2078,7 +2211,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('bathrooms') && (
                       <div>
                         <label style={s.label}>Bathrooms</label>
-                        <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                        <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
                       </div>
                     )}
                   </div>
