@@ -19,7 +19,6 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot
 
 // Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
-import PipelineBoardView from '../components/PipelineBoardView';
 import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
 
 type Property = BaseProperty & {
@@ -284,14 +283,12 @@ interface HousesViewProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
- roles?: Role[];
-  viewMode?: 'table' | 'board';
-  
+  roles?: Role[];
 }
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [] }: HousesViewProps) {
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -1573,7 +1570,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   };
 
   return (
-    <div className="fade-in houses-view" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+    <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
       <style>{`
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -1605,11 +1602,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
         .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
 
-     @media (max-width: 1024px) {
-          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
-          .main-columns { overflow: visible; }
-          .houses-view { height: auto !important; min-height: 100%; }
-          .left-col > div, .right-col > div { height: auto !important; }
+        @media (max-width: 1024px) {
+          .modal-full { flex-direction: column; overflow-y: auto; }
+          .modal-full-left { padding: 1.5rem; overflow-y: visible; }
+          .modal-full-right { width: 100%; border-left: none; border-top: 1px solid #E2E8F0; }
         }
 
         @media (min-width: 769px) { 
@@ -1630,112 +1626,26 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .property-select-container { display: flex; align-items: center; gap: 8px; white-space: nowrap; position: relative; }
 
         .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
-        .right-col { flex: 0 0 240px; width: 240px; display: flex; flex-direction: column; height: 100%; }
+        .right-col { flex: 0 0 300px; width: 300px; display: flex; flex-direction: column; height: 100%; }
 
         @media (max-width: 1024px) {
           .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
           .main-columns { overflow: auto; }
         }
 
-       @media (max-width: 768px) {
-  .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-  .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
-
-  /* ===== Controles superiores más grandes ===== */
-  .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 12px !important; }
-  .search-box-container { height: 48px !important; }
-  .filters-section { flex-direction: column; align-items: stretch; }
-  .property-select-container { width: 100%; }
-  .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
-
-  /* ===== Tarjetas de trabajos: formato profesional ===== */
-  .responsive-table thead { display: none; }
-  .responsive-table tr {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    margin-bottom: 14px;
-    padding: 16px 16px 12px;
-    background: #ffffff;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
-  }
-  .responsive-table td {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 0 !important;
-    border-bottom: 1px solid #f1f5f9 !important;
-    text-align: right;
-    white-space: normal !important;
-    font-size: 0.92rem !important;
-  }
-  .responsive-table td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: #94a3b8;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    white-space: nowrap;
-  }
-
-  /* Cliente = título de la tarjeta */
-  .responsive-table td[data-label="Client"] {
-    order: 1;
-    padding: 0 0 12px 0 !important;
-    border-bottom: 1px solid #eef2f7 !important;
-  }
-  .responsive-table td[data-label="Client"]::before { display: none; }
-  .mobile-client-cell { text-align: left; align-items: flex-start !important; width: 100%; }
-  .mobile-client-cell > div:first-child { font-size: 1.12rem !important; }
-
-  /* Estado = badge justo bajo el título */
-  .responsive-table td[data-label="Status"] {
-    order: 2;
-    padding: 12px 0 4px !important;
-    border-bottom: none !important;
-    justify-content: flex-start;
-  }
-  .responsive-table td[data-label="Status"]::before { display: none; }
-
-  /* Filas de detalle */
-  .responsive-table td[data-label="Schedule"] { order: 3; }
-  .responsive-table td[data-label="Time"]     { order: 4; }
-  .responsive-table td[data-label="Type"]     { order: 5; }
-  .responsive-table td[data-label="Team"]     { order: 6; border-bottom: none !important; }
-
-  /* Acciones = barra inferior con botones grandes */
-  .responsive-table td[data-label="Actions"] {
-    order: 7;
-    border-bottom: none !important;
-    border-top: 1px solid #eef2f7;
-    margin-top: 8px;
-    padding: 12px 0 0 !important;
-  }
-  .responsive-table td[data-label="Actions"]::before { display: none; }
-  .responsive-table td[data-label="Actions"] > div { display: flex; gap: 10px; width: 100%; }
-  .responsive-table td[data-label="Actions"] button {
-    flex: 1;
-    height: 46px !important;
-    padding: 0 !important;
-    border-radius: 12px !important;
-    background: #f8fafc !important;
-    border: 1px solid #e5e7eb !important;
-  }
-  .responsive-table td[data-label="Actions"] button:active { background: #eef2f7 !important; }
-
-  /* ===== Botones de modales más grandes ===== */
-  .modal-90 > header > div:last-child > button {
-    height: 44px !important; min-height: 44px !important;
-    padding: 0 16px !important; border-radius: 10px !important; font-size: 0.9rem !important;
-  }
-  .modal-full-right button { padding: 1rem !important; font-size: 1rem !important; min-height: 50px; }
-  .modal-70 footer button,
-  .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
-}
+        @media (max-width: 768px) {
+          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
+          .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
+          .responsive-table thead { display: none; }
+          .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+          .responsive-table td { display: flex; justify-content: space-between; alignItems: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; text-align: right; white-space: normal !important; }
+          .responsive-table td:last-child { border-bottom: none; padding-bottom: 0; }
+          .responsive-table td::before { content: attr(data-label); font-weight: 700; color: #6b7280; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+          .mobile-client-cell { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+          .filters-section { flex-direction: column; align-items: stretch; }
+          .property-select-container { width: 100%; }
+          .property-select-container button { width: 100%; justify-content: center; }
+        }
       `}</style>
 
       {/* DASHBOARD HEADER */}
@@ -1818,24 +1728,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         )}
       </div>
 
-{viewMode === 'board' ? (
-        <PipelineBoardView
-          properties={filteredProperties}
-          statuses={statuses}
-          teams={teams}
-          priorities={priorities}
-          getClientName={getClientName}
-          onOpenDetail={handleOpenDetail}
-          onQuickStatusChange={handleQuickStatusChange}
-          canEdit={!!canEdit}
-          isSaving={isSaving}
-        />
-      ) : (
       <div className="main-columns" style={s.mainColumns}>
 
         {/* LEFT COLUMN: DAILY JOBS */}
         <div className="left-col">
-
           <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
             
             <div style={s.tableHeader}>
@@ -1933,7 +1829,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <thead>
                   <tr>
                     <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
-                    <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Schedule</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
                     <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
@@ -1943,9 +1838,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
+                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
                   ) : filteredProperties.length === 0 ? (
-                    <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
+                    <tr><td colSpan={6} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
                   ) : filteredProperties.map((prop) => {
                     const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
                     const serviceName = getRelationName(services, prop.serviceId, 'Regular');
@@ -1959,9 +1854,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             {canEdit && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>}
                             {canDelete && isVisible('admin') && <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>}
                           </div>
-                       </td>
-                        <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
-                          <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate || '-'}
                         </td>
                         <td data-label="Client" style={s.td}>
                           <div className="mobile-client-cell">
@@ -2096,11 +1988,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           </div>
         </div>
 
-    </div>
-
-      )}
-
-
+      </div>
 
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
@@ -2339,7 +2227,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </thead>
                       <tbody>
                         {formServices.length === 0 ? (
-                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
+                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
                         ) : (
                           formServices.map(record => {
                             const srv = services.find(c => c.id === record.serviceId);
