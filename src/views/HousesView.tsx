@@ -1637,19 +1637,105 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .main-columns { overflow: auto; }
         }
 
-        @media (max-width: 768px) {
-          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-          .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
-          .responsive-table thead { display: none; }
-          .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-          .responsive-table td { display: flex; justify-content: space-between; alignItems: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; text-align: right; white-space: normal !important; }
-          .responsive-table td:last-child { border-bottom: none; padding-bottom: 0; }
-          .responsive-table td::before { content: attr(data-label); font-weight: 700; color: #6b7280; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-          .mobile-client-cell { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
-          .filters-section { flex-direction: column; align-items: stretch; }
-          .property-select-container { width: 100%; }
-          .property-select-container button { width: 100%; justify-content: center; }
-        }
+       @media (max-width: 768px) {
+  .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
+  .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
+
+  /* ===== Controles superiores más grandes ===== */
+  .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 12px !important; }
+  .search-box-container { height: 48px !important; }
+  .filters-section { flex-direction: column; align-items: stretch; }
+  .property-select-container { width: 100%; }
+  .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
+
+  /* ===== Tarjetas de trabajos: formato profesional ===== */
+  .responsive-table thead { display: none; }
+  .responsive-table tr {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    margin-bottom: 14px;
+    padding: 16px 16px 12px;
+    background: #ffffff;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  }
+  .responsive-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0 !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    text-align: right;
+    white-space: normal !important;
+    font-size: 0.92rem !important;
+  }
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #94a3b8;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+  }
+
+  /* Cliente = título de la tarjeta */
+  .responsive-table td[data-label="Client"] {
+    order: 1;
+    padding: 0 0 12px 0 !important;
+    border-bottom: 1px solid #eef2f7 !important;
+  }
+  .responsive-table td[data-label="Client"]::before { display: none; }
+  .mobile-client-cell { text-align: left; align-items: flex-start !important; width: 100%; }
+  .mobile-client-cell > div:first-child { font-size: 1.12rem !important; }
+
+  /* Estado = badge justo bajo el título */
+  .responsive-table td[data-label="Status"] {
+    order: 2;
+    padding: 12px 0 4px !important;
+    border-bottom: none !important;
+    justify-content: flex-start;
+  }
+  .responsive-table td[data-label="Status"]::before { display: none; }
+
+  /* Filas de detalle */
+  .responsive-table td[data-label="Schedule"] { order: 3; }
+  .responsive-table td[data-label="Time"]     { order: 4; }
+  .responsive-table td[data-label="Type"]     { order: 5; }
+  .responsive-table td[data-label="Team"]     { order: 6; border-bottom: none !important; }
+
+  /* Acciones = barra inferior con botones grandes */
+  .responsive-table td[data-label="Actions"] {
+    order: 7;
+    border-bottom: none !important;
+    border-top: 1px solid #eef2f7;
+    margin-top: 8px;
+    padding: 12px 0 0 !important;
+  }
+  .responsive-table td[data-label="Actions"]::before { display: none; }
+  .responsive-table td[data-label="Actions"] > div { display: flex; gap: 10px; width: 100%; }
+  .responsive-table td[data-label="Actions"] button {
+    flex: 1;
+    height: 46px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    background: #f8fafc !important;
+    border: 1px solid #e5e7eb !important;
+  }
+  .responsive-table td[data-label="Actions"] button:active { background: #eef2f7 !important; }
+
+  /* ===== Botones de modales más grandes ===== */
+  .modal-90 > header > div:last-child > button {
+    height: 44px !important; min-height: 44px !important;
+    padding: 0 16px !important; border-radius: 10px !important; font-size: 0.9rem !important;
+  }
+  .modal-full-right button { padding: 1rem !important; font-size: 1rem !important; min-height: 50px; }
+  .modal-70 footer button,
+  .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
+}
       `}</style>
 
       {/* DASHBOARD HEADER */}
