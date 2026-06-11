@@ -284,8 +284,8 @@ interface HousesViewProps {
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   roles?: Role[];
+  viewMode?: string; // <-- DEBES AGREGAR ESTA LÍNEA (o tiparlo de forma estricta)
 }
-
 type DetailTab = 'overview' | 'financials' | 'media';
 
 export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [] }: HousesViewProps) {
