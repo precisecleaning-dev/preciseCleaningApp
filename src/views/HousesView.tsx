@@ -197,7 +197,7 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 };
 
-const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean }) => {
+const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
   const status = statuses.find(s => String(s.id).toLowerCase().trim() === safeValue || String(s.name).toLowerCase().trim() === safeValue);
@@ -206,28 +206,34 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled }: {
   const text = status ? status.name : 'Unassigned';
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: 'inline-block', outline: 'none' }}>
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
       <div 
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
         style={{ 
-          backgroundColor: 'transparent', color: '#111827', padding: '6px 12px', borderRadius: '20px', 
-          fontSize: '0.85rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px',
+          backgroundColor: fullWidth ? '#ffffff' : 'transparent', color: '#111827',
+          padding: fullWidth ? '13px 16px' : '6px 12px', borderRadius: fullWidth ? '12px' : '20px', 
+          fontSize: fullWidth ? '0.8rem' : '0.85rem', fontWeight: 600,
+          display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
+          textTransform: fullWidth ? 'uppercase' : 'none', letterSpacing: fullWidth ? '0.04em' : 'normal',
           cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
         }}
         onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-        onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = 'transparent'; }}
+        onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = fullWidth ? '#ffffff' : 'transparent'; }}
       >
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor }}></span>
-        {text}
-        <ChevronDown size={14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0 }}></span>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        </span>
+        <ChevronDown size={fullWidth ? 16 : 14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
       </div>
 
       {isOpen && (
         <div style={{ 
-          position: 'absolute', top: '100%', right: 0, marginTop: '4px', backgroundColor: 'white', 
+          position: 'absolute', top: '100%', left: fullWidth ? 0 : 'auto', right: 0, marginTop: '4px', backgroundColor: 'white', 
           border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: '180px', overflow: 'hidden', textAlign: 'left'
+          zIndex: 9999, minWidth: fullWidth ? '100%' : '180px', width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
         }}>
           {statuses.map((s) => (
             <div 
@@ -1634,6 +1640,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .main-columns { overflow: auto; }
         }
 
+        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
         .jobs-cards-wrap { display: none; }
 
         @media (max-width: 768px) {
@@ -1647,7 +1654,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .property-select-container { width: 100%; }
           .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
 
-          /* ===== Tarjetas de trabajos (Mobile) ===== */
+          /* ===== En móvil: ocultar tabla y mostrar tarjetas ===== */
           .jobs-table-wrap { display: none !important; }
           .jobs-cards-wrap { display: flex !important; }
 
@@ -1660,6 +1667,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .modal-70 footer button,
           .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
         }
+        
+        /* Ocultar el texto en escritorio para mantener el diseño limpio original */
+        .mobile-action-text { display: none; }
       `}</style>
 
       {/* DASHBOARD HEADER */}
@@ -1851,7 +1861,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               </div>
 
-              {/* ====== VISTA TABLA (ESCRITORIO) ====== */}
+              {/* ====== VISTA TABLA / TARJETAS ====== */}
               <div className="jobs-table-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -1922,88 +1932,82 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </table>
               </div>
 
-              {/* ====== VISTA TARJETAS KANBAN (MÓVIL) ====== */}
-              <div className="jobs-cards-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '16px', flexDirection: 'column', gap: '16px', backgroundColor: '#f8fafc' }}>
+              {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
+              <div className="jobs-cards-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '16px', flexDirection: 'column', gap: '14px', backgroundColor: '#f1f5f9' }}>
                 {isLoading ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading database...</div>
                 ) : filteredProperties.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic' }}>No jobs to display for your team.</div>
                 ) : filteredProperties.map((prop) => {
-                  const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
+                  const teamName = getRelationName(teams, prop.teamId, '');
                   const teamColor = getRelationColor(teams, prop.teamId);
-                  const serviceName = getRelationName(services, prop.serviceId, 'Regular');
                   const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
                   const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
-                  const stObj = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
-                  
+                  const assignedLabel = teamName || 'Unassigned';
+
                   return (
                     <div
                       key={prop.id}
                       onClick={() => handleOpenDetail(prop)}
                       style={{
-                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px',
-                        cursor: 'pointer', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.05)',
-                        display: 'flex', flexDirection: 'column', gap: '12px',
-                        borderLeft: `5px solid ${stObj?.color || '#e2e8f0'}`,
+                        background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px',
+                        cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+                        display: 'flex', flexDirection: 'column', gap: '16px',
                       }}
                     >
+                      {/* Título + flags */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.3 }}>
+                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.2rem', lineHeight: 1.25 }}>
                           {getClientName(prop.client)}
                         </span>
-                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginTop: '2px' }}>
                           {(prop as any).employeeFinishedBy && <CheckCircle size={18} color="#10b981" />}
                           {isHighPriority && <AlertTriangle size={18} color="#dc2626" />}
                         </div>
                       </div>
-                      
-                      {prop.address && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#475569' }}>
-                          <MapPin size={16} color="#64748b" style={{ flexShrink: 0 }} />
-                          <span style={{ whiteSpace: 'normal' }}>{prop.address}</span>
+
+                      {/* Filas de información con iconos */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
+                          <MapPin size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prop.address || '—'}</span>
                         </div>
-                      )}
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.9rem', color: '#475569', flexWrap: 'wrap', backgroundColor: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
-                          <CalendarDays size={15} color="#3b82f6" style={{ flexShrink: 0 }} /> {prop.scheduleDate || 'No date'}
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
-                          <Clock size={15} color="#3b82f6" style={{ flexShrink: 0 }} /> {prop.timeIn || '08:00 AM'}
-                        </span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                        <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600 }}>{serviceName}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
-                          <span style={{ width: 24, height: 24, borderRadius: '50%', background: `${teamColor || '#64748b'}20`, color: teamColor || '#64748b', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                            <Users size={12} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
+                          <CalendarDays size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
+                          <span>{prop.scheduleDate || 'Sin fecha'}{prop.timeIn ? `  ·  ${prop.timeIn}` : ''}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem' }}>
+                          <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: teamColor ? `${teamColor}20` : '#f1f5f9', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            <Users size={15} color={teamColor || '#94a3b8'} />
                           </span>
-                          {teamName}
+                          <span style={{ fontWeight: teamName ? 600 : 400, color: teamName ? '#334155' : '#94a3b8' }}>{assignedLabel}</span>
                         </div>
                       </div>
-                      
-                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: '4px' }}>
+
+                      {/* Estado (ancho completo; abre el menú sin entrar al detalle) */}
+                      <div onClick={(e) => e.stopPropagation()}>
                         <StatusPillSelector
+                          fullWidth
                           currentStatusId={prop.statusId}
                           statuses={statuses}
                           onChange={(newId) => handleQuickStatusChange(prop.id, newId)}
                           disabled={isSaving || !canEdit || !isVisible('workflow')}
                         />
                       </div>
-                      
+
+                      {/* Acciones */}
                       {(canEdit || canDelete) && isVisible('admin') && (
-                        <div style={{ display: 'flex', gap: '12px', borderTop: '1px dashed #e2e8f0', paddingTop: '16px', marginTop: '8px' }}>
+                        <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                           {canEdit && (
                             <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}
-                              style={{ flex: 1, height: '44px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
-                              <Edit2 size={16} /> Editar
+                              style={{ flex: 1, height: '46px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer' }}>
+                              <Edit2 size={17} /> Editar
                             </button>
                           )}
                           {canDelete && (
                             <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}
-                              style={{ flex: 1, height: '44px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
-                              <Trash2 size={16} /> Eliminar
+                              style={{ flex: 1, height: '46px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer' }}>
+                              <Trash2 size={17} /> Eliminar
                             </button>
                           )}
                         </div>
@@ -2116,11 +2120,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     );
                   })
                 )}
+              </div>
             </div>
           </div>
         </div>
-
-      </div>
       )}
 
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
@@ -2211,7 +2214,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('bathrooms') && (
                       <div>
                         <label style={s.label}>Bathrooms</label>
-                        <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                        <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
                       </div>
                     )}
                   </div>
@@ -2902,7 +2905,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   {(beforeFiles.length > 0 || afterFiles.length > 0) && (
                     <div style={{ marginBottom: '20px', padding: '12px 16px', backgroundColor: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                       <span style={{ color: '#92400e', fontSize: '0.9rem', fontWeight: 600 }}>
-                        ⚠️ Tienes {beforeFiles.length + afterFiles.length} foto(s) pendiente(s) por guardar
+                        Tienes {beforeFiles.length + afterFiles.length} foto(s) pendiente(s) por guardar
                       </span>
                       <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Save size={14} /> {isSaving ? 'Guardando...' : 'Guardar Fotos'}
@@ -2997,7 +3000,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
                 {serviceForm.applyTax === 'No' && (
                   <div>
-                    <label style={s.label}>Subtract Tax (−)</label>
+                    <label style={s.label}>Subtract Tax (-)</label>
                     <div style={s.segmentContainer}>
                       <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'yes')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })}>Yes</button>
                       <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'No', 'no')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })}>No</button>
@@ -3012,7 +3015,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 600 }}>${Number(serviceForm.subtotal).toFixed(2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Tax {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '(−)' : '(+)'}</span>
+                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Tax {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '(-)' : '(+)'}</span>
                   <span style={{ color: serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '#ef4444' : '#10b981', fontSize: '0.95rem', fontWeight: 600 }}>
                     {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '-' : '+'}${Math.abs(Number(serviceForm.taxAmount)).toFixed(2)}
                   </span>
@@ -3087,7 +3090,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Discount Amount (−)</label>
+                  <label style={s.label}>Discount Amount (-)</label>
                   <div style={s.inputWrapper}>
                     <DollarSign style={s.icon} size={16} />
                     <input type="number" step="0.01" style={s.input} value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
