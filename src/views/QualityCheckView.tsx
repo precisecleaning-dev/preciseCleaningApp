@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Edit2, Trash2,
-  Upload, Printer, Loader2, Image as ImageIcon, Search
+  ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
+  Upload, Printer, Loader2, Image as ImageIcon, Search, Check
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -17,8 +17,10 @@ interface QCRecord {
   date: string;
   address: string;
   client: string;
+  team?: string;
   status: 'Finished' | 'Pending';
   inspector?: string;
+  selectedPlaces?: string[];
   qcData?: any;
 }
 
@@ -42,9 +44,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished'>('All');
+  const [tableSearch, setTableSearch] = useState('');
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -58,6 +62,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Buscador de áreas dentro del modal
   const [placeSearch, setPlaceSearch] = useState('');
 
+  // ⭐ Áreas seleccionadas para inspeccionar en el modal
+  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
+
   // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -68,9 +75,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
       try {
-        const [placesData, tasksData, qcSnap] = await Promise.all([
+        const [placesData, tasksData, teamsData, qcSnap] = await Promise.all([
           settingsService.getAll('settings_places').catch(() => []),
           settingsService.getAll('settings_tasks').catch(() => []),
+          settingsService.getAll('settings_teams').catch(() => []),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] }))
         ]);
 
@@ -79,6 +87,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
         setPlaces(sortedPlaces);
         setTasks(sortedTasks);
+        setTeams(teamsData as any[]);
 
         const docsArray = (qcSnap as any).docs || [];
         const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({ 
@@ -104,7 +113,33 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   }, [houseToInspect, isLoadingCatalogs]);
 
-  const filteredQcList = qcList.filter(qc => statusFilter === 'All' || qc.status === statusFilter);
+  // ⭐ Resuelve el nombre del equipo asociado a una casa (teamId puede ser id o nombre)
+  const getTeamNameForHouse = (house?: Property | null): string => {
+    if (!house) return '—';
+    const tid = (house as any).teamId;
+    if (!tid) return 'Unassigned';
+    const found = teams.find((t: any) => String(t.id) === String(tid) || String(t.name) === String(tid));
+    return found ? found.name : 'Unassigned';
+  };
+
+  // ⭐ Fecha en formato mm/dd/YYYY
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    const [year, month, day] = dateString.split('-');
+    if (!year || !month || !day) return dateString;
+    return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
+  };
+
+  // ⭐ Filtro por estado + búsqueda global sobre los campos de la tabla
+  const filteredQcList = qcList.filter(qc => {
+    if (statusFilter !== 'All' && qc.status !== statusFilter) return false;
+    const q = tableSearch.trim().toLowerCase();
+    if (!q) return true;
+    const team = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+    const haystack = [qc.status, formatDate(qc.date), qc.date, qc.address, qc.client, team, qc.inspector]
+      .filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  });
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -119,6 +154,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setEditingQcId(null);
     setPendingPhotos({});
     setPlaceSearch('');
+    setSelectedPlaceIds([]);
     
     const initialData: any = {};
     places.forEach(p => {
@@ -150,6 +186,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     });
     
     setQcData(loadedData);
+
+    // ⭐ Restaurar áreas seleccionadas: usa las guardadas o, si no hay, deriva las que tengan datos
+    const derived = places
+      .filter(p => {
+        const d = loadedData[p.id];
+        if (!d) return false;
+        return Object.keys(d.tasks || {}).length > 0
+          || (d.photos || []).length > 0
+          || (d.notes || '').trim().length > 0
+          || (d.damage || '').trim().length > 0
+          || d.score != null
+          || (d.corrections || '').trim().length > 0;
+      })
+      .map(p => p.id);
+    setSelectedPlaceIds(qc.selectedPlaces && qc.selectedPlaces.length ? qc.selectedPlaces : derived);
+
     setIsFormModalOpen(true);
   };
 
@@ -159,15 +211,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setEditingQcId(null);
     setPendingPhotos({});
     setPlaceSearch('');
+    setSelectedPlaceIds([]);
+  };
+
+  const togglePlaceSelection = (placeId: string) => {
+    setSelectedPlaceIds(prev => prev.includes(placeId) ? prev.filter(x => x !== placeId) : [...prev, placeId]);
   };
 
   const handleSaveQC = async () => {
     if (!selectedHouse) return;
     setIsSaving(true);
     
-    // ⭐ Solo se consideran las áreas activas de esta casa para decidir si está completo.
-    const activePlaces = activePlacesFor(selectedHouse);
-    let isPending = false;
+    // ⭐ Solo se consideran las áreas SELECCIONADAS para decidir si está completo.
+    const activePlaces = activePlacesFor(selectedHouse).filter(p => selectedPlaceIds.includes(p.id));
+    let isPending = activePlaces.length === 0;
     activePlaces.forEach(p => {
       const placeTasks = tasks.filter(t => t.placeId === p.id);
       placeTasks.forEach(t => {
@@ -180,8 +237,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
       address: selectedHouse.address,
       client: selectedHouse.client,
+      team: getTeamNameForHouse(selectedHouse),
       status: isPending ? 'Pending' : 'Finished',
       inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+      selectedPlaces: selectedPlaceIds,
       qcData: qcData
     };
 
@@ -653,13 +712,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setQcData(prev => ({ ...prev, [placeId]: { ...prev[placeId], [field]: value } }));
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    const [year, month, day] = dateString.split('-');
-    const date = new Date(Number(year), Number(month) - 1, Number(day));
-    return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
-
   const s = {
     th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
     td: { padding: '12px 16px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontSize: '0.95rem' },
@@ -677,12 +729,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#3b82f6' : '#f1f5f9', color: active ? 'white' : '#64748b', transition: 'all 0.2s' })
   };
 
-  // ⭐ Áreas a renderizar: activas de la casa, con tareas configuradas y que pasen el buscador.
+  // ⭐ Áreas disponibles (activas de la casa con tareas configuradas)
   const activePlaces = activePlacesFor(selectedHouse);
   const placeQuery = placeSearch.trim().toLowerCase();
-  const renderablePlaces = activePlaces
-    .filter(p => tasks.some(t => t.placeId === p.id))
-    .filter(p => !placeQuery || p.name.toLowerCase().includes(placeQuery));
+  const availablePlaces = activePlaces.filter(p => tasks.some(t => t.placeId === p.id));
+  const searchablePlaces = availablePlaces.filter(p => !placeQuery || p.name.toLowerCase().includes(placeQuery));
+  const selectedRenderPlaces = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
 
   return (
     <div className="fade-in" style={{ padding: '20px' }}>
@@ -758,6 +810,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           gap: 8px; margin-bottom: 12px;
         }
 
+        /* ===== Selector de áreas (chips) ===== */
+        .qc-picker { grid-column: 1 / -1; background: #fff; border: 1px solid #e1e4e8; border-radius: 10px; padding: 16px; }
+        .qc-chip {
+          padding: 8px 14px; border-radius: 20px; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+          display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ===== Buscador de la tabla ===== */
+        .qc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
+        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; }
+
         /* ===== MÓVIL: experiencia nativa ===== */
         @media (max-width: 768px) {
           .qc-overlay { padding: 0; }
@@ -780,6 +844,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           .qc-photo-btn-primary { flex: 1.5; }
           .qc-photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
           .qc-savebar button { width: 100%; }
+          .qc-chip { padding: 10px 16px; font-size: 0.95rem; }
         }
       `}</style>
 
@@ -795,88 +860,110 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       </header>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <button onClick={() => setStatusFilter('All')} style={s.pillBtn(statusFilter === 'All')}>All</button>
-        <button onClick={() => setStatusFilter('Pending')} style={s.pillBtn(statusFilter === 'Pending')}>Pending</button>
-        <button onClick={() => setStatusFilter('Finished')} style={s.pillBtn(statusFilter === 'Finished')}>Finished</button>
+      {/* ⭐ Buscador global + filtros de estado */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+        <div className="qc-table-search">
+          <Search size={16} color="#9ca3af" />
+          <input
+            type="text"
+            value={tableSearch}
+            onChange={(e) => setTableSearch(e.target.value)}
+            placeholder="Buscar por estado, fecha, dirección, cliente, equipo..."
+          />
+          {tableSearch && (
+            <button type="button" onClick={() => setTableSearch('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setStatusFilter('All')} style={s.pillBtn(statusFilter === 'All')}>All</button>
+          <button onClick={() => setStatusFilter('Pending')} style={s.pillBtn(statusFilter === 'Pending')}>Pending</button>
+          <button onClick={() => setStatusFilter('Finished')} style={s.pillBtn(statusFilter === 'Finished')}>Finished</button>
+        </div>
       </div>
 
       <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '800px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
             <thead>
               <tr>
-                <th style={{...s.th, width: '130px'}}>Actions</th>
+                <th style={{...s.th, width: '120px'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
                 <th style={{...s.th, width: '120px'}}><CalendarDays size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Date</th>
-                <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
                 <th style={s.th}><MapPin size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Address</th>
-                <th style={{...s.th, textAlign: 'right'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
+                <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
+                <th style={s.th}><Users size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Team</th>
+                <th style={{...s.th, width: '140px', textAlign: 'right'}}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoadingCatalogs ? (
-                <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>Loading records from database...</td></tr>
+                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>Loading records from database...</td></tr>
               ) : filteredQcList.length === 0 ? (
-                <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
+                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
               ) : (
-                filteredQcList.map((qc) => (
-                  <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <td style={s.td}>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <button 
-                          onClick={() => handleEditQC(qc)} 
-                          title="Edit Quality Check"
-                          style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleExportFromTable(qc)} 
-                          disabled={exportingForQcId === qc.id}
-                          title="Export PDF Report"
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            color: '#059669', 
-                            cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', 
-                            padding: '4px',
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center',
-                            opacity: exportingForQcId === qc.id ? 0.6 : 1
-                          }}
-                        >
-                          {exportingForQcId === qc.id 
-                            ? <Loader2 size={16} className="spin-qc" /> 
-                            : <Printer size={16} />
-                          }
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteQC(qc.id as string)} 
-                          title="Delete Quality Check"
-                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                    <td style={s.td}>{formatDate(qc.date)}</td>
-                    <td style={{...s.td, fontWeight: 600}}>{qc.client}</td>
-                    <td style={{...s.td, color: '#6b7280'}}>
-                      <div>{qc.address}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
-                    </td>
-                    <td style={{...s.td, textAlign: 'right'}}>
-                      <span style={{ 
-                        backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
-                        color: qc.status === 'Finished' ? '#166534' : '#b45309', 
-                        padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 
-                      }}>
-                        {qc.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                filteredQcList.map((qc) => {
+                  const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                  return (
+                    <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                      <td style={s.td}>
+                        <span style={{ 
+                          backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
+                          color: qc.status === 'Finished' ? '#166534' : '#b45309', 
+                          padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
+                        }}>
+                          {qc.status}
+                        </span>
+                      </td>
+                      <td style={s.td}>{formatDate(qc.date)}</td>
+                      <td style={{...s.td, color: '#6b7280'}}>
+                        <div>{qc.address}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
+                      </td>
+                      <td style={{...s.td, fontWeight: 600}}>{qc.client}</td>
+                      <td style={{...s.td, color: '#475569'}}>{teamLabel}</td>
+                      <td style={{...s.td, textAlign: 'right'}}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          <button 
+                            onClick={() => handleEditQC(qc)} 
+                            title="Edit Quality Check"
+                            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleExportFromTable(qc)} 
+                            disabled={exportingForQcId === qc.id}
+                            title="Export PDF Report"
+                            style={{ 
+                              background: 'none', 
+                              border: 'none', 
+                              color: '#059669', 
+                              cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', 
+                              padding: '4px',
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              opacity: exportingForQcId === qc.id ? 0.6 : 1
+                            }}
+                          >
+                            {exportingForQcId === qc.id 
+                              ? <Loader2 size={16} className="spin-qc" /> 
+                              : <Printer size={16} />
+                            }
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteQC(qc.id as string)} 
+                            title="Delete Quality Check"
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -898,6 +985,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 </p>
                 <p className="qc-insp">
                   <User size={14} /> Inspector: {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User'}
+                </p>
+                <p className="qc-insp">
+                  <Users size={14} /> Team: {getTeamNameForHouse(selectedHouse)}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
@@ -957,146 +1047,183 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 <div style={{ color: '#ef4444', padding: '20px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: '#fef2f2', borderRadius: '8px' }}>
                   Please go to Settings &gt; Places and configure your rooms and tasks first.
                 </div>
-              ) : renderablePlaces.length === 0 ? (
+              ) : availablePlaces.length === 0 ? (
                 <div style={{ color: '#6b7280', padding: '30px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: 'white', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  {placeSearch
-                    ? `No se encontraron áreas para "${placeSearch}".`
-                    : 'Esta casa no tiene áreas asignadas para inspeccionar. Configúralas en el formulario de la casa (Houses).'}
+                  Esta casa no tiene áreas asignadas para inspeccionar. Configúralas en el formulario de la casa (Houses).
                 </div>
               ) : (
-                renderablePlaces.map(place => {
-                  const placeData = qcData[place.id] || { tasks: {}, photos: [] };
-                  const placeTasks = tasks.filter(t => t.placeId === place.id);
-                  const placePhotos: string[] = placeData.photos || [];
-                  const pending = pendingPhotos[place.id] || [];
-
-                  return (
-                    <div key={place.id} className="qc-card">
-                      <h2 style={s.cardTitle}>{place.name}</h2>
-                      
-                      <div style={{ marginBottom: '16px' }}>
-                        {placeTasks.map(task => (
-                          <div key={task.id} style={s.taskItem}>
-                            <span style={{ fontSize: '0.95rem', color: '#374151' }}>{task.name}</span>
-                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                              <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'Yes')} style={s.btnYes(placeData.tasks[task.id] === 'Yes')}>Yes</button>
-                              <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'No')} style={s.btnNo(placeData.tasks[task.id] === 'No')}>No</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div style={s.extraFields}>
-                        <label style={s.labelQC}>¿Correcciones del Manager?</label>
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                          <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'Yes')} style={s.btnYes(placeData.corrections === 'Yes')}>Yes</button>
-                          <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'No')} style={s.btnNo(placeData.corrections === 'No')}>No</button>
-                        </div>
-
-                        <label style={s.labelQC}>Score (1-3)</label>
-                        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
-                          {[1, 2, 3].map(num => (
-                            <button key={num} className="qc-toggle" onClick={() => setScoreValue(place.id, num)} style={s.btnScore(placeData.score === num)}>{num}</button>
-                          ))}
-                        </div>
-                        
-                        {/* ⭐ Sección de fotos — cámara como acción principal */}
-                        <label style={s.labelQC}>
-                          Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''})
-                        </label>
-                        
-                        <div className="qc-photo-actions">
-                          <button
-                            type="button"
-                            className="qc-photo-btn qc-photo-btn-primary"
-                            onClick={() => cameraInputRefs.current[place.id]?.click()}
-                          >
-                            <Camera size={16} /> Tomar foto
-                          </button>
-                          <input
-                            ref={el => { cameraInputRefs.current[place.id] = el; }}
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            style={{ display: 'none' }}
-                            onChange={(e) => {
-                              handlePhotoUpload(place.id, place.name, e.target.files);
-                              if (e.target) e.target.value = '';
-                            }}
-                          />
-
-                          <button
-                            type="button"
-                            className="qc-photo-btn"
-                            onClick={() => fileInputRefs.current[place.id]?.click()}
-                          >
-                            <Upload size={14} /> Galería
-                          </button>
-                          <input
-                            ref={el => { fileInputRefs.current[place.id] = el; }}
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            style={{ display: 'none' }}
-                            onChange={(e) => {
-                              handlePhotoUpload(place.id, place.name, e.target.files);
-                              if (e.target) e.target.value = '';
-                            }}
-                          />
-                        </div>
-
-                        {(placePhotos.length === 0 && pending.length === 0) ? (
-                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', padding: '20px', backgroundColor: 'white', borderRadius: '6px', border: '2px dashed #cbd5e1', marginBottom: '12px' }}>
-                            <ImageIcon size={28} style={{ margin: '0 auto 6px', opacity: 0.4 }} />
-                            <div>Aún no hay fotos.</div>
-                          </div>
-                        ) : (
-                          <div className="qc-photo-grid">
-                            {/* Fotos ya subidas (eliminables) */}
-                            {placePhotos.map((url, i) => (
-                              <div key={`p-${i}`} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-                                <img src={url} alt={`QC ${i + 1}`} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                                <button
-                                  onClick={() => handleRemovePhoto(place.id, i)}
-                                  style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
-                                >
-                                  <X size={13} />
-                                </button>
-                                <div style={{ position: 'absolute', bottom: '3px', left: '3px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '1px 5px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 600 }}>
-                                  {String(i + 1).padStart(2, '0')}
-                                </div>
-                              </div>
-                            ))}
-
-                            {/* Previews locales (subiendo en segundo plano) */}
-                            {pending.map(p => (
-                              <div key={p.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
-                                <img src={p.preview} alt="Subiendo…" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.45 }} />
-                                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.35)' }}>
-                                  <Loader2 size={22} className="spin-qc" color="#2563eb" />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <label style={s.labelQC}>Notas</label>
-                        <textarea 
-                          style={{...s.textareaQC, marginBottom: '12px'}} 
-                          value={placeData.notes || ''} 
-                          onChange={(e) => handleTextChange(place.id, 'notes', e.target.value)}
-                        />
-
-                        <label style={s.labelQC}>Daños</label>
-                        <textarea 
-                          style={s.textareaQC} 
-                          value={placeData.damage || ''} 
-                          onChange={(e) => handleTextChange(place.id, 'damage', e.target.value)}
-                        />
-                      </div>
+                <>
+                  {/* ⭐ Selector de áreas a inspeccionar */}
+                  <div className="qc-picker">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <h2 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ClipboardCheck size={18} color="#3b82f6" /> Áreas a inspeccionar
+                      </h2>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>{selectedPlaceIds.length} seleccionada(s)</span>
                     </div>
-                  );
-                })
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {searchablePlaces.length === 0 ? (
+                        <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                          {placeSearch ? `No se encontraron áreas para "${placeSearch}".` : 'No hay áreas con tareas configuradas.'}
+                        </span>
+                      ) : searchablePlaces.map(p => {
+                        const sel = selectedPlaceIds.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="qc-chip"
+                            onClick={() => togglePlaceSelection(p.id)}
+                            style={{ border: `1px solid ${sel ? '#3b82f6' : '#cbd5e1'}`, background: sel ? '#3b82f6' : '#fff', color: sel ? '#fff' : '#334155' }}
+                          >
+                            {sel && <Check size={14} />} {p.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ⭐ Tarjetas solo de las áreas seleccionadas */}
+                  {selectedRenderPlaces.length === 0 ? (
+                    <div style={{ gridColumn: '1 / -1', color: '#6b7280', padding: '30px', textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
+                      Selecciona una o más áreas arriba para comenzar la inspección.
+                    </div>
+                  ) : (
+                    selectedRenderPlaces.map(place => {
+                      const placeData = qcData[place.id] || { tasks: {}, photos: [] };
+                      const placeTasks = tasks.filter(t => t.placeId === place.id);
+                      const placePhotos: string[] = placeData.photos || [];
+                      const pending = pendingPhotos[place.id] || [];
+
+                      return (
+                        <div key={place.id} className="qc-card">
+                          <h2 style={s.cardTitle}>{place.name}</h2>
+                          
+                          <div style={{ marginBottom: '16px' }}>
+                            {placeTasks.map(task => (
+                              <div key={task.id} style={s.taskItem}>
+                                <span style={{ fontSize: '0.95rem', color: '#374151' }}>{task.name}</span>
+                                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                  <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'Yes')} style={s.btnYes(placeData.tasks[task.id] === 'Yes')}>Yes</button>
+                                  <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'No')} style={s.btnNo(placeData.tasks[task.id] === 'No')}>No</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div style={s.extraFields}>
+                            <label style={s.labelQC}>¿Correcciones del Manager?</label>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                              <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'Yes')} style={s.btnYes(placeData.corrections === 'Yes')}>Yes</button>
+                              <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'No')} style={s.btnNo(placeData.corrections === 'No')}>No</button>
+                            </div>
+
+                            <label style={s.labelQC}>Score (1-3)</label>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
+                              {[1, 2, 3].map(num => (
+                                <button key={num} className="qc-toggle" onClick={() => setScoreValue(place.id, num)} style={s.btnScore(placeData.score === num)}>{num}</button>
+                              ))}
+                            </div>
+                            
+                            {/* ⭐ Sección de fotos — cámara como acción principal */}
+                            <label style={s.labelQC}>
+                              Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''})
+                            </label>
+                            
+                            <div className="qc-photo-actions">
+                              <button
+                                type="button"
+                                className="qc-photo-btn qc-photo-btn-primary"
+                                onClick={() => cameraInputRefs.current[place.id]?.click()}
+                              >
+                                <Camera size={16} /> Tomar foto
+                              </button>
+                              <input
+                                ref={el => { cameraInputRefs.current[place.id] = el; }}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  handlePhotoUpload(place.id, place.name, e.target.files);
+                                  if (e.target) e.target.value = '';
+                                }}
+                              />
+
+                              <button
+                                type="button"
+                                className="qc-photo-btn"
+                                onClick={() => fileInputRefs.current[place.id]?.click()}
+                              >
+                                <Upload size={14} /> Galería
+                              </button>
+                              <input
+                                ref={el => { fileInputRefs.current[place.id] = el; }}
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  handlePhotoUpload(place.id, place.name, e.target.files);
+                                  if (e.target) e.target.value = '';
+                                }}
+                              />
+                            </div>
+
+                            {(placePhotos.length === 0 && pending.length === 0) ? (
+                              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', padding: '20px', backgroundColor: 'white', borderRadius: '6px', border: '2px dashed #cbd5e1', marginBottom: '12px' }}>
+                                <ImageIcon size={28} style={{ margin: '0 auto 6px', opacity: 0.4 }} />
+                                <div>Aún no hay fotos.</div>
+                              </div>
+                            ) : (
+                              <div className="qc-photo-grid">
+                                {/* Fotos ya subidas (eliminables) */}
+                                {placePhotos.map((url, i) => (
+                                  <div key={`p-${i}`} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
+                                    <img src={url} alt={`QC ${i + 1}`} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    <button
+                                      onClick={() => handleRemovePhoto(place.id, i)}
+                                      style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
+                                    >
+                                      <X size={13} />
+                                    </button>
+                                    <div style={{ position: 'absolute', bottom: '3px', left: '3px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '1px 5px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 600 }}>
+                                      {String(i + 1).padStart(2, '0')}
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {/* Previews locales (subiendo en segundo plano) */}
+                                {pending.map(p => (
+                                  <div key={p.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
+                                    <img src={p.preview} alt="Subiendo…" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.45 }} />
+                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.35)' }}>
+                                      <Loader2 size={22} className="spin-qc" color="#2563eb" />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <label style={s.labelQC}>Notas</label>
+                            <textarea 
+                              style={{...s.textareaQC, marginBottom: '12px'}} 
+                              value={placeData.notes || ''} 
+                              onChange={(e) => handleTextChange(place.id, 'notes', e.target.value)}
+                            />
+
+                            <label style={s.labelQC}>Daños</label>
+                            <textarea 
+                              style={s.textareaQC} 
+                              value={placeData.damage || ''} 
+                              onChange={(e) => handleTextChange(place.id, 'damage', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </>
               )}
 
             </div>
