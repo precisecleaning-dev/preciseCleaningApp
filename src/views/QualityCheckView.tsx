@@ -49,6 +49,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [customersList, setCustomersList] = useState<any[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -75,10 +76,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
       try {
-        const [placesData, tasksData, teamsData, qcSnap] = await Promise.all([
+        const [placesData, tasksData, teamsData, customersSnap, qcSnap] = await Promise.all([
           settingsService.getAll('settings_places').catch(() => []),
           settingsService.getAll('settings_tasks').catch(() => []),
           settingsService.getAll('settings_teams').catch(() => []),
+          getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] }))
         ]);
 
@@ -88,6 +90,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setPlaces(sortedPlaces);
         setTasks(sortedTasks);
         setTeams(teamsData as any[]);
+        setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
 
         const docsArray = (qcSnap as any).docs || [];
         const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({ 
@@ -122,6 +125,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return found ? found.name : 'Unassigned';
   };
 
+  // ⭐ Resuelve el nombre del cliente desde la colección customers (id o nombre)
+  const getClientName = (clientIdOrName?: string | null): string => {
+    if (!clientIdOrName) return 'Unknown';
+    const safe = String(clientIdOrName).toLowerCase().trim();
+    const found = customersList.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
+    return found ? found.name : String(clientIdOrName);
+  };
+
   // ⭐ Fecha en formato mm/dd/YYYY
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
@@ -136,7 +147,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const q = tableSearch.trim().toLowerCase();
     if (!q) return true;
     const team = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-    const haystack = [qc.status, formatDate(qc.date), qc.date, qc.address, qc.client, team, qc.inspector]
+    const clientName = getClientName(qc.client);
+    const haystack = [qc.status, formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
       .filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
   });
@@ -407,6 +419,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         ? new Date(recordDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const date = displayDate;
+      const clientName = getClientName(house.client);
+      const teamName = getTeamNameForHouse(house);
+
+      // Resumen general del reporte
+      const scoredVals = placesWithData.map(p => p.score).filter((v): v is number => typeof v === 'number' && v > 0);
+      const avgScore = scoredVals.length ? (scoredVals.reduce((a, b) => a + b, 0) / scoredVals.length) : 0;
+      let yesCount = 0, noCount = 0;
+      placesWithData.forEach(pd => {
+        const ptasks = tasks.filter(t => t.placeId === pd.place.id);
+        ptasks.forEach(t => {
+          const v = pd.tasksData[t.id];
+          if (v === 'Yes') yesCount++;
+          else if (v === 'No') noCount++;
+        });
+      });
+      const totalAnswered = yesCount + noCount;
+      const passRate = totalAnswered ? Math.round((yesCount / totalAnswered) * 100) : 0;
 
       const placeSections = placesWithBase64.map(pd => {
         const placeTasks = tasks.filter(t => t.placeId === pd.place.id);
@@ -422,7 +451,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 return `
                   <tr>
                     <td>${t.name}</td>
-                    <td class="${cls}">${val || '—'}</td>
+                    <td style="text-align:right;"><span class="result-pill ${cls}">${val || 'N/A'}</span></td>
                   </tr>
                 `;
               }).join('')}
@@ -444,6 +473,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         ` : '';
 
         const photosHtml = pd.photosBase64.length > 0 ? `
+          <div class="photos-label">Photographic evidence (${pd.photosBase64.length})</div>
           <div class="photo-grid">
             ${pd.photosBase64.map((src) => `
               <div class="photo-item">
@@ -459,9 +489,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <h2>${pd.place.name}</h2>
               ${scoreHtml}
             </div>
-            ${tasksHtml}
-            ${notesHtml}
-            ${photosHtml}
+            <div class="place-body">
+              ${tasksHtml || '<div style="color:#94a3b8;font-size:13px;margin-bottom:8px;">No tasks evaluated for this area.</div>'}
+              ${notesHtml}
+              ${photosHtml}
+            </div>
           </section>
         `;
       }).join('');
@@ -471,12 +503,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <html>
           <head>
             <meta charset="UTF-8" />
-            <title>Quality Check Report - ${house.client}</title>
+            <title>Quality Check Report - ${clientName}</title>
             <style>
               * { box-sizing: border-box; margin: 0; padding: 0; }
               body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background-color: #f1f5f9;
+                background-color: #eef2f7;
                 padding: 24px;
                 color: #1e293b;
                 -webkit-print-color-adjust: exact;
@@ -485,178 +517,132 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               .container {
                 max-width: 1000px;
                 margin: 0 auto;
-                background: white;
-                border-radius: 12px;
+                background: #ffffff;
+                border-radius: 16px;
                 padding: 48px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                box-shadow: 0 10px 30px rgba(15,23,42,0.08);
+                border-top: 6px solid #1e40af;
               }
-              .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                padding-bottom: 24px;
-                border-bottom: 1px solid #e2e8f0;
-                margin-bottom: 32px;
+              .brandbar {
+                display: flex; justify-content: space-between; align-items: center;
+                padding-bottom: 20px; border-bottom: 1px solid #e2e8f0;
               }
-              .logo-text {
-                font-size: 22px;
-                font-weight: 800;
-                color: #1e3a8a;
-                letter-spacing: 2px;
-                line-height: 1;
+              .brand { display: flex; align-items: center; gap: 14px; }
+              .brand-logo {
+                width: 46px; height: 46px; border-radius: 12px;
+                background: linear-gradient(135deg, #1e40af, #3b82f6);
+                color: #fff; font-weight: 800; font-size: 16px; letter-spacing: 1px;
+                display: flex; align-items: center; justify-content: center;
               }
-              .logo-subtitle {
-                font-size: 10px;
-                font-weight: 500;
-                color: #64748b;
-                letter-spacing: 3px;
-                text-transform: uppercase;
-                margin-top: 4px;
+              .logo-text { font-size: 20px; font-weight: 800; color: #1e3a8a; letter-spacing: 2px; line-height: 1; }
+              .logo-subtitle { font-size: 10px; font-weight: 600; color: #64748b; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+              .doc-tag {
+                font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 1px;
+                background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 14px; border-radius: 20px;
               }
-              .meta-section {
-                text-align: right;
-                font-size: 13px;
-                color: #475569;
-                max-width: 60%;
+              h1.report-title { text-align: center; font-size: 34px; font-weight: 800; color: #0f172a; margin: 36px 0 6px 0; }
+              .report-sub { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 32px; }
+              .info-grid {
+                display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+                background: #e2e8f0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 24px;
               }
-              .meta-label {
-                font-weight: 700;
-                color: #0f172a;
-              }
-              h1.report-title {
-                text-align: center;
-                font-size: 38px;
-                font-weight: 800;
-                color: #1e40af;
-                margin: 40px 0 16px 0;
-              }
-              .property-info {
-                text-align: center;
-                font-size: 14px;
-                color: #475569;
-                margin-bottom: 40px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid #e2e8f0;
-              }
-              .property-info strong { color: #0f172a; }
-              .place-section {
-                margin-bottom: 40px;
-                page-break-inside: avoid;
-              }
+              .info-item { background: #f8fafc; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+              .info-k { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; }
+              .info-v { font-size: 14px; font-weight: 700; color: #0f172a; word-break: break-word; }
+              .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 40px; }
+              .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; text-align: center; }
+              .summary-num { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
+              .summary-num.ok { color: #047857; }
+              .summary-num.bad { color: #b91c1c; }
+              .summary-sm { font-size: 13px; font-weight: 700; color: #94a3b8; }
+              .summary-lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 8px; }
+              .place-section { margin-bottom: 32px; page-break-inside: avoid; }
               .place-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding-bottom: 12px;
-                border-bottom: 2px solid #1e40af;
-                margin-bottom: 16px;
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 12px 18px; background: #1e40af; border-radius: 10px 10px 0 0;
               }
-              .place-header h2 {
-                font-size: 22px;
-                font-weight: 700;
-                color: #1e40af;
-              }
-              .score-badge {
-                padding: 6px 14px;
-                border-radius: 20px;
-                font-size: 13px;
-                font-weight: 700;
-              }
-              .score-1 { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-              .score-2 { background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
-              .score-3 { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-              .tasks-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 16px;
-                font-size: 13px;
-              }
+              .place-header h2 { font-size: 17px; font-weight: 700; color: #ffffff; }
+              .place-body { border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 10px 10px; padding: 18px; }
+              .score-badge { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+              .score-1 { background: #fee2e2; color: #991b1b; }
+              .score-2 { background: #fef3c7; color: #854d0e; }
+              .score-3 { background: #d1fae5; color: #065f46; }
+              .tasks-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
               .tasks-table th {
-                background: #f8fafc;
-                color: #64748b;
-                font-weight: 700;
-                text-align: left;
-                padding: 10px 12px;
-                border-bottom: 1px solid #e2e8f0;
-                text-transform: uppercase;
-                font-size: 11px;
-                letter-spacing: 0.5px;
+                background: #f8fafc; color: #64748b; font-weight: 700; text-align: left;
+                padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;
               }
-              .tasks-table td {
-                padding: 10px 12px;
-                border-bottom: 1px solid #f1f5f9;
-              }
-              .tasks-table td.yes { color: #047857; font-weight: 700; }
-              .tasks-table td.no { color: #b91c1c; font-weight: 700; }
-              .tasks-table td.na { color: #94a3b8; }
-              .notes-block {
-                background: #f8fafc;
-                padding: 14px 16px;
-                border-left: 3px solid #1e40af;
-                border-radius: 4px;
-                font-size: 13px;
-                color: #334155;
-                margin-bottom: 16px;
-              }
-              .photo-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 12px;
-                margin-top: 12px;
-              }
-              .photo-item {
-                aspect-ratio: 1 / 1;
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-                background-color: #f1f5f9;
-                page-break-inside: avoid;
-              }
-              .photo-item img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-              }
-              .footer {
-                margin-top: 40px;
-                padding-top: 20px;
-                border-top: 1px solid #e2e8f0;
-                text-align: center;
-                font-size: 11px;
-                color: #94a3b8;
-              }
+              .tasks-table th:last-child { text-align: right; }
+              .tasks-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+              .tasks-table tr:last-child td { border-bottom: none; }
+              .result-pill { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+              .result-pill.yes { background: #d1fae5; color: #047857; }
+              .result-pill.no { background: #fee2e2; color: #b91c1c; }
+              .result-pill.na { background: #f1f5f9; color: #94a3b8; }
+              .notes-block { background: #f8fafc; padding: 14px 16px; border-left: 3px solid #1e40af; border-radius: 6px; font-size: 13px; color: #334155; margin-bottom: 16px; }
+              .photos-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
+              .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+              .photo-item { aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1); background-color: #f1f5f9; page-break-inside: avoid; }
+              .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+              .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
             </style>
           </head>
           <body>
             <div class="container">
-              <div class="header">
-                <div>
-                  <div class="logo-text">PRECISE CLEANING</div>
-                  <div class="logo-subtitle">Professional Services</div>
+
+              <div class="brandbar">
+                <div class="brand">
+                  <div class="brand-logo">PC</div>
+                  <div>
+                    <div class="logo-text">PRECISE CLEANING</div>
+                    <div class="logo-subtitle">Professional Cleaning Services</div>
+                  </div>
                 </div>
-                <div class="meta-section">
-                  <div><span class="meta-label">Inspector:</span> ${inspector}</div>
-                  <div><span class="meta-label">Date:</span> ${date}</div>
-                </div>
+                <div class="doc-tag">Quality Check Report</div>
               </div>
 
               <h1 class="report-title">Quality Check Report</h1>
-              <div class="property-info">
-                <strong>${house.client}</strong> • ${house.address}
+              <div class="report-sub">Detailed inspection summary &amp; photographic evidence</div>
+
+              <div class="info-grid">
+                <div class="info-item"><span class="info-k">Client</span><span class="info-v">${clientName}</span></div>
+                <div class="info-item"><span class="info-k">Address</span><span class="info-v">${house.address || '—'}</span></div>
+                <div class="info-item"><span class="info-k">Team</span><span class="info-v">${teamName}</span></div>
+                <div class="info-item"><span class="info-k">Inspector</span><span class="info-v">${inspector}</span></div>
+                <div class="info-item"><span class="info-k">Date</span><span class="info-v">${date}</span></div>
+                <div class="info-item"><span class="info-k">Areas Inspected</span><span class="info-v">${placesWithBase64.length}</span></div>
+              </div>
+
+              <div class="summary">
+                <div class="summary-card">
+                  <div class="summary-num">${passRate}%</div>
+                  <div class="summary-lbl">Pass Rate</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-num ok">${yesCount}</div>
+                  <div class="summary-lbl">Passed Tasks</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-num bad">${noCount}</div>
+                  <div class="summary-lbl">Failed Tasks</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-num">${avgScore ? avgScore.toFixed(1) : '—'}<span class="summary-sm">${avgScore ? ' /3' : ''}</span></div>
+                  <div class="summary-lbl">Avg. Score</div>
+                </div>
               </div>
 
               ${placeSections}
 
               <div class="footer">
-                ${house.client} • Generated on ${date} • Precise Cleaning Services
+                ${clientName} • Generated on ${date} • Precise Cleaning Services
               </div>
             </div>
           </body>
         </html>
       `;
 
-      const safeClient = (house.client || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
+      const safeClient = (clientName || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
       const safeDate = recordDate || new Date().toISOString().split('T')[0];
       await generatePDFFromHTML(html, {
         filename: `Quality-Check-${safeClient}-${safeDate}.pdf`,
@@ -920,7 +906,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                         <div>{qc.address}</div>
                         <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
                       </td>
-                      <td style={{...s.td, fontWeight: 600}}>{qc.client}</td>
+                      <td style={{...s.td, fontWeight: 600}}>{getClientName(qc.client)}</td>
                       <td style={{...s.td, color: '#475569'}}>{teamLabel}</td>
                       <td style={{...s.td, textAlign: 'right'}}>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -981,7 +967,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   <ClipboardCheck size={22}/> Quality Check Inspection
                 </h1>
                 <p className="qc-prop">
-                  Property: <strong style={{backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px'}}>{selectedHouse.client} - {selectedHouse.address}</strong>
+                  Property: <strong style={{backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px'}}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</strong>
                 </p>
                 <p className="qc-insp">
                   <User size={14} /> Inspector: {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User'}
