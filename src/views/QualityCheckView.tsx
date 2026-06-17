@@ -400,15 +400,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             pd.photos.map(async (url) => {
               try {
                 const response = await fetch(url, { mode: 'cors' });
+                // Si la descarga no es válida, usamos la URL real (carga directa en <img>)
+                if (!response.ok) return url;
                 const blob = await response.blob();
-                return await new Promise<string>((resolve, reject) => {
+                if (!blob || blob.size === 0 || (blob.type && !blob.type.startsWith('image/'))) return url;
+                return await new Promise<string>((resolve) => {
                   const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result as string);
-                  reader.onerror = reject;
+                  reader.onloadend = () => resolve((reader.result as string) || url);
+                  reader.onerror = () => resolve(url);
                   reader.readAsDataURL(blob);
                 });
               } catch (err) {
-                console.error('Error loading image:', err);
+                console.error('Error loading image, using direct URL:', err);
                 return url;
               }
             })
