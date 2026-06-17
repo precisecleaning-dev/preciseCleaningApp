@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Image as ImageIcon, Search, Check
+  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -64,6 +64,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Áreas seleccionadas para inspeccionar en el modal
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
+
+  // ⭐ Envío por email
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState('jesuslevinole@gmail.com');
+  const [emailCtx, setEmailCtx] = useState<{ subject: string; body: string } | null>(null);
+  const [emailExport, setEmailExport] = useState<null | (() => Promise<void> | void)>(null);
 
   // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -435,6 +441,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       });
       const totalAnswered = yesCount + noCount;
       const passRate = totalAnswered ? Math.round((yesCount / totalAnswered) * 100) : 0;
+      const hasData = totalAnswered > 0;
+      const verdict = !hasData ? 'Inspection Recorded' : passRate >= 90 ? 'Excellent Result' : passRate >= 75 ? 'Satisfactory' : 'Needs Attention';
+      const verdictClass = !hasData ? 'mid' : passRate >= 90 ? 'pass' : passRate >= 75 ? 'mid' : 'low';
 
       const placeSections = placesWithBase64.map(pd => {
         const placeTasks = tasks.filter(t => t.placeId === pd.place.id);
@@ -472,12 +481,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         ` : '';
 
         const photosHtml = pd.photosBase64.length > 0 ? `
-          <div class="photos-label">Photographic evidence (${pd.photosBase64.length})</div>
+          <div class="photos-label">Photographic Evidence (${pd.photosBase64.length})</div>
           <div class="photo-grid">
-            ${pd.photosBase64.map((src) => `
-              <div class="photo-item">
-                <img src="${src}" alt="QC photo" />
-              </div>
+            ${pd.photosBase64.map((src, idx) => `
+              <figure class="photo-item">
+                <div class="photo-frame"><img src="${src}" alt="QC photo ${idx + 1}" /></div>
+                <figcaption class="photo-cap">${pd.place.name} — Photo ${String(idx + 1).padStart(2, '0')}</figcaption>
+              </figure>
             `).join('')}
           </div>
         ` : '';
@@ -580,9 +590,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               .result-pill.na { background: #f1f5f9; color: #94a3b8; }
               .notes-block { background: #f8fafc; padding: 14px 16px; border-left: 3px solid #1e40af; border-radius: 6px; font-size: 13px; color: #334155; margin-bottom: 16px; }
               .photos-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
-              .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-              .photo-item { aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1); background-color: #f1f5f9; page-break-inside: avoid; }
-              .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+              .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+              .photo-item { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #ffffff; page-break-inside: avoid; }
+              .photo-frame { width: 100%; height: 240px; background: #f1f5f9; }
+              .photo-item img { width: 100%; height: 240px; object-fit: cover; display: block; }
+              .photo-cap { font-size: 10px; font-weight: 600; color: #64748b; padding: 8px 10px; background: #f8fafc; border-top: 1px solid #eef2f7; text-transform: uppercase; letter-spacing: 0.4px; }
+              .result-banner { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-radius: 12px; margin-bottom: 32px; }
+              .result-banner.pass { background: #ecfdf5; border: 1px solid #a7f3d0; }
+              .result-banner.mid { background: #fffbeb; border: 1px solid #fde68a; }
+              .result-banner.low { background: #fef2f2; border: 1px solid #fecaca; }
+              .rb-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; }
+              .rb-verdict { font-size: 22px; font-weight: 800; margin-top: 4px; }
+              .result-banner.pass .rb-verdict { color: #047857; }
+              .result-banner.mid .rb-verdict { color: #b45309; }
+              .result-banner.low .rb-verdict { color: #b91c1c; }
+              .rb-score { text-align: right; }
+              .rb-pct { font-size: 30px; font-weight: 900; color: #0f172a; line-height: 1; }
+              .rb-pct-lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 4px; }
               .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
               @media print {
                 @page { margin: 12mm; size: A4; }
@@ -608,6 +632,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
               <h1 class="report-title">Quality Check Report</h1>
               <div class="report-sub">Detailed inspection summary &amp; photographic evidence</div>
+
+              <div class="result-banner ${verdictClass}">
+                <div>
+                  <div class="rb-label">Overall Assessment</div>
+                  <div class="rb-verdict">${verdict}</div>
+                </div>
+                <div class="rb-score">
+                  <div class="rb-pct">${hasData ? passRate + '%' : '—'}</div>
+                  <div class="rb-pct-lbl">Tasks Passed</div>
+                </div>
+              </div>
 
               <div class="info-grid">
                 <div class="info-item"><span class="info-k">Client</span><span class="info-v">${clientName}</span></div>
@@ -692,6 +727,79 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     } finally {
       setExportingForQcId(null);
     }
+  };
+
+  // ⭐ Resumen rápido (para el cuerpo del email)
+  const qcSummary = (qcDataObj: Record<string, any>) => {
+    let yes = 0, no = 0;
+    places.forEach(p => {
+      const d = qcDataObj[p.id];
+      if (!d) return;
+      tasks.filter(t => t.placeId === p.id).forEach(t => {
+        const v = d.tasks?.[t.id];
+        if (v === 'Yes') yes++; else if (v === 'No') no++;
+      });
+    });
+    const total = yes + no;
+    const passRate = total ? Math.round((yes / total) * 100) : 0;
+    const hasData = total > 0;
+    const verdict = !hasData ? 'Inspection Recorded' : passRate >= 90 ? 'Excellent Result' : passRate >= 75 ? 'Satisfactory' : 'Needs Attention';
+    return { passRate, hasData, verdict };
+  };
+
+  // ⭐ Construye asunto + cuerpo (en inglés) del correo
+  const buildEmail = (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string) => {
+    const clientName = getClientName(house.client);
+    const team = getTeamNameForHouse(house);
+    const niceDate = formatDate(dateStr || new Date().toISOString().split('T')[0]);
+    const { passRate, hasData, verdict } = qcSummary(qcDataObj);
+    const subject = `Quality Check Report - ${clientName} (${niceDate})`;
+    const body = [
+      'Hello,',
+      '',
+      'Please find the Quality Check report for the property detailed below.',
+      '',
+      `Client: ${clientName}`,
+      `Address: ${house.address || '-'}`,
+      `Team: ${team}`,
+      `Inspector: ${inspector || 'Unknown'}`,
+      `Date: ${niceDate}`,
+      `Overall result: ${verdict}${hasData ? ` (${passRate}% of tasks passed)` : ''}`,
+      '',
+      'The full report, including task results and photographic evidence, is attached as a PDF.',
+      '',
+      'Best regards,',
+      'Precise Cleaning',
+    ].join('\r\n');
+    return { subject, body };
+  };
+
+  const openEmailForQC = (qc: QCRecord) => {
+    const house = properties.find(p => p.id === qc.houseId);
+    if (!house) { alert('No se encontró la propiedad asociada a este reporte.'); return; }
+    setEmailCtx(buildEmail(house, (qc.qcData as Record<string, any>) || {}, qc.inspector || 'Unknown', qc.date));
+    setEmailExport(() => () => handleExportFromTable(qc));
+    setEmailModalOpen(true);
+  };
+
+  const openEmailForCurrent = () => {
+    if (!selectedHouse) return;
+    const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
+    const dateStr = editingQcId ? (qcList.find(q => q.id === editingQcId)?.date) : new Date().toISOString().split('T')[0];
+    setEmailCtx(buildEmail(selectedHouse, qcData, inspector, dateStr));
+    setEmailExport(() => () => handleExportFromModal());
+    setEmailModalOpen(true);
+  };
+
+  const sendEmail = async () => {
+    if (!emailCtx) return;
+    const to = emailTo.trim();
+    if (!to) { alert('Ingresa un correo de destino.'); return; }
+    // Abrir el PDF primero para que el usuario lo guarde y lo adjunte
+    try { if (emailExport) await emailExport(); } catch (e) { console.error(e); }
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(emailCtx.subject)}&body=${encodeURIComponent(emailCtx.body)}`;
+    window.location.href = mailto;
+    setEmailModalOpen(false);
   };
 
   const setTaskValue = (placeId: string, taskId: string, value: 'Yes' | 'No') => {
@@ -953,6 +1061,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                             }
                           </button>
                           <button 
+                            onClick={() => openEmailForQC(qc)} 
+                            title="Email Report"
+                            style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Mail size={16} />
+                          </button>
+                          <button 
                             onClick={() => handleDeleteQC(qc.id as string)} 
                             title="Delete Quality Check"
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -1012,6 +1127,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 >
                   {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
                   <span className="qc-export-label">{isExportingPDF ? 'Exporting...' : 'Export PDF'}</span>
+                </button>
+                <button
+                  onClick={openEmailForCurrent}
+                  disabled={isLoadingCatalogs}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    backgroundColor: 'rgba(255,255,255,0.2)', color: 'white',
+                    border: '1px solid rgba(255,255,255,0.3)', padding: '8px 14px',
+                    borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer'
+                  }}
+                  title="Email Report"
+                >
+                  <Mail size={16} />
+                  <span className="qc-export-label">Email</span>
                 </button>
                 <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
               </div>
@@ -1234,6 +1363,41 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE EMAIL --- */}
+      {emailModalOpen && (
+        <div className="qc-overlay" style={{ zIndex: 1100, padding: '16px' }} onClick={() => setEmailModalOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '460px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#3b82f6', color: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={18} /> Email Report</h2>
+              <button style={s.closeBtn} onClick={() => setEmailModalOpen(false)}><X size={22} /></button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Recipient</label>
+              <input
+                type="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="email@example.com"
+                style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box' }}
+              />
+              {emailCtx && (
+                <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Subject</div>
+                  <div style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 600, marginTop: '2px' }}>{emailCtx.subject}</div>
+                </div>
+              )}
+              <p style={{ marginTop: '14px', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5 }}>
+                Your email app will open with the message ready (in English). The report opens in a new tab so you can save it as PDF and attach it before sending.
+              </p>
+            </div>
+            <div style={{ padding: '16px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button onClick={() => setEmailModalOpen(false)} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={sendEmail} style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} /> Open Email</button>
+            </div>
           </div>
         </div>
       )}
