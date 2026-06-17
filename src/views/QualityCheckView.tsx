@@ -182,11 +182,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   const handleEditQC = (qc: QCRecord) => {
-    const house = properties.find(p => p.id === qc.houseId) || null;
-    if (!house) {
-      alert("The property associated with this report could not be found.");
-      return;
-    }
+    // Si la propiedad no está en el listado, usamos los datos guardados en el reporte.
+    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     setSelectedHouse(house);
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
@@ -254,7 +251,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
       address: selectedHouse.address,
       client: selectedHouse.client,
-      team: getTeamNameForHouse(selectedHouse),
+      team: (editingQcId && qcList.find(q => q.id === editingQcId)?.team) || getTeamNameForHouse(selectedHouse),
       status: isPending ? 'Pending' : 'Finished',
       inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
       selectedPlaces: selectedPlaceIds,
@@ -363,7 +360,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     qcDataObj: Record<string, any>,
     inspectorName: string,
     recordDate?: string,
-    setLoading?: (loading: boolean) => void
+    setLoading?: (loading: boolean) => void,
+    teamNameOverride?: string
   ) => {
     const placesWithData: { place: Place; photos: string[]; tasksData: any; notes: string; damage: string; score: any; corrections: string }[] = [];
     
@@ -425,7 +423,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const date = displayDate;
       const clientName = getClientName(house.client);
-      const teamName = getTeamNameForHouse(house);
+      const teamName = teamNameOverride || getTeamNameForHouse(house);
 
       // Resumen general del reporte
       const scoredVals = placesWithData.map(p => p.score).filter((v): v is number => typeof v === 'number' && v > 0);
@@ -713,17 +711,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   const handleExportFromTable = async (qc: QCRecord) => {
-    const house = properties.find(p => p.id === qc.houseId);
-    if (!house) {
-      alert('No se encontró la propiedad asociada a este reporte.');
-      return;
-    }
+    // Si la propiedad no está en el listado, reconstruimos lo necesario desde el propio reporte.
+    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     const inspector = qc.inspector || 'Unknown';
     const recordQcData = (qc.qcData as Record<string, any>) || {};
     
     setExportingForQcId(qc.id as string);
     try {
-      await buildAndExportQCPDF(house, recordQcData, inspector, qc.date);
+      await buildAndExportQCPDF(house, recordQcData, inspector, qc.date, undefined, qc.team);
     } finally {
       setExportingForQcId(null);
     }
@@ -748,9 +743,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Construye asunto + cuerpo (en inglés) del correo
-  const buildEmail = (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string) => {
+  const buildEmail = (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string) => {
     const clientName = getClientName(house.client);
-    const team = getTeamNameForHouse(house);
+    const team = teamNameOverride || getTeamNameForHouse(house);
     const niceDate = formatDate(dateStr || new Date().toISOString().split('T')[0]);
     const { passRate, hasData, verdict } = qcSummary(qcDataObj);
     const subject = `Quality Check Report - ${clientName} (${niceDate})`;
@@ -775,9 +770,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   const openEmailForQC = (qc: QCRecord) => {
-    const house = properties.find(p => p.id === qc.houseId);
-    if (!house) { alert('No se encontró la propiedad asociada a este reporte.'); return; }
-    setEmailCtx(buildEmail(house, (qc.qcData as Record<string, any>) || {}, qc.inspector || 'Unknown', qc.date));
+    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
+    setEmailCtx(buildEmail(house, (qc.qcData as Record<string, any>) || {}, qc.inspector || 'Unknown', qc.date, qc.team));
     setEmailExport(() => () => handleExportFromTable(qc));
     setEmailModalOpen(true);
   };
