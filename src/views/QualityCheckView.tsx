@@ -7,7 +7,6 @@ import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { compressImage } from '../utils/imageCompression';
-import { generatePDFFromHTML } from '../utils/pdfGenerator';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
@@ -585,6 +584,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               .photo-item { aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.1); background-color: #f1f5f9; page-break-inside: avoid; }
               .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
               .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+              @media print {
+                @page { margin: 12mm; size: A4; }
+                body { background: #ffffff; padding: 0; }
+                .container { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; border-top: none; }
+                .place-section, .photo-item, .summary-card, .info-item { break-inside: avoid; }
+              }
             </style>
           </head>
           <body>
@@ -638,17 +643,26 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 ${clientName} • Generated on ${date} • Precise Cleaning Services
               </div>
             </div>
+            <script>
+              window.addEventListener('load', function() {
+                var images = document.querySelectorAll('img');
+                if (images.length === 0) { setTimeout(function(){ window.print(); }, 300); return; }
+                var loaded = 0;
+                var done = function(){ loaded++; if (loaded >= images.length) setTimeout(function(){ window.print(); }, 500); };
+                images.forEach(function(img){ if (img.complete) done(); else { img.addEventListener('load', done); img.addEventListener('error', done); } });
+              });
+            </script>
           </body>
         </html>
       `;
 
-      const safeClient = (clientName || 'Report').replace(/[^a-zA-Z0-9-_ ]/g, '').trim();
-      const safeDate = recordDate || new Date().toISOString().split('T')[0];
-      await generatePDFFromHTML(html, {
-        filename: `Quality-Check-${safeClient}-${safeDate}.pdf`,
-        format: 'a4',
-        orientation: 'portrait'
-      });
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.');
+        return;
+      }
+      printWindow.document.write(html);
+      printWindow.document.close();
     } catch (error) {
       console.error('Error generating Quality Check PDF:', error);
       alert('Error generando el PDF. Revisa la consola.');
