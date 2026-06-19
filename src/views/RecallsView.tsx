@@ -1,23 +1,36 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Repeat, AlertTriangle, Trophy, Award, Users, MapPin, CalendarDays,
-  Search, X, TrendingUp, BarChart3, Loader2
+  Search, X, TrendingUp, BarChart3, Loader2, ListChecks, FileBarChart, Check, ChevronDown
 } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { propertiesService } from '../services/propertiesService';
+import { statusHistoryService } from '../services/statusHistoryService';
+import PropertyDetailModal from '../components/PropertyDetailModal';
 
 /* =========================================================================
-   CONFIG / HEURÍSTICAS  (ajusta a tu modelo de datos si los nombres difieren)
+   CONFIG / HEURÍSTICAS
    - RECALL_PENALTY_PER: puntos que se restan al rendimiento por cada recall.
-   - RECALL_STATUS_HINTS: textos que, si aparecen en el estado/tipo de una casa,
-     la marcan como recall.
-   También se detectan recalls por: isRecall / recall / hasRecall / recalled === true,
-   recallCount > 0, y/o documentos en la colección "recalls".
+   - RECALL_STATUS_HINTS: textos que, si aparecen en un status, lo marcan recall.
+
+   HISTÓRICO PERSISTENTE:
+   La lista de recalls se construye principalmente desde `status_history`:
+   cada vez que una casa cambió A un status de Recall queda un registro con su
+   fecha. Así, aunque la casa pase luego a otro status, la fila permanece como
+   histórico ("esta casa estuvo en Recall el día X"). Se complementa con las
+   casas que actualmente están en Recall pero aún no tienen historial (legacy)
+   y con la colección opcional "recalls".
    ========================================================================= */
 const RECALL_PENALTY_PER = 6;
 const RECALL_STATUS_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
+const isRecallText = (txt?: any): boolean => {
+  if (!txt) return false;
+  const t = String(txt).toLowerCase();
+  return RECALL_STATUS_HINTS.some(h => t.includes(h));
+};
 
 interface RecallItem {
   id: string;
@@ -27,15 +40,15 @@ interface RecallItem {
   team: string;
   date: string;
   reason: string;
-  source: 'property' | 'collection';
+  source: 'history' | 'property' | 'collection';
 }
 
 interface TeamStat {
   team: string;
   recalls: number;
   qcCount: number;
-  avgPass: number | null; // promedio de pass rate de QC (0-100) o null si no hay QC
-  overall: number;        // rendimiento general (0-100)
+  avgPass: number | null;
+  overall: number;
 }
 
 interface RecallsViewProps {
@@ -44,30 +57,145 @@ interface RecallsViewProps {
   currentUser?: SystemUser | null;
 }
 
-export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps) {
+// ⭐ Pill editable de status para la tabla.
+// El menú se renderiza con posición FIJA respecto a la pantalla para que no lo
+// recorte el overflow de la tabla, con diseño mejorado (encabezado, check del
+// status actual, dot de color y scroll si hay muchos status).
+function RowStatusPill({ statusId, statuses, onChange, disabled }: { statusId?: string; statuses: any[]; onChange: (id: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number; openUp: boolean }>({ top: 0, left: 0, width: 240, openUp: false });
+  const btnRef = useRef<HTMLDivElement>(null);
+
+  const safe = String(statusId || '').toLowerCase().trim();
+  const st = statuses.find((s: any) => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
+  const color = st ? st.color : '#64748b';
+  const text = st ? st.name : 'Unassigned';
+
+  const computePosition = () => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const menuW = Math.max(240, r.width);
+    const menuH = Math.min(statuses.length * 46 + 46, 340);
+    const spaceBelow = window.innerHeight - r.bottom;
+    const openUp = spaceBelow < menuH + 12 && r.top > menuH;
+    let left = r.left;
+    if (left + menuW > window.innerWidth - 12) left = window.innerWidth - menuW - 12;
+    if (left < 12) left = 12;
+    setCoords({ top: openUp ? r.top - menuH - 8 : r.bottom + 8, left, width: menuW, openUp });
+  };
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled) return;
+    if (!open) computePosition();
+    setOpen(o => !o);
+  };
+
+  // Cerrar al hacer scroll o redimensionar (la posición fija quedaría desfasada)
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  return (
+    <div ref={btnRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <div
+        onClick={toggle}
+        style={{ background: '#fff', color: '#111827', padding: '6px 10px 6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${open ? color : '#e5e7eb'}`, boxShadow: open ? `0 0 0 3px ${color}22` : '0 1px 2px rgba(0,0,0,0.05)', whiteSpace: 'nowrap', transition: 'all .15s' }}
+      >
+        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
+        {text}
+        <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+      </div>
+
+      {open && (
+        <>
+          {/* Backdrop transparente para cerrar al hacer clic fuera */}
+          <div onClick={(e) => { e.stopPropagation(); setOpen(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', top: coords.top, left: coords.left, width: coords.width,
+              background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.18)', zIndex: 1001, overflow: 'hidden',
+              animation: 'rc-pop .12s ease-out',
+            }}
+          >
+            <div style={{ padding: '10px 14px', fontSize: '0.68rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+              Cambiar status
+            </div>
+            <div style={{ maxHeight: '290px', overflowY: 'auto' }}>
+              {statuses.map((s: any) => {
+                const isCurrent = String(s.id) === String(statusId) || String(s.name) === String(statusId);
+                return (
+                  <div key={s.id}
+                    onClick={(e) => { e.stopPropagation(); if (!isCurrent) onChange(s.id); setOpen(false); }}
+                    style={{ padding: '11px 14px', fontSize: '0.88rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '10px', cursor: isCurrent ? 'default' : 'pointer', borderBottom: '1px solid #f6f7f9', background: isCurrent ? '#f8fafc' : 'transparent', fontWeight: isCurrent ? 700 : 500 }}
+                    onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = '#f1f5f9'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = isCurrent ? '#f8fafc' : 'transparent'; }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: s.color, flexShrink: 0, boxShadow: `0 0 0 3px ${s.color}1f` }} />
+                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                    {isCurrent && <Check size={16} color="#16a34a" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function RecallsView({ onOpenMenu, properties, currentUser }: RecallsViewProps) {
+  const [tab, setTab] = useState<'recalls' | 'report'>('recalls');
+
   const [teams, setTeams] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<any[]>([]);
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [qcList, setQcList] = useState<any[]>([]);
   const [recallDocs, setRecallDocs] = useState<any[]>([]);
+  const [historyDocs, setHistoryDocs] = useState<any[]>([]);
+  const [loadedProps, setLoadedProps] = useState<Property[]>(properties || []);
+  const [detailHouse, setDetailHouse] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const houses = (loadedProps && loadedProps.length) ? loadedProps : (properties || []);
+
+  // Filtros de la TABLA
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState<string>('All');
+  // Filtros del REPORTE (rango de fechas)
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [teamsData, customersSnap, qcSnap, recallsSnap] = await Promise.all([
+        const [teamsData, statusesSnap, customersSnap, qcSnap, recallsSnap, propsSnap, historySnap] = await Promise.all([
           settingsService.getAll('settings_teams').catch(() => []),
+          getDocs(collection(db, 'settings_statuses')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'recalls')).catch(() => ({ docs: [] })),
+          getDocs(collection(db, 'properties')).catch(() => ({ docs: [] })),
+          getDocs(collection(db, 'status_history')).catch(() => ({ docs: [] })),
         ]);
         setTeams(teamsData as any[]);
+        const propsData = ((propsSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as Property[];
+        if (propsData.length) setLoadedProps(propsData);
+        setStatuses(((statusesSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
         setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
         setQcList(((qcSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
         setRecallDocs(((recallsSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
+        setHistoryDocs(((historySnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
       } catch (e) {
         console.error('Error loading recalls data:', e);
       } finally {
@@ -99,27 +227,96 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
     return 'Unassigned';
   };
 
+  const getStatusName = (house?: any): string => {
+    if (!house) return '';
+    const raw = house.statusId ?? house.status;
+    if (!raw) return '';
+    const safe = String(raw).toLowerCase().trim();
+    const f = statuses.find((st: any) => String(st.id).toLowerCase().trim() === safe || String(st.name).toLowerCase().trim() === safe);
+    return f ? f.name : String(raw);
+  };
+
+  const statusNameById = (id?: string): string => {
+    const safe = String(id || '').toLowerCase().trim();
+    const f = statuses.find((st: any) => String(st.id).toLowerCase().trim() === safe || String(st.name).toLowerCase().trim() === safe);
+    return f ? f.name : String(id || '');
+  };
+
   const formatDate = (d?: string) => {
     if (!d) return '-';
     const parts = String(d).split('T')[0].split('-');
     if (parts.length === 3) { const [y, m, dd] = parts; return `${m.padStart(2, '0')}/${dd.padStart(2, '0')}/${y}`; }
     return String(d);
   };
+  const dateKey = (d?: string) => String(d || '').split('T')[0]; // YYYY-MM-DD
 
   const isRecallProperty = (p: any): boolean => {
     if (!p) return false;
     if (p.isRecall === true || p.recall === true || p.hasRecall === true || p.recalled === true) return true;
     if (typeof p.recallCount === 'number' && p.recallCount > 0) return true;
-    const text = [p.status, p.stage, p.pipelineStatus, p.jobStatus, p.type, p.serviceType]
-      .filter(Boolean).map((x: any) => String(x).toLowerCase()).join(' ');
+    const statusName = getStatusName(p);
+    const text = [statusName, p.status, p.stage, p.pipelineStatus, p.jobStatus].filter(Boolean).map((x: any) => String(x).toLowerCase()).join(' ');
     return RECALL_STATUS_HINTS.some(h => text.includes(h));
   };
 
-  // ---- Lista unificada de recalls (casas marcadas + colección recalls) ----
-  const recalls: RecallItem[] = useMemo(() => {
+  // ---- Cambio de status desde la tabla (registra en status_history) ----
+  const changeStatus = async (houseId: string, prevStatusId: string | undefined, newId: string) => {
+    if (!houseId || String(newId) === String(prevStatusId || '')) return;
+    try {
+      await propertiesService.update(houseId, { statusId: newId } as any);
+      const toName = statusNameById(newId);
+      await statusHistoryService.log({
+        propertyId: houseId,
+        fromStatusId: prevStatusId || null,
+        fromStatusName: statusNameById(prevStatusId) || null,
+        toStatusId: newId,
+        toStatusName: toName,
+        changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+      });
+      setLoadedProps(prev => prev.map(p => p.id === houseId ? { ...p, statusId: newId } as Property : p));
+      // Si el nuevo status es Recall, lo agregamos al histórico local para que aparezca al instante
+      if (isRecallText(toName)) {
+        setHistoryDocs(prev => [...prev, {
+          id: `local-${Date.now()}`,
+          propertyId: houseId,
+          toStatusId: newId,
+          toStatusName: toName,
+          changedAt: new Date().toISOString(),
+          changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+        }]);
+      }
+    } catch (e) {
+      console.error('Error updating status from Recalls:', e);
+      alert('No se pudo cambiar el status.');
+    }
+  };
+
+  // ---- HISTÓRICO PERSISTENTE de recalls ----
+  const recallHistory: RecallItem[] = useMemo(() => {
     const items: RecallItem[] = [];
-    (properties || []).forEach((p: any) => {
-      if (isRecallProperty(p)) {
+    const housesWithHistory = new Set<string>();
+
+    // 1) Desde status_history: cada transición A Recall = una fila histórica
+    historyDocs.forEach((h: any) => {
+      if (isRecallText(h.toStatusName) || isRecallText(statusNameById(h.toStatusId))) {
+        const house = houses.find((p: any) => p.id === h.propertyId);
+        items.push({
+          id: `hist-${h.id}`,
+          houseId: h.propertyId,
+          client: getClientName((house as any)?.client),
+          address: (house as any)?.address || '-',
+          team: getTeamName(house),
+          date: h.changedAt || '',
+          reason: 'Recall',
+          source: 'history',
+        });
+        if (h.propertyId) housesWithHistory.add(String(h.propertyId));
+      }
+    });
+
+    // 2) Casas actualmente en Recall sin historial (legacy: ocurrió antes del logging)
+    houses.forEach((p: any) => {
+      if (isRecallProperty(p) && !housesWithHistory.has(String(p.id))) {
         items.push({
           id: `prop-${p.id}`,
           houseId: p.id,
@@ -127,13 +324,15 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
           address: p.address || '-',
           team: getTeamName(p),
           date: p.recallDate || p.scheduleDate || p.date || p.updatedAt || '',
-          reason: p.recallReason || (p.status ? String(p.status) : 'Recall'),
+          reason: p.recallReason || getStatusName(p) || 'Recall',
           source: 'property',
         });
       }
     });
+
+    // 3) Colección "recalls" (si se usa)
     recallDocs.forEach((r: any) => {
-      const house = (properties || []).find((p: any) => p.id === r.houseId);
+      const house = houses.find((p: any) => p.id === r.houseId);
       items.push({
         id: `rec-${r.id}`,
         houseId: r.houseId,
@@ -145,11 +344,35 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
         source: 'collection',
       });
     });
-    return items;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, recallDocs, customersList, teams]);
 
-  // ---- Pass rate de un QC a partir de su qcData ----
+    return items.sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyDocs, houses, recallDocs, customersList, teams, statuses]);
+
+  // ---- TABLA: filtro por búsqueda + equipo ----
+  const teamOptions = useMemo(() => ['All', ...Array.from(new Set(recallHistory.map(r => r.team)))], [recallHistory]);
+  const filteredRecalls = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return recallHistory.filter(r => {
+      if (teamFilter !== 'All' && r.team !== teamFilter) return false;
+      if (!q) return true;
+      return [r.client, r.address, r.team, r.reason, formatDate(r.date)].filter(Boolean).join(' ').toLowerCase().includes(q);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recallHistory, search, teamFilter]);
+
+  // ---- REPORTE: recalls y QCs filtrados por rango de fechas ----
+  const inRange = (d?: string): boolean => {
+    const dk = dateKey(d);
+    if (!dk) return !(startDate || endDate);
+    if (startDate && dk < startDate) return false;
+    if (endDate && dk > endDate) return false;
+    return true;
+  };
+
+  const reportRecalls = useMemo(() => recallHistory.filter(r => inRange(r.date)), [recallHistory, startDate, endDate]);
+  const reportQCs = useMemo(() => qcList.filter((qc: any) => inRange(qc.date || qc.createdAt)), [qcList, startDate, endDate]);
+
   const qcPassRate = (qcData: any): { pass: number; total: number } => {
     let yes = 0, no = 0;
     if (qcData) {
@@ -162,16 +385,15 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
     return { pass: yes, total: yes + no };
   };
 
-  // ---- Estadísticas por equipo ----
   const teamStats: TeamStat[] = useMemo(() => {
     const map: Record<string, { recalls: number; qcPassSum: number; qcCount: number }> = {};
     const ensure = (t: string) => { if (!map[t]) map[t] = { recalls: 0, qcPassSum: 0, qcCount: 0 }; return map[t]; };
 
     teams.forEach((t: any) => ensure(t.name));
-    recalls.forEach(r => { ensure(r.team).recalls++; });
+    reportRecalls.forEach(r => { ensure(r.team).recalls++; });
 
-    qcList.forEach((qc: any) => {
-      const house = (properties || []).find((p: any) => p.id === qc.houseId);
+    reportQCs.forEach((qc: any) => {
+      const house = houses.find((p: any) => p.id === qc.houseId);
       const team = qc.team || getTeamName(house);
       const { pass, total } = qcPassRate(qc.qcData);
       if (total > 0) { const e = ensure(team); e.qcPassSum += (pass / total) * 100; e.qcCount++; }
@@ -181,37 +403,42 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
     return Object.keys(map).map(team => {
       const m = map[team];
       const avgPass = m.qcCount > 0 ? Math.round(m.qcPassSum / m.qcCount) : null;
-      const base = avgPass != null ? avgPass : 100; // sin QC asumimos base 100 y solo penalizan los recalls
+      const base = avgPass != null ? avgPass : 100;
       const overall = Math.max(0, Math.round(base - m.recalls * RECALL_PENALTY_PER));
       return { team, recalls: m.recalls, qcCount: m.qcCount, avgPass, overall };
-    }).filter(s => s.recalls > 0 || s.qcCount > 0);
+    }).filter(st => st.recalls > 0 || st.qcCount > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recalls, qcList, teams, properties]);
+  }, [reportRecalls, reportQCs, teams, houses]);
 
   const ranked = useMemo(() => [...teamStats].sort((a, b) => b.overall - a.overall || a.recalls - b.recalls), [teamStats]);
   const byRecalls = useMemo(() => [...teamStats].sort((a, b) => b.recalls - a.recalls), [teamStats]);
 
   const bestTeam = ranked[0] || null;
   const mostRecallsTeam = byRecalls[0] && byRecalls[0].recalls > 0 ? byRecalls[0] : null;
-  const totalRecalls = recalls.length;
-  const teamsWithRecalls = teamStats.filter(s => s.recalls > 0).length;
-  const maxRecallBar = Math.max(1, ...byRecalls.map(s => s.recalls));
+  const totalRecalls = reportRecalls.length;
+  const teamsWithRecalls = teamStats.filter(st => st.recalls > 0).length;
+  const maxRecallBar = Math.max(1, ...byRecalls.map(st => st.recalls));
 
-  // ---- Filtro de la lista ----
-  const teamOptions = useMemo(() => ['All', ...Array.from(new Set(recalls.map(r => r.team)))], [recalls]);
-  const filteredRecalls = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return recalls.filter(r => {
-      if (teamFilter !== 'All' && r.team !== teamFilter) return false;
-      if (!q) return true;
-      return [r.client, r.address, r.team, r.reason, formatDate(r.date)].filter(Boolean).join(' ').toLowerCase().includes(q);
-    }).sort((a, b) => (new Date(b.date).getTime() || 0) - (new Date(a.date).getTime() || 0));
+  // ⭐ Lista de casas (agrupadas) en/que estuvieron en Recall, acorde al filtro de
+  // fechas del reporte. Las que están AHORA en Recall van primero.
+  const reportRecallHouses = useMemo(() => {
+    const byHouse: Record<string, { houseId?: string; client: string; address: string; team: string; lastDate: string; count: number }> = {};
+    reportRecalls.forEach(r => {
+      const key = String(r.houseId || r.id);
+      if (!byHouse[key]) byHouse[key] = { houseId: r.houseId, client: r.client, address: r.address, team: r.team, lastDate: r.date, count: 0 };
+      byHouse[key].count++;
+      if ((new Date(r.date).getTime() || 0) > (new Date(byHouse[key].lastDate).getTime() || 0)) byHouse[key].lastDate = r.date;
+    });
+    return Object.values(byHouse).map(h => {
+      const houseObj = houses.find((p: any) => p.id === h.houseId) || null;
+      return { ...h, houseObj, current: houseObj ? isRecallProperty(houseObj) : false };
+    }).sort((a, b) => (Number(b.current) - Number(a.current)) || ((new Date(b.lastDate).getTime() || 0) - (new Date(a.lastDate).getTime() || 0)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recalls, search, teamFilter]);
+  }, [reportRecalls, houses, statuses]);
 
-  // ---- Color del score ----
+  const currentlyInRecall = reportRecallHouses.filter(h => h.current).length;
+
   const scoreColor = (v: number) => v >= 85 ? '#047857' : v >= 70 ? '#b45309' : '#b91c1c';
-  const scoreBg = (v: number) => v >= 85 ? '#ecfdf5' : v >= 70 ? '#fffbeb' : '#fef2f2';
 
   const s = {
     th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
@@ -223,6 +450,7 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
       <style>{`
         .rc-spin { animation: rc-spin 1s linear infinite; }
         @keyframes rc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes rc-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .rc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
         .rc-highlights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
         .rc-cols { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; margin-bottom: 24px; align-items: start; }
@@ -231,6 +459,9 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
         .rc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
         .rc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; }
         .rc-select { height: 42px; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 14px; background: #fff; color: #374151; font-size: 0.9rem; cursor: pointer; outline: none; }
+        .rc-tab { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #64748b; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all .15s; }
+        .rc-tab.active { background: #fff; color: #7c3aed; border-color: #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .rc-date { height: 42px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 12px; background: #fff; color: #374151; font-size: 0.9rem; outline: none; }
         @media (max-width: 900px) {
           .rc-kpis { grid-template-columns: repeat(2, 1fr); }
           .rc-highlights { grid-template-columns: 1fr; }
@@ -242,7 +473,7 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
       `}</style>
 
       {/* HEADER */}
-      <header className="main-header" style={{ marginBottom: '24px' }}>
+      <header className="main-header" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
@@ -256,13 +487,109 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
         </div>
       </header>
 
+      {/* TABS */}
+      <div style={{ display: 'inline-flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '12px', marginBottom: '20px' }}>
+        <button className={`rc-tab ${tab === 'recalls' ? 'active' : ''}`} onClick={() => setTab('recalls')}>
+          <ListChecks size={17} /> Recalls
+        </button>
+        <button className={`rc-tab ${tab === 'report' ? 'active' : ''}`} onClick={() => setTab('report')}>
+          <FileBarChart size={17} /> Reporte
+        </button>
+      </div>
+
       {loading ? (
         <div style={{ padding: '60px', textAlign: 'center', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
           <Loader2 size={20} className="rc-spin" /> Loading recall data...
         </div>
-      ) : (
+      ) : tab === 'recalls' ? (
+        /* ====================== SUB-VISTA 1: TABLA ====================== */
         <>
-          {/* HIGHLIGHTS: mejor equipo / más recalls */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="rc-table-search">
+              <Search size={16} color="#9ca3af" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por cliente, dirección, equipo, motivo..." />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} aria-label="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+            <select className="rc-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+              {teamOptions.map(t => <option key={t} value={t}>{t === 'All' ? 'All teams' : t}</option>)}
+            </select>
+            <span style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
+              {filteredRecalls.length} registro{filteredRecalls.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="rc-card" style={{ overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto', width: '100%' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '760px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...s.th, width: '130px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Recall Date</th>
+                    <th style={s.th}><Users size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Client</th>
+                    <th style={s.th}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Address</th>
+                    <th style={s.th}>Team</th>
+                    <th style={s.th}>Current Status</th>
+                    <th style={s.th}>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecalls.length === 0 ? (
+                    <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</td></tr>
+                  ) : filteredRecalls.map((r) => {
+                    const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+                    return (
+                      <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ transition: 'background-color 0.2s', cursor: houseObj ? 'pointer' : 'default' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                        <td style={s.td}>{formatDate(r.date)}</td>
+                        <td style={{ ...s.td, fontWeight: 600 }}>{r.client}</td>
+                        <td style={{ ...s.td, color: '#6b7280' }}>{r.address}</td>
+                        <td style={s.td}>
+                          <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.team}</span>
+                        </td>
+                        <td style={s.td} onClick={(e) => e.stopPropagation()}>
+                          {houseObj ? (
+                            <RowStatusPill statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
+                          ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                        </td>
+                        <td style={{ ...s.td, color: '#475569' }}>{r.reason}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
+            Histórico permanente: cada vez que una casa pasa a Recall queda registrada con su fecha (vía status_history), aunque luego cambie de status. La columna “Current Status” muestra el status actual de la casa y puedes cambiarlo aquí mismo.
+          </p>
+        </>
+      ) : (
+        /* ====================== SUB-VISTA 2: REPORTE ====================== */
+        <>
+          {/* Filtro de fechas */}
+          <div className="rc-card" style={{ padding: '16px 20px', marginBottom: '24px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Desde</label>
+              <input type="date" className="rc-date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hasta</label>
+              <input type="date" className="rc-date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+            {(startDate || endDate) && (
+              <button type="button" onClick={() => { setStartDate(''); setEndDate(''); }} style={{ height: '42px', padding: '0 16px', borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff', color: '#64748b', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <X size={15} /> Limpiar fechas
+              </button>
+            )}
+            <span style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
+              {startDate || endDate ? 'Reporte filtrado por fechas' : 'Mostrando todo el periodo'}
+            </span>
+          </div>
+
+          {/* HIGHLIGHTS */}
           <div className="rc-highlights">
             <div className="rc-card" style={{ padding: '20px', background: 'linear-gradient(135deg, #ecfdf5, #ffffff)', borderColor: '#a7f3d0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -317,7 +644,6 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
 
           {/* RANKING + BAR CHART */}
           <div className="rc-cols">
-            {/* Ranking de rendimiento */}
             <div className="rc-card" style={{ padding: '20px' }}>
               <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Award size={18} color="#2563eb" /> Team Performance Ranking
@@ -350,7 +676,6 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
               ))}
             </div>
 
-            {/* Recalls por equipo */}
             <div className="rc-card" style={{ padding: '20px' }}>
               <h2 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertTriangle size={18} color="#b91c1c" /> Recalls by Team
@@ -371,46 +696,61 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
             </div>
           </div>
 
-          {/* LISTA DE RECALLS */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
-            <div className="rc-table-search">
-              <Search size={16} color="#9ca3af" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por cliente, dirección, equipo, motivo..." />
-              {search && (
-                <button type="button" onClick={() => setSearch('')} aria-label="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
-                  <X size={16} />
-                </button>
-              )}
+          {/* LISTA DE CASAS EN / QUE ESTUVIERON EN RECALL */}
+          <div className="rc-card" style={{ overflow: 'hidden', marginBottom: '24px' }}>
+            <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Repeat size={18} color="#7c3aed" /> Casas en / que estuvieron en Recall
+              </h2>
+              <div style={{ display: 'flex', gap: '14px', fontSize: '0.8rem', color: '#64748b' }}>
+                <span><strong style={{ color: '#b91c1c' }}>{currentlyInRecall}</strong> en recall ahora</span>
+                <span><strong style={{ color: '#0f172a' }}>{reportRecallHouses.length}</strong> en total</span>
+              </div>
             </div>
-            <select className="rc-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-              {teamOptions.map(t => <option key={t} value={t}>{t === 'All' ? 'All teams' : t}</option>)}
-            </select>
-          </div>
-
-          <div className="rc-card" style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto', width: '100%' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '760px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '820px' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...s.th, width: '120px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Date</th>
-                    <th style={s.th}><Users size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Client</th>
-                    <th style={s.th}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Address</th>
+                    <th style={{ ...s.th, width: '150px' }}>Estado</th>
+                    <th style={s.th}>Client</th>
+                    <th style={s.th}>Address</th>
                     <th style={s.th}>Team</th>
-                    <th style={s.th}>Reason</th>
+                    <th style={{ ...s.th, width: '120px' }}>Último recall</th>
+                    <th style={{ ...s.th, width: '70px', textAlign: 'center' }}>Veces</th>
+                    <th style={s.th}>Current Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRecalls.length === 0 ? (
-                    <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</td></tr>
-                  ) : filteredRecalls.map((r) => (
-                    <tr key={r.id} style={{ transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                      <td style={s.td}>{formatDate(r.date)}</td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{r.client}</td>
-                      <td style={{ ...s.td, color: '#6b7280' }}>{r.address}</td>
+                  {reportRecallHouses.length === 0 ? (
+                    <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No hay casas en recall en este periodo.</td></tr>
+                  ) : reportRecallHouses.map((h) => (
+                    <tr key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
+                      style={{ transition: 'background-color 0.2s', cursor: h.houseObj ? 'pointer' : 'default', background: h.current ? '#fef2f2' : 'transparent' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fee2e2' : '#f8fafc'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fef2f2' : 'transparent'}>
                       <td style={s.td}>
-                        <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.team}</span>
+                        {h.current ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> En recall
+                          </span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+                            Estuvo
+                          </span>
+                        )}
                       </td>
-                      <td style={{ ...s.td, color: '#475569' }}>{r.reason}</td>
+                      <td style={{ ...s.td, fontWeight: 600 }}>{h.client}</td>
+                      <td style={{ ...s.td, color: '#6b7280' }}>{h.address}</td>
+                      <td style={s.td}>
+                        <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{h.team}</span>
+                      </td>
+                      <td style={{ ...s.td, color: '#475569' }}>{formatDate(h.lastDate)}</td>
+                      <td style={{ ...s.td, textAlign: 'center', fontWeight: 700, color: h.count > 1 ? '#b91c1c' : '#0f172a' }}>{h.count}</td>
+                      <td style={s.td} onClick={(e) => e.stopPropagation()}>
+                        {h.houseObj ? (
+                          <RowStatusPill statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
+                        ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -418,11 +758,18 @@ export default function RecallsView({ onOpenMenu, properties }: RecallsViewProps
             </div>
           </div>
 
-          <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
-            Score = Quality Check pass rate − ({RECALL_PENALTY_PER} × recalls). Recalls are detected from job status/flags and the optional “recalls” collection.
+          <p style={{ marginTop: '4px', fontSize: '0.78rem', color: '#94a3b8' }}>
+            Score = Quality Check pass rate − ({RECALL_PENALTY_PER} × recalls). El reporte considera los recalls y Quality Checks dentro del rango de fechas seleccionado.
           </p>
         </>
       )}
+
+      <PropertyDetailModal
+        property={detailHouse}
+        onClose={() => setDetailHouse(null)}
+        currentUser={currentUser}
+        canEdit={true}
+      />
     </div>
   );
 }
