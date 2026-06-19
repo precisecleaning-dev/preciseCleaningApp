@@ -12,6 +12,8 @@ import LoginView from './views/auth/LoginView';
 import RolesView from './views/admin/RolesView';
 import UsersView from './views/admin/UsersView';
 import DataImportView from './views/DataImportView'; // ⭐ Vista de importación de CSV (solo SuperAdmin)
+import RecallsView from './views/RecallsView'; // ⭐ Vista de Recalls (ranking de equipos)
+import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de historial de status por casa
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -23,7 +25,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -291,6 +293,24 @@ export default function App() {
             properties={visibleProperties as any}
             houseToInspect={houseToInspect as any}
             clearHouseToInspect={() => setHouseToInspect(null)}
+            currentUser={currentUser}
+          />
+        )}
+
+        {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}
+        {activeTab === 'recalls' && (
+          <RecallsView 
+            onOpenMenu={toggleMenu} 
+            properties={visibleProperties as any}
+            currentUser={currentUser}
+          />
+        )}
+
+        {/* ⭐ STATUS HISTORY — historial de status por casa */}
+        {activeTab === 'status_history' && (
+          <StatusHistoryView 
+            onOpenMenu={toggleMenu} 
+            properties={visibleProperties as any}
             currentUser={currentUser}
           />
         )}

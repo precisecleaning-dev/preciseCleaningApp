@@ -1,12 +1,12 @@
-import { 
+import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
- ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid, Repeat, History
 } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
 
-type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
+type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -18,15 +18,15 @@ interface SidebarProps {
   isSuperAdmin: boolean;
 }
 
-export default function Sidebar({ 
-  isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin 
+export default function Sidebar({
+  isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin
 }: SidebarProps) {
-  
+
   // ⭐ Helper centralizado para chequear permisos por módulo.
   //    SuperAdmin siempre ve todo. Si no hay role cargado todavía, NO mostrar
   //    nada (evita el "flash" de items visibles mientras carga).
   const canView = (moduleName: string): boolean => {
-    if (isSuperAdmin) return true; 
+    if (isSuperAdmin) return true;
     if (!activeRole) return false;
     const permission = activeRole.permissions?.find((p: Permission) => p.module === moduleName);
     return permission ? !!permission.canView : false;
@@ -35,15 +35,15 @@ export default function Sidebar({
   // ⭐ Helper para saber si mostrar el header "ADMIN" en el menú.
   //    Solo aparece si al menos UNO de los módulos admin está visible.
   //    Data Import también cuenta porque vive en la sección Admin.
-  const canViewRoles    = canView('Roles & Permissions');
-  const canViewUsers    = canView('System Users');
+  const canViewRoles = canView('Roles & Permissions');
+  const canViewUsers = canView('System Users');
   const canViewSettings = canView('Settings');
   const showAdminSection = canViewRoles || canViewUsers || canViewSettings || isSuperAdmin;
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
       await signOut(auth);
-      window.location.reload(); 
+      window.location.reload();
     }
   };
 
@@ -76,7 +76,7 @@ export default function Sidebar({
       `}</style>
 
       <aside className={`sidebar-container ${isSidebarOpen ? 'open' : 'closed'}`}>
-        
+
         <div className="sidebar-header">
           <div className="logo-container">
             <div className="logo-icon"><Building2 size={24} color="#3b82f6" /></div>
@@ -88,7 +88,7 @@ export default function Sidebar({
         </div>
 
         <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', paddingTop: '10px' }}>
-          
+
           {/* ⭐ HOUSES — check propio */}
           {canView('Houses') && (
             <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
@@ -136,6 +136,22 @@ export default function Sidebar({
             </button>
           )}
 
+          {/* ⭐ RECALLS — aparece con su propio permiso "Recalls" o donde se vea Quality Check */}
+          {(canView('Recalls') || canView('Quality Check')) && (
+            <button className={`nav-item ${activeTab === 'recalls' ? 'active' : ''}`} onClick={() => handleNavClick('recalls')}>
+              <Repeat size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Recalls</span>}
+            </button>
+          )}
+
+          {/* ⭐ STATUS HISTORY — historial de status por casa */}
+          {(canView('Status History') || canView('Houses')) && (
+            <button className={`nav-item ${activeTab === 'status_history' ? 'active' : ''}`} onClick={() => handleNavClick('status_history')}>
+              <History size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">Status History</span>}
+            </button>
+          )}
+
           {/* ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings") */}
           {canView('Payroll') && (
             <button className={`nav-item ${activeTab === 'payroll' ? 'active' : ''}`} onClick={() => handleNavClick('payroll')}>
@@ -178,7 +194,7 @@ export default function Sidebar({
               {isSidebarOpen && <span className="nav-text">Data Import</span>}
             </button>
           )}
-          
+
           {canViewSettings && (
             <button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}>
               <SettingsIcon size={20} className="nav-icon" />
@@ -188,7 +204,7 @@ export default function Sidebar({
         </nav>
 
         <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button 
+          <button
             onClick={handleLogout}
             style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.95rem', backgroundColor: 'transparent', color: '#ef4444', width: '100%', fontWeight: 600, transition: 'background 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'}
