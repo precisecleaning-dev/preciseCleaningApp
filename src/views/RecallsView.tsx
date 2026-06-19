@@ -41,6 +41,8 @@ interface RecallItem {
   date: string;
   reason: string;
   source: 'history' | 'property' | 'collection';
+  enteredAt?: string;
+  exitedAt?: string | null;
 }
 
 interface TeamStat {
@@ -248,7 +250,29 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     if (parts.length === 3) { const [y, m, dd] = parts; return `${m.padStart(2, '0')}/${dd.padStart(2, '0')}/${y}`; }
     return String(d);
   };
+  // ⭐ Fecha + hora (para entrada/salida de Recall)
+  const formatDateTime = (d?: string | null) => {
+    if (!d) return '—';
+    const str = String(d);
+    const hasTime = str.includes('T') || str.includes(':');
+    const dt = new Date(str);
+    if (isNaN(dt.getTime())) return formatDate(str);
+    if (!hasTime) return formatDate(str);
+    return dt.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+  };
   const dateKey = (d?: string) => String(d || '').split('T')[0]; // YYYY-MM-DD
+
+  // ⭐ Encuentra cuándo salió de Recall: la primera transición DESDE Recall
+  // posterior a la fecha de entrada. Si no existe, sigue en Recall.
+  const findRecallExit = (propertyId?: string, enteredAt?: string): string | null => {
+    if (!propertyId || !enteredAt) return null;
+    const enteredMs = new Date(enteredAt).getTime() || 0;
+    const exits = historyDocs
+      .filter((h: any) => String(h.propertyId) === String(propertyId) && (new Date(h.changedAt).getTime() || 0) > enteredMs)
+      .filter((h: any) => isRecallText(h.fromStatusName) || isRecallText(statusNameById(h.fromStatusId)))
+      .sort((a: any, b: any) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
+    return exits.length ? exits[0].changedAt : null;
+  };
 
   const isRecallProperty = (p: any): boolean => {
     if (!p) return false;
@@ -309,6 +333,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           date: h.changedAt || '',
           reason: 'Recall',
           source: 'history',
+          enteredAt: h.changedAt || '',
+          exitedAt: findRecallExit(h.propertyId, h.changedAt),
         });
         if (h.propertyId) housesWithHistory.add(String(h.propertyId));
       }
@@ -317,15 +343,18 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     // 2) Casas actualmente en Recall sin historial (legacy: ocurrió antes del logging)
     houses.forEach((p: any) => {
       if (isRecallProperty(p) && !housesWithHistory.has(String(p.id))) {
+        const d = p.recallDate || p.scheduleDate || p.date || p.updatedAt || '';
         items.push({
           id: `prop-${p.id}`,
           houseId: p.id,
           client: getClientName(p.client),
           address: p.address || '-',
           team: getTeamName(p),
-          date: p.recallDate || p.scheduleDate || p.date || p.updatedAt || '',
+          date: d,
           reason: p.recallReason || getStatusName(p) || 'Recall',
           source: 'property',
+          enteredAt: d,
+          exitedAt: null, // sigue en Recall
         });
       }
     });
@@ -333,15 +362,18 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     // 3) Colección "recalls" (si se usa)
     recallDocs.forEach((r: any) => {
       const house = houses.find((p: any) => p.id === r.houseId);
+      const d = r.date || r.recallDate || r.createdAt || '';
       items.push({
         id: `rec-${r.id}`,
         houseId: r.houseId,
         client: getClientName(r.client || (house as any)?.client),
         address: r.address || (house as any)?.address || '-',
         team: r.team || getTeamName(house),
-        date: r.date || r.recallDate || r.createdAt || '',
+        date: d,
         reason: r.reason || r.notes || 'Recall',
         source: 'collection',
+        enteredAt: d,
+        exitedAt: r.exitDate || r.exitedAt || null,
       });
     });
 
@@ -422,12 +454,16 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   // ⭐ Lista de casas (agrupadas) en/que estuvieron en Recall, acorde al filtro de
   // fechas del reporte. Las que están AHORA en Recall van primero.
   const reportRecallHouses = useMemo(() => {
-    const byHouse: Record<string, { houseId?: string; client: string; address: string; team: string; lastDate: string; count: number }> = {};
+    const byHouse: Record<string, { houseId?: string; client: string; address: string; team: string; lastDate: string; lastEntered: string; lastExited: string | null; count: number }> = {};
     reportRecalls.forEach(r => {
       const key = String(r.houseId || r.id);
-      if (!byHouse[key]) byHouse[key] = { houseId: r.houseId, client: r.client, address: r.address, team: r.team, lastDate: r.date, count: 0 };
+      if (!byHouse[key]) byHouse[key] = { houseId: r.houseId, client: r.client, address: r.address, team: r.team, lastDate: r.date, lastEntered: r.enteredAt || r.date, lastExited: r.exitedAt || null, count: 0 };
       byHouse[key].count++;
-      if ((new Date(r.date).getTime() || 0) > (new Date(byHouse[key].lastDate).getTime() || 0)) byHouse[key].lastDate = r.date;
+      if ((new Date(r.date).getTime() || 0) > (new Date(byHouse[key].lastDate).getTime() || 0)) {
+        byHouse[key].lastDate = r.date;
+        byHouse[key].lastEntered = r.enteredAt || r.date;
+        byHouse[key].lastExited = r.exitedAt || null;
+      }
     });
     return Object.values(byHouse).map(h => {
       const houseObj = houses.find((p: any) => p.id === h.houseId) || null;
@@ -527,12 +563,12 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '760px' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...s.th, width: '130px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Recall Date</th>
                     <th style={s.th}><Users size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Client</th>
                     <th style={s.th}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Address</th>
                     <th style={s.th}>Team</th>
+                    <th style={{ ...s.th, width: '180px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Entró a Recall</th>
+                    <th style={{ ...s.th, width: '180px' }}>Salió de Recall</th>
                     <th style={s.th}>Current Status</th>
-                    <th style={s.th}>Reason</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -542,18 +578,30 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                     const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
                     return (
                       <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ transition: 'background-color 0.2s', cursor: houseObj ? 'pointer' : 'default' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                        <td style={s.td}>{formatDate(r.date)}</td>
                         <td style={{ ...s.td, fontWeight: 600 }}>{r.client}</td>
                         <td style={{ ...s.td, color: '#6b7280' }}>{r.address}</td>
                         <td style={s.td}>
                           <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.team}</span>
+                        </td>
+                        <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#b45309', fontWeight: 600 }}>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> {formatDateTime(r.enteredAt || r.date)}
+                          </span>
+                        </td>
+                        <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                          {r.exitedAt ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#047857', fontWeight: 600 }}>
+                              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a' }} /> {formatDateTime(r.exitedAt)}
+                            </span>
+                          ) : (
+                            <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Aún en recall</span>
+                          )}
                         </td>
                         <td style={s.td} onClick={(e) => e.stopPropagation()}>
                           {houseObj ? (
                             <RowStatusPill statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
                           ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
                         </td>
-                        <td style={{ ...s.td, color: '#475569' }}>{r.reason}</td>
                       </tr>
                     );
                   })}
@@ -563,7 +611,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           </div>
 
           <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
-            Histórico permanente: cada vez que una casa pasa a Recall queda registrada con su fecha (vía status_history), aunque luego cambie de status. La columna “Current Status” muestra el status actual de la casa y puedes cambiarlo aquí mismo.
+            Histórico permanente: se registra la fecha y hora de cuándo cada casa entró a Recall y cuándo salió (vía status_history). Si aún no ha salido, se marca “Aún en recall”. La columna “Current Status” muestra el status actual y puedes cambiarlo aquí mismo.
           </p>
         </>
       ) : (
@@ -708,21 +756,22 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
               </div>
             </div>
             <div style={{ overflowX: 'auto', width: '100%' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '820px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '960px' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...s.th, width: '150px' }}>Estado</th>
+                    <th style={{ ...s.th, width: '140px' }}>Estado</th>
                     <th style={s.th}>Client</th>
                     <th style={s.th}>Address</th>
                     <th style={s.th}>Team</th>
-                    <th style={{ ...s.th, width: '120px' }}>Último recall</th>
-                    <th style={{ ...s.th, width: '70px', textAlign: 'center' }}>Veces</th>
+                    <th style={{ ...s.th, width: '170px' }}>Entró a Recall</th>
+                    <th style={{ ...s.th, width: '170px' }}>Salió de Recall</th>
+                    <th style={{ ...s.th, width: '60px', textAlign: 'center' }}>Veces</th>
                     <th style={s.th}>Current Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportRecallHouses.length === 0 ? (
-                    <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No hay casas en recall en este periodo.</td></tr>
+                    <tr><td colSpan={8} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No hay casas en recall en este periodo.</td></tr>
                   ) : reportRecallHouses.map((h) => (
                     <tr key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
                       style={{ transition: 'background-color 0.2s', cursor: h.houseObj ? 'pointer' : 'default', background: h.current ? '#fef2f2' : 'transparent' }}
@@ -744,7 +793,12 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                       <td style={s.td}>
                         <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{h.team}</span>
                       </td>
-                      <td style={{ ...s.td, color: '#475569' }}>{formatDate(h.lastDate)}</td>
+                      <td style={{ ...s.td, color: '#b45309', whiteSpace: 'nowrap' }}>{formatDateTime(h.lastEntered)}</td>
+                      <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                        {h.lastExited
+                          ? <span style={{ color: '#047857' }}>{formatDateTime(h.lastExited)}</span>
+                          : <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Aún en recall</span>}
+                      </td>
                       <td style={{ ...s.td, textAlign: 'center', fontWeight: 700, color: h.count > 1 ? '#b91c1c' : '#0f172a' }}>{h.count}</td>
                       <td style={s.td} onClick={(e) => e.stopPropagation()}>
                         {h.houseObj ? (

@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter } from 'lucide-react';
+import { History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter, Repeat, LogIn, LogOut } from 'lucide-react';
 import type { Property, Status, Customer } from '../types/index';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import StatusHistoryPanel from '../components/StatusHistoryPanel';
+import { statusHistoryService } from '../services/statusHistoryService';
 
 interface StatusHistoryViewProps {
   onOpenMenu: () => void;
@@ -12,6 +13,19 @@ interface StatusHistoryViewProps {
 }
 
 const PAGE_SIZE = 25;
+const RECALL_STATUS_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
+const isRecallText = (txt?: any): boolean => {
+  if (!txt) return false;
+  const t = String(txt).toLowerCase();
+  return RECALL_STATUS_HINTS.some(h => t.includes(h));
+};
+
+interface RecallEpisode {
+  enteredAt: string;
+  enteredBy?: string;
+  exitedAt: string | null;
+  exitedTo?: string | null;
+}
 
 export default function StatusHistoryView({ onOpenMenu, properties }: StatusHistoryViewProps) {
   const [statuses, setStatuses] = useState<Status[]>([]);
@@ -21,6 +35,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const [sortBy, setSortBy] = useState<'client' | 'address'>('client');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [recallEpisodes, setRecallEpisodes] = useState<RecallEpisode[]>([]);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -53,6 +69,30 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     return st?.color || '#64748b';
   };
 
+  const formatDateTime = (d?: string | null) => {
+    if (!d) return '—';
+    const str = String(d);
+    const dt = new Date(str);
+    if (isNaN(dt.getTime())) return str;
+    return dt.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  // Duración entre entrada y salida (o hasta ahora si sigue en recall)
+  const formatDuration = (from?: string | null, to?: string | null) => {
+    if (!from) return '';
+    const a = new Date(from).getTime();
+    const b = to ? new Date(to).getTime() : Date.now();
+    if (isNaN(a) || isNaN(b) || b < a) return '';
+    let mins = Math.floor((b - a) / 60000);
+    const days = Math.floor(mins / 1440); mins -= days * 1440;
+    const hrs = Math.floor(mins / 60); mins -= hrs * 60;
+    const parts: string[] = [];
+    if (days) parts.push(`${days}d`);
+    if (hrs) parts.push(`${hrs}h`);
+    if (!days && mins) parts.push(`${mins}m`);
+    return parts.join(' ') || '0m';
+  };
+
   const hasFilter = search.trim().length > 0 || statusFilter.length > 0;
 
   const filtered = useMemo(() => {
@@ -78,6 +118,42 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
 
   const visible = filtered.slice(0, limit);
   const selected = (properties || []).find(p => p.id === selectedId) || null;
+
+  // ⭐ Carga el historial de la casa seleccionada y calcula los episodios de Recall
+  useEffect(() => {
+    if (!selectedId) { setRecallEpisodes([]); return; }
+    let active = true;
+    (async () => {
+      setEpisodesLoading(true);
+      try {
+        const entries = await statusHistoryService.getByProperty(selectedId);
+        const asc = [...(entries || [])].sort((a: any, b: any) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
+        const eps: RecallEpisode[] = [];
+        let open: RecallEpisode | null = null;
+        asc.forEach((e: any) => {
+          const toR = isRecallText(e.toStatusName) || isRecallText(statusName(e.toStatusId));
+          const fromR = isRecallText(e.fromStatusName) || isRecallText(statusName(e.fromStatusId));
+          if (toR && !open) {
+            open = { enteredAt: e.changedAt, enteredBy: e.changedBy, exitedAt: null, exitedTo: null };
+          } else if (fromR && open) {
+            open.exitedAt = e.changedAt;
+            open.exitedTo = e.toStatusName || statusName(e.toStatusId);
+            eps.push(open);
+            open = null;
+          }
+        });
+        if (open) eps.push(open); // sigue en Recall
+        if (active) setRecallEpisodes(eps.reverse()); // más reciente primero
+      } catch (err) {
+        console.error('Error loading recall episodes:', err);
+        if (active) setRecallEpisodes([]);
+      } finally {
+        if (active) setEpisodesLoading(false);
+      }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, statuses]);
 
   const clearAll = () => { setSearch(''); setStatusFilter(''); };
 
@@ -160,6 +236,25 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
           </div>
         </div>
 
+        {/* Chips rápidos por status (siempre visibles) */}
+        {statusSummary.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '14px' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status:</span>
+            {statusSummary.map(s => {
+              const active = statusFilter.toLowerCase() === s.name.toLowerCase();
+              return (
+                <button key={s.name} className="sh-chip" onClick={() => setStatusFilter(active ? '' : s.name)}
+                  style={{ borderColor: active ? s.color : `${s.color}55`, boxShadow: active ? `0 0 0 2px ${s.color}33` : 'none', fontWeight: active ? 800 : 600 }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                  {s.name}
+                  <span style={{ background: s.color, color: '#fff', borderRadius: '10px', minWidth: '20px', textAlign: 'center', padding: '0 6px', fontSize: '0.7rem', fontWeight: 800 }}>{s.count}</span>
+                  {active && <X size={12} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Chips de filtros activos */}
         {hasFilter && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
@@ -189,22 +284,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
           </div>
           <h3 style={{ margin: '0 0 6px', color: '#0f172a', fontSize: '1.15rem', fontWeight: 700 }}>Busca una casa para ver su historial</h3>
           <p style={{ margin: '0 auto', color: '#64748b', fontSize: '0.92rem', maxWidth: '440px' }}>
-            Usa el buscador o filtra por status. Las casas no se cargan todas de golpe para mantener la vista ágil y reducir lecturas innecesarias.
+            Usa el buscador o filtra por status con los botones de arriba. Las casas no se cargan todas de golpe para mantener la vista ágil y reducir lecturas innecesarias.
           </p>
-          {statusSummary.length > 0 && (
-            <div style={{ marginTop: '24px' }}>
-              <div style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', fontWeight: 700 }}>Filtrar rápido por status</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                {statusSummary.map(s => (
-                  <button key={s.name} className="sh-chip" onClick={() => setStatusFilter(s.name)} style={{ borderColor: `${s.color}55` }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                    {s.name}
-                    <span style={{ background: s.color, color: '#fff', borderRadius: '10px', minWidth: '20px', textAlign: 'center', padding: '0 6px', fontSize: '0.7rem', fontWeight: 800 }}>{s.count}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="sh-cols">
@@ -259,6 +340,63 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                     {statusName(selected.statusId)}
                   </span>
                 </div>
+
+                {/* ⭐ Episodios de Recall: entrada y salida con fecha y hora */}
+                <div className="sh-card" style={{ padding: '18px 20px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: recallEpisodes.length ? '14px' : '0', flexWrap: 'wrap', gap: '8px' }}>
+                    <h3 style={{ margin: 0, color: '#0f172a', fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Repeat size={17} color="#7c3aed" /> Recall — entradas y salidas
+                    </h3>
+                    {recallEpisodes.length > 0 && (
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{recallEpisodes.length} {recallEpisodes.length === 1 ? 'vez' : 'veces'} en Recall</span>
+                    )}
+                  </div>
+
+                  {episodesLoading ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Cargando…</div>
+                  ) : recallEpisodes.length === 0 ? (
+                    <div style={{ color: '#94a3b8', fontSize: '0.88rem' }}>Esta casa no tiene registros de Recall.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {recallEpisodes.map((ep, i) => {
+                        const stillIn = !ep.exitedAt;
+                        return (
+                          <div key={i} style={{ border: '1px solid #f1f5f9', borderRadius: '12px', overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: stillIn ? '#fef2f2' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>Recall #{recallEpisodes.length - i}</span>
+                              {stillIn
+                                ? <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase' }}>Aún en recall</span>
+                                : <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 800 }}>{formatDuration(ep.enteredAt, ep.exitedAt)}</span>}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0' }}>
+                              <div style={{ padding: '12px 14px', borderRight: '1px solid #f1f5f9' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
+                                  <LogIn size={13} color="#dc2626" /> Entró
+                                </div>
+                                <div style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: 600 }}>{formatDateTime(ep.enteredAt)}</div>
+                                {ep.enteredBy && <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '2px' }}>por {ep.enteredBy}</div>}
+                              </div>
+                              <div style={{ padding: '12px 14px' }}>
+                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
+                                  <LogOut size={13} color="#16a34a" /> Salió
+                                </div>
+                                {stillIn ? (
+                                  <div style={{ fontSize: '0.88rem', color: '#b91c1c', fontWeight: 600 }}>Todavía en Recall</div>
+                                ) : (
+                                  <>
+                                    <div style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: 600 }}>{formatDateTime(ep.exitedAt)}</div>
+                                    {ep.exitedTo && <div style={{ fontSize: '0.74rem', color: '#94a3b8', marginTop: '2px' }}>pasó a {ep.exitedTo}</div>}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 <StatusHistoryPanel propertyId={selected.id} statuses={statuses} />
               </>
             ) : (
