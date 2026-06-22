@@ -1,4 +1,3 @@
-// src/config/firebase.ts
 import { initializeApp } from 'firebase/app';
 import { 
   initializeFirestore, 
@@ -7,7 +6,7 @@ import {
   CACHE_SIZE_UNLIMITED
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -36,6 +35,15 @@ export const db = initializeFirestore(app, {
 });
 
 export const storage = getStorage(app);
-export const auth = getAuth(app);
+
+// ⭐ AUTH CON PERSISTENCIA LOCAL EXPLÍCITA
+//    Antes se usaba getAuth(app), que en algunos navegadores/contextos NO
+//    garantiza que la sesión sobreviva a una recarga (se perdía y mandaba al
+//    login). Con initializeAuth + persistencia local, la sesión se guarda en
+//    disco (IndexedDB y, como respaldo, localStorage) y se mantiene al recargar.
+//    El orden importa: se prueba IndexedDB primero y localStorage como fallback.
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence]
+});
 
 export default app;

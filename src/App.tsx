@@ -77,6 +77,15 @@ export default function App() {
       if (user && user.email) {
         setIsAuthenticated(true);
         setIsBypass(false);
+
+        // ⭐ CLAVE (fix recarga): en cuanto Firebase confirma que HAY sesión,
+        //    ya podemos salir de la pantalla de "Verificando sesión...". El
+        //    perfil del usuario se carga aparte y NO debe bloquear este check.
+        //    Antes se marcaba isAuthChecked DENTRO del onSnapshot del perfil;
+        //    si esa consulta tardaba o fallaba, el flujo quedaba a medias y al
+        //    recargar terminabas en el LoginView. Ahora se marca de inmediato.
+        setIsAuthChecked(true);
+
         // ⭐ Usar onSnapshot en lugar de getDocs aprovecha el cache local.
         //    En cargas posteriores el perfil viene INSTANTÁNEO del IndexedDB.
         try {
@@ -88,20 +97,17 @@ export default function App() {
             } else {
               setCurrentUser(null);
             }
-            setIsAuthChecked(true);
           }, (error) => {
             console.error("Error fetching user profile:", error);
-            setIsAuthChecked(true);
           });
         } catch (error) {
           console.error("Error setting up user profile listener:", error);
-          setIsAuthChecked(true);
         }
       } else {
         setIsAuthenticated(false);
         setIsBypass(false);
         setCurrentUser(null);
-        // ⭐ Marcar que ya verificamos la sesión (ya sea que haya o no usuario)
+        // ⭐ Marcar que ya verificamos la sesión (no hay usuario).
         // Esto evita el "flash" del LoginView al recargar cuando hay sesión guardada.
         setIsAuthChecked(true);
       }
@@ -188,7 +194,7 @@ export default function App() {
 
   const toggleMenu = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // ⭐ Mientras Firebase verifica si hay sesión guardada en localStorage,
+  // ⭐ Mientras Firebase verifica si hay sesión guardada en localStorage/IndexedDB,
   // mostramos una pantalla de carga. Esto evita el "flash" del LoginView
   // al recargar la página cuando hay una sesión activa.
   if (!isAuthChecked) {
