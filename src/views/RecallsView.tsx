@@ -63,7 +63,7 @@ interface RecallsViewProps {
 // El menú se renderiza con posición FIJA respecto a la pantalla para que no lo
 // recorte el overflow de la tabla, con diseño mejorado (encabezado, check del
 // status actual, dot de color y scroll si hay muchos status).
-function RowStatusPill({ statusId, statuses, onChange, disabled }: { statusId?: string; statuses: any[]; onChange: (id: string) => void; disabled?: boolean }) {
+function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = false }: { statusId?: string; statuses: any[]; onChange: (id: string) => void; disabled?: boolean; fullWidth?: boolean }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; openUp: boolean }>({ top: 0, left: 0, width: 240, openUp: false });
   const btnRef = useRef<HTMLDivElement>(null);
@@ -106,14 +106,16 @@ function RowStatusPill({ statusId, statuses, onChange, disabled }: { statusId?: 
   }, [open]);
 
   return (
-    <div ref={btnRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={btnRef} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto' }}>
       <div
         onClick={toggle}
-        style={{ background: '#fff', color: '#111827', padding: '6px 10px 6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${open ? color : '#e5e7eb'}`, boxShadow: open ? `0 0 0 3px ${color}22` : '0 1px 2px rgba(0,0,0,0.05)', whiteSpace: 'nowrap', transition: 'all .15s' }}
+        style={{ background: '#fff', color: '#111827', padding: '6px 10px 6px 12px', borderRadius: fullWidth ? '12px' : '20px', fontSize: '0.8rem', fontWeight: 600, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px', width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${open ? color : '#e5e7eb'}`, boxShadow: open ? `0 0 0 3px ${color}22` : '0 1px 2px rgba(0,0,0,0.05)', whiteSpace: 'nowrap', transition: 'all .15s' }}
       >
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
-        {text}
-        <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        </span>
+        <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />
       </div>
 
       {open && (
@@ -482,7 +484,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   };
 
   return (
-    <div className="fade-in" style={{ padding: '20px' }}>
+    <div className="fade-in recalls-view" style={{ padding: '20px', boxSizing: 'border-box' }}>
       <style>{`
         .rc-spin { animation: rc-spin 1s linear infinite; }
         @keyframes rc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -493,25 +495,44 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
         .rc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .rc-bar-track { flex: 1; height: 10px; background: #f1f5f9; border-radius: 6px; overflow: hidden; }
         .rc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
-        .rc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; }
+        .rc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
         .rc-select { height: 42px; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 14px; background: #fff; color: #374151; font-size: 0.9rem; cursor: pointer; outline: none; }
         .rc-tab { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #64748b; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all .15s; }
         .rc-tab.active { background: #fff; color: #7c3aed; border-color: #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
         .rc-date { height: 42px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 12px; background: #fff; color: #374151; font-size: 0.9rem; outline: none; }
+
+        /* Por defecto (escritorio): tablas visibles, tarjetas ocultas */
+        .rc-cards-wrap { display: none; }
+        .recalls-view { overflow-x: hidden; max-width: 100%; }
+
         @media (max-width: 900px) {
           .rc-kpis { grid-template-columns: repeat(2, 1fr); }
           .rc-highlights { grid-template-columns: 1fr; }
           .rc-cols { grid-template-columns: 1fr; }
         }
+
+        /* ====== MÓVIL: tarjetas en vez de tablas, sin scroll horizontal ====== */
+        @media (max-width: 820px) {
+          html, body { overflow-x: hidden; max-width: 100%; }
+          .recalls-view { padding: 14px !important; }
+          .rc-table-wrap { display: none !important; }
+          .rc-cards-wrap { display: flex !important; }
+          .rc-toolbar { flex-direction: column; align-items: stretch !important; }
+          .rc-table-search { width: 100%; }
+          .rc-select { width: 100%; }
+          .rc-toolbar .rc-count { margin-left: 0 !important; }
+        }
+
         @media (max-width: 560px) {
           .rc-kpis { grid-template-columns: 1fr; }
+          .recalls-view { padding: 10px !important; }
         }
       `}</style>
 
       {/* HEADER */}
       <header className="main-header" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
+          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', flexShrink: 0 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
@@ -540,7 +561,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
       ) : tab === 'recalls' ? (
         /* ====================== SUB-VISTA 1: TABLA ====================== */
         <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="rc-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
             <div className="rc-table-search">
               <Search size={16} color="#9ca3af" />
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por cliente, dirección, equipo, motivo..." />
@@ -553,12 +574,13 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             <select className="rc-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               {teamOptions.map(t => <option key={t} value={t}>{t === 'All' ? 'All teams' : t}</option>)}
             </select>
-            <span style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span className="rc-count" style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
               {filteredRecalls.length} registro{filteredRecalls.length === 1 ? '' : 's'}
             </span>
           </div>
 
-          <div className="rc-card" style={{ overflow: 'hidden' }}>
+          {/* TABLA (escritorio) */}
+          <div className="rc-card rc-table-wrap" style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto', width: '100%' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '760px' }}>
                 <thead>
@@ -608,6 +630,45 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* TARJETAS (móvil) */}
+          <div className="rc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+            {filteredRecalls.length === 0 ? (
+              <div className="rc-card" style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</div>
+            ) : filteredRecalls.map((r) => {
+              const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+              return (
+                <div key={r.id} className="rc-card" onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ padding: '16px', cursor: houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{r.client}</span>
+                    <span style={{ flexShrink: 0, backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.team}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.address || '—'}</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '10px 12px' }}>
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Entró a Recall</div>
+                      <div style={{ fontSize: '0.82rem', color: '#b45309', fontWeight: 700, marginTop: '3px' }}>{formatDateTime(r.enteredAt || r.date)}</div>
+                    </div>
+                    <div style={{ background: r.exitedAt ? '#ecfdf5' : '#fef2f2', border: `1px solid ${r.exitedAt ? '#a7f3d0' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px' }}>
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: r.exitedAt ? '#065f46' : '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Salió de Recall</div>
+                      <div style={{ fontSize: '0.82rem', color: r.exitedAt ? '#047857' : '#b91c1c', fontWeight: 700, marginTop: '3px' }}>{r.exitedAt ? formatDateTime(r.exitedAt) : 'Aún en recall'}</div>
+                    </div>
+                  </div>
+
+                  <div onClick={(e) => e.stopPropagation()}>
+                    {houseObj ? (
+                      <RowStatusPill fullWidth statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
+                    ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
@@ -755,7 +816,9 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                 <span><strong style={{ color: '#0f172a' }}>{reportRecallHouses.length}</strong> en total</span>
               </div>
             </div>
-            <div style={{ overflowX: 'auto', width: '100%' }}>
+
+            {/* TABLA (escritorio) */}
+            <div className="rc-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '960px' }}>
                 <thead>
                   <tr>
@@ -809,6 +872,54 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* TARJETAS (móvil) */}
+            <div className="rc-cards-wrap" style={{ flexDirection: 'column', gap: '14px', padding: '14px' }}>
+              {reportRecallHouses.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '20px' }}>No hay casas en recall en este periodo.</div>
+              ) : reportRecallHouses.map((h) => (
+                <div key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
+                  style={{ background: h.current ? '#fef2f2' : '#ffffff', border: `1px solid ${h.current ? '#fecaca' : '#e5e7eb'}`, borderRadius: '14px', padding: '16px', cursor: h.houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{h.client}</span>
+                    {h.current ? (
+                      <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> En recall
+                      </span>
+                    ) : (
+                      <span style={{ flexShrink: 0, background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>Estuvo</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.address || '—'}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 }}>{h.team}</span>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Veces en recall: <strong style={{ color: h.count > 1 ? '#b91c1c' : '#0f172a' }}>{h.count}</strong></span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '10px 12px' }}>
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Entró a Recall</div>
+                      <div style={{ fontSize: '0.82rem', color: '#b45309', fontWeight: 700, marginTop: '3px' }}>{formatDateTime(h.lastEntered)}</div>
+                    </div>
+                    <div style={{ background: h.lastExited ? '#ecfdf5' : '#fef2f2', border: `1px solid ${h.lastExited ? '#a7f3d0' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px' }}>
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: h.lastExited ? '#065f46' : '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Salió de Recall</div>
+                      <div style={{ fontSize: '0.82rem', color: h.lastExited ? '#047857' : '#b91c1c', fontWeight: 700, marginTop: '3px' }}>{h.lastExited ? formatDateTime(h.lastExited) : 'Aún en recall'}</div>
+                    </div>
+                  </div>
+
+                  <div onClick={(e) => e.stopPropagation()}>
+                    {h.houseObj ? (
+                      <RowStatusPill fullWidth statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
+                    ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
