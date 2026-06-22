@@ -62,34 +62,37 @@ const parseDateForSort = (dateStr?: string | null): number => {
 // ───────────────────────────────────────────────────────────────
 // Invoice Status Pill (inline editable en cada fila)
 // ───────────────────────────────────────────────────────────────
-const InvoiceStatusPill = ({ currentStatus, onChange, disabled }: { currentStatus: string, onChange: (s: string) => void, disabled: boolean }) => {
+const InvoiceStatusPill = ({ currentStatus, onChange, disabled, fullWidth = false }: { currentStatus: string, onChange: (s: string) => void, disabled: boolean, fullWidth?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const statusObj = INVOICE_STATUSES.find(s => s.id === currentStatus || s.name === currentStatus) 
     || { id: currentStatus, name: currentStatus || 'Pending', color: '#64748b' };
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: 'inline-block', outline: 'none' }}>
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
       <div 
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
         style={{ 
-          color: '#111827', padding: '6px 14px', borderRadius: '20px', 
-          fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px',
+          color: '#111827', padding: fullWidth ? '11px 14px' : '6px 14px', borderRadius: fullWidth ? '12px' : '20px', 
+          fontSize: '0.8rem', fontWeight: 700, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px',
+          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
           cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${statusObj.color}40`, transition: 'all 0.2s',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)', backgroundColor: `${statusObj.color}10`
         }}
         onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = `${statusObj.color}20`; }}
         onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = `${statusObj.color}10`; }}
       >
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusObj.color }}></span>
-        <span style={{ color: statusObj.color }}>{statusObj.name}</span>
-        <ChevronDown size={14} color={statusObj.color} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusObj.color, flexShrink: 0 }}></span>
+          <span style={{ color: statusObj.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusObj.name}</span>
+        </span>
+        <ChevronDown size={14} color={statusObj.color} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
       </div>
 
       {isOpen && (
         <div style={{ 
-          position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'white', 
+          position: 'absolute', top: '100%', left: 0, right: fullWidth ? 0 : 'auto', marginTop: '4px', backgroundColor: 'white', 
           border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: '160px', overflow: 'hidden', textAlign: 'left'
+          zIndex: 9999, minWidth: fullWidth ? '100%' : '160px', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
         }}>
           {INVOICE_STATUSES.map((s) => (
             <div 
@@ -121,7 +124,7 @@ const InvoiceStatusPill = ({ currentStatus, onChange, disabled }: { currentStatu
 // ───────────────────────────────────────────────────────────────
 // ⭐ Job Status Pill — cambia el status de la CASA (no el del invoice)
 // ───────────────────────────────────────────────────────────────
-const JobStatusPill = ({ currentStatusId, statuses, onChange, disabled }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean }) => {
+const JobStatusPill = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
   const status = statuses.find(s => String(s.id).toLowerCase().trim() === safeValue || String(s.name).toLowerCase().trim() === safeValue);
@@ -130,28 +133,31 @@ const JobStatusPill = ({ currentStatusId, statuses, onChange, disabled }: { curr
   const text = status ? status.name : 'Unassigned';
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: 'inline-block', outline: 'none' }}>
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
       <div 
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
         style={{ 
-          backgroundColor: 'white', color: '#111827', padding: '6px 12px', borderRadius: '20px', 
-          fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '8px',
+          backgroundColor: 'white', color: '#111827', padding: fullWidth ? '11px 14px' : '6px 12px', borderRadius: fullWidth ? '12px' : '20px', 
+          fontSize: '0.8rem', fontWeight: 600, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px',
+          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
           cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
         }}
         onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
         onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = 'white'; }}
       >
-        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor }}></span>
-        {text}
-        <ChevronDown size={14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none' }} />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0 }}></span>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        </span>
+        <ChevronDown size={14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
       </div>
 
       {isOpen && (
         <div style={{ 
-          position: 'absolute', top: '100%', left: 0, marginTop: '4px', backgroundColor: 'white', 
+          position: 'absolute', top: '100%', left: 0, right: fullWidth ? 0 : 'auto', marginTop: '4px', backgroundColor: 'white', 
           border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: '180px', overflow: 'hidden', textAlign: 'left'
+          zIndex: 9999, minWidth: fullWidth ? '100%' : '180px', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
         }}>
           {statuses.map((s) => (
             <div 
@@ -442,10 +448,20 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     textAlign: 'center'
   });
 
+  // ⭐ Helper para los cálculos financieros de una propiedad (reutilizado en tabla y tarjetas)
+  const calcFinancials = (prop: Property) => {
+    const propServices = billedServices.filter(srv => srv.propertyId === prop.id);
+    const totalCost = propServices.reduce((sum, srv) => sum + (Number(srv.total) || 0), 0);
+    const propPayrolls = payrolls.filter(pay => pay.propertyId === prop.id);
+    const payrollTotal = propPayrolls.reduce((sum, pay) => sum + getPayrollTotal(pay), 0);
+    const profit = totalCost - payrollTotal;
+    return { totalCost, payrollTotal, profit };
+  };
+
   return (
-    <div className="fade-in" style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="fade-in invoices-view" style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box' }}>
       
-      {/* Scrollbars elegantes + estilos de modal */}
+      {/* Scrollbars elegantes + estilos de modal + RESPONSIVE */}
       <style>{`
         .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
         .fade-in *::-webkit-scrollbar-track { background: transparent; }
@@ -458,11 +474,45 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         @media (min-width: 769px) { .modal-70 { width: 70%; } }
         .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
         .col-span-full { grid-column: 1 / -1; }
+
+        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
+        .inv-cards-wrap { display: none; }
+
+        /* ====== RESPONSIVE PRO · SIN SCROLL HORIZONTAL ====== */
+        .invoices-view { overflow-x: hidden; max-width: 100%; }
+
+        @media (max-width: 820px) {
+          html, body { overflow-x: hidden; max-width: 100%; }
+          .invoices-view { padding: 14px !important; }
+
+          /* Ocultar la tabla y mostrar las tarjetas */
+          .inv-table-wrap { display: none !important; }
+          .inv-cards-wrap { display: flex !important; }
+
+          /* Filtros secundarios apilados */
+          .inv-secondary-filters { grid-template-columns: 1fr !important; }
+          .inv-secondary-filters .inv-search-cell { grid-column: auto !important; }
+
+          /* Detalle: el grid de 3 columnas pasa a 1 */
+          .grid-3-cols { grid-template-columns: 1fr !important; gap: 16px; }
+
+          /* Modal a pantalla completa */
+          .modal-overlay-centered { padding: 0 !important; }
+          .modal-70 { width: 100vw !important; max-width: 100vw !important; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
+          .modal-70 > div { padding: 18px 16px !important; }
+          .modal-70 > header { padding: 16px !important; }
+          .modal-70 > footer { padding: 14px 16px !important; }
+          .modal-70 > footer button { min-height: 46px; padding: 12px 18px !important; border-radius: 10px !important; }
+        }
+
+        @media (max-width: 480px) {
+          .invoices-view { padding: 10px !important; }
+        }
       `}</style>
 
       {/* HEADER */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-        <button onClick={onOpenMenu} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button onClick={onOpenMenu} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', flexShrink: 0 }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         <div>
@@ -485,7 +535,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       </div>
 
       {/* Filtros secundarios */}
-      <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+      <div className="inv-secondary-filters" style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px' }}>
         <div>
           <label style={s.label}>Start Date</label>
           <div style={s.inputWrapper}>
@@ -500,7 +550,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             <input type="date" style={s.input} value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
         </div>
-        <div style={{ gridColumn: 'span 2' }}>
+        <div className="inv-search-cell" style={{ gridColumn: 'span 2' }}>
           <label style={s.label}>Search (client or address)</label>
           <div style={s.inputWrapper}>
             <Search style={s.icon} size={16} />
@@ -509,8 +559,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </div>
       </div>
 
-      {/* TABLA PRINCIPAL */}
-      <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+      {/* TABLA PRINCIPAL (escritorio) */}
+      <div className="inv-table-wrap" style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
           <thead>
             <tr>
@@ -535,21 +585,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
             ) : filteredProperties.map(prop => {
 
-              // Cálculos financieros
-              const propServices = billedServices.filter(srv => srv.propertyId === prop.id);
-              const totalCost = propServices.reduce((sum, srv) => sum + (Number(srv.total) || 0), 0);
-              const propPayrolls = payrolls.filter(pay => pay.propertyId === prop.id);
-              // ⭐ FIX: usar getPayrollTotal (base + extra - discount)
-              const payrollTotal = propPayrolls.reduce((sum, pay) => sum + getPayrollTotal(pay), 0);
-              const profit = totalCost - payrollTotal;
-
-              // Cliente resuelto desde la colección customers
+              const { totalCost, payrollTotal, profit } = calcFinancials(prop);
               const clientName = getClientName(prop.client);
 
               return (
                 <tr 
                   key={prop.id} 
-                  // ⭐ Click en la fila abre el detalle (interno o delegado al padre)
                   onClick={() => openDetail(prop)}
                   style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} 
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
@@ -646,6 +687,111 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </table>
       </div>
 
+      {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
+      <div className="inv-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+        {isLoading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>Loading financial data...</div>
+        ) : properties.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>No properties in database. Add one from the Houses view.</div>
+        ) : filteredProperties.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>No properties match your filters. Try clicking "All" above or clearing the search.</div>
+        ) : filteredProperties.map(prop => {
+
+          const { totalCost, payrollTotal, profit } = calcFinancials(prop);
+          const clientName = getClientName(prop.client);
+
+          return (
+            <div
+              key={prop.id}
+              onClick={() => openDetail(prop)}
+              style={{
+                background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px',
+                cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+                display: 'flex', flexDirection: 'column', gap: '14px',
+              }}
+            >
+              {/* Título + profit */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
+                  {clientName}
+                </span>
+                <span style={{ flexShrink: 0, fontWeight: 800, fontSize: '1.05rem', color: profit >= 0 ? '#047857' : '#e11d48' }}>
+                  ${profit.toFixed(2)}
+                </span>
+              </div>
+
+              {/* Info con iconos */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                  <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prop.address || '—'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                  <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <span>{prop.scheduleDate || 'Sin fecha'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                  <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <span>{getTeamName(prop.teamId)}</span>
+                </div>
+              </div>
+
+              {/* Pills de estado (ancho completo) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                <InvoiceStatusPill 
+                  fullWidth
+                  currentStatus={prop.invoiceStatus || 'Pending'} 
+                  onChange={(newSt: string) => handleStatusChange(prop.id, newSt)} 
+                  disabled={isSaving || (!isSuperAdmin && !canEdit)} 
+                />
+                <JobStatusPill 
+                  fullWidth
+                  currentStatusId={prop.statusId} 
+                  statuses={statuses}
+                  onChange={(newId: string) => handleJobStatusChange(prop.id, newId)} 
+                  disabled={isSaving || (!isSuperAdmin && !canEdit)}
+                />
+              </div>
+
+              {/* Mini resumen financiero */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ backgroundColor: '#eff6ff', padding: '10px 12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Cost</div>
+                  <div style={{ fontSize: '1.05rem', color: '#1e3a8a', fontWeight: 800, marginTop: '2px' }}>${totalCost.toFixed(2)}</div>
+                </div>
+                <div style={{ backgroundColor: '#fef2f2', padding: '10px 12px', borderRadius: '10px', border: '1px solid #fecaca' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Payroll</div>
+                  <div style={{ fontSize: '1.05rem', color: '#7f1d1d', fontWeight: 800, marginTop: '2px' }}>${payrollTotal.toFixed(2)}</div>
+                </div>
+              </div>
+
+              {/* Acciones */}
+              <div style={{ display: 'flex', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '14px' }} onClick={(e) => e.stopPropagation()}>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openDetail(prop); }} 
+                  style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                  <Eye size={16} /> Ver
+                </button>
+                {canEdit && onEditProperty && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }} 
+                    style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                    <Edit2 size={16} /> Editar
+                  </button>
+                )}
+                {canDelete && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }} 
+                    style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                    <Trash2 size={16} /> Borrar
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {/* --- ⭐ MODAL DETALLE DE PROPIEDAD (READ ONLY) — igual al de House view --- */}
       {detailHouse && (
         <div className="modal-overlay-centered" onClick={() => setDetailHouse(null)}>
@@ -727,13 +873,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 </div>
 
                 {/* Resumen financiero del job dentro del detalle */}
-                <div className="col-span-full" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginTop: '8px' }}>
+                <div className="col-span-full" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px', marginTop: '8px' }}>
                   {(() => {
-                    const propServices = billedServices.filter(srv => srv.propertyId === detailHouse.id);
-                    const totalCost = propServices.reduce((sum, srv) => sum + (Number(srv.total) || 0), 0);
-                    const propPayrolls = payrolls.filter(pay => pay.propertyId === detailHouse.id);
-                    const payrollTotal = propPayrolls.reduce((sum, pay) => sum + getPayrollTotal(pay), 0);
-                    const profit = totalCost - payrollTotal;
+                    const { totalCost, payrollTotal, profit } = calcFinancials(detailHouse);
                     return (
                       <>
                         <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', textAlign: 'center' }}>
@@ -781,7 +923,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               </div>
             </div>
 
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px' }}>
+            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px', flexWrap: 'wrap' }}>
               {canEdit && onEditProperty && (
                 <button 
                   onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) onEditProperty(p); }} 
