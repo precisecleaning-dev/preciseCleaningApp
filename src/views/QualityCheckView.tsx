@@ -842,10 +842,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const selectedRenderPlaces = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
 
   return (
-    <div className="fade-in" style={{ padding: '20px' }}>
+    <div className="fade-in qc-view" style={{ padding: '20px', boxSizing: 'border-box' }}>
       <style>{`
         .spin-qc { animation: spin-qc 1s linear infinite; }
         @keyframes spin-qc { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
+        .qc-cards-wrap { display: none; }
+        .qc-view { overflow-x: hidden; max-width: 100%; }
 
         /* ===== MODAL RESPONSIVE: 80% en escritorio / pantalla completa nativa en móvil ===== */
         .qc-overlay {
@@ -881,7 +885,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
         .qc-body {
           padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
           gap: 20px; flex: 1; align-content: start;
         }
         .qc-savebar {
@@ -925,9 +929,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
         /* ===== Buscador de la tabla ===== */
         .qc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
-        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; }
+        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
 
-        /* ===== MÓVIL: experiencia nativa ===== */
+        /* ===== MÓVIL: tarjetas + modal nativo ===== */
+        @media (max-width: 820px) {
+          html, body { overflow-x: hidden; max-width: 100%; }
+          .qc-view { padding: 14px !important; }
+
+          /* Ocultar tabla y mostrar tarjetas */
+          .qc-table-wrap { display: none !important; }
+          .qc-cards-wrap { display: flex !important; }
+
+          .qc-toolbar { flex-direction: column; align-items: stretch; }
+          .qc-table-search { width: 100%; }
+          .qc-status-pills { width: 100%; }
+          .qc-status-pills button { flex: 1; }
+        }
+
         @media (max-width: 768px) {
           .qc-overlay { padding: 0; }
           .qc-modal {
@@ -951,11 +969,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           .qc-savebar button { width: 100%; }
           .qc-chip { padding: 10px 16px; font-size: 0.95rem; }
         }
+
+        @media (max-width: 480px) {
+          .qc-view { padding: 10px !important; }
+        }
       `}</style>
 
       <header className="main-header" style={{ marginBottom: '24px' }}>
         <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer' }}>
+          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', flexShrink: 0 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
@@ -966,7 +988,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       </header>
 
       {/* ⭐ Buscador global + filtros de estado */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+      <div className="qc-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
         <div className="qc-table-search">
           <Search size={16} color="#9ca3af" />
           <input
@@ -981,14 +1003,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </button>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="qc-status-pills" style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => setStatusFilter('All')} style={s.pillBtn(statusFilter === 'All')}>All</button>
           <button onClick={() => setStatusFilter('Pending')} style={s.pillBtn(statusFilter === 'Pending')}>Pending</button>
           <button onClick={() => setStatusFilter('Finished')} style={s.pillBtn(statusFilter === 'Finished')}>Finished</button>
         </div>
       </div>
 
-      <div style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
+      {/* TABLA (escritorio) */}
+      <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
             <thead>
@@ -1080,6 +1103,91 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
+      <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+        {isLoadingCatalogs ? (
+          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>Loading records from database...</div>
+        ) : filteredQcList.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
+        ) : (
+          filteredQcList.map((qc) => {
+            const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+            const isFinished = qc.status === 'Finished';
+            return (
+              <div
+                key={qc.id}
+                onClick={() => handleEditQC(qc)}
+                style={{
+                  background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '18px',
+                  cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+                  display: 'flex', flexDirection: 'column', gap: '14px',
+                }}
+              >
+                {/* Título + estado */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                  <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
+                    {getClientName(qc.client)}
+                  </span>
+                  <span style={{
+                    flexShrink: 0,
+                    backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
+                    color: isFinished ? '#166534' : '#b45309',
+                    padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
+                  }}>
+                    {qc.status}
+                  </span>
+                </div>
+
+                {/* Info con iconos */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{qc.address || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                    <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span>{formatDate(qc.date)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span>{teamLabel}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
+                    <User size={15} color="#cbd5e1" style={{ flexShrink: 0 }} />
+                    <span>Inspected by: {qc.inspector || 'Unknown'}</span>
+                  </div>
+                </div>
+
+                {/* Acciones */}
+                <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleEditQC(qc); }} 
+                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                    <Edit2 size={16} /> Editar
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleExportFromTable(qc); }} 
+                    disabled={exportingForQcId === qc.id}
+                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', opacity: exportingForQcId === qc.id ? 0.6 : 1 }}>
+                    {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />} PDF
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); openEmailForQC(qc); }} 
+                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                    <Mail size={16} /> Email
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDeleteQC(qc.id as string); }} 
+                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                    <Trash2 size={16} /> Borrar
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* --- MODAL DE QUALITY CHECK --- */}
