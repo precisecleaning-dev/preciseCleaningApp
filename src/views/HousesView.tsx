@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, MapPin, Plus, X, Edit2, Trash2, 
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown, ClipboardCheck,
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Calculator, Percent, PlayCircle, BarChart3, FileImage,
   Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff
 } from 'lucide-react';
@@ -84,7 +84,6 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
   { id: 'btn_markFinished', label: 'Mark Finished', section: 'Workflow' },
   { id: 'btn_pay', label: 'Pay', section: 'Financial' },
   { id: 'btn_duplicate', label: 'Duplicate', section: 'Admin' },
-  { id: 'btn_qcheck', label: 'Quality Check', section: 'Admin' },
   { id: 'btn_editDetails', label: 'Edit Details', section: 'Admin' },
   { id: 'btn_deleteProperty', label: 'Delete Property', section: 'Admin' },
   { id: 'btn_exportPdf', label: 'Export PDF', section: 'Media' },
@@ -296,7 +295,7 @@ interface HousesViewProps {
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse: _onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -375,6 +374,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
     return getRelationName(customersList, clientIdOrName, String(clientIdOrName));
+  };
+
+  // ⭐ Estados que NO se muestran en el Pipeline (se gestionan en otras vistas):
+  // 'invoice' -> Invoices ; 'quality check' -> Quality Check
+  const isHiddenPipelineStatus = (p: any) => {
+    const st = statuses.find(s => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId));
+    const name = String(st?.name || p.statusId || '').toLowerCase().trim();
+    return name === 'invoice' || name === 'qc' || name.includes('quality check') || name.includes('quality-check');
   };
 
   const refreshPendingCounts = async () => {
@@ -709,11 +716,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const uniqueHouses = Array.from(new Set(
     propertiesWithScope
-      .filter(p => {
-        const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-        const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-        return !isStatusInvoice; 
-      })
+      .filter(p => !isHiddenPipelineStatus(p))
       .map(p => `${p.client || 'Unknown'}|${p.address || 'Unknown'}`)
   )).map(str => {
     const [client, address] = str.split('|');
@@ -722,8 +725,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const filteredProperties = propertiesWithScope.filter(p => {
     const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-    const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-    if (isStatusInvoice) return false;
+    if (isHiddenPipelineStatus(p)) return false;
 
     let passStatus = true;
     if (activeFilter !== 'All') passStatus = st?.name === activeFilter;
@@ -1558,7 +1560,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
     td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
 
-    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
+    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
     mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', flex: 1, minHeight: 0, overflow: 'hidden' } as React.CSSProperties,
 
     segmentContainer: { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', gap: '4px' },
@@ -1670,6 +1672,35 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         
         /* Ocultar el texto en escritorio para mantener el diseño limpio original */
         .mobile-action-text { display: none; }
+
+        /* ====== RESPONSIVE PRO · SIN SCROLL HORIZONTAL ====== */
+        .houses-view { overflow-x: hidden; max-width: 100%; }
+        .dashboard-actions-wrapper { flex-wrap: wrap; }
+
+        @media (max-width: 768px) {
+          html, body { overflow-x: hidden; max-width: 100%; }
+          .houses-view { padding: 14px !important; }
+
+          /* Acciones del header sin desborde */
+          .dashboard-actions-wrapper { width: 100%; }
+          .search-box-container { flex: 1 1 100% !important; min-width: 0 !important; }
+          .add-btn-mobile { flex: 1 1 auto; }
+
+          /* Modales a pantalla completa y apilados */
+          .modal-overlay-centered { padding: 0 !important; }
+          .modal-full { flex-direction: column; width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
+          .modal-full-left { padding: 1.25rem 1rem !important; width: 100%; }
+          .modal-full-right { width: 100% !important; border-left: none; border-top: 1px solid #E2E8F0; }
+          .modal-70, .modal-90 { width: 100vw !important; max-width: 100vw !important; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
+          .modal-90 .modal-body-scroll { padding: 18px 16px !important; }
+          .modal-70 > div { padding: 18px 16px !important; }
+          .modal-70 header, .modal-90 header { padding: 16px !important; }
+          .modal-70 footer, .modal-90 footer { padding: 14px 16px !important; }
+        }
+
+        @media (max-width: 480px) {
+          .houses-view { padding: 10px !important; }
+        }
       `}</style>
 
       {/* DASHBOARD HEADER */}
@@ -1704,12 +1735,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               placeholder="Buscar por dirección o cliente..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ backgroundColor: 'transparent', border: 'none', outline: 'none', padding: '10px', fontSize: '0.9rem', width: '100%', color: '#111827' }} 
+              style={{ backgroundColor: 'transparent', border: 'none', outline: 'none', padding: '10px', fontSize: '0.9rem', width: '100%', color: '#111827', minWidth: 0 }} 
             />
           </div>
           
           {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canAdd) && (
-            <button className="add-btn-mobile" onClick={() => handleOpenForm()} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#111827', color: 'white', border: 'none', padding: '0 20px', height: '42px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', flexShrink: 0 }}>
+            <button className="add-btn-mobile" onClick={() => handleOpenForm()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: '#111827', color: 'white', border: 'none', padding: '0 20px', height: '42px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', flexShrink: 0 }}>
               <Plus size={16} /> New Job
             </button>
           )}
@@ -1796,7 +1827,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </button>
 
                     {isFilterMenuOpen && (
-                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', maxWidth: 'calc(100vw - 28px)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                         <div>
                           <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
@@ -2034,17 +2065,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     .filter(team => propertiesWithScope.some(p => {
                       const isAssignedToTeam = p.teamId === team.id || p.teamId === team.name;
                       if (!isAssignedToTeam) return false;
-                      const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-                      const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-                      return !isStatusInvoice;
+                      return !isHiddenPipelineStatus(p);
                     }))
                     .map(team => {
                     const assignedProps = propertiesWithScope
                       .filter(p => {
                         if (p.teamId !== team.id && p.teamId !== team.name) return false;
-                        const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-                        const isStatusInvoice = st?.name?.toLowerCase() === 'invoice' || p.statusId?.toLowerCase() === 'invoice';
-                        return !isStatusInvoice;
+                        return !isHiddenPipelineStatus(p);
                       })
                       .sort((a, b) => {
                         const stA = statuses.find(s => s.id === a.statusId || s.name === a.statusId);
@@ -2160,7 +2187,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <User size={20} color="#3B82F6"/> General Information
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
                     {isElementVisible('client') && (
                       <div>
                         <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
@@ -2184,7 +2211,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <Settings size={20} color="#8B5CF6"/> Logistics & Settings
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1.5rem' }}>
                     <div>
                       <label style={s.label}>Status <span style={{ color: '#3b82f6' }}>*</span></label>
                       <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
@@ -2225,7 +2252,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <CalendarClock size={20} color="#10B981"/> Schedule & Team
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
                     {isElementVisible('receiveDate') && (
                       <div>
                         <label style={s.label}>Receive Date</label>
@@ -2293,7 +2320,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
                         </button>
                         {isAssigningWorkerForm && (
-                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
+                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', maxWidth: 'calc(100vw - 40px)', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
                             <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
                             {employees.map(emp => {
                               const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
@@ -2419,7 +2446,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
                     <PhotoSection label="Before" type="before"
                       urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
                       canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
@@ -2576,11 +2603,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <Copy size={16} /> Duplicate
                   </button>
                 )}
-                {isVisible('admin') && isElementVisible('btn_qcheck') && (
-                  <button onClick={() => { setIsDetailModalOpen(false); onCheckHouse(selectedHouse as Property); }} style={{ ...s.actionBtn, backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
-                    <ClipboardCheck size={16} /> Q. Check
-                  </button>
-                )}
                 <button style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', borderRadius: '4px', marginLeft: '4px' }} onClick={() => setIsDetailModalOpen(false)}>
                   <X size={24} />
                 </button>
@@ -2605,7 +2627,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'overview' && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
                     <div style={s.infoCard}>
                       <div style={s.infoHeader}><CalendarDays size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Schedule & Timing</div>
                       <div style={s.infoRow}>
@@ -2669,7 +2691,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
                     <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> SPECIFIC ASSIGNED WORKERS</span>
@@ -2685,7 +2707,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             </button>
 
                             {isAssigningWorker && (
-                              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
+                              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', maxWidth: 'calc(100vw - 48px)', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
                                 <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
                                 {employees.map(emp => {
                                   const isAssigned = (selectedHouse.assignedWorkers || []).includes(emp.id);
@@ -2772,7 +2794,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'financials' && isVisible('financial') && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '16px', marginBottom: '24px' }}>
                     <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Revenue (Billed)</div>
                       <div style={{ fontSize: '1.5rem', color: '#1e3a8a', fontWeight: 800, marginTop: '4px' }}>${totalBilled.toFixed(2)}</div>
@@ -2787,7 +2809,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', gap: '20px' }}>
                     {canEdit && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -2891,7 +2913,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'media' && isVisible('media') && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
                     <div style={s.noteBoxGray}>
                       <span style={s.detailLabel}><StickyNote size={14}/> GENERAL NOTE</span>
                       <p style={{...s.detailValue, marginTop: '8px'}}>{selectedHouse.note || '-'}</p>
@@ -2913,7 +2935,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
                     <PhotoSection label="Before" type="before"
                       urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
                       canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
@@ -2959,7 +2981,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <button style={s.closeBtn} onClick={() => setIsServiceModalOpen(false)}><X size={24} /></button>
             </header>
             <div style={s.body}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <label style={s.label}>Service <span style={{ color: '#ef4444' }}>*</span></label>
                   <CustomSelect options={services} value={serviceForm.serviceId} onChange={(val: string) => {
@@ -2990,7 +3012,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <label style={s.label}>Apply Tax (+)</label>
                   <div style={s.segmentContainer}>
@@ -3054,7 +3076,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <div style={{ fontSize: '1rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <label style={s.label}>Employee <span style={{ color: '#ef4444' }}>*</span></label>
                   <CustomSelect 
@@ -3074,7 +3096,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <label style={s.label}>Base Amount <span style={{ color: '#ef4444' }}>*</span></label>
                   <div style={s.inputWrapper}>
@@ -3098,7 +3120,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
                   <label style={s.label}>Extra Note</label>
                   <input type="text" style={{...s.input, paddingLeft: '14px'}} placeholder="Reason for extra..." value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} />
