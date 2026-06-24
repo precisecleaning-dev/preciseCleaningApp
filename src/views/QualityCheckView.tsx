@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat
@@ -241,6 +241,19 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     Finished: qcList.filter(q => qcCategory(q) === 'Finished').length,
     Recall: qcList.filter(q => qcCategory(q) === 'Recall').length,
   };
+
+  // ⭐ Agrupación visual de los registros por categoría (Pending / Finished / Recall).
+  // Se respeta el filtro de pestaña + búsqueda (filteredQcList): cuando hay una
+  // pestaña activa solo su grupo trae filas; en "All" se muestran los tres con su
+  // encabezado, de modo que los registros quedan agrupados y no en una lista plana.
+  const QC_GROUP_ORDER: Array<{ key: 'Pending' | 'Finished' | 'Recall'; label: string; accent: string; bg: string }> = [
+    { key: 'Pending', label: 'Pending', accent: '#b45309', bg: '#fffbeb' },
+    { key: 'Finished', label: 'Finished', accent: '#166534', bg: '#f0fdf4' },
+    { key: 'Recall', label: 'Recall · No pasó', accent: '#6d28d9', bg: '#faf5ff' },
+  ];
+  const qcGroups = QC_GROUP_ORDER
+    .map(g => ({ ...g, rows: filteredQcList.filter(qc => qcCategory(qc) === g.key) }))
+    .filter(g => g.rows.length > 0);
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -1260,10 +1273,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               ) : filteredQcList.length === 0 ? (
                 <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
               ) : (
-                filteredQcList.map((qc) => {
-                  const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-                  const isFailed = qc.result === 'failed';
-                  return (
+                qcGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    <tr>
+                      <td colSpan={6} style={{ padding: '10px 16px', background: group.bg, borderBottom: '1px solid #e5e7eb' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: group.accent, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          {group.key === 'Recall' && <Repeat size={13} />}
+                          {group.label}
+                          <span style={{ background: '#fff', border: '1px solid ' + group.accent + '40', color: group.accent, borderRadius: '999px', padding: '1px 8px', fontSize: '0.72rem' }}>{group.rows.length}</span>
+                        </span>
+                      </td>
+                    </tr>
+                    {group.rows.map((qc) => {
+                      const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                      const isFailed = qc.result === 'failed';
+                      return (
                     <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
                       <td style={s.td}>
                         {isFailed ? (
@@ -1334,8 +1358,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                         </div>
                       </td>
                     </tr>
-                  );
-                })
+                      );
+                    })}
+                  </Fragment>
+                ))
               )}
             </tbody>
           </table>
@@ -1349,11 +1375,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         ) : filteredQcList.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
         ) : (
-          filteredQcList.map((qc) => {
-            const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-            const isFinished = qc.status === 'Finished';
-            const isFailed = qc.result === 'failed';
-            return (
+          qcGroups.map((group) => (
+            <Fragment key={group.key}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 4px 2px', color: group.accent, fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {group.key === 'Recall' && <Repeat size={14} />}
+                {group.label}
+                <span style={{ background: '#fff', border: '1px solid ' + group.accent + '40', color: group.accent, borderRadius: '999px', padding: '1px 8px', fontSize: '0.72rem' }}>{group.rows.length}</span>
+              </div>
+              {group.rows.map((qc) => {
+                const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                const isFinished = qc.status === 'Finished';
+                const isFailed = qc.result === 'failed';
+                return (
               <div
                 key={qc.id}
                 onClick={() => handleEditQC(qc)}
@@ -1429,8 +1462,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   </button>
                 </div>
               </div>
-            );
-          })
+                );
+              })}
+            </Fragment>
+          ))
         )}
       </div>
 
