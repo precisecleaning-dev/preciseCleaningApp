@@ -76,7 +76,7 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
       setSaved(true);
       if (onSaved) onSaved(clean);
       // Refrescar el branding cacheado para los generadores de documentos
-      getBranding().catch(() => { });
+      getBranding().catch(() => {});
       setTimeout(() => setSaved(false), 2500);
     } catch (e) {
       console.error('Error guardando la configuración de empresa:', e);
@@ -87,7 +87,7 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
   };
 
   const label: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' };
-  const input: React.CSSProperties = { width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
+  const input: React.CSSProperties = { width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', backgroundColor: '#ffffff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' };
 
   return (
     <div className="fade-in company-view" style={{ padding: '20px', boxSizing: 'border-box', maxWidth: '900px', margin: '0 auto' }}>
