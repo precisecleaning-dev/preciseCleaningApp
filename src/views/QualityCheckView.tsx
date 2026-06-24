@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
+import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat
 } from 'lucide-react';
@@ -27,7 +27,7 @@ interface QCRecord {
 
 interface QualityCheckViewProps {
   onOpenMenu: () => void;
-  properties: Property[]; 
+  properties: Property[];
   houseToInspect: Property | null;
   clearHouseToInspect: () => void;
   currentUser?: SystemUser | null;
@@ -104,9 +104,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
 
         const docsArray = (qcSnap as any).docs || [];
-        const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({ 
-          id: document.id, 
-          ...document.data() 
+        const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({
+          id: document.id,
+          ...document.data()
         } as QCRecord));
 
         loadedQCs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -275,7 +275,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPendingPhotos({});
     setPlaceSearch('');
     setSelectedPlaceIds([]);
-    
+
     const initialData: any = {};
     places.forEach(p => {
       initialData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
@@ -302,7 +302,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
     setPlaceSearch('');
-    
+
     const loadedData: any = qc.qcData || {};
     places.forEach(p => {
       if (!loadedData[p.id]) {
@@ -312,7 +312,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         loadedData[p.id].photos = [];
       }
     });
-    
+
     setQcData(loadedData);
 
     // ⭐ Restaurar áreas seleccionadas: usa las guardadas o, si no hay, deriva las que tengan datos
@@ -437,7 +437,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const handleDeleteQC = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this Quality Check report? This cannot be undone.")) return;
-    
+
     try {
       await deleteDoc(doc(db, 'quality_checks', id));
       setQcList(prev => prev.filter(qc => qc.id !== id));
@@ -523,7 +523,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     teamNameOverride?: string
   ) => {
     const placesWithData: { place: Place; photos: string[]; tasksData: any; notes: string; damage: string; score: any; corrections: string }[] = [];
-    
+
     places.forEach(p => {
       const data = qcDataObj[p.id];
       if (!data) return;
@@ -580,7 +580,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       console.log(`✅ All images ready`);
 
       const inspector = inspectorName || 'Unknown';
-      const displayDate = recordDate 
+      const displayDate = recordDate
         ? new Date(recordDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const date = displayDate;
@@ -614,15 +614,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </thead>
             <tbody>
               ${placeTasks.map(t => {
-                const val = pd.tasksData[t.id];
-                const cls = val === 'Yes' ? 'yes' : val === 'No' ? 'no' : 'na';
-                return `
+          const val = pd.tasksData[t.id];
+          const cls = val === 'Yes' ? 'yes' : val === 'No' ? 'no' : 'na';
+          return `
                   <tr>
                     <td>${t.name}</td>
                     <td style="text-align:right;"><span class="result-pill ${cls}">${val || 'N/A'}</span></td>
                   </tr>
                 `;
-              }).join('')}
+        }).join('')}
             </tbody>
           </table>
         ` : '';
@@ -877,7 +877,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     const inspector = qc.inspector || 'Unknown';
     const recordQcData = (qc.qcData as Record<string, any>) || {};
-    
+
     setExportingForQcId(qc.id as string);
     try {
       await buildAndExportQCPDF(house, recordQcData, inspector, qc.date, undefined, qc.team);
@@ -1167,15 +1167,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         }
       `}</style>
 
-      <header className="main-header" style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+      <header className="main-header" style={{ marginBottom: '18px', paddingRight: '56px' }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, color: '#111827', fontSize: '2rem' }}>Quality Check Reports</h1>
           <p style={{ marginTop: '4px', color: '#6b7280' }}>History and status of house inspections</p>
         </div>
-        <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-        </button>
       </header>
+
+      {/* ⭐ Botón de menú: SIEMPRE fijo en la parte superior derecha */}
+      <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 60, background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(15,23,42,0.12)' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
 
       {/* ⭐ Buscador global + pestañas de estado (juntos, ARRIBA del todo) */}
       <div className="qc-toolbar">
@@ -1268,214 +1270,214 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* TABLA (escritorio) */}
       {showRecordsTable && (
-      <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
-            <thead>
-              <tr>
-                <th style={{...s.th, width: '150px'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
-                <th style={{...s.th, width: '120px'}}><CalendarDays size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Date</th>
-                <th style={s.th}><MapPin size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Address</th>
-                <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
-                <th style={s.th}><Users size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Team</th>
-                <th style={{...s.th, width: '140px', textAlign: 'right'}}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoadingCatalogs ? (
-                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>Loading records from database...</td></tr>
-              ) : filteredQcList.length === 0 ? (
-                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
-              ) : (
-                filteredQcList.map((qc) => {
-                  const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-                  const isFailed = qc.result === 'failed';
-                  return (
-                    <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
-                      <td style={s.td}>
-                        {isFailed ? (
-                          <span title="No pasó Quality Check — pasó a Recall" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            <Repeat size={12} /> Recall · No pasó
-                          </span>
-                        ) : (
-                          <span style={{ 
-                            backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
-                            color: qc.status === 'Finished' ? '#166534' : '#b45309', 
-                            padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
-                          }}>
-                            {qc.status}
-                          </span>
-                        )}
-                      </td>
-                      <td style={s.td}>{formatDate(qc.date)}</td>
-                      <td style={{...s.td, color: '#6b7280'}}>
-                        <div>{qc.address}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
-                      </td>
-                      <td style={{...s.td, fontWeight: 600}}>{getClientName(qc.client)}</td>
-                      <td style={{...s.td, color: '#475569'}}>{teamLabel}</td>
-                      <td style={{...s.td, textAlign: 'right'}}>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
-                          <button 
-                            onClick={() => handleEditQC(qc)} 
-                            title="Edit Quality Check"
-                            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button 
-                            onClick={() => handleExportFromTable(qc)} 
-                            disabled={exportingForQcId === qc.id}
-                            title="Export PDF Report"
-                            style={{ 
-                              background: 'none', 
-                              border: 'none', 
-                              color: '#059669', 
-                              cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', 
-                              padding: '4px',
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center',
-                              opacity: exportingForQcId === qc.id ? 0.6 : 1
-                            }}
-                          >
-                            {exportingForQcId === qc.id 
-                              ? <Loader2 size={16} className="spin-qc" /> 
-                              : <Printer size={16} />
-                            }
-                          </button>
-                          <button 
-                            onClick={() => openEmailForQC(qc)} 
-                            title="Email Report"
-                            style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Mail size={16} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteQC(qc.id as string)} 
-                            title="Delete Quality Check"
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...s.th, width: '150px' }}><Activity size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Status</th>
+                  <th style={{ ...s.th, width: '120px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Date</th>
+                  <th style={s.th}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Address</th>
+                  <th style={s.th}><User size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Client</th>
+                  <th style={s.th}><Users size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Team</th>
+                  <th style={{ ...s.th, width: '140px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoadingCatalogs ? (
+                  <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>Loading records from database...</td></tr>
+                ) : filteredQcList.length === 0 ? (
+                  <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
+                ) : (
+                  filteredQcList.map((qc) => {
+                    const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                    const isFailed = qc.result === 'failed';
+                    return (
+                      <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
+                        <td style={s.td}>
+                          {isFailed ? (
+                            <span title="No pasó Quality Check — pasó a Recall" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                              <Repeat size={12} /> Recall · No pasó
+                            </span>
+                          ) : (
+                            <span style={{
+                              backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7',
+                              color: qc.status === 'Finished' ? '#166534' : '#b45309',
+                              padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
+                            }}>
+                              {qc.status}
+                            </span>
+                          )}
+                        </td>
+                        <td style={s.td}>{formatDate(qc.date)}</td>
+                        <td style={{ ...s.td, color: '#6b7280' }}>
+                          <div>{qc.address}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
+                        </td>
+                        <td style={{ ...s.td, fontWeight: 600 }}>{getClientName(qc.client)}</td>
+                        <td style={{ ...s.td, color: '#475569' }}>{teamLabel}</td>
+                        <td style={{ ...s.td, textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => handleEditQC(qc)}
+                              title="Edit Quality Check"
+                              style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleExportFromTable(qc)}
+                              disabled={exportingForQcId === qc.id}
+                              title="Export PDF Report"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#059669',
+                                cursor: exportingForQcId === qc.id ? 'wait' : 'pointer',
+                                padding: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                opacity: exportingForQcId === qc.id ? 0.6 : 1
+                              }}
+                            >
+                              {exportingForQcId === qc.id
+                                ? <Loader2 size={16} className="spin-qc" />
+                                : <Printer size={16} />
+                              }
+                            </button>
+                            <button
+                              onClick={() => openEmailForQC(qc)}
+                              title="Email Report"
+                              style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Mail size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteQC(qc.id as string)}
+                              title="Delete Quality Check"
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       )}
 
       {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
       {showRecordsTable && (
-      <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
-        {isLoadingCatalogs ? (
-          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>Loading records from database...</div>
-        ) : filteredQcList.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
-        ) : (
-          filteredQcList.map((qc) => {
-            const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-            const isFinished = qc.status === 'Finished';
-            const isFailed = qc.result === 'failed';
-            return (
-              <div
-                key={qc.id}
-                onClick={() => handleEditQC(qc)}
-                style={{
-                  background: isFailed ? '#fff5f5' : '#ffffff', border: `1px solid ${isFailed ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '16px', padding: '18px',
-                  cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-                  display: 'flex', flexDirection: 'column', gap: '14px',
-                }}
-              >
-                {/* Título + estado */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                  <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
-                    {getClientName(qc.client)}
-                  </span>
-                  {isFailed ? (
-                    <span title="No pasó Quality Check — pasó a Recall" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      <Repeat size={13} /> Recall · No pasó
+        <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+          {isLoadingCatalogs ? (
+            <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>Loading records from database...</div>
+          ) : filteredQcList.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
+          ) : (
+            filteredQcList.map((qc) => {
+              const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+              const isFinished = qc.status === 'Finished';
+              const isFailed = qc.result === 'failed';
+              return (
+                <div
+                  key={qc.id}
+                  onClick={() => handleEditQC(qc)}
+                  style={{
+                    background: isFailed ? '#fff5f5' : '#ffffff', border: `1px solid ${isFailed ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '16px', padding: '18px',
+                    cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+                    display: 'flex', flexDirection: 'column', gap: '14px',
+                  }}
+                >
+                  {/* Título + estado */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
+                      {getClientName(qc.client)}
                     </span>
-                  ) : (
-                    <span style={{
-                      flexShrink: 0,
-                      backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
-                      color: isFinished ? '#166534' : '#b45309',
-                      padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
-                    }}>
-                      {qc.status}
-                    </span>
-                  )}
-                </div>
+                    {isFailed ? (
+                      <span title="No pasó Quality Check — pasó a Recall" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                        <Repeat size={13} /> Recall · No pasó
+                      </span>
+                    ) : (
+                      <span style={{
+                        flexShrink: 0,
+                        backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
+                        color: isFinished ? '#166534' : '#b45309',
+                        padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
+                      }}>
+                        {qc.status}
+                      </span>
+                    )}
+                  </div>
 
-                {/* Info con iconos */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{qc.address || '—'}</span>
+                  {/* Info con iconos */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                      <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{qc.address || '—'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                      <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span>{formatDate(qc.date)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
+                      <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span>{teamLabel}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
+                      <User size={15} color="#cbd5e1" style={{ flexShrink: 0 }} />
+                      <span>Inspected by: {qc.inspector || 'Unknown'}</span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span>{formatDate(qc.date)}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span>{teamLabel}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
-                    <User size={15} color="#cbd5e1" style={{ flexShrink: 0 }} />
-                    <span>Inspected by: {qc.inspector || 'Unknown'}</span>
-                  </div>
-                </div>
 
-                {/* Acciones */}
-                <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleEditQC(qc); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Edit2 size={16} /> Editar
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleExportFromTable(qc); }} 
-                    disabled={exportingForQcId === qc.id}
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', opacity: exportingForQcId === qc.id ? 0.6 : 1 }}>
-                    {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />} PDF
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openEmailForQC(qc); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Mail size={16} /> Email
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleDeleteQC(qc.id as string); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Trash2 size={16} /> Borrar
-                  </button>
+                  {/* Acciones */}
+                  <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleEditQC(qc); }}
+                      style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                      <Edit2 size={16} /> Editar
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleExportFromTable(qc); }}
+                      disabled={exportingForQcId === qc.id}
+                      style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', opacity: exportingForQcId === qc.id ? 0.6 : 1 }}>
+                      {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />} PDF
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEmailForQC(qc); }}
+                      style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                      <Mail size={16} /> Email
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteQC(qc.id as string); }}
+                      style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                      <Trash2 size={16} /> Borrar
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+              );
+            })
+          )}
+        </div>
       )}
 
       {/* --- MODAL DE QUALITY CHECK --- */}
       {isFormModalOpen && selectedHouse && (
         <div className="qc-overlay">
           <div className="qc-modal">
-            
+
             <div className="qc-header">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h1 className="qc-title">
-                  <ClipboardCheck size={22}/> Quality Check Inspection
+                  <ClipboardCheck size={22} /> Quality Check Inspection
                 </h1>
                 <p className="qc-prop">
-                  Property: <strong style={{backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px'}}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</strong>
+                  Property: <strong style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px' }}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</strong>
                 </p>
                 <p className="qc-insp">
                   <User size={14} /> Inspector: {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User'}
@@ -1544,9 +1546,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 </div>
               </div>
             )}
-            
+
             <div className="qc-body">
-              
+
               {isLoadingCatalogs ? (
                 <div style={{ color: '#6b7280', padding: '20px', textAlign: 'center', gridColumn: '1 / -1' }}>
                   Loading Inspection Checklist...
@@ -1606,7 +1608,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       return (
                         <div key={place.id} className="qc-card">
                           <h2 style={s.cardTitle}>{place.name}</h2>
-                          
+
                           <div style={{ marginBottom: '16px' }}>
                             {placeTasks.map(task => (
                               <div key={task.id} style={s.taskItem}>
@@ -1632,12 +1634,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                                 <button key={num} className="qc-toggle" onClick={() => setScoreValue(place.id, num)} style={s.btnScore(placeData.score === num)}>{num}</button>
                               ))}
                             </div>
-                            
+
                             {/* ⭐ Sección de fotos — cámara como acción principal */}
                             <label style={s.labelQC}>
                               Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''})
                             </label>
-                            
+
                             <div className="qc-photo-actions">
                               <button
                                 type="button"
@@ -1714,16 +1716,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                             )}
 
                             <label style={s.labelQC}>Notas</label>
-                            <textarea 
-                              style={{...s.textareaQC, marginBottom: '12px'}} 
-                              value={placeData.notes || ''} 
+                            <textarea
+                              style={{ ...s.textareaQC, marginBottom: '12px' }}
+                              value={placeData.notes || ''}
                               onChange={(e) => handleTextChange(place.id, 'notes', e.target.value)}
                             />
 
                             <label style={s.labelQC}>Daños</label>
-                            <textarea 
-                              style={s.textareaQC} 
-                              value={placeData.damage || ''} 
+                            <textarea
+                              style={s.textareaQC}
+                              value={placeData.damage || ''}
                               onChange={(e) => handleTextChange(place.id, 'damage', e.target.value)}
                             />
                           </div>
@@ -1735,7 +1737,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               )}
 
             </div>
-            
+
             <div className="qc-savebar">
               <button style={s.btnSaveQC} onClick={() => handleSaveQC(false)} disabled={isLoadingCatalogs || places.length === 0 || isSaving}>
                 {isSaving ? 'GUARDANDO...' : 'GUARDAR TODO'}
