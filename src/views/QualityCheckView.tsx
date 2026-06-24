@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail
+  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -18,6 +18,7 @@ interface QCRecord {
   client: string;
   team?: string;
   status: 'Finished' | 'Pending';
+  result?: 'passed' | 'failed' | null;
   inspector?: string;
   selectedPlaces?: string[];
   qcData?: any;
@@ -150,8 +151,37 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return name === 'qc' || name.includes('quality check') || name.includes('quality-check');
   };
 
-  // ⭐ Casas que actualmente están en estado "Quality Check" (pendientes de inspeccionar)
-  const pendingQCHouses = properties.filter(isQualityCheckStatus);
+  // ⭐ Id del estado "Quality Check" (para regresar una casa cuando NO pasó)
+  const getQualityCheckStatusId = (): string | null => {
+    const st = statuses.find((s: any) => {
+      const n = String(s.name || '').toLowerCase().trim();
+      return n === 'qc' || n.includes('quality check') || n.includes('quality-check');
+    });
+    return st ? st.id : null;
+  };
+
+  // ⭐ Último reporte de QC registrado para una casa
+  const latestQCForHouse = (houseId: string): QCRecord | undefined => {
+    const recs = qcList.filter(q => q.houseId === houseId);
+    if (recs.length === 0) return undefined;
+    return recs.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  };
+
+  // ⭐ ¿El último QC de la casa NO pasó?
+  const houseFailedQC = (houseId: string): boolean => {
+    const r = latestQCForHouse(houseId);
+    return !!r && r.result === 'failed';
+  };
+
+  // ⭐ ¿El último QC de la casa ya pasó (Finished y no fallido)? -> sale de pendientes
+  const housePassedQC = (houseId: string): boolean => {
+    const r = latestQCForHouse(houseId);
+    return !!r && r.status === 'Finished' && r.result !== 'failed';
+  };
+
+  // ⭐ Casas en estado "Quality Check" que siguen pendientes (sin QC aprobado).
+  //    Las que NO pasaron permanecen aquí, marcadas en rojo.
+  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id));
 
   // ⭐ Fecha en formato mm/dd/YYYY
   const formatDate = (dateString: string) => {
@@ -168,7 +198,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (!q) return true;
     const team = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
     const clientName = getClientName(qc.client);
-    const haystack = [qc.status, formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
+    const haystack = [qc.status, qc.result === 'failed' ? 'did not pass' : '', formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
       .filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
   });
@@ -194,6 +224,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     });
     setQcData(initialData);
     setIsFormModalOpen(true);
+  };
+
+  // ⭐ Abrir QC para una casa pendiente: si ya existe un reporte abierto (Pending o
+  //    que NO pasó), se edita ese; de lo contrario se crea uno nuevo. Evita duplicados.
+  const handleStartOrContinueQC = (house: Property) => {
+    const existing = latestQCForHouse(house.id);
+    if (existing && (existing.status === 'Pending' || existing.result === 'failed')) {
+      handleEditQC(existing);
+    } else {
+      handleOpenForm(house);
+    }
   };
 
   const handleEditQC = (qc: QCRecord) => {
@@ -247,11 +288,19 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setSelectedPlaceIds(prev => prev.includes(placeId) ? prev.filter(x => x !== placeId) : [...prev, placeId]);
   };
 
-  const handleSaveQC = async () => {
+  // ⭐ Guardar QC. forceFail = true -> "DID NOT PASS": queda Finished+failed y la
+  //    casa regresa al estado "Quality Check" en el pipeline para que la corrijan.
+  const handleSaveQC = async (forceFail = false) => {
     if (!selectedHouse) return;
+
+    if (forceFail) {
+      const ok = window.confirm('¿Marcar este Quality Check como "DID NOT PASS"? La casa regresará a Quality Check para que el equipo la corrija y se vuelva a inspeccionar.');
+      if (!ok) return;
+    }
+
     setIsSaving(true);
-    
-    // ⭐ Solo se consideran las áreas SELECCIONADAS para decidir si está completo.
+
+    // Solo se consideran las áreas SELECCIONADAS para decidir si está completo.
     const activePlaces = activePlacesFor(selectedHouse).filter(p => selectedPlaceIds.includes(p.id));
     let isPending = activePlaces.length === 0;
     activePlaces.forEach(p => {
@@ -261,13 +310,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       });
     });
 
-    const recordData = {
+    const finalStatus: 'Pending' | 'Finished' = forceFail ? 'Finished' : (isPending ? 'Pending' : 'Finished');
+    const finalResult: 'passed' | 'failed' | null = forceFail ? 'failed' : (isPending ? null : 'passed');
+
+    const recordData: any = {
       houseId: selectedHouse.id,
       date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
       address: selectedHouse.address,
       client: selectedHouse.client,
       team: (editingQcId && qcList.find(q => q.id === editingQcId)?.team) || getTeamNameForHouse(selectedHouse),
-      status: isPending ? 'Pending' : 'Finished',
+      status: finalStatus,
+      result: finalResult,
       inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
       selectedPlaces: selectedPlaceIds,
       qcData: qcData
@@ -279,9 +332,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setQcList(prev => prev.map(qc => qc.id === editingQcId ? { id: editingQcId, ...recordData } as QCRecord : qc));
       } else {
         const docRef = await addDoc(collection(db, 'quality_checks'), recordData);
-        setQcList([{ id: docRef.id, ...recordData } as QCRecord, ...qcList]);
+        setQcList(prev => [{ id: docRef.id, ...recordData } as QCRecord, ...prev]);
       }
-      alert("✅ Quality Check Saved Successfully!");
+
+      // ⭐ Si NO pasó, regresar la casa a "Quality Check" en el pipeline
+      if (forceFail) {
+        const qcStatusId = getQualityCheckStatusId();
+        if (qcStatusId) {
+          try {
+            await updateDoc(doc(db, 'properties', selectedHouse.id), { statusId: qcStatusId });
+          } catch (e) { console.error('No se pudo actualizar el estado de la casa:', e); }
+        }
+      }
+
+      alert(forceFail
+        ? '⚠️ Quality Check marcado como DID NOT PASS. La casa regresó a Quality Check para corregirse.'
+        : '✅ Quality Check Saved Successfully!');
       handleCloseForm();
     } catch (error) {
       console.error("Error saving Quality Check:", error);
@@ -845,7 +911,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     extraFields: { marginTop: '15px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc' },
     labelQC: { display: 'block', fontWeight: 'bold' as const, fontSize: '11px', margin: '10px 0 5px', color: '#555', textTransform: 'uppercase' as const },
     textareaQC: { width: '100%', height: '60px', border: '1px solid #e1e4e8', borderRadius: '6px', padding: '10px', boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'inherit', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.9rem', resize: 'vertical' as const },
-    btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 60px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', opacity: isSaving ? 0.7 : 1 },
+    btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 50px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', opacity: isSaving ? 0.7 : 1 },
+    btnFailQC: { backgroundColor: '#ef4444', color: 'white', padding: '15px 40px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(239,68,68,0.25)', display: 'inline-flex', alignItems: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#3b82f6' : '#f1f5f9', color: active ? 'white' : '#64748b', transition: 'all 0.2s' })
   };
 
@@ -904,7 +971,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           gap: 20px; flex: 1; align-content: start;
         }
         .qc-savebar {
-          padding: 14px; text-align: center;
+          padding: 14px; display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;
           border-top: 3px solid #22c55e; background-color: #fff;
           flex-shrink: 0;
           padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -1015,36 +1082,50 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             <div>
               <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>Casas pendientes de Quality Check</div>
               <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
-                {pendingQCHouses.length} casa(s) con estado "Quality Check" lista(s) para inspeccionar
+                {pendingQCHouses.length} casa(s) con estado "Quality Check" — Pending de inspección
               </div>
             </div>
           </div>
 
           <div className="qc-pending-grid">
-            {pendingQCHouses.map(house => (
-              <div key={house.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
-                  {getClientName(house.client)}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+            {pendingQCHouses.map(house => {
+              const failed = houseFailedQC(house.id);
+              return (
+                <div key={house.id} style={{ background: failed ? '#fff5f5' : '#ffffff', border: `1px solid ${failed ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: failed ? '0 0 0 2px rgba(239,68,68,0.12)' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
+                      {getClientName(house.client)}
+                    </div>
+                    {failed ? (
+                      <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <AlertTriangle size={12} /> Did Not Pass
+                      </span>
+                    ) : (
+                      <span style={{ flexShrink: 0, backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Pending
+                      </span>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span>{getTeamNameForHouse(house)}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                      <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                      <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                      <span>{getTeamNameForHouse(house)}</span>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => handleStartOrContinueQC(house)}
+                    disabled={isLoadingCatalogs}
+                    style={{ marginTop: '2px', height: '46px', borderRadius: '11px', background: failed ? '#ef4444' : '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <ClipboardCheck size={17} /> {failed ? 'Revisar / Corregir QC' : 'Iniciar inspección'}
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleOpenForm(house)}
-                  disabled={isLoadingCatalogs}
-                  style={{ marginTop: '2px', height: '46px', borderRadius: '11px', background: '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                >
-                  <ClipboardCheck size={17} /> Iniciar inspección
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1078,7 +1159,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
             <thead>
               <tr>
-                <th style={{...s.th, width: '120px'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
+                <th style={{...s.th, width: '150px'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
                 <th style={{...s.th, width: '120px'}}><CalendarDays size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Date</th>
                 <th style={s.th}><MapPin size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Address</th>
                 <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
@@ -1094,16 +1175,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               ) : (
                 filteredQcList.map((qc) => {
                   const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                  const isFailed = qc.result === 'failed';
                   return (
-                    <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                    <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
                       <td style={s.td}>
-                        <span style={{ 
-                          backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
-                          color: qc.status === 'Finished' ? '#166534' : '#b45309', 
-                          padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
-                        }}>
-                          {qc.status}
-                        </span>
+                        {isFailed ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            <AlertTriangle size={12} /> Did Not Pass
+                          </span>
+                        ) : (
+                          <span style={{ 
+                            backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
+                            color: qc.status === 'Finished' ? '#166534' : '#b45309', 
+                            padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
+                          }}>
+                            {qc.status}
+                          </span>
+                        )}
                       </td>
                       <td style={s.td}>{formatDate(qc.date)}</td>
                       <td style={{...s.td, color: '#6b7280'}}>
@@ -1177,12 +1265,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           filteredQcList.map((qc) => {
             const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
             const isFinished = qc.status === 'Finished';
+            const isFailed = qc.result === 'failed';
             return (
               <div
                 key={qc.id}
                 onClick={() => handleEditQC(qc)}
                 style={{
-                  background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '18px',
+                  background: isFailed ? '#fff5f5' : '#ffffff', border: `1px solid ${isFailed ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '16px', padding: '18px',
                   cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
                   display: 'flex', flexDirection: 'column', gap: '14px',
                 }}
@@ -1192,14 +1281,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
                     {getClientName(qc.client)}
                   </span>
-                  <span style={{
-                    flexShrink: 0,
-                    backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
-                    color: isFinished ? '#166534' : '#b45309',
-                    padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
-                  }}>
-                    {qc.status}
-                  </span>
+                  {isFailed ? (
+                    <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                      <AlertTriangle size={13} /> Did Not Pass
+                    </span>
+                  ) : (
+                    <span style={{
+                      flexShrink: 0,
+                      backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
+                      color: isFinished ? '#166534' : '#b45309',
+                      padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
+                    }}>
+                      {qc.status}
+                    </span>
+                  )}
                 </div>
 
                 {/* Info con iconos */}
@@ -1525,8 +1620,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </div>
             
             <div className="qc-savebar">
-              <button style={s.btnSaveQC} onClick={handleSaveQC} disabled={isLoadingCatalogs || places.length === 0 || isSaving}>
+              <button style={s.btnSaveQC} onClick={() => handleSaveQC(false)} disabled={isLoadingCatalogs || places.length === 0 || isSaving}>
                 {isSaving ? 'GUARDANDO...' : 'GUARDAR TODO'}
+              </button>
+              <button style={s.btnFailQC} onClick={() => handleSaveQC(true)} disabled={isSaving} title="La casa regresa a Quality Check para corregirse">
+                <AlertTriangle size={18} /> DID NOT PASS
               </button>
             </div>
 
