@@ -911,8 +911,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     extraFields: { marginTop: '15px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc' },
     labelQC: { display: 'block', fontWeight: 'bold' as const, fontSize: '11px', margin: '10px 0 5px', color: '#555', textTransform: 'uppercase' as const },
     textareaQC: { width: '100%', height: '60px', border: '1px solid #e1e4e8', borderRadius: '6px', padding: '10px', boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'inherit', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.9rem', resize: 'vertical' as const },
-    btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 50px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', opacity: isSaving ? 0.7 : 1 },
-    btnFailQC: { backgroundColor: '#ef4444', color: 'white', padding: '15px 40px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(239,68,68,0.25)', display: 'inline-flex', alignItems: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
+    btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 50px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
+    btnFailQC: { backgroundColor: '#ef4444', color: 'white', padding: '15px 40px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(239,68,68,0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
     pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#3b82f6' : '#f1f5f9', color: active ? 'white' : '#64748b', transition: 'all 0.2s' })
   };
 
@@ -1012,9 +1012,32 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         /* ===== Casas pendientes de Quality Check ===== */
         .qc-pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
 
+        /* ===== Barra de herramientas: buscador + pestañas juntos en una tarjeta ===== */
+        .qc-toolbar {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 14px; flex-wrap: wrap;
+          background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px;
+          padding: 12px 14px; margin-bottom: 20px;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+
         /* ===== Buscador de la tabla ===== */
-        .qc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
-        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
+        .qc-table-search { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; padding: 0 14px; height: 44px; flex: 1; min-width: 240px; transition: border-color 0.15s, box-shadow 0.15s; }
+        .qc-table-search:focus-within { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); background: #ffffff; }
+        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.92rem; min-width: 0; }
+        .qc-table-search button:hover { color: #475569; }
+
+        /* ===== Pestañas de estado (control segmentado) ===== */
+        .qc-status-pills { display: inline-flex; background: #f1f5f9; border: 1px solid #e5e7eb; border-radius: 12px; padding: 4px; gap: 2px; flex-shrink: 0; }
+        .qc-tab {
+          border: none; background: transparent; cursor: pointer;
+          padding: 9px 20px; border-radius: 9px;
+          font-weight: 600; font-size: 0.85rem; color: #64748b;
+          transition: all 0.15s; white-space: nowrap;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .qc-tab:hover { color: #1e3a8a; }
+        .qc-tab.active { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1); }
 
         /* ===== MÓVIL: tarjetas + modal nativo ===== */
         @media (max-width: 820px) {
@@ -1130,10 +1153,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       )}
 
-      {/* ⭐ Buscador global + filtros de estado */}
-      <div className="qc-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+      {/* ⭐ Buscador global + pestañas de estado (juntos, arriba) */}
+      <div className="qc-toolbar">
         <div className="qc-table-search">
-          <Search size={16} color="#9ca3af" />
+          <Search size={18} color="#9ca3af" />
           <input
             type="text"
             value={tableSearch}
@@ -1146,10 +1169,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </button>
           )}
         </div>
-        <div className="qc-status-pills" style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => setStatusFilter('All')} style={s.pillBtn(statusFilter === 'All')}>All</button>
-          <button onClick={() => setStatusFilter('Pending')} style={s.pillBtn(statusFilter === 'Pending')}>Pending</button>
-          <button onClick={() => setStatusFilter('Finished')} style={s.pillBtn(statusFilter === 'Finished')}>Finished</button>
+        <div className="qc-status-pills">
+          <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All</button>
+          <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending</button>
+          <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished</button>
         </div>
       </div>
 
