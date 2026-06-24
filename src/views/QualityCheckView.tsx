@@ -49,6 +49,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [customersList, setCustomersList] = useState<any[]>([]);
+  // ⭐ Catálogo de estados para detectar las casas en "Quality Check"
+  const [statuses, setStatuses] = useState<any[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -81,10 +83,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
       try {
-        const [placesData, tasksData, teamsData, customersSnap, qcSnap] = await Promise.all([
+        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap] = await Promise.all([
           settingsService.getAll('settings_places').catch(() => []),
           settingsService.getAll('settings_tasks').catch(() => []),
           settingsService.getAll('settings_teams').catch(() => []),
+          settingsService.getAll('settings_statuses').catch(() => []),
           getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] }))
         ]);
@@ -95,6 +98,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setPlaces(sortedPlaces);
         setTasks(sortedTasks);
         setTeams(teamsData as any[]);
+        setStatuses(statusesData as any[]);
         setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
 
         const docsArray = (qcSnap as any).docs || [];
@@ -137,6 +141,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const found = customersList.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
     return found ? found.name : String(clientIdOrName);
   };
+
+  // ⭐ Determina si una casa tiene estado "Quality Check" (resuelve id o nombre del status)
+  const isQualityCheckStatus = (house: Property): boolean => {
+    const sid = (house as any).statusId;
+    const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
+    const name = String(st?.name || sid || '').toLowerCase().trim();
+    return name === 'qc' || name.includes('quality check') || name.includes('quality-check');
+  };
+
+  // ⭐ Casas que actualmente están en estado "Quality Check" (pendientes de inspeccionar)
+  const pendingQCHouses = properties.filter(isQualityCheckStatus);
 
   // ⭐ Fecha en formato mm/dd/YYYY
   const formatDate = (dateString: string) => {
@@ -927,6 +942,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           -webkit-tap-highlight-color: transparent;
         }
 
+        /* ===== Casas pendientes de Quality Check ===== */
+        .qc-pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+
         /* ===== Buscador de la tabla ===== */
         .qc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
         .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
@@ -986,6 +1004,50 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           </div>
         </div>
       </header>
+
+      {/* ⭐ CASAS PENDIENTES DE QUALITY CHECK (estado "Quality Check" en el pipeline) */}
+      {!isLoadingCatalogs && pendingQCHouses.length > 0 && (
+        <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ClipboardCheck size={19} color="#2563eb" />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>Casas pendientes de Quality Check</div>
+              <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                {pendingQCHouses.length} casa(s) con estado "Quality Check" lista(s) para inspeccionar
+              </div>
+            </div>
+          </div>
+
+          <div className="qc-pending-grid">
+            {pendingQCHouses.map(house => (
+              <div key={house.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
+                  {getClientName(house.client)}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span>{getTeamNameForHouse(house)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleOpenForm(house)}
+                  disabled={isLoadingCatalogs}
+                  style={{ marginTop: '2px', height: '46px', borderRadius: '11px', background: '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <ClipboardCheck size={17} /> Iniciar inspección
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ⭐ Buscador global + filtros de estado */}
       <div className="qc-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
