@@ -19,7 +19,7 @@ import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
 
 import { auth, db } from './config/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
@@ -27,13 +27,28 @@ const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
 
+// ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
+//    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
+const ACTIVE_TAB_KEY = 'pc_active_tab';
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'roles', 'users', 'data_import'];
+const getInitialTab = (): TabOptions => {
+  if (typeof window === 'undefined') return 'houses';
+  try {
+    const saved = window.localStorage.getItem(ACTIVE_TAB_KEY);
+    if (saved && (VALID_TABS as string[]).includes(saved)) return saved as TabOptions;
+  } catch {
+    /* localStorage no disponible */
+  }
+  return 'houses';
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false); // ⭐ Para evitar flash de LoginView al recargar
   const [isBypass, setIsBypass] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   
-  const [activeTab, setActiveTab] = useState<TabOptions>('houses');
+  const [activeTab, setActiveTab] = useState<TabOptions>(getInitialTab); // ⭐ Restaura la última pestaña usada
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth > 768;
     return true;
@@ -44,6 +59,24 @@ export default function App() {
   const [houseToInspect, setHouseToInspect] = useState<Property | null>(null);
 
   const [roles, setRoles] = useState<Role[]>([]);
+
+  // ⭐ Guardar la pestaña activa cada vez que cambia, para restaurarla al recargar.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+    } catch {
+      /* localStorage no disponible */
+    }
+  }, [activeTab]);
+
+  // ⭐ Asegurar que la sesión de Firebase se guarde en el navegador
+  //    (browserLocalPersistence) para que SOBREVIVA al recargar la página.
+  //    Es el valor por defecto, pero lo fijamos de forma explícita por seguridad.
+  useEffect(() => {
+    setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.error('No se pudo fijar la persistencia de sesión:', err);
+    });
+  }, []);
 
   // ⭐ Cargar roles con onSnapshot — aprovecha el cache de Firestore Persistence
   // (IndexedDB). Primera carga normal, siguientes son INSTANTÁNEAS desde el cache.
