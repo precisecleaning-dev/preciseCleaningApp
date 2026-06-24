@@ -14,6 +14,7 @@ import UsersView from './views/admin/UsersView';
 import DataImportView from './views/DataImportView'; // ⭐ Vista de importación de CSV (solo SuperAdmin)
 import RecallsView from './views/RecallsView'; // ⭐ Vista de Recalls (ranking de equipos)
 import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de historial de status por casa
+import CompanySettingsView from './views/CompanySettingsView'; // ⭐ Módulo de empresa (logo, nombre, correo, dirección)
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -25,12 +26,12 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'roles', 'users', 'data_import'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   try {
@@ -363,6 +364,9 @@ export default function App() {
             onOpenMenu={toggleMenu}
           />
         )}
+
+        {/* ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en los documentos, el login y el menú) */}
+        {activeTab === 'company' && <CompanySettingsView onOpenMenu={toggleMenu} />}
 
         {activeTab === 'roles' && <RolesView onOpenMenu={toggleMenu} roles={roles} setRoles={setRoles} />}
         

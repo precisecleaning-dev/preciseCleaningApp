@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Mail, Lock, LogIn, ArrowRight, ShieldAlert } from 'lucide-react';
 import { auth } from '../../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { usersService } from '../../services/usersService';
+import { getCachedBranding, getBranding, type Branding } from '../../utils/companyBranding';
 
 interface LoginViewProps {
   onLoginSuccess: () => void;
@@ -13,6 +14,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<'login' | 'forgot'>('login');
+
+  // ⭐ Logo y nombre de la empresa (del módulo Empresa). Usa el valor cacheado al
+  //    instante e intenta refrescar desde Firestore (si las reglas lo permiten).
+  const [branding, setBranding] = useState<Branding>(() => getCachedBranding());
+  useEffect(() => {
+    getBranding().then(setBranding).catch(() => { /* sin permiso/red: se queda el cacheado */ });
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +55,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           ser más cómodos al tacto (inputs altos, textos más grandes). */}
       <style>{`
         .login-card { width: 100%; max-width: 400px; background-color: #ffffff; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 40px 32px; border: 1px solid #e2e8f0; box-sizing: border-box; }
-        .login-logo { width: 56px; height: 56px; }
+        .login-logo { width: 56px; height: 56px; overflow: hidden; }
+        .login-logo img { width: 100%; height: 100%; object-fit: contain; }
         .login-title { font-size: 1.6rem; }
         .login-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; font-size: 0.95rem; background-color: #ffffff; color: #0f172a; }
         .login-input-icon { position: absolute; left: 14px; top: 12px; }
@@ -77,11 +86,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       <div className="login-card">
         
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div className="login-logo" style={{ backgroundColor: '#1e40af', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
-            <LogIn size={28} color="#ffffff" />
+          {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto */}
+          <div className="login-logo" style={{ backgroundColor: branding.logo ? '#ffffff' : '#1e40af', border: branding.logo ? '1px solid #e2e8f0' : 'none', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+            {branding.logo
+              ? <img src={branding.logo} alt={branding.name} />
+              : <LogIn size={28} color="#ffffff" />}
           </div>
           <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
-            {view === 'login' ? 'Precise Cleaning Services' : 'Recover Access'}
+            {view === 'login' ? branding.name : 'Recover Access'}
           </h1>
           <p className="login-subtitle" style={{ margin: '8px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
             {view === 'login' ? 'Authorize your session to continue' : 'Contact admin if you lost your password'}
