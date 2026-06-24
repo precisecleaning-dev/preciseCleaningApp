@@ -196,7 +196,9 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 };
 
-const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean }) => {
+// StatusPillSelector: soporta variante `large` para un selector grande y prominente
+// (usado en el detalle de la casa para mover de status fácilmente).
+const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false, large = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean, large?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
   const status = statuses.find(s => String(s.id).toLowerCase().trim() === safeValue || String(s.name).toLowerCase().trim() === safeValue);
@@ -204,11 +206,23 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, ful
   const pointColor = status ? status.color : '#64748b';
   const text = status ? status.name : 'Unassigned';
 
+  const block = fullWidth || large;
+
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: block ? 'block' : 'inline-block', width: block ? '100%' : 'auto', outline: 'none' }}>
       <div 
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
-        style={{ 
+        style={ large ? {
+          backgroundColor: '#ffffff', color: pointColor,
+          padding: '18px 20px', borderRadius: '14px',
+          fontSize: '1.1rem', fontWeight: 800,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+          width: '100%', boxSizing: 'border-box',
+          textTransform: 'none', letterSpacing: 'normal',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          border: `2px solid ${pointColor}`, transition: 'all 0.2s',
+          boxShadow: `0 2px 8px ${pointColor}33`
+        } : { 
           backgroundColor: fullWidth ? '#ffffff' : 'transparent', color: '#111827',
           padding: fullWidth ? '13px 16px' : '6px 12px', borderRadius: fullWidth ? '12px' : '20px', 
           fontSize: fullWidth ? '0.8rem' : '0.85rem', fontWeight: 600,
@@ -218,21 +232,22 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, ful
           cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
         }}
-        onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-        onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = fullWidth ? '#ffffff' : 'transparent'; }}
+        onMouseEnter={(e) => { if(!disabled && !large) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+        onMouseLeave={(e) => { if(!disabled && !large) e.currentTarget.style.backgroundColor = fullWidth ? '#ffffff' : 'transparent'; }}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0 }}></span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: large ? '12px' : '8px', minWidth: 0 }}>
+          <span style={{ width: large ? '14px' : '8px', height: large ? '14px' : '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0, boxShadow: large ? `0 0 0 4px ${pointColor}22` : 'none' }}></span>
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
         </span>
-        <ChevronDown size={fullWidth ? 16 : 14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={large ? 22 : (fullWidth ? 16 : 14)} color={large ? pointColor : '#9ca3af'} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
       </div>
 
       {isOpen && (
         <div style={{ 
-          position: 'absolute', top: '100%', left: fullWidth ? 0 : 'auto', right: 0, marginTop: '4px', backgroundColor: 'white', 
-          border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: fullWidth ? '100%' : '180px', width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
+          position: 'absolute', top: '100%', left: block ? 0 : 'auto', right: 0, marginTop: '6px', backgroundColor: 'white', 
+          border: '1px solid #e5e7eb', borderRadius: large ? '12px' : '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', 
+          zIndex: 9999, minWidth: block ? '100%' : '180px', width: block ? '100%' : 'auto', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left',
+          maxHeight: '320px', overflowY: 'auto'
         }}>
           {statuses.map((s) => (
             <div 
@@ -244,7 +259,7 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, ful
                 setIsOpen(false); 
               }}
               style={{ 
-                padding: '12px 14px', fontSize: '0.85rem', fontWeight: 500, color: '#111827', 
+                padding: large ? '14px 16px' : '12px 14px', fontSize: large ? '0.95rem' : '0.85rem', fontWeight: 500, color: '#111827', 
                 display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
                 backgroundColor: (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent',
                 borderBottom: '1px solid #f1f5f9'
@@ -252,8 +267,9 @@ const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, ful
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent'}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color, flexShrink: 0 }}></span>
-              {s.name}
+              <span style={{ width: large ? '12px' : '8px', height: large ? '12px' : '8px', borderRadius: '50%', backgroundColor: s.color, flexShrink: 0, boxShadow: large ? `0 0 0 3px ${s.color}1f` : 'none' }}></span>
+              <span style={{ flex: 1 }}>{s.name}</span>
+              {(currentStatusId === s.id || currentStatusId === s.name) && <CheckCircle size={large ? 18 : 15} color="#16a34a" />}
             </div>
           ))}
         </div>
@@ -376,8 +392,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return getRelationName(customersList, clientIdOrName, String(clientIdOrName));
   };
 
-  // ⭐ Estados que NO se muestran en el Pipeline (se gestionan en otras vistas):
-  // 'invoice' -> Invoices ; 'quality check' -> Quality Check
+  // Estados que NO se muestran en el Pipeline (se gestionan en otras vistas)
   const isHiddenPipelineStatus = (p: any) => {
     const st = statuses.find(s => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId));
     const name = String(st?.name || p.statusId || '').toLowerCase().trim();
@@ -1649,18 +1664,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
           .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
 
-          /* ===== Controles superiores ===== */
           .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 12px !important; }
           .search-box-container { height: 48px !important; }
           .filters-section { flex-direction: column; align-items: stretch; }
           .property-select-container { width: 100%; }
           .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
 
-          /* ===== En móvil: ocultar tabla y mostrar tarjetas ===== */
           .jobs-table-wrap { display: none !important; }
           .jobs-cards-wrap { display: flex !important; }
 
-          /* ===== Botones de modales más grandes ===== */
           .modal-90 > header > div:last-child > button {
             height: 44px !important; min-height: 44px !important;
             padding: 0 16px !important; border-radius: 10px !important; font-size: 0.9rem !important;
@@ -1670,10 +1682,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
         }
         
-        /* Ocultar el texto en escritorio para mantener el diseño limpio original */
         .mobile-action-text { display: none; }
 
-        /* ====== RESPONSIVE PRO · SIN SCROLL HORIZONTAL ====== */
         .houses-view { overflow-x: hidden; max-width: 100%; }
         .dashboard-actions-wrapper { flex-wrap: wrap; }
 
@@ -1681,12 +1691,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           html, body { overflow-x: hidden; max-width: 100%; }
           .houses-view { padding: 14px !important; }
 
-          /* Acciones del header sin desborde */
           .dashboard-actions-wrapper { width: 100%; }
           .search-box-container { flex: 1 1 100% !important; min-width: 0 !important; }
           .add-btn-mobile { flex: 1 1 auto; }
 
-          /* Modales a pantalla completa y apilados */
           .modal-overlay-centered { padding: 0 !important; }
           .modal-full { flex-direction: column; width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
           .modal-full-left { padding: 1.25rem 1rem !important; width: 100%; }
@@ -1892,7 +1900,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               </div>
 
-              {/* ====== VISTA TABLA / TARJETAS ====== */}
+              {/* ====== VISTA TABLA (escritorio) ====== */}
               <div className="jobs-table-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -1986,7 +1994,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         display: 'flex', flexDirection: 'column', gap: '16px',
                       }}
                     >
-                      {/* Título + flags */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                         <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.2rem', lineHeight: 1.25 }}>
                           {getClientName(prop.client)}
@@ -1997,7 +2004,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
                       </div>
 
-                      {/* Filas de información con iconos */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
                           <MapPin size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
@@ -2015,7 +2021,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
                       </div>
 
-                      {/* Estado (ancho completo; abre el menú sin entrar al detalle) */}
                       <div onClick={(e) => e.stopPropagation()}>
                         <StatusPillSelector
                           fullWidth
@@ -2026,7 +2031,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         />
                       </div>
 
-                      {/* Acciones */}
                       {(canEdit || canDelete) && isVisible('admin') && (
                         <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                           {canEdit && (
@@ -2615,6 +2619,28 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
               </div>
 
+              {/* ⭐ SELECTOR DE STATUS PROMINENTE — mover la casa de lugar fácilmente */}
+              {isVisible('workflow') && (
+                <div style={{ background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '16px 18px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(59,130,246,0.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '9px', backgroundColor: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Activity size={18} color="#2563eb" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#1e3a8a' }}>Estado del trabajo</div>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>Toca para mover la casa de lugar</div>
+                    </div>
+                  </div>
+                  <StatusPillSelector
+                    large
+                    currentStatusId={selectedHouse.statusId}
+                    statuses={statuses}
+                    onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)}
+                    disabled={isSaving || !canEdit}
+                  />
+                </div>
+              )}
+
               <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', flexWrap: 'wrap' }}>
                 <button style={s.detailTab(activeDetailTab === 'overview')} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Overview & Log</button>
                 {isVisible('financial') && isElementVisible('btn_tabFinancials') && (
@@ -2731,10 +2757,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           </div>
                         )}
                       </div>
-
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {!(selectedHouse.assignedWorkers && selectedHouse.assignedWorkers.length > 0) ? (
-                          <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No specific workers assigned to this job.</span>
+                          <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No specific workers assigned.</span>
                         ) : (
                           selectedHouse.assignedWorkers.map(workerId => {
                             const emp = employees.find(e => e.id === workerId);
@@ -2743,9 +2768,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                               <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <User size={12} color="#64748b" />
                                 {emp.firstName} {emp.lastName}
-                                {canEdit && isVisible('admin') && (
-                                  <button onClick={() => toggleWorkerAssignmentDetail(workerId)} style={{ background: 'none', border: 'none', padding: 0, margin: 0, marginLeft: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
-                                )}
                               </div>
                             )
                           })
@@ -2753,39 +2775,21 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={s.detailLabel}><Activity size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Work Log (Entry / Exit)</span>
-                      </div>
-                      <div style={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr>
-                              <th style={{...s.th, backgroundColor: '#f8fafc', padding: '10px 16px'}}>Event</th>
-                              <th style={{...s.th, backgroundColor: '#f8fafc', padding: '10px 16px'}}>Employee</th>
-                              <th style={{...s.th, backgroundColor: '#f8fafc', padding: '10px 16px', textAlign: 'right'}}>Time</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(!(selectedHouse as any).employeeStartedBy && !(selectedHouse as any).employeeFinishedBy) && (
-                              <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No activity logged yet.</td></tr>
-                            )}
-                            {(selectedHouse as any).employeeStartedBy && (
-                              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{...s.td, padding: '12px 16px', fontWeight: 600, color: '#3b82f6'}}>Job Started</td>
-                                <td style={{...s.td, padding: '12px 16px'}}>{(selectedHouse as any).employeeStartedBy.split(' ')[0]}</td>
-                                <td style={{...s.td, padding: '12px 16px', color: '#64748b', fontSize: '0.8rem', textAlign: 'right'}}>{formatDateTime((selectedHouse as any).employeeStartedAt)}</td>
-                              </tr>
-                            )}
-                            {(selectedHouse as any).employeeFinishedBy && (
-                              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{...s.td, padding: '12px 16px', fontWeight: 600, color: '#10b981'}}>Job Finished</td>
-                                <td style={{...s.td, padding: '12px 16px'}}>{(selectedHouse as any).employeeFinishedBy.split(' ')[0]}</td>
-                                <td style={{...s.td, padding: '12px 16px', color: '#64748b', fontSize: '0.8rem', textAlign: 'right'}}>{formatDateTime((selectedHouse as any).employeeFinishedAt)}</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <span style={s.detailLabel}><PenTool size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> WORK LOG</span>
+                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                          <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><PlayCircle size={14} color="#3b82f6"/> Started By</span>
+                          <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                            {(selectedHouse as any).employeeStartedBy ? `${(selectedHouse as any).employeeStartedBy} (${formatDateTime((selectedHouse as any).employeeStartedAt)})` : 'Not started'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                          <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle size={14} color="#10b981"/> Finished By</span>
+                          <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                            {(selectedHouse as any).employeeFinishedBy ? `${(selectedHouse as any).employeeFinishedBy} (${formatDateTime((selectedHouse as any).employeeFinishedAt)})` : 'Not finished'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2794,119 +2798,122 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'financials' && isVisible('financial') && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '16px', marginBottom: '24px' }}>
-                    <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Revenue (Billed)</div>
-                      <div style={{ fontSize: '1.5rem', color: '#1e3a8a', fontWeight: 800, marginTop: '4px' }}>${totalBilled.toFixed(2)}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '24px' }}>
+                    <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Revenue</div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#166534', marginTop: '4px' }}>${totalBilled.toFixed(2)}</div>
                     </div>
-                    <div style={{ backgroundColor: '#fef2f2', padding: '16px', borderRadius: '8px', border: '1px solid #fecaca', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Payroll Cost</div>
-                      <div style={{ fontSize: '1.5rem', color: '#7f1d1d', fontWeight: 800, marginTop: '4px' }}>${totalPayroll.toFixed(2)}</div>
+                    <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '20px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Payroll</div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#991b1b', marginTop: '4px' }}>${totalPayroll.toFixed(2)}</div>
                     </div>
-                    <div style={{ backgroundColor: netProfit >= 0 ? '#ecfdf5' : '#fef2f2', padding: '16px', borderRadius: '8px', border: `1px solid ${netProfit >= 0 ? '#a7f3d0' : '#fecaca'}`, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '0.8rem', color: netProfit >= 0 ? '#065f46' : '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Net Profit</div>
-                      <div style={{ fontSize: '1.5rem', color: netProfit >= 0 ? '#047857' : '#7f1d1d', fontWeight: 800, marginTop: '4px' }}>${netProfit.toFixed(2)}</div>
+                    <div style={{ backgroundColor: netProfit >= 0 ? '#eff6ff' : '#fffbeb', border: `1px solid ${netProfit >= 0 ? '#bfdbfe' : '#fde68a'}`, borderRadius: '12px', padding: '20px' }}>
+                      <div style={{ fontSize: '0.8rem', color: netProfit >= 0 ? '#1d4ed8' : '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Net Profit</div>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: netProfit >= 0 ? '#1e40af' : '#92400e', marginTop: '4px' }}>${netProfit.toFixed(2)}</div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', gap: '20px' }}>
-                    {canEdit && (
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <h4 style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>Billed Services</h4>
-                          <button onClick={() => handleOpenServiceForm()} style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Plus size={12} /> Add Service
-                          </button>
-                        </div>
-
-                        <div style={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
-                            <thead>
-                              <tr>
-                                <th style={{...s.th, backgroundColor: '#f8fafc'}}>Service</th>
-                                <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'center'}}>Qty</th>
-                                <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Total</th>
-                                <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Act</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {houseServices.length === 0 ? (
-                                <tr><td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
-                              ) : (
-                                houseServices.map(record => {
-                                  const srv = services.find(c => c.id === record.serviceId);
-                                  return (
-                                    <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{...s.td, padding: '12px 20px', fontWeight: 600}}>
-                                        {srv ? srv.name : 'Unknown'}
-                                        <div style={{fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px', fontWeight: 400}}>Price: ${Number(record.price).toFixed(2)} | Tax: {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}</div>
-                                      </td>
-                                      <td style={{...s.td, padding: '12px 20px', textAlign: 'center'}}>{record.quantity}</td>
-                                      <td style={{...s.td, padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#1e293b'}}>${Number(record.total).toFixed(2)}</td>
-                                      <td style={{...s.td, padding: '12px 20px', textAlign: 'right'}}>
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                          <button onClick={() => handleOpenServiceForm(record)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '2px' }}><Edit2 size={14} /></button>
-                                          <button onClick={() => handleDeleteService(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                            {houseServices.length > 0 && (
-                              <tfoot>
-                                <tr>
-                                  <td colSpan={2} style={{ padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>House Total:</td>
-                                  <td colSpan={2} style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: '#047857', fontSize: '1.1rem', backgroundColor: '#ecfdf5' }}>
-                                    ${totalBilled.toFixed(2)}
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><Layers size={18} color="#f59e0b"/> Billed Services</h4>
+                      {canEdit && (
+                        <button onClick={() => handleOpenServiceForm(undefined, false)} disabled={isSaving} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Plus size={16} /> Add Service
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                        <thead>
+                          <tr>
+                            <th style={s.th}>Service</th>
+                            <th style={{...s.th, textAlign: 'center'}}>Qty</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Price</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Tax</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Total</th>
+                            {canEdit && <th style={{...s.th, textAlign: 'right'}}>Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {houseServices.length === 0 ? (
+                            <tr><td colSpan={canEdit ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No billed services yet.</td></tr>
+                          ) : (
+                            houseServices.map(record => {
+                              const srv = services.find(c => c.id === record.serviceId);
+                              return (
+                                <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                  <td style={{...s.td, fontWeight: 600}}>{srv ? srv.name : 'Unknown'}</td>
+                                  <td style={{...s.td, textAlign: 'center'}}>{record.quantity}</td>
+                                  <td style={{...s.td, textAlign: 'right'}}>${Number(record.price).toFixed(2)}</td>
+                                  <td style={{...s.td, textAlign: 'right', color: record.taxAmount > 0 ? '#ef4444' : '#64748b'}}>
+                                    {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}
                                   </td>
+                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700}}>${Number(record.total).toFixed(2)}</td>
+                                  {canEdit && (
+                                    <td style={{...s.td, textAlign: 'right'}}>
+                                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <button onClick={() => handleOpenServiceForm(record, false)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '2px' }}><Edit2 size={14} /></button>
+                                        <button onClick={() => handleDeleteService(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
+                                      </div>
+                                    </td>
+                                  )}
                                 </tr>
-                              </tfoot>
-                            )}
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-                    {canEdit && (
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <h4 style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 700, margin: 0, textTransform: 'uppercase' }}>Registered Payments</h4>
-                          <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} style={{ background: '#ecfdf5', color: '#10b981', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Plus size={12} /> Add Payment
-                          </button>
-                        </div>
-                        {housePayrollRecords.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {housePayrollRecords.map(record => {
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><DollarSign size={18} color="#10b981"/> Registered Payments</h4>
+                      {canEdit && (
+                        <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Plus size={16} /> Register Payment
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                        <thead>
+                          <tr>
+                            <th style={s.th}>Date</th>
+                            <th style={s.th}>Employee</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Base</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Extra</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Discount</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Total</th>
+                            {canEdit && <th style={{...s.th, textAlign: 'right'}}>Act</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {housePayrollRecords.length === 0 ? (
+                            <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No payments registered yet.</td></tr>
+                          ) : (
+                            housePayrollRecords.map(record => {
                               const emp = employees.find(e => e.id === record.employeeId);
                               return (
-                                <div key={record.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                                  <div>
-                                    <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date: {record.date}</div>
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                    <div style={{ textAlign: 'right' }}>
-                                      <div style={{ fontWeight: 700, color: '#10b981', fontSize: '1.1rem' }}>${record.totalAmount.toFixed(2)}</div>
-                                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: record.status === 'Paid' ? '#10b981' : '#f59e0b' }}>
-                                        {record.status || 'Pending'}
-                                      </div>
-                                    </div>
-                                    <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}>
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                </div>
+                                <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                  <td style={{...s.td, color: '#64748b'}}>{record.date}</td>
+                                  <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
+                                  <td style={{...s.td, textAlign: 'right'}}>${Number(record.baseAmount).toFixed(2)}</td>
+                                  <td style={{...s.td, textAlign: 'right', color: '#10b981'}}>+${Number(record.extraAmount).toFixed(2)}</td>
+                                  <td style={{...s.td, textAlign: 'right', color: '#ef4444'}}>-${Number(record.discountAmount).toFixed(2)}</td>
+                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700}}>${Number(record.totalAmount).toFixed(2)}</td>
+                                  {canEdit && (
+                                    <td style={{...s.td, textAlign: 'right'}}>
+                                      <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
+                                    </td>
+                                  )}
+                                </tr>
                               );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ padding: '20px', textAlign: 'center', backgroundColor: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', color: '#94a3b8', fontSize: '0.85rem' }}>No payments registered.</div>
-                        )}
-                      </div>
-                    )}
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2915,45 +2922,57 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <div className="fade-in">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
                     <div style={s.noteBoxGray}>
-                      <span style={s.detailLabel}><StickyNote size={14}/> GENERAL NOTE</span>
-                      <p style={{...s.detailValue, marginTop: '8px'}}>{selectedHouse.note || '-'}</p>
+                      <span style={s.detailLabel}><StickyNote size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> GENERAL NOTE</span>
+                      <p style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No general notes.'}</p>
                     </div>
                     <div style={s.noteBoxOrange}>
-                      <span style={{...s.detailLabel, color: '#9a3412'}}><PenTool size={14}/> EMPLOYEE'S NOTE</span>
-                      <p style={{...s.detailValue, color: '#9a3412', marginTop: '8px'}}>{selectedHouse.employeeNote || '-'}</p>
+                      <span style={{...s.detailLabel, color: '#c2410c'}}><StickyNote size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> EMPLOYEE'S NOTE</span>
+                      <p style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.employeeNote || 'No employee notes.'}</p>
                     </div>
                   </div>
 
-                  {(beforeFiles.length > 0 || afterFiles.length > 0) && (
-                    <div style={{ marginBottom: '20px', padding: '12px 16px', backgroundColor: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#92400e', fontSize: '0.9rem', fontWeight: 600 }}>
-                        Tienes {beforeFiles.length + afterFiles.length} foto(s) pendiente(s) por guardar
-                      </span>
-                      <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Save size={14} /> {isSaving ? 'Guardando...' : 'Guardar Fotos'}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> BEFORE PHOTOS</span>
+                        {isElementVisible('btn_exportPdf') && (
+                          <button onClick={() => generatePDF('before')} disabled={isSaving} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FileImage size={14} /> Export PDF
+                          </button>
+                        )}
+                      </div>
+                      <PhotoSection label="Before" type="before"
+                        urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
+                        canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
+                        onRemove={(i: number) => handleRemovePhoto(i, 'before')}
+                        onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> AFTER PHOTOS</span>
+                        {isElementVisible('btn_exportPdf') && (
+                          <button onClick={() => generatePDF('after')} disabled={isSaving} style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <FileImage size={14} /> Export PDF
+                          </button>
+                        )}
+                      </div>
+                      <PhotoSection label="After" type="after"
+                        urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
+                        canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
+                        onRemove={(i: number) => handleRemovePhoto(i, 'after')}
+                        onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
+                    </div>
+                  </div>
+
+                  {canEdit && (
+                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{ ...s.btnPrimary, justifyContent: 'center' }}>
+                        <Save size={16} /> {isSaving ? 'Saving...' : 'Save Photos'}
                       </button>
                     </div>
                   )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
-                    <PhotoSection label="Before" type="before"
-                      urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
-                      canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
-                      showUpload={isElementVisible('btn_uploadPhoto')} showCamera={isElementVisible('btn_takePhoto')} showExportPdf={isElementVisible('btn_exportPdf')}
-                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
-                      onRemove={(i: number) => handleRemovePhoto(i, 'before')}
-                      onToggleReport={(u: string) => toggleReportPhoto(u, 'before')}
-                      onExportPdf={() => generatePDF('before')} />
-                      
-                    <PhotoSection label="After" type="after"
-                      urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
-                      canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
-                      showUpload={isElementVisible('btn_uploadPhoto')} showCamera={isElementVisible('btn_takePhoto')} showExportPdf={isElementVisible('btn_exportPdf')}
-                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
-                      onRemove={(i: number) => handleRemovePhoto(i, 'after')}
-                      onToggleReport={(u: string) => toggleReportPhoto(u, 'after')}
-                      onExportPdf={() => generatePDF('after')} />
-                  </div>
                 </div>
               )}
 
@@ -2961,13 +2980,22 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
             <footer style={s.footerBetween}>
               <div>
-                {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && <button onClick={handleDelete} disabled={isSaving} style={s.btnDangerLight}><Trash2 size={16} /> Delete Property</button>}
+                {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && (
+                  <button onClick={handleDelete} disabled={isSaving} style={s.btnDangerLight}>
+                    <Trash2 size={16} /> Delete Property
+                  </button>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button onClick={() => setIsDetailModalOpen(false)} style={s.btnOutline}>Close</button>
-                {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && <button onClick={() => handleOpenForm(selectedHouse as Property)} style={s.btnPrimary}><Edit2 size={16} /> Edit Details</button>}
+                {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && (
+                  <button onClick={() => handleOpenForm(selectedHouse)} style={s.btnPrimary}>
+                    <Edit2 size={16} /> Edit Details
+                  </button>
+                )}
               </div>
             </footer>
+
           </div>
         </div>
       )}
@@ -2975,19 +3003,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {/* --- SERVICE MODAL --- */}
       {isServiceModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsServiceModalOpen(false)}>
-          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+          <div className="modal-70" onClick={e => e.stopPropagation()}>
             <header style={s.header}>
-              <h3 style={s.title}>{serviceForm.id ? 'Edit Service Record' : 'Add Service Record'}</h3>
-              <button style={s.closeBtn} onClick={() => setIsServiceModalOpen(false)}><X size={24} /></button>
+              <h3 style={s.title}>{serviceForm.id ? 'Edit Service' : 'Add Billed Service'}</h3>
+              <button style={s.closeBtn} onClick={() => setIsServiceModalOpen(false)}><X size={22} /></button>
             </header>
-            <div style={s.body}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
-                <div>
-                  <label style={s.label}>Service <span style={{ color: '#ef4444' }}>*</span></label>
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={s.label}>Product / Service <span style={{ color: '#3b82f6' }}>*</span></label>
                   <CustomSelect options={services} value={serviceForm.serviceId} onChange={(val: string) => {
                     const srv = services.find(c => c.id === val);
-                    setServiceForm({ ...serviceForm, serviceId: val, price: srv ? Number((srv as any).price || 0) : serviceForm.price });
-                  }} placeholder="Select a service..." icon={Wrench} />
+                    setServiceForm(prev => ({ ...prev, serviceId: val, price: srv ? Number((srv as any).price || prev.price) : prev.price }));
+                  }} placeholder="Select Service..." icon={Wrench} />
                 </div>
                 <div>
                   <label style={s.label}>Quantity</label>
@@ -3000,85 +3028,77 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <label style={s.label}>Unit Price</label>
                   <div style={s.inputWrapper}>
                     <DollarSign style={s.icon} size={16} />
-                    <input type="number" step="0.01" style={s.input} value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
+                    <input type="number" min="0" step="0.01" style={s.input} value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
                   <label style={s.label}>Tax %</label>
                   <div style={s.inputWrapper}>
                     <Percent style={s.icon} size={16} />
-                    <input type="number" step="0.01" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
+                    <input type="number" min="0" step="0.01" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
                   </div>
                 </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
-                  <label style={s.label}>Apply Tax (+)</label>
+                  <label style={s.label}>Apply Tax (add)</label>
                   <div style={s.segmentContainer}>
-                    <button type="button" style={s.segmentBtn(serviceForm.applyTax === 'Yes', 'yes')} onClick={() => setServiceForm({ ...serviceForm, applyTax: 'Yes', minusTax: 'No' })}>Yes</button>
-                    <button type="button" style={s.segmentBtn(serviceForm.applyTax === 'No', 'no')} onClick={() => setServiceForm({ ...serviceForm, applyTax: 'No' })}>No</button>
+                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'Yes', minusTax: 'No' })} style={s.segmentBtn(serviceForm.applyTax === 'Yes', 'yes')}>Yes</button>
+                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'No' })} style={s.segmentBtn(serviceForm.applyTax === 'No', 'no')}>No</button>
                   </div>
                 </div>
                 {serviceForm.applyTax === 'No' && (
                   <div>
-                    <label style={s.label}>Subtract Tax (-)</label>
+                    <label style={s.label}>Minus Tax (subtract)</label>
                     <div style={s.segmentContainer}>
-                      <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'yes')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })}>Yes</button>
-                      <button type="button" style={s.segmentBtn(serviceForm.minusTax === 'No', 'no')} onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })}>No</button>
+                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })} style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'yes')}>Yes</button>
+                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })} style={s.segmentBtn(serviceForm.minusTax === 'No', 'no')}>No</button>
                     </div>
                   </div>
                 )}
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={s.label}>Notes</label>
+                  <textarea style={{ ...s.input, minHeight: '60px', resize: 'vertical', padding: '12px 14px' }} value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })} placeholder="Optional notes..."></textarea>
+                </div>
               </div>
 
-              <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Subtotal</span>
-                  <span style={{ color: '#1e293b', fontSize: '0.95rem', fontWeight: 600 }}>${Number(serviceForm.subtotal).toFixed(2)}</span>
+              <div style={{ marginTop: '24px', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '20px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
+                  <span>Subtotal</span><span style={{ fontWeight: 600, color: '#1e293b' }}>${serviceForm.subtotal.toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Tax {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '(-)' : '(+)'}</span>
-                  <span style={{ color: serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '#ef4444' : '#10b981', fontSize: '0.95rem', fontWeight: 600 }}>
-                    {serviceForm.applyTax === 'No' && serviceForm.minusTax === 'Yes' ? '-' : '+'}${Math.abs(Number(serviceForm.taxAmount)).toFixed(2)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
+                  <span>Tax</span>
+                  <span style={{ fontWeight: 600, color: serviceForm.applyTax === 'Yes' ? '#ef4444' : serviceForm.minusTax === 'Yes' ? '#10b981' : '#1e293b' }}>
+                    {serviceForm.applyTax === 'Yes' ? '+' : serviceForm.minusTax === 'Yes' ? '-' : ''}${serviceForm.taxAmount.toFixed(2)}
                   </span>
                 </div>
-                <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '8px 0' }} />
+                <div style={{ borderTop: '1px dashed #cbd5e1', margin: '12px 0' }}></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 700 }}>Total</span>
-                  <span style={{ color: '#047857', fontSize: '1.4rem', fontWeight: 800 }}>${Number(serviceForm.total).toFixed(2)}</span>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Total</span>
+                  <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>${serviceForm.total.toFixed(2)}</span>
                 </div>
-              </div>
-
-              <div>
-                <label style={s.label}>Notes</label>
-                <textarea style={{ ...s.input, minHeight: '60px', padding: '10px 14px', resize: 'vertical' }} value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })} />
               </div>
             </div>
             <footer style={s.footer}>
               <button onClick={() => setIsServiceModalOpen(false)} style={s.btnOutline}>Cancel</button>
-              <button onClick={handleSaveService} disabled={isSaving} style={s.btnPrimary}><Save size={16} /> {isSaving ? 'Saving...' : 'Save Service'}</button>
+              <button onClick={handleSaveService} disabled={isSaving} style={s.btnPrimary}>
+                <Save size={16} /> {isSaving ? 'Saving...' : 'Save Service'}
+              </button>
             </footer>
           </div>
         </div>
       )}
 
       {/* --- PAYROLL MODAL --- */}
-      {isPayrollModalOpen && selectedHouse && (
+      {isPayrollModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsPayrollModalOpen(false)}>
-          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+          <div className="modal-70" onClick={e => e.stopPropagation()}>
             <header style={s.header}>
               <h3 style={s.title}>Register Payment</h3>
-              <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={24} /></button>
+              <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={22} /></button>
             </header>
-            <div style={s.body}>
-              <div style={{ backgroundColor: '#eff6ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Property</div>
-                <div style={{ fontSize: '1rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
                 <div>
-                  <label style={s.label}>Employee <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label style={s.label}>Employee <span style={{ color: '#3b82f6' }}>*</span></label>
                   <CustomSelect 
                     options={employees.map(e => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }))} 
                     value={payrollForm.employeeId} 
@@ -3088,60 +3108,53 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   />
                 </div>
                 <div>
-                  <label style={s.label}>Payment Date</label>
+                  <label style={s.label}>Date</label>
                   <div style={s.inputWrapper}>
                     <CalendarDays style={s.icon} size={16} />
                     <input type="date" style={s.input} value={payrollForm.date} onChange={e => setPayrollForm({ ...payrollForm, date: e.target.value })} />
                   </div>
                 </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
                 <div>
-                  <label style={s.label}>Base Amount <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label style={s.label}>Base Amount <span style={{ color: '#3b82f6' }}>*</span></label>
                   <div style={s.inputWrapper}>
                     <DollarSign style={s.icon} size={16} />
-                    <input type="number" step="0.01" style={s.input} value={payrollForm.baseAmount} onChange={e => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
+                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.baseAmount} onChange={e => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Extra Amount (+)</label>
+                  <label style={s.label}>Extra Amount</label>
                   <div style={s.inputWrapper}>
                     <DollarSign style={s.icon} size={16} />
-                    <input type="number" step="0.01" style={s.input} value={payrollForm.extraAmount} onChange={e => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
+                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.extraAmount} onChange={e => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
                   </div>
                 </div>
-                <div>
-                  <label style={s.label}>Discount Amount (-)</label>
-                  <div style={s.inputWrapper}>
-                    <DollarSign style={s.icon} size={16} />
-                    <input type="number" step="0.01" style={s.input} value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '20px' }}>
-                <div>
+                <div style={{ gridColumn: '1 / -1' }}>
                   <label style={s.label}>Extra Note</label>
-                  <input type="text" style={{...s.input, paddingLeft: '14px'}} placeholder="Reason for extra..." value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} />
+                  <input type="text" style={{...s.input, paddingLeft: '14px'}} value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} placeholder="Reason for extra..." />
+                </div>
+                <div>
+                  <label style={s.label}>Discount Amount</label>
+                  <div style={s.inputWrapper}>
+                    <DollarSign style={s.icon} size={16} />
+                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
+                  </div>
                 </div>
                 <div>
                   <label style={s.label}>Discount Note</label>
-                  <input type="text" style={{...s.input, paddingLeft: '14px'}} placeholder="Reason for discount..." value={payrollForm.discountNote} onChange={e => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} />
+                  <input type="text" style={{...s.input, paddingLeft: '14px'}} value={payrollForm.discountNote} onChange={e => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} placeholder="Reason for discount..." />
                 </div>
               </div>
 
-              <div style={{ backgroundColor: '#ecfdf5', padding: '16px', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calculator size={20} color="#047857" />
-                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#065f46' }}>Total to Pay</span>
-                </div>
-                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#047857' }}>${Number(payrollForm.totalAmount).toFixed(2)}</span>
+              <div style={{ marginTop: '24px', backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '20px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#166534' }}>Total Payment</span>
+                <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#166534' }}>${Number(payrollForm.totalAmount).toFixed(2)}</span>
               </div>
             </div>
             <footer style={s.footer}>
               <button onClick={() => setIsPayrollModalOpen(false)} style={s.btnOutline}>Cancel</button>
-              <button onClick={handleSavePayroll} disabled={isSaving} style={s.btnPrimary}><Save size={16} /> {isSaving ? 'Saving...' : 'Register Payment'}</button>
+              <button onClick={handleSavePayroll} disabled={isSaving} style={{...s.btnPrimary, backgroundColor: '#10b981'}}>
+                <Save size={16} /> {isSaving ? 'Saving...' : 'Register Payment'}
+              </button>
             </footer>
           </div>
         </div>
@@ -3150,68 +3163,58 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {/* --- FIELD CONFIGURATION MODAL --- */}
       {isFieldConfigOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsFieldConfigOpen(false)}>
-          <div className="modal-90" onClick={e => e.stopPropagation()} style={{ maxWidth: '1100px' }}>
+          <div className="modal-70" onClick={e => e.stopPropagation()}>
             <header style={s.header}>
               <div>
-                <h3 style={s.title}>Configure Field Visibility</h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Define which fields and buttons each role can see in this form and in the detail modal.</p>
+                <h3 style={s.title}>Field & Button Visibility</h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Marca un rol para OCULTARLE ese elemento.</p>
               </div>
-              <button style={s.closeBtn} onClick={() => setIsFieldConfigOpen(false)}><X size={24} /></button>
+              <button style={s.closeBtn} onClick={() => setIsFieldConfigOpen(false)}><X size={22} /></button>
             </header>
-            <div style={s.body}>
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
               {rolesList.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
-                  No roles configured. Go to <b>Roles & Permissions</b> to create roles first.
-                </div>
+                <div style={{ color: '#6b7280', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>No hay roles configurados.</div>
               ) : (
                 <>
-                  <div style={{ backgroundColor: '#eff6ff', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '20px' }}>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#1e40af' }}>
-                      <b>How to use:</b> tick a checkbox to <b>HIDE</b> that element for the corresponding role. SuperAdmin always sees everything.
-                    </p>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>Form Fields</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
+                    {CONFIGURABLE_FIELDS.map(field => (
+                      <div key={field.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>{field.label} <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {field.section}</span></div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {rolesList.map(role => {
+                            const hidden = (fieldConfigDraft.visibility?.[field.id] || []).includes(role.id);
+                            return (
+                              <button key={role.id} onClick={() => toggleElementVisibilityForRole(field.id, role.id)}
+                                style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${hidden ? '#fca5a5' : '#cbd5e1'}`, backgroundColor: hidden ? '#fef2f2' : 'white', color: hidden ? '#dc2626' : '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {hidden ? <X size={12} /> : <CheckSquare size={12} />} {role.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  {[
-                    { title: 'Form Fields', list: CONFIGURABLE_FIELDS },
-                    { title: 'Action Buttons', list: CONFIGURABLE_BUTTONS }
-                  ].map(group => (
-                    <div key={group.title} style={{ marginBottom: '28px' }}>
-                      <h4 style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 700, margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.title}</h4>
-                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${300 + rolesList.length * 140}px` }}>
-                          <thead>
-                            <tr style={{ backgroundColor: '#f8fafc' }}>
-                              <th style={{ ...s.th, position: 'sticky', left: 0, backgroundColor: '#f8fafc', zIndex: 1 }}>Element</th>
-                              {rolesList.map(r => (
-                                <th key={r.id} style={{ ...s.th, textAlign: 'center', minWidth: '120px' }}>{r.name}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.list.map(el => (
-                              <tr key={el.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ ...s.td, padding: '12px 16px' }}>
-                                  <div style={{ fontWeight: 600, color: '#1e293b' }}>{el.label}</div>
-                                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>{el.section}</div>
-                                </td>
-                                {rolesList.map(r => {
-                                  const hidden = (fieldConfigDraft.visibility?.[el.id] || []).includes(r.id);
-                                  return (
-                                    <td key={r.id} style={{ ...s.td, textAlign: 'center', padding: '12px 16px' }}>
-                                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={hidden} onChange={() => toggleElementVisibilityForRole(el.id, r.id)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                                        <span style={{ fontSize: '0.75rem', color: hidden ? '#ef4444' : '#94a3b8', fontWeight: 600 }}>{hidden ? 'Hidden' : 'Visible'}</span>
-                                      </label>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>Buttons & Tabs</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {CONFIGURABLE_BUTTONS.map(btn => (
+                      <div key={btn.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>{btn.label} <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {btn.section}</span></div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {rolesList.map(role => {
+                            const hidden = (fieldConfigDraft.visibility?.[btn.id] || []).includes(role.id);
+                            return (
+                              <button key={role.id} onClick={() => toggleElementVisibilityForRole(btn.id, role.id)}
+                                style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${hidden ? '#fca5a5' : '#cbd5e1'}`, backgroundColor: hidden ? '#fef2f2' : 'white', color: hidden ? '#dc2626' : '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {hidden ? <X size={12} /> : <CheckSquare size={12} />} {role.name}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </>
               )}
             </div>
