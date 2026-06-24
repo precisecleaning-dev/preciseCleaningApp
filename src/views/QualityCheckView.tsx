@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat
@@ -210,10 +210,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return !!r && r.status === 'Finished' && r.result !== 'failed';
   };
 
-  // ⭐ Casas en estado "Quality Check" que siguen pendientes (sin QC aprobado).
-  //    Las que NO pasaron permanecen aquí, marcadas en rojo.
-  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id));
-
   // ⭐ Fecha en formato mm/dd/YYYY
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
@@ -222,38 +218,48 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
   };
 
-  // ⭐ Filtro por grupo (Pending / Finished / Recall) + búsqueda global
-  const filteredQcList = qcList.filter(qc => {
-    if (statusFilter !== 'All' && qcCategory(qc) !== statusFilter) return false;
+  // ⭐ PENDING = casas en estado "Quality Check" que aún esperan inspección
+  //    (sin QC aprobado y sin QC reprobado: las reprobadas viven en Recall).
+  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id) && !houseFailedQC(h.id));
+
+  // ⭐ ¿La casa/registro coincide con la búsqueda?
+  const matchesSearch = (text: string[]) => {
     const q = tableSearch.trim().toLowerCase();
     if (!q) return true;
-    const team = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-    const clientName = getClientName(qc.client);
-    const haystack = [qc.status, qcCategory(qc), qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
-      .filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(q);
-  });
-
-  // ⭐ Conteo por grupo para mostrarlo en las pestañas
-  const groupCounts = {
-    All: qcList.length,
-    Pending: qcList.filter(q => qcCategory(q) === 'Pending').length,
-    Finished: qcList.filter(q => qcCategory(q) === 'Finished').length,
-    Recall: qcList.filter(q => qcCategory(q) === 'Recall').length,
+    return text.filter(Boolean).join(' ').toLowerCase().includes(q);
   };
 
-  // ⭐ Agrupación visual de los registros por categoría (Pending / Finished / Recall).
-  // Se respeta el filtro de pestaña + búsqueda (filteredQcList): cuando hay una
-  // pestaña activa solo su grupo trae filas; en "All" se muestran los tres con su
-  // encabezado, de modo que los registros quedan agrupados y no en una lista plana.
-  const QC_GROUP_ORDER: Array<{ key: 'Pending' | 'Finished' | 'Recall'; label: string; accent: string; bg: string }> = [
-    { key: 'Pending', label: 'Pending', accent: '#b45309', bg: '#fffbeb' },
-    { key: 'Finished', label: 'Finished', accent: '#166534', bg: '#f0fdf4' },
-    { key: 'Recall', label: 'Recall · No pasó', accent: '#6d28d9', bg: '#faf5ff' },
-  ];
-  const qcGroups = QC_GROUP_ORDER
-    .map(g => ({ ...g, rows: filteredQcList.filter(qc => qcCategory(qc) === g.key) }))
-    .filter(g => g.rows.length > 0);
+  // ⭐ Casas pendientes ya filtradas por el buscador
+  const filteredPendingHouses = pendingQCHouses.filter(h =>
+    matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
+  );
+
+  // ⭐ Registros para la TABLA inferior: SOLO Finished y Recall.
+  //    (Las Pending no se listan aquí: se muestran como tarjetas de "casas
+  //    pendientes". Así cada pestaña filtra exactamente lo que indica su nombre.)
+  const filteredQcList = qcList.filter(qc => {
+    const cat = qcCategory(qc);
+    if (cat === 'Pending') return false; // las pendientes van en las tarjetas de arriba
+    if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
+    if (statusFilter === 'Finished' && cat !== 'Finished') return false;
+    if (statusFilter === 'Recall' && cat !== 'Recall') return false;
+    return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId)), qc.inspector || '']);
+  });
+
+  // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
+  //    Pending = casas esperando inspección · Finished/Recall = registros de QC.
+  const finishedCount = qcList.filter(q => qcCategory(q) === 'Finished').length;
+  const recallCount = qcList.filter(q => qcCategory(q) === 'Recall').length;
+  const groupCounts = {
+    All: pendingQCHouses.length + finishedCount + recallCount,
+    Pending: pendingQCHouses.length,
+    Finished: finishedCount,
+    Recall: recallCount,
+  };
+
+  // ⭐ ¿Mostrar cada bloque según la pestaña activa?
+  const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
+  const showRecordsTable = statusFilter !== 'Pending';
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -1196,7 +1202,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       </div>
 
       {/* ⭐ CASAS PENDIENTES DE QUALITY CHECK (estado "Quality Check" en el pipeline) */}
-      {!isLoadingCatalogs && pendingQCHouses.length > 0 && (
+      {!isLoadingCatalogs && showPendingBlock && filteredPendingHouses.length > 0 && (
         <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1205,13 +1211,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             <div>
               <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>Casas pendientes de Quality Check</div>
               <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
-                {pendingQCHouses.length} casa(s) con estado "Quality Check" — Pending de inspección
+                {filteredPendingHouses.length} casa(s) con estado "Quality Check" — Pending de inspección
               </div>
             </div>
           </div>
 
           <div className="qc-pending-grid">
-            {pendingQCHouses.map(house => {
+            {filteredPendingHouses.map(house => {
               const failed = houseFailedQC(house.id);
               return (
                 <div key={house.id} style={{ background: failed ? '#fff5f5' : '#ffffff', border: `1px solid ${failed ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: failed ? '0 0 0 2px rgba(239,68,68,0.12)' : 'none' }}>
@@ -1253,7 +1259,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       )}
 
+      {/* Mensaje cuando la pestaña Pending no tiene casas pendientes */}
+      {!isLoadingCatalogs && statusFilter === 'Pending' && filteredPendingHouses.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+          No hay casas pendientes de Quality Check.
+        </div>
+      )}
+
       {/* TABLA (escritorio) */}
+      {showRecordsTable && (
       <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
@@ -1273,21 +1287,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               ) : filteredQcList.length === 0 ? (
                 <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
               ) : (
-                qcGroups.map((group) => (
-                  <Fragment key={group.key}>
-                    <tr>
-                      <td colSpan={6} style={{ padding: '10px 16px', background: group.bg, borderBottom: '1px solid #e5e7eb' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: group.accent, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          {group.key === 'Recall' && <Repeat size={13} />}
-                          {group.label}
-                          <span style={{ background: '#fff', border: '1px solid ' + group.accent + '40', color: group.accent, borderRadius: '999px', padding: '1px 8px', fontSize: '0.72rem' }}>{group.rows.length}</span>
-                        </span>
-                      </td>
-                    </tr>
-                    {group.rows.map((qc) => {
-                      const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-                      const isFailed = qc.result === 'failed';
-                      return (
+                filteredQcList.map((qc) => {
+                  const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+                  const isFailed = qc.result === 'failed';
+                  return (
                     <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
                       <td style={s.td}>
                         {isFailed ? (
@@ -1358,35 +1361,28 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                         </div>
                       </td>
                     </tr>
-                      );
-                    })}
-                  </Fragment>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+      )}
 
       {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
+      {showRecordsTable && (
       <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
         {isLoadingCatalogs ? (
           <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>Loading records from database...</div>
         ) : filteredQcList.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
         ) : (
-          qcGroups.map((group) => (
-            <Fragment key={group.key}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 4px 2px', color: group.accent, fontWeight: 800, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {group.key === 'Recall' && <Repeat size={14} />}
-                {group.label}
-                <span style={{ background: '#fff', border: '1px solid ' + group.accent + '40', color: group.accent, borderRadius: '999px', padding: '1px 8px', fontSize: '0.72rem' }}>{group.rows.length}</span>
-              </div>
-              {group.rows.map((qc) => {
-                const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-                const isFinished = qc.status === 'Finished';
-                const isFailed = qc.result === 'failed';
-                return (
+          filteredQcList.map((qc) => {
+            const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
+            const isFinished = qc.status === 'Finished';
+            const isFailed = qc.result === 'failed';
+            return (
               <div
                 key={qc.id}
                 onClick={() => handleEditQC(qc)}
@@ -1462,12 +1458,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   </button>
                 </div>
               </div>
-                );
-              })}
-            </Fragment>
-          ))
+            );
+          })
         )}
       </div>
+      )}
 
       {/* --- MODAL DE QUALITY CHECK --- */}
       {isFormModalOpen && selectedHouse && (
