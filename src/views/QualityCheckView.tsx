@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle
+  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { compressImage } from '../utils/imageCompression';
+import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 
@@ -43,7 +44,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
 
   const [places, setPlaces] = useState<Place[]>([]);
@@ -160,6 +161,36 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return st ? st.id : null;
   };
 
+  // ⭐ Pistas de texto para reconocer un estado de "Recall"
+  const RECALL_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
+
+  // ⭐ Id del estado "Recall" (cuando un QC NO pasa, la casa pasa a Recall)
+  const getRecallStatusId = (): string | null => {
+    const st = statuses.find((s: any) => {
+      const n = String(s.name || '').toLowerCase().trim();
+      return RECALL_HINTS.some(h => n.includes(h));
+    });
+    return st ? st.id : null;
+  };
+
+  // ⭐ Resuelve el nombre de un status a partir de id o nombre
+  const resolveStatusName = (idOrName?: string | null): string => {
+    if (!idOrName) return '';
+    const safe = String(idOrName).toLowerCase().trim();
+    const f = statuses.find((s: any) => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
+    return f ? f.name : String(idOrName);
+  };
+
+  // ⭐ Clasifica un QC en uno de los tres grupos:
+  //    - Recall:   se presionó "DID NOT PASS" (result === 'failed')
+  //    - Finished: inspección terminada y guardada con "Guardar Todo" (pasó)
+  //    - Pending:  llegó a Quality Check y aún no se completa la inspección
+  const qcCategory = (qc: QCRecord): 'Pending' | 'Finished' | 'Recall' => {
+    if (qc.result === 'failed') return 'Recall';
+    if (qc.status === 'Finished') return 'Finished';
+    return 'Pending';
+  };
+
   // ⭐ Último reporte de QC registrado para una casa
   const latestQCForHouse = (houseId: string): QCRecord | undefined => {
     const recs = qcList.filter(q => q.houseId === houseId);
@@ -191,17 +222,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
   };
 
-  // ⭐ Filtro por estado + búsqueda global sobre los campos de la tabla
+  // ⭐ Filtro por grupo (Pending / Finished / Recall) + búsqueda global
   const filteredQcList = qcList.filter(qc => {
-    if (statusFilter !== 'All' && qc.status !== statusFilter) return false;
+    if (statusFilter !== 'All' && qcCategory(qc) !== statusFilter) return false;
     const q = tableSearch.trim().toLowerCase();
     if (!q) return true;
     const team = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
     const clientName = getClientName(qc.client);
-    const haystack = [qc.status, qc.result === 'failed' ? 'did not pass' : '', formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
+    const haystack = [qc.status, qcCategory(qc), qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, clientName, team, qc.inspector]
       .filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(q);
   });
+
+  // ⭐ Conteo por grupo para mostrarlo en las pestañas
+  const groupCounts = {
+    All: qcList.length,
+    Pending: qcList.filter(q => qcCategory(q) === 'Pending').length,
+    Finished: qcList.filter(q => qcCategory(q) === 'Finished').length,
+    Recall: qcList.filter(q => qcCategory(q) === 'Recall').length,
+  };
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -288,13 +327,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setSelectedPlaceIds(prev => prev.includes(placeId) ? prev.filter(x => x !== placeId) : [...prev, placeId]);
   };
 
-  // ⭐ Guardar QC. forceFail = true -> "DID NOT PASS": queda Finished+failed y la
-  //    casa regresa al estado "Quality Check" en el pipeline para que la corrijan.
+  // ⭐ Guardar QC. forceFail = true -> "DID NOT PASS": queda Finished+failed (grupo
+  //    "Recall" en esta vista) y la casa pasa al estado "Recall" en el pipeline,
+  //    apareciendo también en la vista de Recalls para que el equipo la corrija.
   const handleSaveQC = async (forceFail = false) => {
     if (!selectedHouse) return;
 
     if (forceFail) {
-      const ok = window.confirm('¿Marcar este Quality Check como "DID NOT PASS"? La casa regresará a Quality Check para que el equipo la corrija y se vuelva a inspeccionar.');
+      const ok = window.confirm('¿Marcar este Quality Check como "DID NOT PASS"? La casa pasará a Recall para que el equipo la corrija y se vuelva a inspeccionar, y aparecerá en la vista de Recalls.');
       if (!ok) return;
     }
 
@@ -335,18 +375,37 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setQcList(prev => [{ id: docRef.id, ...recordData } as QCRecord, ...prev]);
       }
 
-      // ⭐ Si NO pasó, regresar la casa a "Quality Check" en el pipeline
+      // ⭐ Si NO pasó, mover la casa a "Recall" (con registro en status_history para
+      //    que aparezca en la vista de Recalls con su fecha de entrada). Si no existe
+      //    un status "Recall", como respaldo se deja en "Quality Check".
       if (forceFail) {
-        const qcStatusId = getQualityCheckStatusId();
-        if (qcStatusId) {
+        const prevStatusId = (selectedHouse as any).statusId;
+        const recallStatusId = getRecallStatusId();
+        const targetStatusId = recallStatusId || getQualityCheckStatusId();
+        if (targetStatusId) {
           try {
-            await updateDoc(doc(db, 'properties', selectedHouse.id), { statusId: qcStatusId });
+            await updateDoc(doc(db, 'properties', selectedHouse.id), { statusId: targetStatusId });
           } catch (e) { console.error('No se pudo actualizar el estado de la casa:', e); }
+        }
+        // Registrar la transición a Recall en el histórico (origen: Quality Check)
+        if (recallStatusId) {
+          try {
+            await statusHistoryService.log({
+              propertyId: selectedHouse.id,
+              fromStatusId: prevStatusId || null,
+              fromStatusName: resolveStatusName(prevStatusId) || null,
+              toStatusId: recallStatusId,
+              toStatusName: resolveStatusName(recallStatusId) || 'Recall',
+              changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+              source: 'quality_check',
+              reason: 'No pasó Quality Check',
+            } as any);
+          } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
         }
       }
 
       alert(forceFail
-        ? '⚠️ Quality Check marcado como DID NOT PASS. La casa regresó a Quality Check para corregirse.'
+        ? '⚠️ Quality Check marcado como DID NOT PASS. La casa pasó a Recall y aparecerá en la vista de Recalls para corregirse.'
         : '✅ Quality Check Saved Successfully!');
       handleCloseForm();
     } catch (error) {
@@ -1038,6 +1097,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         }
         .qc-tab:hover { color: #1e3a8a; }
         .qc-tab.active { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1); }
+        .qc-tab-recall { color: #7c3aed; }
+        .qc-tab-recall:hover { color: #6d28d9; }
+        .qc-tab-recall.active { color: #6d28d9; box-shadow: 0 1px 2px rgba(124, 58, 237, 0.18); }
 
         /* ===== MÓVIL: tarjetas + modal nativo ===== */
         @media (max-width: 820px) {
@@ -1113,9 +1175,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           )}
         </div>
         <div className="qc-status-pills">
-          <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All</button>
-          <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending</button>
-          <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished</button>
+          <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All ({groupCounts.All})</button>
+          <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending ({groupCounts.Pending})</button>
+          <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished ({groupCounts.Finished})</button>
+          <button className={`qc-tab qc-tab-recall ${statusFilter === 'Recall' ? 'active' : ''}`} onClick={() => setStatusFilter('Recall')}>Recall ({groupCounts.Recall})</button>
         </div>
       </div>
 
@@ -1204,8 +1267,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
                       <td style={s.td}>
                         {isFailed ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            <AlertTriangle size={12} /> Did Not Pass
+                          <span title="No pasó Quality Check — pasó a Recall" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            <Repeat size={12} /> Recall · No pasó
                           </span>
                         ) : (
                           <span style={{ 
@@ -1306,8 +1369,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     {getClientName(qc.client)}
                   </span>
                   {isFailed ? (
-                    <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      <AlertTriangle size={13} /> Did Not Pass
+                    <span title="No pasó Quality Check — pasó a Recall" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                      <Repeat size={13} /> Recall · No pasó
                     </span>
                   ) : (
                     <span style={{

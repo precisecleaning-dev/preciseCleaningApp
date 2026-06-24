@@ -264,6 +264,37 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   };
   const dateKey = (d?: string) => String(d || '').split('T')[0]; // YYYY-MM-DD
 
+  // ⭐ Casas cuyo ÚLTIMO Quality Check fue "Did not pass" (result === 'failed').
+  // Se usa para enfatizar en Recall que la casa viene de un QC que NO pasó.
+  const failedQCHouseIds = useMemo(() => {
+    const latestByHouse: Record<string, any> = {};
+    (qcList || []).forEach((qc: any) => {
+      const hid = String(qc.houseId || '');
+      if (!hid) return;
+      const prev = latestByHouse[hid];
+      const tNew = new Date(qc.date || qc.createdAt || 0).getTime() || 0;
+      const tPrev = prev ? (new Date(prev.date || prev.createdAt || 0).getTime() || 0) : -1;
+      if (!prev || tNew >= tPrev) latestByHouse[hid] = qc;
+    });
+    const set = new Set<string>();
+    Object.keys(latestByHouse).forEach(hid => {
+      if (latestByHouse[hid]?.result === 'failed') set.add(hid);
+    });
+    return set;
+  }, [qcList]);
+
+  const cameFromFailedQC = (houseId?: string): boolean => !!houseId && failedQCHouseIds.has(String(houseId));
+
+  // ⭐ Badge reutilizable: "Vino de QC · No pasó" (morado, mismo tono que Recall)
+  const FailedQCBadge = ({ compact = false }: { compact?: boolean }) => (
+    <span
+      title="Esta casa viene de Quality Check y NO pasó la inspección"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: compact ? '3px 8px' : '4px 10px', borderRadius: '10px', fontSize: compact ? '0.66rem' : '0.7rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+    >
+      <Repeat size={compact ? 11 : 12} /> Vino de QC · No pasó
+    </span>
+  );
+
   // ⭐ Encuentra cuándo salió de Recall: la primera transición DESDE Recall
   // posterior a la fecha de entrada. Si no existe, sigue en Recall.
   const findRecallExit = (propertyId?: string, enteredAt?: string): string | null => {
@@ -598,9 +629,15 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                     <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</td></tr>
                   ) : filteredRecalls.map((r) => {
                     const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+                    const fromQC = cameFromFailedQC(r.houseId);
                     return (
-                      <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ transition: 'background-color 0.2s', cursor: houseObj ? 'pointer' : 'default' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                        <td style={{ ...s.td, fontWeight: 600 }}>{r.client}</td>
+                      <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ transition: 'background-color 0.2s', cursor: houseObj ? 'pointer' : 'default', background: fromQC ? '#faf5ff' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = fromQC ? '#faf5ff' : 'transparent'}>
+                        <td style={{ ...s.td, fontWeight: 600 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {r.client}
+                            {fromQC && <FailedQCBadge compact />}
+                          </div>
+                        </td>
                         <td style={{ ...s.td, color: '#6b7280' }}>{r.address}</td>
                         <td style={s.td}>
                           <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.team}</span>
@@ -638,12 +675,15 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
               <div className="rc-card" style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</div>
             ) : filteredRecalls.map((r) => {
               const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+              const fromQC = cameFromFailedQC(r.houseId);
               return (
-                <div key={r.id} className="rc-card" onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ padding: '16px', cursor: houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div key={r.id} className="rc-card" onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ padding: '16px', cursor: houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px', border: `1px solid ${fromQC ? '#ddd6fe' : '#e5e7eb'}`, background: fromQC ? '#faf5ff' : '#fff' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                     <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{r.client}</span>
                     <span style={{ flexShrink: 0, backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.team}</span>
                   </div>
+
+                  {fromQC && <div><FailedQCBadge /></div>}
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
                     <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
@@ -672,7 +712,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           </div>
 
           <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
-            Histórico permanente: se registra la fecha y hora de cuándo cada casa entró a Recall y cuándo salió (vía status_history). Si aún no ha salido, se marca “Aún en recall”. La columna “Current Status” muestra el status actual y puedes cambiarlo aquí mismo.
+            Histórico permanente: se registra la fecha y hora de cuándo cada casa entró a Recall y cuándo salió (vía status_history). Si aún no ha salido, se marca “Aún en recall”. Las marcadas con “Vino de QC · No pasó” llegaron a Recall por no pasar un Quality Check. La columna “Current Status” muestra el status actual y puedes cambiarlo aquí mismo.
           </p>
         </>
       ) : (
@@ -835,11 +875,13 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                 <tbody>
                   {reportRecallHouses.length === 0 ? (
                     <tr><td colSpan={8} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No hay casas en recall en este periodo.</td></tr>
-                  ) : reportRecallHouses.map((h) => (
+                  ) : reportRecallHouses.map((h) => {
+                    const fromQC = cameFromFailedQC(h.houseId);
+                    return (
                     <tr key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
-                      style={{ transition: 'background-color 0.2s', cursor: h.houseObj ? 'pointer' : 'default', background: h.current ? '#fef2f2' : 'transparent' }}
+                      style={{ transition: 'background-color 0.2s', cursor: h.houseObj ? 'pointer' : 'default', background: h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : 'transparent') }}
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fee2e2' : '#f8fafc'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fef2f2' : 'transparent'}>
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : 'transparent')}>
                       <td style={s.td}>
                         {h.current ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
@@ -851,7 +893,12 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                           </span>
                         )}
                       </td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>{h.client}</td>
+                      <td style={{ ...s.td, fontWeight: 600 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {h.client}
+                          {fromQC && <FailedQCBadge compact />}
+                        </div>
+                      </td>
                       <td style={{ ...s.td, color: '#6b7280' }}>{h.address}</td>
                       <td style={s.td}>
                         <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{h.team}</span>
@@ -869,7 +916,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                         ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -878,9 +926,11 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             <div className="rc-cards-wrap" style={{ flexDirection: 'column', gap: '14px', padding: '14px' }}>
               {reportRecallHouses.length === 0 ? (
                 <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '20px' }}>No hay casas en recall en este periodo.</div>
-              ) : reportRecallHouses.map((h) => (
+              ) : reportRecallHouses.map((h) => {
+                const fromQC = cameFromFailedQC(h.houseId);
+                return (
                 <div key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
-                  style={{ background: h.current ? '#fef2f2' : '#ffffff', border: `1px solid ${h.current ? '#fecaca' : '#e5e7eb'}`, borderRadius: '14px', padding: '16px', cursor: h.houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  style={{ background: h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : '#ffffff'), border: `1px solid ${h.current ? '#fecaca' : (fromQC ? '#ddd6fe' : '#e5e7eb')}`, borderRadius: '14px', padding: '16px', cursor: h.houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                     <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{h.client}</span>
                     {h.current ? (
@@ -891,6 +941,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                       <span style={{ flexShrink: 0, background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>Estuvo</span>
                     )}
                   </div>
+
+                  {fromQC && <div><FailedQCBadge /></div>}
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
                     <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
@@ -919,7 +971,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                     ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
