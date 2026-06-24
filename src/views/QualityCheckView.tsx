@@ -1044,14 +1044,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           html, body { overflow-x: hidden; max-width: 100%; }
           .qc-view { padding: 14px !important; }
 
+          /* Título más compacto, estilo Pipeline */
+          .qc-view .main-header h1 { font-size: 1.6rem !important; }
+
           /* Ocultar tabla y mostrar tarjetas */
           .qc-table-wrap { display: none !important; }
           .qc-cards-wrap { display: flex !important; }
 
-          .qc-toolbar { flex-direction: column; align-items: stretch; }
-          .qc-table-search { width: 100%; }
+          .qc-toolbar { flex-direction: column; align-items: stretch; padding: 12px; }
+          .qc-table-search { width: 100%; height: 50px; }
           .qc-status-pills { width: 100%; }
-          .qc-status-pills button { flex: 1; }
+          .qc-status-pills button { flex: 1; padding: 11px 12px; }
         }
 
         @media (max-width: 768px) {
@@ -1083,17 +1086,38 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         }
       `}</style>
 
-      <header className="main-header" style={{ marginBottom: '24px' }}>
-        <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', flexShrink: 0 }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </button>
-          <div>
-            <h1 style={{ margin: 0, color: '#111827', fontSize: '2rem' }}>Quality Check Reports</h1>
-            <p style={{ marginTop: '4px', color: '#6b7280' }}>History and status of house inspections</p>
-          </div>
+      <header className="main-header" style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, color: '#111827', fontSize: '2rem' }}>Quality Check Reports</h1>
+          <p style={{ marginTop: '4px', color: '#6b7280' }}>History and status of house inspections</p>
         </div>
+        <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
       </header>
+
+      {/* ⭐ Buscador global + pestañas de estado (juntos, ARRIBA del todo) */}
+      <div className="qc-toolbar">
+        <div className="qc-table-search">
+          <Search size={18} color="#9ca3af" />
+          <input
+            type="text"
+            value={tableSearch}
+            onChange={(e) => setTableSearch(e.target.value)}
+            placeholder="Buscar por estado, fecha, dirección, cliente, equipo..."
+          />
+          {tableSearch && (
+            <button type="button" onClick={() => setTableSearch('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div className="qc-status-pills">
+          <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All</button>
+          <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending</button>
+          <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished</button>
+        </div>
+      </div>
 
       {/* ⭐ CASAS PENDIENTES DE QUALITY CHECK (estado "Quality Check" en el pipeline) */}
       {!isLoadingCatalogs && pendingQCHouses.length > 0 && (
@@ -1152,29 +1176,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           </div>
         </div>
       )}
-
-      {/* ⭐ Buscador global + pestañas de estado (juntos, arriba) */}
-      <div className="qc-toolbar">
-        <div className="qc-table-search">
-          <Search size={18} color="#9ca3af" />
-          <input
-            type="text"
-            value={tableSearch}
-            onChange={(e) => setTableSearch(e.target.value)}
-            placeholder="Buscar por estado, fecha, dirección, cliente, equipo..."
-          />
-          {tableSearch && (
-            <button type="button" onClick={() => setTableSearch('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
-              <X size={16} />
-            </button>
-          )}
-        </div>
-        <div className="qc-status-pills">
-          <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All</button>
-          <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending</button>
-          <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished</button>
-        </div>
-      </div>
 
       {/* TABLA (escritorio) */}
       <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
