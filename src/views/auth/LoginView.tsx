@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Lock, LogIn, ArrowRight, ShieldAlert } from 'lucide-react';
 import { auth } from '../../config/firebase';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import { usersService } from '../../services/usersService';
 import { getCachedBranding, getBranding, type Branding } from '../../utils/companyBranding';
 
@@ -68,22 +68,53 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setIsLoading(true);
 
     try {
-      // 1. VALIDACIÓN DE LISTA BLANCA (Súper importante)
-      const isAllowed = await usersService.isEmailWhitelisted(email);
-      
-      if (!isAllowed) {
+      // 1. LOGIN REAL EN FIREBASE PRIMERO.
+      //    Así, si el correo o la contraseña son incorrectos, obtenemos el error
+      //    EXACTO de Firebase (y no uno enmascarado por la lectura de Firestore).
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      // 2. VALIDAR LISTA BLANCA DESPUÉS de autenticar (ya hay sesión, por lo que
+      //    las reglas de Firestore permiten leer). Si la verificación falla por
+      //    permisos o red, NO bloqueamos: el usuario ya se autenticó con Firebase.
+      let allowed = true;
+      try {
+        allowed = await usersService.isEmailWhitelisted(email.trim());
+      } catch (whitelistErr) {
+        console.error("No se pudo verificar la lista blanca (se permite el acceso):", whitelistErr);
+        allowed = true;
+      }
+
+      if (!allowed) {
+        await signOut(auth);
         alert("ACCESS DENIED: Your email is not authorized in this system. Please contact the administrator to be added to the user list.");
         setIsLoading(false);
         return;
       }
 
-      // 2. LOGIN REAL EN FIREBASE
-      await signInWithEmailAndPassword(auth, email, password);
       onLoginSuccess();
-      
     } catch (error: any) {
-      console.error("Auth error:", error.code);
-      alert("Invalid credentials. Please verify your email and password.");
+      const code = error?.code || '';
+      console.error("Auth error:", code, error?.message);
+
+      if (code === 'auth/invalid-email') {
+        alert("The email address is not valid.");
+      } else if (code === 'auth/user-disabled') {
+        alert("This account has been disabled. Please contact the administrator.");
+      } else if (code === 'auth/too-many-requests') {
+        alert("Too many attempts. Please wait a few minutes and try again (or reset your password).");
+      } else if (code === 'auth/network-request-failed') {
+        alert("Network error. Check your internet connection and try again.");
+      } else if (
+        code === 'auth/invalid-credential' ||
+        code === 'auth/invalid-login-credentials' ||
+        code === 'auth/wrong-password' ||
+        code === 'auth/user-not-found'
+      ) {
+        alert("Invalid credentials. Please verify your email and password.");
+      } else {
+        // Cualquier otro error (p. ej. de Firestore) se muestra tal cual para no enmascararlo
+        alert("Could not sign in: " + (error?.message || code || 'unknown error'));
+      }
     } finally {
       setIsLoading(false);
     }
