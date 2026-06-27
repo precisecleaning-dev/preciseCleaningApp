@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid, Repeat, History
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid, Repeat, History, Route
 } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
@@ -217,6 +217,14 @@ export default function Sidebar({
             <button className={`nav-item ${activeTab === 'qc_report' ? 'active' : ''}`} onClick={() => handleNavClick('qc_report')}>
               <ClipboardCheck size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Quality Check</span>}
+            </button>
+          )}
+
+          {/* ⭐ QC ROUTE — hoja de ruta de casas con QC pendiente */}
+          {canView('Quality Check') && (
+            <button className={`nav-item ${activeTab === 'qc_route' ? 'active' : ''}`} onClick={() => handleNavClick('qc_route')}>
+              <Route size={20} className="nav-icon" />
+              {isSidebarOpen && <span className="nav-text">QC Route</span>}
             </button>
           )}
 

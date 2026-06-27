@@ -15,6 +15,7 @@ import DataImportView from './views/DataImportView'; // ⭐ Vista de importació
 import RecallsView from './views/RecallsView'; // ⭐ Vista de Recalls (ranking de equipos)
 import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de historial de status por casa
 import CompanySettingsView from './views/CompanySettingsView'; // ⭐ Módulo de empresa (logo, nombre, correo, dirección)
+import QCRouteView from './views/QCRouteView'; // ⭐ Hoja de ruta para casas con QC pendiente
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -377,7 +378,16 @@ export default function App() {
             ver la vista si no es SuperAdmin. */}
         {activeTab === 'data_import' && isSuperAdmin && <DataImportView onOpenMenu={toggleMenu} />}
 
-        {(activeTab === 'done' || activeTab === 'qc_route') && (
+        {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
+        {activeTab === 'qc_route' && (
+          <QCRouteView 
+            onOpenMenu={toggleMenu} 
+            properties={visibleProperties as any}
+            currentUser={currentUser}
+          />
+        )}
+
+        {activeTab === 'done' && (
           <div className="fade-in" style={{ padding: '40px', textAlign: 'center', color: '#6b7280', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
             <h2 style={{ color: '#111827', fontSize: '1.5rem', margin: '0 0 8px 0' }}>Under Construction</h2>
             <p style={{ margin: 0 }}>The {activeTab.replace('_', ' ')} view is currently being developed.</p>
