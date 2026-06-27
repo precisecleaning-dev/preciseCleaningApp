@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Lock, LogIn, ArrowRight, ShieldAlert } from 'lucide-react';
 import { auth } from '../../config/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { usersService } from '../../services/usersService';
 import { getCachedBranding, getBranding, type Branding } from '../../utils/companyBranding';
 
@@ -14,6 +14,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<'login' | 'forgot'>('login');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // ⭐ Logo y nombre de la empresa (del módulo Empresa). Usa el valor cacheado al
   //    instante e intenta refrescar desde Firestore (si las reglas lo permiten).
@@ -21,6 +23,45 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   useEffect(() => {
     getBranding().then(setBranding).catch(() => { /* sin permiso/red: se queda el cacheado */ });
   }, []);
+
+  // ⭐ Enviar correo para restablecer la contraseña (flujo nativo de Firebase Auth).
+  //    Firebase manda un email con un enlace donde la persona define una nueva contraseña.
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const target = email.trim();
+    if (!target) { alert("Please enter your email address."); return; }
+
+    setResetLoading(true);
+    try {
+      // Validar lista blanca (igual que el login). Si la verificación falla por red,
+      // intentamos enviar de todos modos.
+      let allowed = true;
+      try { allowed = await usersService.isEmailWhitelisted(target); } catch { allowed = true; }
+      if (!allowed) {
+        alert("ACCESS DENIED: Your email is not authorized in this system. Please contact the administrator.");
+        setResetLoading(false);
+        return;
+      }
+
+      await sendPasswordResetEmail(auth, target);
+      setResetSent(true);
+    } catch (error: any) {
+      console.error("Password reset error:", error?.code);
+      if (error?.code === 'auth/invalid-email') {
+        alert("The email address is not valid.");
+      } else if (error?.code === 'auth/user-not-found') {
+        // Por seguridad mostramos el mismo mensaje de éxito (no revelamos si existe)
+        setResetSent(true);
+      } else {
+        alert("Could not send the reset email. Please verify the address and try again.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const goToForgot = () => { setResetSent(false); setView('forgot'); };
+  const goToLogin = () => { setResetSent(false); setView('login'); };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +161,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <label className="login-label" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 700 }}>Password</label>
-                <button type="button" className="login-forgot" onClick={() => setView('forgot')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Forgot it?</button>
+                <button type="button" className="login-forgot" onClick={goToForgot} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Forgot it?</button>
               </div>
               <div style={{ position: 'relative' }}>
                 <Lock size={18} color="#94a3b8" className="login-input-icon" />
@@ -144,11 +185,40 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               <ShieldAlert size={16} /> Enter as Super Admin (Bypass)
             </button>
           </form>
-        ) : (
+        ) : resetSent ? (
           <div style={{ textAlign: 'center' }}>
-            <p className="login-subtitle" style={{ color: '#475569', fontSize: '0.95rem', lineHeight: '1.5' }}>For security reasons, password resets must be initiated by the system administrator from the "System Users" panel.</p>
-            <button onClick={() => setView('login')} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', marginTop: '16px', fontSize: '0.9rem' }}>Return to Login</button>
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
+              <p style={{ margin: 0, color: '#047857', fontWeight: 700, fontSize: '0.95rem' }}>Reset link sent</p>
+              <p className="login-subtitle" style={{ color: '#475569', fontSize: '0.9rem', lineHeight: 1.5, marginTop: '8px' }}>
+                We sent an email to <strong>{email.trim()}</strong> with a link to reset your password. Check your inbox (and spam folder), open the link and choose a new password.
+              </p>
+            </div>
+            <button onClick={goToLogin} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>Return to Login</button>
           </div>
+        ) : (
+          <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <p className="login-subtitle" style={{ color: '#475569', fontSize: '0.92rem', lineHeight: '1.5', margin: 0 }}>
+              Enter your email and we'll send you a link to reset your password.
+            </p>
+            <div>
+              <label className="login-label" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 700, marginBottom: '8px', display: 'block' }}>Email Address</label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={18} color="#94a3b8" className="login-input-icon" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="login-input"
+                  placeholder="your.email@company.com"
+                />
+              </div>
+            </div>
+            <button type="submit" disabled={resetLoading} className="login-submit" style={{ cursor: resetLoading ? 'wait' : 'pointer' }}>
+              {resetLoading ? 'Sending...' : 'Send reset link'} <ArrowRight size={18} />
+            </button>
+            <button type="button" onClick={goToLogin} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>Return to Login</button>
+          </form>
         )}
       </div>
     </div>
