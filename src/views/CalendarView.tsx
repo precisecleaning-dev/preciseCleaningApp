@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, X, Edit2, Trash2, 
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ChevronDown, ClipboardCheck, MapPin
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ChevronDown, ClipboardCheck, MapPin, Filter, RotateCcw
 } from 'lucide-react';
 import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
 
@@ -88,6 +88,12 @@ const getRelationColor = (list: any[], idOrName: string) => {
   )?.color;
 };
 
+// Statuses que NUNCA se ocultan con el filtro de fechas (Quality Check / Recall)
+const isAlwaysVisibleStatusName = (name?: string) => {
+  const n = String(name || '').toLowerCase();
+  return n.includes('quality') || n.includes('recall');
+};
+
 // --- TIME CALCULATION HELPERS ---
 const START_HOUR = 6; // El calendario empieza a las 6 AM
 const PIXELS_PER_HOUR = 60; // 1 hora = 60px de alto
@@ -120,6 +126,12 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
   const [isSaving, setIsSaving] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month'); // Selector de vistas, default Month para ver el arreglo
+
+  // --- FILTRO DE FECHAS (rango Desde / Hasta) ---
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+  const filterActive = !!(filterFrom || filterTo);
+  const clearFilter = () => { setFilterFrom(''); setFilterTo(''); };
 
   // --- MODAL STATES ---
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -306,7 +318,19 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     const localDate = new Date(date.getTime() - (offset * 60 * 1000));
     const dateString = localDate.toISOString().split('T')[0];
 
-    const dailyJobs = propertiesList.filter(p => (p.scheduleDate || p.receiveDate) === dateString);
+    // Trabajos del día. Aplica el filtro de rango EXCEPTO en Quality Check / Recall,
+    // que siempre se siguen viendo aunque la fecha quede fuera del rango.
+    const dailyJobs = propertiesList.filter(p => {
+      const raw = (p.scheduleDate || p.receiveDate);
+      if (raw !== dateString) return false; // pertenece a este día
+      const stName = getRelationName(statuses, p.statusId, '');
+      if (isAlwaysVisibleStatusName(stName)) return true; // QC / Recall: siempre visibles
+      if (!filterActive) return true;
+      const d = String(raw).slice(0, 10);
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+      return true;
+    });
 
     if (viewMode === 'month') {
       // ESTILO MES: Simple stack de eventos
@@ -380,6 +404,10 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' } as React.CSSProperties,
     noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
     noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
+    // Filtro de fechas
+    filterCard: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '10px 14px', marginBottom: '20px' } as React.CSSProperties,
+    filterFieldLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' } as React.CSSProperties,
+    filterDateInput: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '7px 10px', fontSize: '0.85rem', color: '#111827', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' } as React.CSSProperties,
   };
 
   return (
@@ -473,6 +501,43 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
           </div>
         </div>
       </header>
+
+      {/* --- BARRA DE FILTRO DE FECHAS --- */}
+      <div style={s.filterCard}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+          <Filter size={15} color="#3b82f6" /> Filtrar por fecha
+        </span>
+
+        <label style={s.filterFieldLabel}>
+          Desde
+          <input type="date" value={filterFrom} max={filterTo || undefined}
+            onChange={e => setFilterFrom(e.target.value)} style={s.filterDateInput} />
+        </label>
+
+        <label style={s.filterFieldLabel}>
+          Hasta
+          <input type="date" value={filterTo} min={filterFrom || undefined}
+            onChange={e => setFilterTo(e.target.value)} style={s.filterDateInput} />
+        </label>
+
+        {filterActive && (
+          <button onClick={clearFilter} style={{
+            display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #e5e7eb',
+            borderRadius: '8px', padding: '7px 12px', fontSize: '0.82rem', fontWeight: 600, color: '#475569', cursor: 'pointer',
+          }}>
+            <RotateCcw size={14} /> Limpiar
+          </button>
+        )}
+
+        {filterActive && (
+          <span style={{
+            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem',
+            fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: '999px', padding: '3px 10px',
+          }}>
+            <ClipboardCheck size={12} /> Quality Check y Recall siempre visibles
+          </span>
+        )}
+      </div>
 
       {/* CALENDAR RENDER */}
       {isLoading ? (
