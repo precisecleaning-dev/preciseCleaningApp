@@ -32,7 +32,7 @@ type Property = BaseProperty & {
 };
 
 interface ServiceRecord {
-  id?: string;
+  id?: string; 
   propertyId: string;
   serviceId: string;
   quantity: number;
@@ -98,6 +98,14 @@ type FormVisibilityConfig = {
 };
 
 const DEFAULT_FORM_CONFIG: FormVisibilityConfig = { visibility: {} };
+
+// Configuración que el chip de estado envía al modal central de selección.
+type StatusModalConfig = {
+  currentId: string;
+  onSelect: (id: string) => void;
+  title?: string;
+  subtitle?: string;
+};
 
 const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -196,84 +204,138 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 };
 
-// StatusPillSelector: soporta variante `large` para un selector grande y prominente
-// (usado en el detalle de la casa para mover de status fácilmente).
-const StatusPillSelector = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false, large = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean, large?: boolean }) => {
-  const [isOpen, setIsOpen] = useState(false);
+// StatusPillSelector: muestra el estado actual como "badge" con el color del estado.
+// Al tocarlo YA NO abre una lista desplegable: solicita abrir el modal central de
+// selección de estado (StatusChangeModal), que se ve igual de claro en móvil y escritorio.
+// Variantes: normal (tabla), `fullWidth` (tarjeta móvil) y `large` (detalle de la casa).
+const StatusPillSelector = ({
+  currentStatusId, statuses, onChange, disabled,
+  fullWidth = false, large = false,
+  onRequestOpen, modalTitle, modalSubtitle
+}: {
+  currentStatusId: string;
+  statuses: Status[];
+  onChange: (id: string) => void;
+  disabled: boolean;
+  fullWidth?: boolean;
+  large?: boolean;
+  onRequestOpen?: (cfg: StatusModalConfig) => void;
+  modalTitle?: string;
+  modalSubtitle?: string;
+}) => {
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
   const status = statuses.find(s => String(s.id).toLowerCase().trim() === safeValue || String(s.name).toLowerCase().trim() === safeValue);
-  
+
   const pointColor = status ? status.color : '#64748b';
   const text = status ? status.name : 'Unassigned';
-
   const block = fullWidth || large;
 
+  const handleOpen = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disabled || !onRequestOpen) return;
+    onRequestOpen({ currentId: currentStatusId, onSelect: onChange, title: modalTitle, subtitle: modalSubtitle });
+  };
+
+  const baseStyle: React.CSSProperties = large ? {
+    backgroundColor: `${pointColor}12`, color: pointColor,
+    padding: '18px 20px', borderRadius: '14px',
+    fontSize: '1.1rem', fontWeight: 800,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
+    width: '100%', boxSizing: 'border-box',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    border: `2px solid ${pointColor}`, transition: 'all 0.2s',
+    boxShadow: `0 2px 10px ${pointColor}26`,
+    opacity: disabled ? 0.65 : 1
+  } : {
+    backgroundColor: `${pointColor}14`, color: '#1e293b',
+    padding: fullWidth ? '13px 16px' : '7px 14px',
+    borderRadius: fullWidth ? '12px' : '999px',
+    fontSize: '0.85rem', fontWeight: 700,
+    display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+    width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    border: `1px solid ${pointColor}40`, transition: 'all 0.2s',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+    opacity: disabled ? 0.65 : 1
+  };
+
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: block ? 'block' : 'inline-block', width: block ? '100%' : 'auto', outline: 'none' }}>
-      <div 
-        onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
-        style={ large ? {
-          backgroundColor: '#ffffff', color: pointColor,
-          padding: '18px 20px', borderRadius: '14px',
-          fontSize: '1.1rem', fontWeight: 800,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
-          width: '100%', boxSizing: 'border-box',
-          textTransform: 'none', letterSpacing: 'normal',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          border: `2px solid ${pointColor}`, transition: 'all 0.2s',
-          boxShadow: `0 2px 8px ${pointColor}33`
-        } : { 
-          backgroundColor: fullWidth ? '#ffffff' : 'transparent', color: '#111827',
-          padding: fullWidth ? '13px 16px' : '6px 12px', borderRadius: fullWidth ? '12px' : '20px', 
-          fontSize: fullWidth ? '0.8rem' : '0.85rem', fontWeight: 600,
-          display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
-          textTransform: fullWidth ? 'uppercase' : 'none', letterSpacing: fullWidth ? '0.04em' : 'normal',
-          cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-        }}
-        onMouseEnter={(e) => { if(!disabled && !large) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-        onMouseLeave={(e) => { if(!disabled && !large) e.currentTarget.style.backgroundColor = fullWidth ? '#ffffff' : 'transparent'; }}
+    <div style={{ display: block ? 'block' : 'inline-block', width: block ? '100%' : 'auto' }}>
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        onClick={handleOpen}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpen(e); }}
+        style={baseStyle}
+        onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+        title={disabled ? undefined : 'Cambiar estado'}
       >
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: large ? '12px' : '8px', minWidth: 0 }}>
-          <span style={{ width: large ? '14px' : '8px', height: large ? '14px' : '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0, boxShadow: large ? `0 0 0 4px ${pointColor}22` : 'none' }}></span>
+          <span style={{ width: large ? '14px' : '9px', height: large ? '14px' : '9px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0, boxShadow: large ? `0 0 0 4px ${pointColor}22` : 'none' }}></span>
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
         </span>
-        <ChevronDown size={large ? 22 : (fullWidth ? 16 : 14)} color={large ? pointColor : '#9ca3af'} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={large ? 22 : (fullWidth ? 16 : 14)} color={large ? pointColor : '#94a3b8'} style={{ flexShrink: 0 }} />
       </div>
+    </div>
+  );
+};
 
-      {isOpen && (
-        <div style={{ 
-          position: 'absolute', top: '100%', left: block ? 0 : 'auto', right: 0, marginTop: '6px', backgroundColor: 'white', 
-          border: '1px solid #e5e7eb', borderRadius: large ? '12px' : '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', 
-          zIndex: 9999, minWidth: block ? '100%' : '180px', width: block ? '100%' : 'auto', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left',
-          maxHeight: '320px', overflowY: 'auto'
-        }}>
-          {statuses.map((s) => (
-            <div 
-              key={s.id}
-              onClick={(e) => { 
-                e.preventDefault(); 
-                e.stopPropagation();
-                if(s.id !== currentStatusId && s.name !== currentStatusId) onChange(s.id); 
-                setIsOpen(false); 
-              }}
-              style={{ 
-                padding: large ? '14px 16px' : '12px 14px', fontSize: large ? '0.95rem' : '0.85rem', fontWeight: 500, color: '#111827', 
-                display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                backgroundColor: (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent',
-                borderBottom: '1px solid #f1f5f9'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent'}
-            >
-              <span style={{ width: large ? '12px' : '8px', height: large ? '12px' : '8px', borderRadius: '50%', backgroundColor: s.color, flexShrink: 0, boxShadow: large ? `0 0 0 3px ${s.color}1f` : 'none' }}></span>
-              <span style={{ flex: 1 }}>{s.name}</span>
-              {(currentStatusId === s.id || currentStatusId === s.name) && <CheckCircle size={large ? 18 : 15} color="#16a34a" />}
+// Modal central de selección de estado: reemplaza la antigua lista desplegable.
+// Una sola instancia en HousesView atiende a todos los chips (tabla, tarjetas y detalle).
+const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
+  const cur = String(config.currentId || '').toLowerCase().trim();
+  return (
+    <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
+      <div className="status-modal" onClick={e => e.stopPropagation()}>
+        <header className="status-modal-head">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Activity size={20} color="#2563eb" />
             </div>
-          ))}
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Cambiar estado</h3>
+              {config.title && (
+                <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '8px', flexShrink: 0 }}>
+            <X size={22} />
+          </button>
+        </header>
+
+        <div className="status-modal-grid">
+          {statuses.length === 0 ? (
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px' }}>No hay estados configurados.</div>
+          ) : statuses.map(st => {
+            const active = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
+            return (
+              <button
+                key={st.id}
+                className="status-option"
+                onClick={() => { if (!active) config.onSelect(st.id); onClose(); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '15px 16px', borderRadius: '12px', cursor: 'pointer',
+                  textAlign: 'left', width: '100%', minHeight: '56px',
+                  background: active ? `${st.color}14` : '#ffffff',
+                  border: `1.5px solid ${active ? st.color : '#e5e7eb'}`,
+                  boxShadow: active ? `0 2px 10px ${st.color}26` : '0 1px 2px rgba(0,0,0,0.03)',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: st.color, flexShrink: 0, boxShadow: `0 0 0 4px ${st.color}1f` }}></span>
+                <span style={{ flex: 1, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</span>
+                {active && <CheckCircle size={18} color={st.color} style={{ flexShrink: 0 }} />}
+              </button>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -326,6 +388,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('overview');
+
+  // Configuración del modal central de cambio de estado (null = cerrado).
+  const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
   
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -1625,6 +1690,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
         .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
 
+        /* === MODAL DE CAMBIO DE ESTADO (reemplaza la lista desplegable) === */
+        .status-modal {
+          background-color: #ffffff; width: 100%; max-width: 480px;
+          border-radius: 18px; box-shadow: 0 24px 48px -12px rgba(15,23,42,0.35);
+          display: flex; flex-direction: column; max-height: 85vh; overflow: hidden;
+          animation: statusModalIn 0.18s ease-out;
+        }
+        @keyframes statusModalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+        .status-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
+        .status-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
+        .status-option { font-family: inherit; }
+        .status-option:hover { transform: translateY(-1px); filter: brightness(0.99); }
+
         @media (max-width: 1024px) {
           .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
           .main-columns { overflow: visible; }
@@ -1704,7 +1782,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           .modal-70 > div { padding: 18px 16px !important; }
           .modal-70 header, .modal-90 header { padding: 16px !important; }
           .modal-70 footer, .modal-90 footer { padding: 14px 16px !important; }
+
+          /* En móvil el modal de estado entra como hoja inferior (bottom sheet) */
+          .status-modal-overlay { align-items: flex-end !important; }
+          .status-modal {
+            max-width: 100% !important; width: 100% !important;
+            border-radius: 22px 22px 0 0 !important; max-height: 82vh;
+            animation: statusSheetIn 0.22s ease-out;
+          }
+          .status-modal-grid { grid-template-columns: 1fr !important; gap: 10px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+          .status-option { min-height: 60px !important; padding: 16px !important; font-size: 1rem; }
         }
+        @keyframes statusSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
         @media (max-width: 480px) {
           .houses-view { padding: 10px !important; }
@@ -1962,7 +2051,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
                           <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
                           <td data-label="Status" style={{ ...s.td, textAlign: 'right' }}>
-                            <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} />
+                            <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(prop.client)} modalSubtitle={prop.address} />
                           </td>
                         </tr>
                       );
@@ -2028,6 +2117,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           statuses={statuses}
                           onChange={(newId) => handleQuickStatusChange(prop.id, newId)}
                           disabled={isSaving || !canEdit || !isVisible('workflow')}
+                          onRequestOpen={setStatusModal}
+                          modalTitle={getClientName(prop.client)}
+                          modalSubtitle={prop.address}
                         />
                       </div>
 
@@ -2637,6 +2729,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     statuses={statuses}
                     onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)}
                     disabled={isSaving || !canEdit}
+                    onRequestOpen={setStatusModal}
+                    modalTitle={getClientName(selectedHouse.client)}
+                    modalSubtitle={selectedHouse.address}
                   />
                 </div>
               )}
@@ -2701,7 +2796,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <div style={s.infoHeader}><Activity size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Status & Assignment</div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Job Status</span>
-                        <div style={{textAlign: 'right'}}><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} /></div>
+                        <div style={{textAlign: 'right'}}><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Invoice Status</span>
@@ -3226,6 +3321,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             </footer>
           </div>
         </div>
+      )}
+
+      {/* --- MODAL DE CAMBIO DE ESTADO (reemplaza la lista desplegable) --- */}
+      {statusModal && (
+        <StatusChangeModal
+          config={statusModal}
+          statuses={statuses}
+          onClose={() => setStatusModal(null)}
+        />
       )}
 
     </div>
