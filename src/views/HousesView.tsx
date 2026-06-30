@@ -286,6 +286,28 @@ const StatusPillSelector = ({
 // Una sola instancia en HousesView atiende a todos los chips (tabla, tarjetas y detalle).
 const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
   const cur = String(config.currentId || '').toLowerCase().trim();
+
+  // Se elige un estado (queda resaltado) y se confirma con "Aceptar".
+  const resolveCurrentId = () => {
+    const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
+    return match ? match.id : (config.currentId || '');
+  };
+  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
+
+  // Reinicia la selección al estado actual cada vez que se abre para otra casa.
+  useEffect(() => { setSelectedId(resolveCurrentId()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config]);
+
+  const selectedIsCurrent = (() => {
+    const selStatus = statuses.find(st => st.id === selectedId);
+    const selName = String(selStatus?.name || '').toLowerCase().trim();
+    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
+  })();
+
+  const handleAccept = () => {
+    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
+    onClose();
+  };
+
   return (
     <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
       <div className="status-modal" onClick={e => e.stopPropagation()}>
@@ -312,29 +334,42 @@ const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalC
           {statuses.length === 0 ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px' }}>No hay estados configurados.</div>
           ) : statuses.map(st => {
-            const active = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
+            const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
+            const isSelected = st.id === selectedId;
             return (
               <button
                 key={st.id}
                 className="status-option"
-                onClick={() => { if (!active) config.onSelect(st.id); onClose(); }}
+                onClick={() => setSelectedId(st.id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '15px 16px', borderRadius: '12px', cursor: 'pointer',
+                  padding: '14px 16px', borderRadius: '12px', cursor: 'pointer',
                   textAlign: 'left', width: '100%', minHeight: '56px',
-                  background: active ? `${st.color}14` : '#ffffff',
-                  border: `1.5px solid ${active ? st.color : '#e5e7eb'}`,
-                  boxShadow: active ? `0 2px 10px ${st.color}26` : '0 1px 2px rgba(0,0,0,0.03)',
+                  // Resaltado neutro (azul claro) para que el texto SIEMPRE se lea,
+                  // sin importar si el color del estado es oscuro o negro.
+                  background: isSelected ? '#eff6ff' : '#ffffff',
+                  border: `2px solid ${isSelected ? '#2563eb' : '#e5e7eb'}`,
+                  boxShadow: isSelected ? '0 2px 10px rgba(37,99,235,0.18)' : '0 1px 2px rgba(0,0,0,0.03)',
                   transition: 'all 0.15s'
                 }}
               >
-                <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: st.color, flexShrink: 0, boxShadow: `0 0 0 4px ${st.color}1f` }}></span>
-                <span style={{ flex: 1, fontSize: '0.95rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</span>
-                {active && <CheckCircle size={18} color={st.color} style={{ flexShrink: 0 }} />}
+                <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: st.color, flexShrink: 0, boxShadow: `0 0 0 4px ${st.color}1f`, border: '1px solid rgba(0,0,0,0.12)' }}></span>
+                <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.3, wordBreak: 'break-word' }}>{st.name}</span>
+                {isCurrent && !isSelected && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Actual</span>
+                )}
+                {isSelected && <CheckCircle size={18} color="#2563eb" style={{ flexShrink: 0 }} />}
               </button>
             );
           })}
         </div>
+
+        <footer className="status-modal-foot">
+          <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
+          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept" style={{ opacity: selectedIsCurrent ? 0.55 : 1 }}>
+            <CheckCircle size={16} /> Aceptar
+          </button>
+        </footer>
       </div>
     </div>
   );
@@ -1701,7 +1736,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         .status-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
         .status-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
         .status-option { font-family: inherit; }
-        .status-option:hover { transform: translateY(-1px); filter: brightness(0.99); }
+        .status-option:hover { border-color: #93c5fd !important; }
+        .status-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid #eef2f7; flex-shrink: 0; background: #ffffff; }
+        .status-btn-cancel { padding: 11px 18px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
+        .status-btn-cancel:hover { background: #f8fafc; }
+        .status-btn-accept { padding: 11px 20px; border-radius: 10px; border: none; background: #2563eb; color: #ffffff; font-weight: 700; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.25); transition: background 0.15s; }
+        .status-btn-accept:hover:not(:disabled) { background: #1d4ed8; }
+        .status-btn-accept:disabled { cursor: not-allowed; box-shadow: none; }
 
         @media (max-width: 1024px) {
           .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
@@ -1790,8 +1831,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             border-radius: 22px 22px 0 0 !important; max-height: 82vh;
             animation: statusSheetIn 0.22s ease-out;
           }
-          .status-modal-grid { grid-template-columns: 1fr !important; gap: 10px; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+          .status-modal-grid { grid-template-columns: 1fr !important; gap: 10px; padding: 18px 16px; }
           .status-option { min-height: 60px !important; padding: 16px !important; font-size: 1rem; }
+          .status-modal-foot { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+          .status-btn-cancel, .status-btn-accept { flex: 1; justify-content: center; min-height: 50px; }
         }
         @keyframes statusSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
