@@ -312,6 +312,14 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
   const invoiceOptions = [{ id: 'Needs Invoice', name: 'Needs Invoice' }, { id: 'Pending', name: 'Pending' }, { id: 'Paid', name: 'Paid' }];
   const roomOptions = [1, 2, 3, 4, 5].map(n => ({ id: String(n), name: String(n) }));
 
+  // Resuelve el cliente por ID o por nombre. En registros viejos, job.client
+  // guarda el ID (ej. "4ea3f7ae"); en los nuevos guarda el nombre. Si no se
+  // encuentra, devuelve el valor original en vez de un ID opaco.
+  const getClientName = (idOrName?: string | null) => {
+    if (!idOrName) return '-';
+    return getRelationName(customersList, idOrName, String(idOrName));
+  };
+
   // --- RENDER HELPERS ---
   const renderEventBlocks = (date: Date) => {
     const offset = date.getTimezoneOffset();
@@ -343,7 +351,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
             style={{ backgroundColor: `${statusColor}15`, color: '#1e293b', borderLeft: `3px solid ${statusColor}` }}
             onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
           >
-            <span style={{ fontWeight: 700 }}>{job.timeIn || '--:--'}</span> {job.client}
+            <span style={{ fontWeight: 700 }}>{job.timeIn || '--:--'}</span> {getClientName(job.client)}
           </div>
         );
       });
@@ -374,7 +382,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
           }}
           onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
         >
-          <div className="event-title">{job.client}</div>
+          <div className="event-title">{getClientName(job.client)}</div>
           <div className="event-time">{job.timeIn} - {job.timeOut || '?'}</div>
         </div>
       );
@@ -767,7 +775,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
                 </div>
                 <div style={s.detailItem}>
                   <span style={s.detailLabel}><User size={14} /> CLIENT</span>
-                  <span style={s.detailValue}>{selectedHouse.client || '-'}</span>
+                  <span style={s.detailValue}>{getClientName(selectedHouse.client)}</span>
                 </div>
 
                 <div style={s.detailItem}>
