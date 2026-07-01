@@ -57,6 +57,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  // ⭐ Cambio de status de una casa DESDE esta vista (modal)
+  const [statusModalHouse, setStatusModalHouse] = useState<Property | null>(null);
+  const [statusModalSelected, setStatusModalSelected] = useState<string>('');
+  const [savingStatus, setSavingStatus] = useState(false);
+
   // ⭐ Exportar PDF
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [exportingForQcId, setExportingForQcId] = useState<string | null>(null);
@@ -202,6 +207,51 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const safe = String(idOrName).toLowerCase().trim();
     const f = statuses.find((s: any) => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
     return f ? f.name : String(idOrName);
+  };
+
+  // ⭐ Info del status actual de una casa (para el chip): nombre + color
+  const houseStatusInfo = (house: Property) => {
+    const sid = (house as any).statusId;
+    const st = statuses.find((x: any) => String(x.id) === String(sid) || String(x.name) === String(sid));
+    return { id: st?.id ?? sid ?? '', name: st?.name || (sid ? String(sid) : 'Sin estado'), color: st?.color || '#94a3b8' };
+  };
+
+  // ⭐ Abrir el modal de cambio de status para una casa
+  const openHouseStatusModal = (house: Property) => {
+    const info = houseStatusInfo(house);
+    setStatusModalHouse(house);
+    setStatusModalSelected(String(info.id || ''));
+  };
+
+  // ⭐ Aplicar el cambio de status: actualiza 'properties' en Firestore y registra
+  //    la transición en el historial. Como 'properties' es tiempo real (listener
+  //    global en App.tsx), las tarjetas de esta vista se reacomodan solas.
+  const applyHouseStatusChange = async () => {
+    if (!statusModalHouse || !statusModalSelected) return;
+    const house = statusModalHouse;
+    const prevStatusId = (house as any).statusId;
+    if (String(statusModalSelected) === String(prevStatusId)) { setStatusModalHouse(null); return; }
+    setSavingStatus(true);
+    try {
+      await updateDoc(doc(db, 'properties', house.id), { statusId: statusModalSelected });
+      try {
+        await statusHistoryService.log({
+          propertyId: house.id,
+          fromStatusId: prevStatusId || null,
+          fromStatusName: resolveStatusName(prevStatusId) || null,
+          toStatusId: statusModalSelected,
+          toStatusName: resolveStatusName(statusModalSelected) || null,
+          changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+          source: 'quality_check',
+        } as any);
+      } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
+      setStatusModalHouse(null);
+    } catch (e) {
+      console.error('Error cambiando status:', e);
+      alert('No se pudo cambiar el status de la casa.');
+    } finally {
+      setSavingStatus(false);
+    }
   };
 
   // ⭐ Clasifica un QC en uno de los tres grupos:
@@ -1376,6 +1426,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                       <span>{getTeamNameForHouse(house)}</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => openHouseStatusModal(house)}
+                      title="Cambiar status de la casa"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: houseStatusInfo(house).color, flexShrink: 0 }} />
+                      {houseStatusInfo(house).name}
+                      <Edit2 size={12} color="#94a3b8" />
+                    </button>
                   </div>
                   <button
                     onClick={() => handleStartOrContinueQC(house)}
@@ -2000,6 +2060,62 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             <div style={{ padding: '16px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button onClick={() => setEmailModalOpen(false)} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               <button onClick={sendEmail} style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} /> Open Email</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: CAMBIAR STATUS DE LA CASA --- */}
+      {statusModalHouse && (
+        <div className="qc-overlay" style={{ zIndex: 1200, padding: '16px' }} onClick={() => { if (!savingStatus) setStatusModalHouse(null); }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '440px', maxHeight: '88vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Repeat size={17} /> Cambiar status</h2>
+                <div style={{ marginTop: '4px', fontSize: '0.82rem', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {getClientName(statusModalHouse.client)} — {statusModalHouse.address || '—'}
+                </div>
+              </div>
+              <button style={s.closeBtn} onClick={() => { if (!savingStatus) setStatusModalHouse(null); }}><X size={22} /></button>
+            </div>
+
+            <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {statuses.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', color: '#94a3b8', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>No hay estados configurados.</div>
+              ) : statuses.map((st: any) => {
+                const isCurrent = String(st.id) === String((statusModalHouse as any).statusId);
+                const isSel = String(st.id) === String(statusModalSelected);
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setStatusModalSelected(String(st.id))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '9px', textAlign: 'left',
+                      padding: '12px 14px', borderRadius: '12px', cursor: 'pointer',
+                      border: `2px solid ${isSel ? '#2563eb' : '#e2e8f0'}`,
+                      background: isSel ? '#eff6ff' : '#fff',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: st.color || '#94a3b8', flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</span>
+                    {isCurrent && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', padding: '2px 7px', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Actual</span>}
+                    {isSel && !isCurrent && <Check size={16} color="#2563eb" style={{ flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ padding: '14px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button onClick={() => setStatusModalHouse(null)} disabled={savingStatus} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: savingStatus ? 'not-allowed' : 'pointer' }}>Cancelar</button>
+              <button
+                onClick={applyHouseStatusChange}
+                disabled={savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)}
+                style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: (savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)) ? 'not-allowed' : 'pointer', opacity: (savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)) ? 0.6 : 1 }}
+              >
+                {savingStatus ? <Loader2 size={16} className="spin-qc" /> : <Check size={16} />} Aceptar
+              </button>
             </div>
           </div>
         </div>
