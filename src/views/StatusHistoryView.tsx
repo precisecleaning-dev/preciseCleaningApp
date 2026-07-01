@@ -495,8 +495,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                     <td style={{ whiteSpace: 'nowrap', color: '#475569' }}>{p.scheduleDate || '—'}</td>
                     <td>
                       {team ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: `${team.color}26`, color: onTint(team.color), whiteSpace: 'nowrap' }}>
-                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: team.color, flexShrink: 0 }} /> {team.name}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: team.color, flexShrink: 0, boxShadow: '0 0 0 1px rgba(15,23,42,0.15)' }} /> {team.name}
                         </span>
                       ) : (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: '#f1f5f9', color: '#64748b', whiteSpace: 'nowrap' }}>Sin Equipo</span>
