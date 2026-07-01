@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter,
-  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User
+  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp
 } from 'lucide-react';
 import type { Property, Status, Customer } from '../types/index';
 import { db } from '../config/firebase';
@@ -137,12 +137,29 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
 
   const fmtMoney = (n?: number) => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
+  // Contraste: elige texto legible según qué tan claro sea el color de fondo.
+  const hexToRgb = (hex: string) => {
+    let h = String(hex || '').replace('#', '').trim();
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    if (h.length !== 6) return { r: 100, g: 116, b: 139 };
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  };
+  const luminance = (hex: string) => {
+    const { r, g, b } = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255; // brillo percibido 0..1
+  };
+  // Texto sobre fondo SÓLIDO del color (ej. badge con número)
+  const onSolid = (bg?: string) => (luminance(String(bg || '')) > 0.6 ? '#1e293b' : '#ffffff');
+  // Texto sobre fondo TENUE del color (ej. pastilla con tinte). Si el color es muy claro
+  // (amarillo, etc.), usa un gris oscuro para que se lea; si es oscuro, usa el propio color.
+  const onTint = (color?: string) => (luminance(String(color || '')) > 0.62 ? '#334155' : String(color || '#334155'));
+
   const invoicePill = (status?: string | null) => {
     const v = String(status || '').toLowerCase().trim();
-    if (v === 'paid') return { label: 'Paid', bg: '#dcfce7', color: '#15803d', border: '#86efac' };
+    if (v === 'paid') return { label: 'Paid', bg: '#dcfce7', color: '#166534', border: '#86efac' };
     if (v === 'pre-paid') return { label: 'Pre-Paid', bg: '#ccfbf1', color: '#0f766e', border: '#5eead4' };
-    if (v === 'pending') return { label: 'Pending', bg: '#fef9c3', color: '#a16207', border: '#fde047' };
-    if (v === 'needs invoice') return { label: 'Needs Invoice', bg: '#ffedd5', color: '#c2410c', border: '#fdba74' };
+    if (v === 'pending') return { label: 'Pending', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' };
+    if (v === 'needs invoice') return { label: 'Needs Invoice', bg: '#ffedd5', color: '#9a3412', border: '#fdba74' };
     return { label: status ? String(status) : 'No status', bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
   };
 
@@ -197,15 +214,17 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const visible = filtered.slice(0, limit);
   const selected = (properties || []).find(p => p.id === selectedId) || null;
 
-  // Totales para el pie de la tabla (solo lo filtrado)
+  // Totales para el resumen (solo lo filtrado). Profit = Total - Payroll.
   const totals = useMemo(() => {
     return filtered.reduce((acc, p) => {
       const b = billingByProp[p.id] || { total: 0, taxes: 0 };
+      const pay = payrollByProp[p.id] || 0;
       acc.total += b.total;
       acc.taxes += b.taxes;
-      acc.payroll += payrollByProp[p.id] || 0;
+      acc.payroll += pay;
+      acc.profit += (b.total - pay);
       return acc;
-    }, { total: 0, taxes: 0, payroll: 0 });
+    }, { total: 0, taxes: 0, payroll: 0, profit: 0 });
   }, [filtered, billingByProp, payrollByProp]);
 
   // ⭐ Carga TODO el historial de la casa seleccionada (ascendente por fecha)
@@ -380,7 +399,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                   style={{ borderColor: active ? s.color : `${s.color}55`, boxShadow: active ? `0 0 0 2px ${s.color}33` : 'none', fontWeight: active ? 800 : 600 }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
                   {s.name}
-                  <span style={{ background: s.color, color: '#fff', borderRadius: '10px', minWidth: '20px', textAlign: 'center', padding: '0 6px', fontSize: '0.7rem', fontWeight: 800 }}>{s.count}</span>
+                  <span style={{ background: s.color, color: onSolid(s.color), borderRadius: '10px', minWidth: '20px', textAlign: 'center', padding: '0 6px', fontSize: '0.7rem', fontWeight: 800 }}>{s.count}</span>
                   {active && <X size={12} />}
                 </button>
               );
@@ -407,6 +426,27 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
         )}
       </div>
 
+      {/* TOTALES ARRIBA (resumen del conjunto filtrado) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '12px', marginBottom: '20px' }}>
+        <div className="sh-card" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}><Receipt size={13} color="#2563eb" /> Total</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.total)}</div>
+        </div>
+        <div className="sh-card" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Taxes</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.taxes)}</div>
+        </div>
+        <div className="sh-card" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}><DollarSign size={13} color="#0f766e" /> Payroll</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f766e', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.payroll)}</div>
+        </div>
+        <div className="sh-card" style={{ padding: '14px 16px', background: totals.profit >= 0 ? 'linear-gradient(135deg,#f0fdf4,#ffffff)' : 'linear-gradient(135deg,#fef2f2,#ffffff)', borderColor: totals.profit >= 0 ? '#bbf7d0' : '#fecaca' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: totals.profit >= 0 ? '#15803d' : '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}><TrendingUp size={13} /> Profit</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 900, color: totals.profit >= 0 ? '#166534' : '#991b1b', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.profit)}</div>
+          <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '2px' }}>Total − Payroll</div>
+        </div>
+      </div>
+
       {/* TABLA ESTILO HOJA (P&L) */}
       <div className="sh-card" style={{ overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
@@ -428,16 +468,18 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 <th className="sh-num">Total</th>
                 <th className="sh-num">Taxes</th>
                 <th className="sh-num">Payroll</th>
+                <th className="sh-num">Profit</th>
                 <th>Status Paid</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 ? (
-                <tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>No se encontraron casas con esos filtros.</td></tr>
+                <tr><td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>No se encontraron casas con esos filtros.</td></tr>
               ) : visible.map(p => {
                 const bill = billingByProp[p.id] || { total: 0, taxes: 0 };
                 const pay = payrollByProp[p.id] || 0;
+                const profit = bill.total - pay;
                 const team = teamInfo(p.teamId);
                 const inv = invoicePill((p as any).invoiceStatus);
                 return (
@@ -453,8 +495,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                     <td style={{ whiteSpace: 'nowrap', color: '#475569' }}>{p.scheduleDate || '—'}</td>
                     <td>
                       {team ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: `${team.color}1f`, color: team.color, whiteSpace: 'nowrap' }}>
-                          <Users size={11} /> {team.name}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: `${team.color}26`, color: onTint(team.color), whiteSpace: 'nowrap' }}>
+                          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: team.color, flexShrink: 0 }} /> {team.name}
                         </span>
                       ) : (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700, background: '#f1f5f9', color: '#64748b', whiteSpace: 'nowrap' }}>Sin Equipo</span>
@@ -463,6 +505,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                     <td className="sh-num" style={{ fontWeight: 700 }}>{fmtMoney(bill.total)}</td>
                     <td className="sh-num" style={{ color: bill.taxes > 0 ? '#b91c1c' : '#94a3b8' }}>{fmtMoney(bill.taxes)}</td>
                     <td className="sh-num" style={{ color: pay > 0 ? '#0f766e' : '#94a3b8' }}>{fmtMoney(pay)}</td>
+                    <td className="sh-num" style={{ fontWeight: 800, color: profit > 0 ? '#166534' : profit < 0 ? '#b91c1c' : '#64748b' }}>{fmtMoney(profit)}</td>
                     <td>
                       <span style={{ display: 'inline-block', padding: '4px 14px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 800, background: inv.bg, color: inv.color, border: `1px solid ${inv.border}`, whiteSpace: 'nowrap' }}>{inv.label}</span>
                     </td>
@@ -471,17 +514,6 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 );
               })}
             </tbody>
-            {visible.length > 0 && (
-              <tfoot>
-                <tr style={{ position: 'sticky', bottom: 0 }}>
-                  <td colSpan={5} style={{ background: '#f8fafc', fontWeight: 800, color: '#0f172a', borderTop: '2px solid #e2e8f0' }}>Totales ({filtered.length})</td>
-                  <td className="sh-num" style={{ background: '#f8fafc', fontWeight: 800, borderTop: '2px solid #e2e8f0' }}>{fmtMoney(totals.total)}</td>
-                  <td className="sh-num" style={{ background: '#f8fafc', fontWeight: 800, color: '#b91c1c', borderTop: '2px solid #e2e8f0' }}>{fmtMoney(totals.taxes)}</td>
-                  <td className="sh-num" style={{ background: '#f8fafc', fontWeight: 800, color: '#0f766e', borderTop: '2px solid #e2e8f0' }}>{fmtMoney(totals.payroll)}</td>
-                  <td colSpan={2} style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}></td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
 
@@ -507,7 +539,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '5px 12px', borderRadius: '999px', color: statusColor(selected.statusId), background: `${statusColor(selected.statusId)}14`, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '5px 12px', borderRadius: '999px', color: onTint(statusColor(selected.statusId)), background: `${statusColor(selected.statusId)}22`, whiteSpace: 'nowrap' }}>
                   {statusName(selected.statusId)}
                 </span>
                 <button onClick={() => setSelectedId(null)} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '8px' }}><X size={22} /></button>
@@ -530,6 +562,16 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                   <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px' }}><DollarSign size={12} /> Payroll</div>
                   <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f766e', marginTop: '3px' }}>{fmtMoney(payrollByProp[selected.id] || 0)}</div>
                 </div>
+                {(() => {
+                  const t = (billingByProp[selected.id] || { total: 0, taxes: 0 }).total;
+                  const pr = t - (payrollByProp[selected.id] || 0);
+                  return (
+                    <div style={{ border: `1px solid ${pr >= 0 ? '#bbf7d0' : '#fecaca'}`, borderRadius: '12px', padding: '12px 14px', background: pr >= 0 ? '#f0fdf4' : '#fef2f2' }}>
+                      <div style={{ fontSize: '0.68rem', color: pr >= 0 ? '#15803d' : '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px' }}><TrendingUp size={12} /> Profit</div>
+                      <div style={{ fontSize: '1.15rem', fontWeight: 900, color: pr >= 0 ? '#166534' : '#991b1b', marginTop: '3px' }}>{fmtMoney(pr)}</div>
+                    </div>
+                  );
+                })()}
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
                   <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status Paid</div>
                   <div style={{ marginTop: '5px' }}>
