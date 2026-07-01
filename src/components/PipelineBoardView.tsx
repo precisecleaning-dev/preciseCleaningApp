@@ -82,12 +82,13 @@ function StatusPill({ current, statuses, disabled, onOpen }: {
       title={disabled ? undefined : 'Cambiar estado'}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-        background: `${color}14`, border: `1px solid ${color}40`, borderRadius: 10, padding: '10px 12px',
+        background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px',
         fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', minHeight: 42,
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.65 : 1, transition: 'filter .15s',
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.65 : 1,
+        transition: 'background .15s, border-color .15s',
       }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#cbd5e1'; } }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#e5e7eb'; }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
