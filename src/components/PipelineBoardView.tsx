@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 
 /* ------------------------------------------------------------------
@@ -58,55 +58,154 @@ const isAlwaysVisibleStatus = (st: { name?: string }) => {
 /* Normaliza una fecha a 'YYYY-MM-DD' para comparar como string (ISO) */
 const normDate = (d?: string | null) => (d ? String(d).slice(0, 10) : '');
 
-/* Menú compacto para cambiar el status desde la tarjeta */
-function StatusMenu({ current, statuses, onChange, disabled }: {
-  current: string; statuses: Status[]; onChange: (id: string) => void; disabled?: boolean;
+// Configuración que la tarjeta envía al modal central de cambio de estado.
+type StatusModalConfig = {
+  currentId: string;
+  onSelect: (id: string) => void;
+  title?: string;
+  subtitle?: string;
+};
+
+/* Pastilla de estado en la tarjeta. Al tocarla YA NO abre un dropdown:
+   solicita abrir el modal central de selección (StatusChangeModal), igual
+   que en HousesView (tabla, tarjetas móviles y detalle). */
+function StatusPill({ current, statuses, disabled, onOpen }: {
+  current: string; statuses: Status[]; disabled?: boolean; onOpen: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const v = String(current || '').toLowerCase().trim();
   const st = statuses.find(s => String(s.id).toLowerCase().trim() === v || String(s.name).toLowerCase().trim() === v);
+  const color = st?.color || '#64748b';
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setOpen(false), 150)} style={{ position: 'relative' }}>
-      <button
-        onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen(o => !o); }}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          background: 'white', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px',
-          fontSize: '0.82rem', fontWeight: 600, color: '#111827',
-          cursor: disabled ? 'not-allowed' : 'pointer', minHeight: 40,
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: st?.color || '#64748b', flexShrink: 0 }} />
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st?.name || 'Unassigned'}</span>
-        </span>
-        <ChevronDown size={15} color="#9ca3af" style={{ transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'white',
-          border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,.12)',
-          zIndex: 50, maxHeight: 220, overflowY: 'auto',
+    <button
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onOpen(); }}
+      disabled={disabled}
+      title={disabled ? undefined : 'Cambiar estado'}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        background: `${color}14`, border: `1px solid ${color}40`, borderRadius: 10, padding: '10px 12px',
+        fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', minHeight: 42,
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.65 : 1, transition: 'filter .15s',
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st?.name || 'Unassigned'}</span>
+      </span>
+      <ChevronDown size={15} color="#94a3b8" style={{ flexShrink: 0 }} />
+    </button>
+  );
+}
+
+/* Modal central de selección de estado — mismo diseño que el de HousesView.
+   Autocontenido (estilos inline) para no depender de nada del padre. Se elige
+   un estado (queda resaltado) y se confirma con "Aceptar". */
+function StatusChangeModal({ config, statuses, onClose }: {
+  config: StatusModalConfig; statuses: Status[]; onClose: () => void;
+}) {
+  const cur = String(config.currentId || '').toLowerCase().trim();
+  const resolveCurrentId = () => {
+    const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
+    return match ? match.id : (config.currentId || '');
+  };
+  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
+
+  const selectedIsCurrent = (() => {
+    const sel = statuses.find(st => st.id === selectedId);
+    const selName = String(sel?.name || '').toLowerCase().trim();
+    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
+  })();
+
+  const handleAccept = () => {
+    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
+    onClose();
+  };
+
+  return (
+    <>
+      <style>{`
+        @media (max-width: 768px) {
+          .pb-status-overlay { align-items: flex-end !important; padding: 0 !important; }
+          .pb-status-card { max-width: 100% !important; width: 100% !important; border-radius: 22px 22px 0 0 !important; max-height: 82vh !important; }
+          .pb-status-grid { grid-template-columns: 1fr !important; }
+          .pb-status-foot > button { flex: 1; justify-content: center; }
+        }
+      `}</style>
+      <div className="pb-status-overlay" onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, boxSizing: 'border-box',
+      }}>
+        <div className="pb-status-card" onClick={e => e.stopPropagation()} style={{
+          background: '#fff', width: '100%', maxWidth: 480, borderRadius: 18,
+          boxShadow: '0 24px 48px -12px rgba(15,23,42,0.35)', display: 'flex', flexDirection: 'column',
+          maxHeight: '85vh', overflow: 'hidden',
         }}>
-          {statuses.map(s => (
-            <div
-              key={s.id}
-              onClick={(e) => { e.stopPropagation(); if (s.id !== current && s.name !== current) onChange(s.id); setOpen(false); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer',
-                fontSize: '0.82rem', color: '#111827', borderBottom: '1px solid #f1f5f9',
-                background: (current === s.id || current === s.name) ? '#f8fafc' : 'transparent',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = (current === s.id || current === s.name) ? '#f8fafc' : 'transparent')}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              {s.name}
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '20px 22px', borderBottom: '1px solid #eef2f7', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 11, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Activity size={20} color="#2563eb" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Cambiar estado</h3>
+                {config.title && (
+                  <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
+                  </p>
+                )}
+              </div>
             </div>
-          ))}
+            <button onClick={onClose} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 6, display: 'flex', borderRadius: 8, flexShrink: 0 }}>
+              <X size={22} />
+            </button>
+          </div>
+
+          {/* Grid de estados */}
+          <div className="pb-status-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '20px 22px', overflowY: 'auto' }}>
+            {statuses.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: 24 }}>No hay estados configurados.</div>
+            ) : statuses.map(st => {
+              const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
+              const isSelected = st.id === selectedId;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setSelectedId(st.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 12, cursor: 'pointer',
+                    textAlign: 'left', width: '100%', minHeight: 56, fontFamily: 'inherit',
+                    background: isSelected ? '#eff6ff' : '#ffffff',
+                    border: `2px solid ${isSelected ? '#2563eb' : '#e5e7eb'}`,
+                    boxShadow: isSelected ? '0 2px 10px rgba(37,99,235,0.18)' : '0 1px 2px rgba(0,0,0,0.03)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: st.color, flexShrink: 0, boxShadow: `0 0 0 4px ${st.color}1f`, border: '1px solid rgba(0,0,0,0.12)' }} />
+                  <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.3, wordBreak: 'break-word' }}>{st.name}</span>
+                  {isCurrent && !isSelected && (
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Actual</span>
+                  )}
+                  {isSelected && <CheckCircle size={18} color="#2563eb" style={{ flexShrink: 0 }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="pb-status-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 22px', borderTop: '1px solid #eef2f7', flexShrink: 0, background: '#fff' }}>
+            <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={handleAccept} disabled={selectedIsCurrent} style={{
+              padding: '11px 20px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.9rem',
+              cursor: selectedIsCurrent ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+              boxShadow: selectedIsCurrent ? 'none' : '0 4px 10px rgba(37,99,235,0.25)', opacity: selectedIsCurrent ? 0.55 : 1,
+            }}>
+              <CheckCircle size={16} /> Aceptar
+            </button>
+          </div>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -121,6 +220,9 @@ export default function PipelineBoardView({
   const filterActive = !!(fromDate || toDate);
 
   const clearFilter = () => { setFromDate(''); setToDate(''); };
+
+  // Modal central de cambio de estado (null = cerrado)
+  const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
   // ¿La propiedad cae dentro del rango? (usa scheduleDate, si no receiveDate)
   const inDateRange = (p: Property) => {
@@ -324,13 +426,18 @@ export default function PipelineBoardView({
                         {getRel(teams, p.teamId, 'Unassigned')}
                       </div>
 
-                      {/* Cambiar estado */}
+                      {/* Cambiar estado — abre el modal central */}
                       <div onClick={(e) => e.stopPropagation()}>
-                        <StatusMenu
+                        <StatusPill
                           current={p.statusId}
                           statuses={statuses}
-                          onChange={(id) => onQuickStatusChange(p.id, id)}
                           disabled={isSaving || !canEdit}
+                          onOpen={() => setStatusModal({
+                            currentId: p.statusId,
+                            onSelect: (id) => onQuickStatusChange(p.id, id),
+                            title: getClientName(p.client),
+                            subtitle: p.address,
+                          })}
                         />
                       </div>
                     </div>
@@ -341,6 +448,15 @@ export default function PipelineBoardView({
           );
         })}
       </div>
+
+      {/* --- MODAL CENTRAL DE CAMBIO DE ESTADO --- */}
+      {statusModal && (
+        <StatusChangeModal
+          config={statusModal}
+          statuses={statuses}
+          onClose={() => setStatusModal(null)}
+        />
+      )}
     </div>
   );
 }
