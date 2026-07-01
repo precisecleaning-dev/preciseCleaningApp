@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
-  Building2, Settings, Save
+  Building2, Settings, Save, Clock, WifiOff, Zap
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -22,8 +22,74 @@ interface QCRecord {
   status: 'Finished' | 'Pending';
   result?: 'passed' | 'failed' | null;
   inspector?: string;
+  // ⭐ Tiempos de la inspección
+  checkInAt?: string | null;      // hora de entrada (ISO)
+  checkOutAt?: string | null;     // hora de salida (ISO) — se sella al guardar / mandar a recall
+  durationMinutes?: number | null; // minutos totales (salida - entrada)
   selectedPlaces?: string[];
   qcData?: any;
+}
+
+// ⭐ Nombre de la base de datos local (IndexedDB) para la cola de fotos offline
+const OFFLINE_DB = 'pc_qc_offline';
+const OFFLINE_STORE = 'photos';
+
+// ⭐ Helpers de IndexedDB (cola de fotos sin conexión). Autocontenidos: no dependen
+//    de ningún servicio externo. Cada entrada guarda el blob comprimido + contexto.
+function openOfflineDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(OFFLINE_DB, 1);
+      req.onupgradeneeded = () => {
+        const database = req.result;
+        if (!database.objectStoreNames.contains(OFFLINE_STORE)) {
+          database.createObjectStore(OFFLINE_STORE, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+async function offlinePut(entry: any): Promise<void> {
+  const database = await openOfflineDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = database.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).put(entry);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  database.close();
+}
+async function offlineGetAll(): Promise<any[]> {
+  const database = await openOfflineDB();
+  const out = await new Promise<any[]>((resolve, reject) => {
+    const tx = database.transaction(OFFLINE_STORE, 'readonly');
+    const req = tx.objectStore(OFFLINE_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+  database.close();
+  return out;
+}
+async function offlineDelete(id: string): Promise<void> {
+  const database = await openOfflineDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = database.transaction(OFFLINE_STORE, 'readwrite');
+    tx.objectStore(OFFLINE_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  database.close();
+}
+async function offlineSetDocIdForHouse(houseId: string, qcDocId: string): Promise<void> {
+  const all = await offlineGetAll();
+  for (const e of all) {
+    if (e.houseId === houseId && !e.qcDocId) {
+      e.qcDocId = qcDocId;
+      await offlinePut(e);
+    }
+  }
 }
 
 interface QualityCheckViewProps {
@@ -61,6 +127,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [statusModalHouse, setStatusModalHouse] = useState<Property | null>(null);
   const [statusModalSelected, setStatusModalSelected] = useState<string>('');
   const [savingStatus, setSavingStatus] = useState(false);
+
+  // ⭐ Hora de ENTRADA a la inspección (se sella al abrir el formulario)
+  const [checkInAt, setCheckInAt] = useState<string | null>(null);
+
+  // ⭐ Cámara en modo RÁFAGA (se mantiene abierta para tomar varias fotos seguidas)
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraPlace, setCameraPlace] = useState<{ id: string; name: string } | null>(null);
+  const [cameraShots, setCameraShots] = useState<{ id: string; preview: string }[]>([]);
+  const [cameraError, setCameraError] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // ⭐ Fotos en cola OFFLINE (sin conexión): previews persistentes por área + contador
+  const [queuedByPlace, setQueuedByPlace] = useState<Record<string, { id: string; preview: string }[]>>({});
+  const [pendingUploadCount, setPendingUploadCount] = useState(0);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const processingRef = useRef(false);
+  const selectedHouseRef = useRef<Property | null>(null);
 
   // ⭐ Exportar PDF
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -154,6 +239,107 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       clearHouseToInspect();
     }
   }, [houseToInspect, isLoadingCatalogs]);
+
+  // ⭐ Mantener una referencia viva de la casa abierta (para el procesador async de la cola)
+  useEffect(() => { selectedHouseRef.current = selectedHouse; }, [selectedHouse]);
+
+  // ⭐ Mapa houseId -> id del reporte QC ya guardado en esta sesión (para poder
+  //    "parchar" las fotos que se suben después, cuando vuelve la conexión).
+  const savedQcDocByHouse = useRef<Record<string, string>>({});
+
+  // ⭐ Refresca el contador de fotos pendientes de subir (leyendo la cola).
+  const refreshPendingCount = async () => {
+    try { const all = await offlineGetAll(); setPendingUploadCount(all.length); }
+    catch (e) { console.error('No se pudo leer la cola offline:', e); }
+  };
+
+  // ⭐ Reconstruye las previews de las fotos en cola (al montar / recargar).
+  const rebuildQueuedPreviews = async () => {
+    try {
+      const all = await offlineGetAll();
+      const map: Record<string, { id: string; preview: string }[]> = {};
+      for (const e of all) {
+        if (!e.blob) continue;
+        (map[e.placeId] = map[e.placeId] || []).push({ id: e.id, preview: URL.createObjectURL(e.blob) });
+      }
+      setQueuedByPlace(map);
+      setPendingUploadCount(all.length);
+    } catch (e) { console.error('No se pudieron reconstruir las previews offline:', e); }
+  };
+
+  // ⭐ Añade una URL de foto ya subida al documento QC guardado (parchado post-subida).
+  const attachUrlToQcDoc = async (qcDocId: string, placeId: string, url: string) => {
+    const ref = doc(db, 'quality_checks', qcDocId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data: any = snap.data() || {};
+    const qc = { ...(data.qcData || {}) };
+    const place = { ...(qc[placeId] || {}) };
+    const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
+    if (!photos.includes(url)) photos.push(url);
+    place.photos = photos;
+    qc[placeId] = place;
+    await updateDoc(ref, { qcData: qc });
+  };
+
+  // ⭐ Guarda una foto en la cola offline (con su preview persistente).
+  const queuePhoto = async (ctx: { id: string; houseId: string; placeId: string; placeName: string; address: string; blob: Blob }) => {
+    const qcDocId = savedQcDocByHouse.current[ctx.houseId] || null;
+    await offlinePut({ ...ctx, qcDocId, createdAt: Date.now() });
+    const preview = URL.createObjectURL(ctx.blob);
+    setQueuedByPlace(prev => ({ ...prev, [ctx.placeId]: [...(prev[ctx.placeId] || []), { id: ctx.id, preview }] }));
+    await refreshPendingCount();
+  };
+
+  // ⭐ Procesa la cola: sube cada foto pendiente; al lograrlo la adjunta al reporte
+  //    (en memoria si está abierto, y al documento guardado si ya existe).
+  const processQueue = async () => {
+    if (processingRef.current) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    processingRef.current = true;
+    try {
+      const all = await offlineGetAll();
+      for (const entry of all) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+        try {
+          const file = new File([entry.blob], `qc_${entry.id}.jpg`, { type: (entry.blob && entry.blob.type) || 'image/jpeg' });
+          const urls = await storageService.uploadQualityCheckPhotos([file], entry.address, entry.placeName);
+          const url = urls && urls[0];
+          if (!url) continue;
+          if (entry.qcDocId) {
+            try { await attachUrlToQcDoc(entry.qcDocId, entry.placeId, url); }
+            catch (e) { console.error('No se pudo parchar el reporte con la foto:', e); }
+          }
+          if (selectedHouseRef.current && selectedHouseRef.current.id === entry.houseId) {
+            setQcData(prev => ({ ...prev, [entry.placeId]: { ...(prev[entry.placeId] || {}), photos: [...((prev[entry.placeId] || {}).photos || []), url] } }));
+          }
+          await offlineDelete(entry.id);
+          setQueuedByPlace(prev => ({ ...prev, [entry.placeId]: (prev[entry.placeId] || []).filter(p => p.id !== entry.id) }));
+        } catch (e) {
+          console.warn('Foto sigue pendiente (se reintentará):', entry.id, e);
+        }
+      }
+    } finally {
+      processingRef.current = false;
+      await refreshPendingCount();
+    }
+  };
+
+  // ⭐ Al montar: reconstruir cola + escuchar conexión + reintentar cada 20s.
+  useEffect(() => {
+    (async () => { await rebuildQueuedPreviews(); processQueue(); })();
+    const onOnline = () => { setIsOnline(true); processQueue(); };
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    const interval = setInterval(() => { if (typeof navigator === 'undefined' || navigator.onLine) processQueue(); }, 20000);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ⭐ Resuelve el nombre del equipo asociado a una casa (teamId puede ser id o nombre)
   const getTeamNameForHouse = (house?: Property | null): string => {
@@ -291,6 +477,34 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
   };
 
+  // ⭐ Hora legible (hh:mm am/pm) a partir de un ISO
+  const fmtTime = (iso?: string | null): string => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  // ⭐ Duración legible a partir de minutos
+  const fmtDuration = (mins?: number | null): string => {
+    if (mins == null || isNaN(Number(mins))) return '—';
+    const m = Math.max(0, Math.round(Number(mins)));
+    const h = Math.floor(m / 60);
+    const r = m % 60;
+    return h ? `${h}h ${r}m` : `${r}m`;
+  };
+
+  // ⭐ Duración de un registro (usa durationMinutes; si no, la calcula de los ISO)
+  const recordDuration = (qc: QCRecord): number | null => {
+    if (qc.durationMinutes != null) return Number(qc.durationMinutes);
+    if (qc.checkInAt && qc.checkOutAt) {
+      const a = new Date(qc.checkInAt).getTime();
+      const b = new Date(qc.checkOutAt).getTime();
+      if (!isNaN(a) && !isNaN(b) && b >= a) return Math.round((b - a) / 60000);
+    }
+    return null;
+  };
+
   // ⭐ PENDING = casas en estado "Quality Check" que aún esperan inspección
   //    (sin QC aprobado y sin QC reprobado: las reprobadas viven en Recall).
   const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id) && !houseFailedQC(h.id));
@@ -348,6 +562,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPendingPhotos({});
     setPlaceSearch('');
     setSelectedPlaceIds([]);
+    setCheckInAt(new Date().toISOString()); // ⭐ hora de entrada
     
     const initialData: any = {};
     places.forEach(p => {
@@ -375,6 +590,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
     setPlaceSearch('');
+    setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
     
     const loadedData: any = qc.qcData || {};
     places.forEach(p => {
@@ -407,6 +623,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   const handleCloseForm = () => {
+    // Si la cámara ráfaga quedó abierta, apagar el stream.
+    const st = streamRef.current;
+    if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    setCameraOpen(false);
+    setCameraPlace(null);
+    setCameraShots([]);
+    setCheckInAt(null);
     setIsFormModalOpen(false);
     setSelectedHouse(null);
     setEditingQcId(null);
@@ -445,6 +668,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const finalStatus: 'Pending' | 'Finished' = forceFail ? 'Finished' : (isPending ? 'Pending' : 'Finished');
     const finalResult: 'passed' | 'failed' | null = forceFail ? 'failed' : (isPending ? null : 'passed');
 
+    // ⭐ Sellar la SALIDA y calcular la duración total de la inspección.
+    const nowIso = new Date().toISOString();
+    const startIso = checkInAt
+      || (editingQcId ? (qcList.find(q => q.id === editingQcId)?.checkInAt || null) : null)
+      || nowIso;
+    const durationMinutes = (() => {
+      const a = new Date(startIso).getTime();
+      const b = new Date(nowIso).getTime();
+      return (!isNaN(a) && !isNaN(b) && b >= a) ? Math.round((b - a) / 60000) : null;
+    })();
+
     const recordData: any = {
       houseId: selectedHouse.id,
       date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
@@ -454,17 +688,30 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       status: finalStatus,
       result: finalResult,
       inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+      checkInAt: startIso,
+      checkOutAt: nowIso,
+      durationMinutes: durationMinutes,
       selectedPlaces: selectedPlaceIds,
       qcData: qcData
     };
 
     try {
+      let savedId = editingQcId || '';
       if (editingQcId) {
         await updateDoc(doc(db, 'quality_checks', editingQcId), recordData);
         setQcList(prev => prev.map(qc => qc.id === editingQcId ? { id: editingQcId, ...recordData } as QCRecord : qc));
       } else {
         const docRef = await addDoc(collection(db, 'quality_checks'), recordData);
+        savedId = docRef.id;
         setQcList(prev => [{ id: docRef.id, ...recordData } as QCRecord, ...prev]);
+      }
+
+      // ⭐ Vincular este reporte a las fotos que quedaron en cola offline para esta
+      //    casa, así el uploader las adjunta al documento cuando vuelva la señal.
+      if (savedId && selectedHouse) {
+        savedQcDocByHouse.current[selectedHouse.id] = savedId;
+        try { await offlineSetDocIdForHouse(selectedHouse.id, savedId); } catch (e) { console.error(e); }
+        processQueue();
       }
 
       // ⭐ Si NO pasó, mover la casa a "Recall" (con registro en status_history para
@@ -535,51 +782,128 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // ⭐ Subir fotos: muestra preview INSTANTÁNEO y sube cada foto en paralelo en
-  //    segundo plano. El usuario puede seguir tomando fotos sin esperar.
-  //    Ruta en Storage: {Address}/QualityCheck/{PlaceName}/photo_xxx.jpg
-  const handlePhotoUpload = async (placeId: string, placeName: string, files: FileList | null) => {
-    if (!files || files.length === 0 || !selectedHouse) return;
+  // ⭐ Procesa UNA foto: preview instantáneo → optimiza (baja peso conservando
+  //    calidad) → sube si hay conexión; si no hay o falla, la guarda OFFLINE en
+  //    IndexedDB para subirla automáticamente cuando vuelva la señal.
+  const ingestOne = async (placeId: string, placeName: string, file: File | Blob) => {
     const house = selectedHouse;
+    if (!house) return;
+    const id = uid();
+    const preview = URL.createObjectURL(file);
+    setPendingPhotos(prev => ({ ...prev, [placeId]: [...(prev[placeId] || []), { id, preview }] }));
+    try {
+      const asFile = file instanceof File ? file : new File([file], `qc_${id}.jpg`, { type: (file as any).type || 'image/jpeg' });
+      // Optimizador: 1600px máx, calidad 0.8, objetivo ~0.6MB (buen balance peso/calidad)
+      let compressed: any = asFile;
+      try { compressed = await compressImage(asFile, { quality: 0.8, maxWidth: 1600, maxSizeMB: 0.6 }); }
+      catch { compressed = asFile; }
 
-    // 1) Preview local inmediato (sin esperar compresión ni subida)
-    const items = Array.from(files).map(file => ({
-      id: uid(),
-      preview: URL.createObjectURL(file),
-      file
-    }));
-
-    setPendingPhotos(prev => ({
-      ...prev,
-      [placeId]: [...(prev[placeId] || []), ...items.map(({ id, preview }) => ({ id, preview }))]
-    }));
-
-    // 2) Comprimir + subir cada foto de forma independiente.
-    //    En cuanto una termina, aparece en la galería real y se quita su preview.
-    await Promise.all(items.map(async ({ id, preview, file }) => {
-      try {
-        const compressed = await compressImage(file, { quality: 0.85, maxWidth: 1920, maxSizeMB: 1 });
-        const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);
-
-        setQcData(prev => ({
-          ...prev,
-          [placeId]: {
-            ...prev[placeId],
-            photos: [...(prev[placeId]?.photos || []), ...urls]
-          }
-        }));
-      } catch (error) {
-        console.error('Error uploading QC photo:', error);
-        alert('Error subiendo una foto. Inténtalo de nuevo.');
-      } finally {
-        setPendingPhotos(prev => ({
-          ...prev,
-          [placeId]: (prev[placeId] || []).filter(p => p.id !== id)
-        }));
-        URL.revokeObjectURL(preview);
+      const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+      if (online) {
+        try {
+          const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);
+          setQcData(prev => ({ ...prev, [placeId]: { ...(prev[placeId] || {}), photos: [...((prev[placeId] || {}).photos || []), ...urls] } }));
+        } catch (upErr) {
+          console.warn('Subida falló, se guarda offline para reintentar:', upErr);
+          await queuePhoto({ id, houseId: house.id, placeId, placeName, address: house.address, blob: compressed });
+        }
+      } else {
+        await queuePhoto({ id, houseId: house.id, placeId, placeName, address: house.address, blob: compressed });
       }
-    }));
+    } catch (error) {
+      console.error('Error procesando foto:', error);
+    } finally {
+      setPendingPhotos(prev => ({ ...prev, [placeId]: (prev[placeId] || []).filter(p => p.id !== id) }));
+      URL.revokeObjectURL(preview);
+    }
   };
+
+  // ⭐ Carga desde <input file> (cámara nativa de 1 foto o galería múltiple).
+  //    Cada foto se procesa en paralelo en segundo plano (rápido, sin bloquear).
+  const handlePhotoUpload = (placeId: string, placeName: string, files: FileList | null) => {
+    if (!files || files.length === 0 || !selectedHouse) return;
+    Array.from(files).forEach(f => { void ingestOne(placeId, placeName, f); });
+  };
+
+  // ⭐ Abrir la cámara en modo RÁFAGA para un área (se mantiene abierta).
+  const openBurstCamera = (place: Place) => {
+    if (!selectedHouse) return;
+    setCameraPlace({ id: place.id, name: place.name });
+    setCameraShots([]);
+    setCameraError('');
+    setCameraOpen(true);
+  };
+
+  // ⭐ Cerrar la cámara ráfaga (detiene el stream y limpia previews de la sesión).
+  const closeBurstCamera = () => {
+    const st = streamRef.current;
+    if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    cameraShots.forEach(sh => { try { URL.revokeObjectURL(sh.preview); } catch {} });
+    setCameraShots([]);
+    setCameraOpen(false);
+    setCameraPlace(null);
+  };
+
+  // ⭐ Disparo: captura el frame actual del video, lo procesa en segundo plano
+  //    y DEJA la cámara abierta para seguir tomando fotos (ráfaga).
+  const captureBurst = async () => {
+    const video = videoRef.current;
+    const place = cameraPlace;
+    if (!video || !place || !selectedHouse) return;
+    setCapturing(true);
+    try {
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.9));
+      if (!blob) return;
+      const shotId = uid();
+      const preview = URL.createObjectURL(blob);
+      setCameraShots(prev => [{ id: shotId, preview }, ...prev]);
+      void ingestOne(place.id, place.name, blob);
+    } catch (e) {
+      console.error('Error capturando foto:', e);
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  // ⭐ Enciende/apaga el stream de la cámara según se abra/cierre el overlay.
+  useEffect(() => {
+    if (!cameraOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setCameraError('Este navegador no permite la cámara dentro de la app. Usa "Tomar foto" o "Galería".');
+          return;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try { await videoRef.current.play(); } catch { /* autoplay */ }
+        }
+      } catch (e) {
+        console.error('getUserMedia error:', e);
+        setCameraError('No se pudo acceder a la cámara. Revisa los permisos o usa "Tomar foto" / "Galería".');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const st = streamRef.current;
+      if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraOpen, cameraPlace]);
 
   // ⭐ Eliminar foto del estado (también la borra de Storage)
   const handleRemovePhoto = async (placeId: string, index: number) => {
@@ -1383,6 +1707,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </button>
       </div>
 
+      {/* ⭐ Aviso de conexión / fotos pendientes de subir */}
+      {(!isOnline || pendingUploadCount > 0) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', padding: '10px 14px', borderRadius: '12px', background: !isOnline ? '#fffbeb' : '#eff6ff', border: `1px solid ${!isOnline ? '#fcd34d' : '#bfdbfe'}`, color: !isOnline ? '#92400e' : '#1e40af', fontSize: '0.85rem', fontWeight: 600 }}>
+          {!isOnline ? <WifiOff size={16} /> : <Loader2 size={16} className="spin-qc" />}
+          <span>
+            {!isOnline ? 'Sin conexión. ' : ''}
+            {pendingUploadCount > 0
+              ? `${pendingUploadCount} foto(s) pendiente(s) de subir — se subirán automáticamente al recuperar señal.`
+              : 'Reconectando…'}
+          </span>
+          {pendingUploadCount > 0 && isOnline && (
+            <button onClick={() => processQueue()} style={{ marginLeft: 'auto', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}>Reintentar ahora</button>
+          )}
+        </div>
+      )}
+
       {/* ⭐ CASAS PENDIENTES DE QUALITY CHECK (estado "Quality Check" en el pipeline) */}
       {!isLoadingCatalogs && showPendingBlock && filteredPendingHouses.length > 0 && (
         <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '18px' }}>
@@ -1502,7 +1842,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <td style={s.td}>{formatDate(qc.date)}</td>
                       <td style={{...s.td, color: '#6b7280'}}>
                         <div>{qc.address}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>Inspected by: {qc.inspector || 'Unknown'}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
+                          <span>Inspector: {qc.inspector || 'Unknown'}</span>
+                          <span>Entrada: {fmtTime(qc.checkInAt)}</span>
+                          <span>Salida: {fmtTime(qc.checkOutAt)}</span>
+                          <span>Duración: {fmtDuration(recordDuration(qc))}</span>
+                        </div>
                       </td>
                       <td style={{...s.td, fontWeight: 600}}>{getClientName(qc.client)}</td>
                       <td style={{...s.td, color: '#475569'}}>{teamLabel}</td>
@@ -1621,7 +1966,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
                     <User size={15} color="#cbd5e1" style={{ flexShrink: 0 }} />
-                    <span>Inspected by: {qc.inspector || 'Unknown'}</span>
+                    <span>Inspector: {qc.inspector || 'Unknown'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
+                    <Clock size={15} color="#cbd5e1" style={{ flexShrink: 0, marginTop: '1px' }} />
+                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
+                      <span>Entrada: {fmtTime(qc.checkInAt)}</span>
+                      <span>Salida: {fmtTime(qc.checkOutAt)}</span>
+                      <span>Duración: {fmtDuration(recordDuration(qc))}</span>
+                    </span>
                   </div>
                 </div>
 
@@ -1675,6 +2028,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 <p className="qc-insp">
                   <Users size={14} /> Team: {getTeamNameForHouse(selectedHouse)}
                 </p>
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => { if (window.confirm('¿Registrar la hora de ENTRADA como ahora mismo?')) setCheckInAt(new Date().toISOString()); }}
+                    title="Hora de entrada a la inspección (toca para volver a marcarla como ahora)"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <Clock size={14} /> Entrada: {fmtTime(checkInAt)}
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
                 <button
@@ -1794,6 +2157,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       const placeTasks = tasks.filter(t => t.placeId === place.id);
                       const placePhotos: string[] = placeData.photos || [];
                       const pending = pendingPhotos[place.id] || [];
+                      const queued = queuedByPlace[place.id] || [];
 
                       return (
                         <div key={place.id} className="qc-card">
@@ -1825,18 +2189,26 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                               ))}
                             </div>
                             
-                            {/* ⭐ Sección de fotos — cámara como acción principal */}
+                            {/* ⭐ Sección de fotos — cámara ráfaga como acción principal */}
                             <label style={s.labelQC}>
-                              Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''})
+                              Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''}{queued.length ? ` · ${queued.length} sin conexión` : ''})
                             </label>
                             
                             <div className="qc-photo-actions">
                               <button
                                 type="button"
                                 className="qc-photo-btn qc-photo-btn-primary"
+                                onClick={() => openBurstCamera(place)}
+                                title="Cámara ráfaga: toma varias fotos seguidas sin cerrar la cámara"
+                              >
+                                <Zap size={16} /> Ráfaga
+                              </button>
+                              <button
+                                type="button"
+                                className="qc-photo-btn"
                                 onClick={() => cameraInputRefs.current[place.id]?.click()}
                               >
-                                <Camera size={16} /> Tomar foto
+                                <Camera size={16} /> Foto
                               </button>
                               <input
                                 ref={el => { cameraInputRefs.current[place.id] = el; }}
@@ -1870,7 +2242,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                               />
                             </div>
 
-                            {(placePhotos.length === 0 && pending.length === 0) ? (
+                            {(placePhotos.length === 0 && pending.length === 0 && queued.length === 0) ? (
                               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', padding: '20px', backgroundColor: 'white', borderRadius: '6px', border: '2px dashed #cbd5e1', marginBottom: '12px' }}>
                                 <ImageIcon size={28} style={{ margin: '0 auto 6px', opacity: 0.4 }} />
                                 <div>Aún no hay fotos.</div>
@@ -1899,6 +2271,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                                     <img src={p.preview} alt="Subiendo…" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.45 }} />
                                     <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.35)' }}>
                                       <Loader2 size={22} className="spin-qc" color="#2563eb" />
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {/* Fotos guardadas OFFLINE (se subirán al recuperar señal) */}
+                                {queued.map(p => (
+                                  <div key={`q-${p.id}`} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', border: '1px solid #fcd34d', backgroundColor: '#fffbeb' }}>
+                                    <img src={p.preview} alt="Sin conexión" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    <div style={{ position: 'absolute', bottom: '3px', left: '3px', right: '3px', backgroundColor: 'rgba(180,83,9,0.92)', color: '#fff', padding: '2px 4px', borderRadius: '6px', fontSize: '0.55rem', fontWeight: 700, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                      <WifiOff size={9} /> Sin conexión
                                     </div>
                                   </div>
                                 ))}
@@ -2118,6 +2500,50 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* --- CÁMARA RÁFAGA (se mantiene abierta para tomar varias fotos) --- */}
+      {cameraOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1300, background: '#000', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '14px 16px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'rgba(0,0,0,0.6)' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Zap size={18} /> Ráfaga — {cameraPlace?.name}</div>
+              <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>Toca el botón para tomar varias fotos seguidas</div>
+            </div>
+            <button onClick={closeBurstCamera} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '10px', padding: '8px 14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Check size={16} /> Listo</button>
+          </div>
+
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {cameraError ? (
+              <div style={{ color: '#fff', textAlign: 'center', padding: '24px', maxWidth: '440px' }}>
+                <AlertTriangle size={32} color="#fca5a5" style={{ margin: '0 auto 10px' }} />
+                <p style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>{cameraError}</p>
+                <button onClick={closeBurstCamera} style={{ marginTop: '14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 18px', fontWeight: 700, cursor: 'pointer' }}>Cerrar</button>
+              </div>
+            ) : (
+              <video ref={videoRef} playsInline muted autoPlay style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            )}
+
+            {/* Miniaturas tomadas en esta sesión */}
+            {!cameraError && cameraShots.length > 0 && (
+              <div style={{ position: 'absolute', bottom: '16px', left: 0, right: 0, display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px' }}>
+                {cameraShots.map(sh => (
+                  <img key={sh.id} src={sh.preview} alt="" style={{ width: '54px', height: '54px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #fff', flexShrink: 0 }} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!cameraError && (
+            <div style={{ padding: '18px', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+              <div style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, minWidth: '74px', textAlign: 'center' }}>{cameraShots.length} foto(s)</div>
+              <button onClick={captureBurst} disabled={capturing} aria-label="Tomar foto" style={{ width: '74px', height: '74px', borderRadius: '50%', background: '#fff', border: '5px solid rgba(255,255,255,0.45)', cursor: capturing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Camera size={30} color="#111827" />
+              </button>
+              <button onClick={closeBurstCamera} style={{ color: '#fff', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 700, cursor: 'pointer', minWidth: '74px' }}>Listo</button>
+            </div>
+          )}
         </div>
       )}
 
