@@ -44,6 +44,21 @@ const getInitialTab = (): TabOptions => {
   return 'houses';
 };
 
+// ⭐ Pantalla de carga reutilizable (verificando sesión / cargando datos).
+const LoadingScreen = ({ text }: { text: string }) => (
+  <div style={{
+    position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '16px'
+  }}>
+    <style>{`@keyframes spin-load { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    <div style={{
+      width: '48px', height: '48px', border: '4px solid #e2e8f0',
+      borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin-load 0.8s linear infinite'
+    }} />
+    <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>{text}</div>
+  </div>
+);
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false); // ⭐ Para evitar flash de LoginView al recargar
@@ -62,6 +77,15 @@ export default function App() {
 
   const [roles, setRoles] = useState<Role[]>([]);
 
+  // ⭐ Flags de "primer dato recibido". Sirven para NO montar las vistas hasta que
+  //    properties, roles y el perfil tengan al menos su primer snapshot. Con la
+  //    caché local (IndexedDB) estos llegan en milisegundos al recargar, así que
+  //    no hay demora perceptible; pero se evita el bug de mostrar 0 / "no existe"
+  //    mientras la data aún no llega.
+  const [rolesLoaded, setRolesLoaded] = useState<boolean>(false);
+  const [profileLoaded, setProfileLoaded] = useState<boolean>(false);
+  const [propertiesLoaded, setPropertiesLoaded] = useState<boolean>(false);
+
   // ⭐ Guardar la pestaña activa cada vez que cambia, para restaurarla al recargar.
   useEffect(() => {
     try {
@@ -73,29 +97,55 @@ export default function App() {
 
   // ⭐ Asegurar que la sesión de Firebase se guarde en el navegador
   //    (browserLocalPersistence) para que SOBREVIVA al recargar la página.
-  //    Es el valor por defecto, pero lo fijamos de forma explícita por seguridad.
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch((err) => {
       console.error('No se pudo fijar la persistencia de sesión:', err);
     });
   }, []);
 
-  // ⭐ Cargar roles con onSnapshot — aprovecha el cache de Firestore Persistence
-  // (IndexedDB). Primera carga normal, siguientes son INSTANTÁNEAS desde el cache.
-  // Además, si un admin modifica un rol, se actualiza en tiempo real sin recargar.
+  // ⭐ Cargar roles con onSnapshot — aprovecha el cache de Firestore Persistence.
   useEffect(() => {
     const unsub = onSnapshot(
       collection(db, 'settings_roles'),
       (snapshot) => {
         const loadedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
         setRoles(loadedRoles);
+        setRolesLoaded(true);
       },
       (error) => {
         console.error("Error loading roles globally:", error);
+        setRolesLoaded(true); // no bloquear la app si falla
       }
     );
     return () => unsub();
   }, []);
+
+  // ⭐⭐ LISTENER GLOBAL DE PROPERTIES (el fix principal).
+  //    Antes, la colección 'properties' SOLO se cargaba dentro de HousesView.
+  //    Si recargabas en otra pestaña (Quality Check, Status History, Recalls,
+  //    QC Route, Calendar, Invoices), HousesView no se montaba y 'properties'
+  //    quedaba vacío → todo aparecía en 0 / "no existe". Ahora se carga aquí,
+  //    a nivel App, así SIEMPRE está disponible sin importar en qué vista estés.
+  //    Se inicia solo cuando hay sesión (para que Firestore tenga el token de auth).
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setPropertiesLoaded(false);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(db, 'properties'),
+      (snapshot) => {
+        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
+        setProperties(data);
+        setPropertiesLoaded(true);
+      },
+      (error) => {
+        console.error("Error loading properties globally:", error);
+        setPropertiesLoaded(true); // no bloquear la app si falla
+      }
+    );
+    return () => unsub();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     // ⭐ Mantenemos una referencia al unsubscribe del onSnapshot del usuario
@@ -114,15 +164,10 @@ export default function App() {
         setIsBypass(false);
 
         // ⭐ CLAVE (fix recarga): en cuanto Firebase confirma que HAY sesión,
-        //    ya podemos salir de la pantalla de "Verificando sesión...". El
-        //    perfil del usuario se carga aparte y NO debe bloquear este check.
-        //    Antes se marcaba isAuthChecked DENTRO del onSnapshot del perfil;
-        //    si esa consulta tardaba o fallaba, el flujo quedaba a medias y al
-        //    recargar terminabas en el LoginView. Ahora se marca de inmediato.
+        //    ya podemos salir de la pantalla de "Verificando sesión...".
         setIsAuthChecked(true);
 
         // ⭐ Usar onSnapshot en lugar de getDocs aprovecha el cache local.
-        //    En cargas posteriores el perfil viene INSTANTÁNEO del IndexedDB.
         try {
           const q = query(collection(db, 'system_users'), where('email', '==', user.email.toLowerCase().trim()));
           userProfileUnsub = onSnapshot(q, (snapshot) => {
@@ -132,18 +177,22 @@ export default function App() {
             } else {
               setCurrentUser(null);
             }
+            setProfileLoaded(true); // primer snapshot del perfil recibido
           }, (error) => {
             console.error("Error fetching user profile:", error);
+            setProfileLoaded(true); // no bloquear la app si falla
           });
         } catch (error) {
           console.error("Error setting up user profile listener:", error);
+          setProfileLoaded(true);
         }
       } else {
         setIsAuthenticated(false);
         setIsBypass(false);
         setCurrentUser(null);
+        setProfileLoaded(false);
+        setPropertiesLoaded(false);
         // ⭐ Marcar que ya verificamos la sesión (no hay usuario).
-        // Esto evita el "flash" del LoginView al recargar cuando hay sesión guardada.
         setIsAuthChecked(true);
       }
     });
@@ -154,8 +203,6 @@ export default function App() {
   }, []);
 
   // ⭐ AUTO-LOGOUT POR INACTIVIDAD (15 minutos)
-  // Escucha eventos del usuario y resetea un timer. Si pasa 15 min sin actividad,
-  // cierra sesión automáticamente. Solo activo cuando el usuario está autenticado.
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -205,7 +252,11 @@ export default function App() {
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
     if (!auth.currentUser) {
+      // Modo bypass (sin sesión de Firebase): no habrá perfil ni roles desde
+      // Firestore, así que marcamos esos flags como listos para no bloquear.
       setIsBypass(true);
+      setProfileLoaded(true);
+      setRolesLoaded(true);
     }
   };
 
@@ -229,41 +280,27 @@ export default function App() {
 
   const toggleMenu = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // ⭐ Mientras Firebase verifica si hay sesión guardada en localStorage/IndexedDB,
-  // mostramos una pantalla de carga. Esto evita el "flash" del LoginView
-  // al recargar la página cuando hay una sesión activa.
+  // ⭐ ¿Está toda la data base lista para pintar las vistas?
+  //    - En modo normal: properties + roles + perfil con su primer snapshot.
+  //    - En modo bypass: solo properties (no hay perfil/roles de Firestore).
+  //    Con la caché local esto se cumple en milisegundos al recargar.
+  const appDataReady = isBypass
+    ? propertiesLoaded
+    : (propertiesLoaded && rolesLoaded && profileLoaded);
+
+  // ⭐ Mientras Firebase verifica si hay sesión guardada, pantalla de carga.
   if (!isAuthChecked) {
-    return (
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f8fafc',
-        gap: '16px'
-      }}>
-        <style>{`
-          @keyframes spin-load { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        `}</style>
-        <div style={{
-          width: '48px',
-          height: '48px',
-          border: '4px solid #e2e8f0',
-          borderTopColor: '#3b82f6',
-          borderRadius: '50%',
-          animation: 'spin-load 0.8s linear infinite'
-        }} />
-        <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>
-          Verificando sesión...
-        </div>
-      </div>
-    );
+    return <LoadingScreen text="Verificando sesión..." />;
   }
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // ⭐ Sesión confirmada pero la data aún no llega en su primer snapshot:
+  //    mostramos "Cargando datos..." en vez de dejar que las vistas pinten 0.
+  if (!appDataReady) {
+    return <LoadingScreen text="Cargando datos..." />;
   }
 
   return (
@@ -373,9 +410,7 @@ export default function App() {
         
         {activeTab === 'users' && <UsersView onOpenMenu={toggleMenu} roles={roles} />}
 
-        {/* ⭐ DATA IMPORT — Solo accesible si es SuperAdmin (el Sidebar ya lo oculta para otros).
-            Doble verificación aquí por seguridad: aunque alguien hackee el state, no podrá
-            ver la vista si no es SuperAdmin. */}
+        {/* ⭐ DATA IMPORT — Solo accesible si es SuperAdmin (el Sidebar ya lo oculta para otros). */}
         {activeTab === 'data_import' && isSuperAdmin && <DataImportView onOpenMenu={toggleMenu} />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
