@@ -9,10 +9,6 @@ import { collection, doc, writeBatch } from 'firebase/firestore';
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
 
-// ⭐ Colecciones disponibles en el proyecto Precise Cleaning.
-//    `fields` define los campos conocidos de Firestore para esa colección.
-//    El usuario podrá seleccionarlos desde un dropdown en el step de mapeo,
-//    o escribir un nombre custom si su sheet tiene otro campo.
 type CollectionDef = {
   id: string;
   name: string;
@@ -223,28 +219,23 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     successCount: 0
   });
   const [isDragging, setIsDragging] = useState(false);
+  // ⭐ Búsqueda + filtro por estado (agiliza CSV con muchas columnas)
+  const [columnSearch, setColumnSearch] = useState('');
+  const [mappingFilter, setMappingFilter] = useState<'all' | 'matched' | 'custom' | 'skipped'>('all');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ⭐ Devuelve la definición completa de la colección seleccionada
   const getCollectionDef = (): CollectionDef | undefined => {
     return AVAILABLE_COLLECTIONS.find(c => c.id === selectedCollection);
   };
 
-  // ⭐ Busca el mejor field match para un header del CSV. Comparación insensible
-  //    a mayúsculas, espacios y guiones bajos. Si encuentra match exacto en
-  //    nombre o label, lo devuelve. Si no, devuelve null.
   const findBestFieldMatch = (csvHeader: string, fields: CollectionDef['fields']): string | null => {
-    const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+    const norm = (str: string) => str.toLowerCase().replace(/[\s_-]+/g, '');
     const target = norm(csvHeader);
     const exact = fields.find(f => norm(f.name) === target || (f.label && norm(f.label) === target));
     return exact ? exact.name : null;
   };
 
-  // ⭐ Cuando el usuario elige una colección destino, re-mapea automáticamente
-  //    los headers que coincidan con campos conocidos de esa colección.
-  //    Los que no coincidan quedan como camelCase (custom) y el usuario puede
-  //    ajustarlos manualmente.
   const handleSelectCollection = (collectionId: string) => {
     setSelectedCollection(collectionId);
     const def = AVAILABLE_COLLECTIONS.find(c => c.id === collectionId);
@@ -255,14 +246,48 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       csvHeaders.forEach(h => {
         const match = findBestFieldMatch(h, def.fields);
         if (match) {
-          // Match encontrado: usa el field conocido + el tipo declarado en el schema
           const fieldDef = def.fields.find(f => f.name === match)!;
           next[h] = { firestoreField: match, type: fieldDef.type };
         } else if (!prev[h] || !prev[h].firestoreField) {
-          // Sin match: deja el camelCase auto-generado
           next[h] = { firestoreField: toCamelCase(h), type: detectType(csvData, h) };
         }
-        // Si ya había un mapeo manual del usuario, lo respeta
+      });
+      return next;
+    });
+  };
+
+  // ⭐ Clasifica cada columna del CSV según su mapeo:
+  //    matched  = va a un campo que YA EXISTE en la colección (verde)
+  //    custom   = crea un campo nuevo que no está en el schema (azul)
+  //    skipped  = no se importa (gris)
+  const classifyHeader = (header: string): 'matched' | 'custom' | 'skipped' => {
+    const m = fieldMappings[header];
+    if (!m || m.type === 'skip' || !m.firestoreField) return 'skipped';
+    const known = (getCollectionDef()?.fields || []).some(f => f.name === m.firestoreField);
+    return known ? 'matched' : 'custom';
+  };
+
+  // ⭐ Acciones masivas para no tocar columna por columna
+  const reAutoMap = () => { if (selectedCollection) handleSelectCollection(selectedCollection); };
+
+  const bulkSkipCustom = () => {
+    setFieldMappings(prev => {
+      const next = { ...prev };
+      csvHeaders.forEach(h => {
+        if (classifyHeader(h) === 'custom') next[h] = { ...next[h], type: 'skip' };
+      });
+      return next;
+    });
+  };
+
+  const bulkImportSkipped = () => {
+    setFieldMappings(prev => {
+      const next = { ...prev };
+      csvHeaders.forEach(h => {
+        const m = next[h];
+        if (!m || m.type === 'skip') {
+          next[h] = { firestoreField: (m && m.firestoreField) || toCamelCase(h), type: detectType(csvData, h) };
+        }
       });
       return next;
     });
@@ -272,7 +297,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   // HELPERS
   // ─────────────────────────────────────────────────────────────
 
-  // Convierte "First Name" → "firstName"
   const toCamelCase = (str: string): string => {
     return str
       .trim()
@@ -281,18 +305,15 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       .replace(/^[A-Z]/, (m) => m.toLowerCase());
   };
 
-  // Detecta el tipo de dato más probable basado en las primeras 5 filas
   const detectType = (data: any[], column: string): FieldType => {
     const samples = data.slice(0, 5).map(r => r[column]).filter(v => v !== null && v !== '' && v !== undefined);
     if (samples.length === 0) return 'string';
 
     if (samples.every(v => !isNaN(Number(v)) && String(v).trim() !== '')) return 'number';
     if (samples.every(v => ['true', 'false', 'yes', 'no', '1', '0'].includes(String(v).toLowerCase().trim()))) return 'boolean';
-    
-    // Fechas: detecta formatos comunes pero NO números que parsearían como timestamp
+
     if (samples.every(v => {
       const str = String(v).trim();
-      // Debe contener al menos un separador típico de fecha
       if (!/[-/]/.test(str)) return false;
       return !isNaN(Date.parse(str));
     })) return 'date';
@@ -300,7 +321,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     return 'string';
   };
 
-  // Transforma valor según tipo declarado
   const transformValue = (value: any, type: FieldType): any => {
     if (value === null || value === undefined || value === '') {
       if (type === 'number') return 0;
@@ -313,14 +333,14 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
     switch (type) {
       case 'number':
-        const num = Number(str.replace(/,/g, '')); // Acepta "1,000.50"
+        const num = Number(str.replace(/,/g, ''));
         return isNaN(num) ? 0 : num;
       case 'boolean':
         return ['true', 'yes', '1', 'sí', 'si'].includes(str.toLowerCase());
       case 'date':
         const date = new Date(str);
         if (isNaN(date.getTime())) return str;
-        return date.toISOString().split('T')[0]; // YYYY-MM-DD
+        return date.toISOString().split('T')[0];
       case 'array':
         return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
       default:
@@ -328,7 +348,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     }
   };
 
-  // Construye el objeto Firestore desde una fila del CSV
   const transformRow = (row: any): any => {
     const transformed: any = {};
     Object.entries(fieldMappings).forEach(([csvHeader, mapping]) => {
@@ -368,8 +387,9 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
         setCsvData(data);
         setCsvHeaders(headers);
+        setColumnSearch('');
+        setMappingFilter('all');
 
-        // Inicializar mapeos automáticos: nombre camelCase + tipo detectado
         const initialMappings: Record<string, FieldMapping> = {};
         headers.forEach(h => {
           initialMappings[h] = {
@@ -404,7 +424,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       return;
     }
 
-    // Verificar que al menos un campo NO esté en "skip"
     const hasMappedFields = Object.values(fieldMappings).some(m => m.type !== 'skip' && m.firestoreField);
     if (!hasMappedFields) {
       alert('Debes mapear al menos un campo (no todos pueden estar en "Skip").');
@@ -415,7 +434,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     setImportProgress({ current: 0, total: csvData.length, errors: [], successCount: 0 });
 
     try {
-      const BATCH_SIZE = 500; // Firestore límite por batch
+      const BATCH_SIZE = 500;
       let successCount = 0;
       const errors: { row: number; message: string }[] = [];
 
@@ -428,7 +447,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
           try {
             const transformedData = transformRow(row);
 
-            // Filtrar registros completamente vacíos
             const hasAnyValue = Object.values(transformedData).some(v => 
               v !== '' && v !== 0 && v !== false && (!Array.isArray(v) || v.length > 0)
             );
@@ -442,12 +460,10 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
               if (!docId) {
                 throw new Error(`ID vacío en la columna "${idColumn}"`);
               }
-              // Sanitizar el ID: no puede tener / ni espacios al inicio/final
               const cleanId = docId.replace(/\//g, '_').replace(/^\.+|\.+$/g, '');
               const docRef = doc(db, selectedCollection, cleanId);
               batch.set(docRef, transformedData);
             } else {
-              // Auto-generar ID
               const docRef = doc(collection(db, selectedCollection));
               batch.set(docRef, transformedData);
             }
@@ -484,12 +500,14 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     setFieldMappings({});
     setUseExistingId(false);
     setIdColumn('');
+    setColumnSearch('');
+    setMappingFilter('all');
     setImportProgress({ current: 0, total: 0, errors: [], successCount: 0 });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // ─────────────────────────────────────────────────────────────
-  // ESTILOS — Refinados para look profesional y compacto
+  // ESTILOS
   // ─────────────────────────────────────────────────────────────
 
   const s = {
@@ -513,6 +531,47 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   const STEPS = ['Upload CSV', 'Map Fields', 'Preview', 'Import'];
   const currentStepIndex = step === 'upload' ? 0 : step === 'mapping' ? 1 : step === 'preview' ? 2 : 3;
 
+  // ⭐ Conteos por estado + columnas visibles (según búsqueda y filtro activo)
+  const counts = csvHeaders.reduce(
+    (acc, h) => { const c = classifyHeader(h); (acc as any)[c]++; acc.all++; return acc; },
+    { all: 0, matched: 0, custom: 0, skipped: 0 }
+  );
+  const visibleHeaders = csvHeaders.filter(h => {
+    if (columnSearch.trim() && !h.toLowerCase().includes(columnSearch.toLowerCase().trim())) return false;
+    if (mappingFilter !== 'all' && classifyHeader(h) !== mappingFilter) return false;
+    return true;
+  });
+
+  // ⭐ Estilo visual por estado (etiqueta + tinte de fila)
+  const STATUS_UI: Record<'matched' | 'custom' | 'skipped', { bg: string; border: string; fg: string; label: string; rowBg: string; icon: string }> = {
+    matched: { bg: '#ecfdf5', border: '#a7f3d0', fg: '#047857', label: 'En la colección', rowBg: '#f6fefb', icon: '✓' },
+    custom:  { bg: '#eff6ff', border: '#bfdbfe', fg: '#1d4ed8', label: 'Campo nuevo', rowBg: '#f8fbff', icon: '✎' },
+    skipped: { bg: '#f1f5f9', border: '#e2e8f0', fg: '#94a3b8', label: 'No se importa', rowBg: '#ffffff', icon: '⊘' }
+  };
+
+  const filterPill = (key: 'all' | 'matched' | 'custom' | 'skipped', label: string, count: number, color: string) => (
+    <button
+      type="button"
+      onClick={() => setMappingFilter(key)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        padding: '6px 12px', borderRadius: '999px', cursor: 'pointer',
+        fontSize: '0.78rem', fontWeight: 600,
+        border: `1px solid ${mappingFilter === key ? color : '#e2e8f0'}`,
+        background: mappingFilter === key ? color : '#ffffff',
+        color: mappingFilter === key ? '#ffffff' : '#475569',
+        transition: 'all 0.15s'
+      }}
+    >
+      {label}
+      <span style={{
+        background: mappingFilter === key ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+        color: mappingFilter === key ? '#ffffff' : '#64748b',
+        borderRadius: '999px', padding: '0 7px', fontSize: '0.72rem', fontWeight: 700, minWidth: '18px', textAlign: 'center'
+      }}>{count}</span>
+    </button>
+  );
+
   // ─────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────
@@ -527,7 +586,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
         .di-btn-primary:hover { background-color: #0f172a !important; }
         .di-btn-secondary:hover { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
         .di-input:focus { border-color: #0f172a !important; box-shadow: 0 0 0 3px rgba(15,23,42,0.06) !important; }
-        .di-row:hover { background-color: #fafbfc !important; }
+        .di-row:hover { filter: brightness(0.985); }
       `}</style>
 
       {/* HEADER */}
@@ -600,7 +659,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             }}
           />
 
-          {/* INSTRUCCIONES */}
           <div style={{ marginTop: '18px', padding: '14px 16px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', display: 'flex', gap: '10px' }}>
             <AlertCircle size={15} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div style={{ fontSize: '0.8rem', color: '#78350f', lineHeight: 1.55 }}>
@@ -619,7 +677,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       {/* ─────────── STEP 2: MAPPING ─────────── */}
       {step === 'mapping' && (
         <div style={s.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <h2 style={{ margin: '0 0 3px 0', fontSize: '0.95rem', color: '#0f172a', fontWeight: 600 }}>Map columns to Firestore fields</h2>
               <p style={{ margin: 0, color: '#64748b', fontSize: '0.775rem' }}>
@@ -669,93 +727,105 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             )}
           </div>
 
-          {/* RESUMEN DEL MAPEO — campos del schema sin asignar / columnas extra */}
-          {(() => {
-            const def = getCollectionDef();
-            if (!def) return null;
-            const mappingValues: FieldMapping[] = Object.values(fieldMappings);
-            const usedFieldNames = new Set(mappingValues.filter(m => m.type !== 'skip' && m.firestoreField).map(m => m.firestoreField));
-            const unmappedKnownFields = def.fields.filter(f => !usedFieldNames.has(f.name));
-            const extraColumns = csvHeaders.filter(h => {
-              const m = fieldMappings[h];
-              if (!m || m.type === 'skip' || !m.firestoreField) return false;
-              return !def.fields.some(f => f.name === m.firestoreField);
-            });
-            return (
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                {unmappedKnownFields.length > 0 && (
-                  <div style={{ flex: '1 1 240px', padding: '10px 14px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '7px', fontSize: '0.75rem', color: '#78350f' }}>
-                    <div style={{ fontWeight: 600, marginBottom: '3px' }}>
-                      {unmappedKnownFields.length} schema {unmappedKnownFields.length === 1 ? 'field' : 'fields'} not in CSV
-                    </div>
-                    <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '0.7rem', opacity: 0.85 }}>
-                      {unmappedKnownFields.map(f => f.name).join(', ')}
-                    </div>
-                  </div>
-                )}
-                {extraColumns.length > 0 && (
-                  <div style={{ flex: '1 1 240px', padding: '10px 14px', backgroundColor: '#eff6ff', border: '1px solid #dbeafe', borderRadius: '7px', fontSize: '0.75rem', color: '#1e3a8a' }}>
-                    <div style={{ fontWeight: 600, marginBottom: '3px' }}>
-                      {extraColumns.length} custom {extraColumns.length === 1 ? 'field' : 'fields'} (not in schema)
-                    </div>
-                    <div style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '0.7rem', opacity: 0.85 }}>
-                      {extraColumns.map(h => fieldMappings[h]?.firestoreField).join(', ')}
-                    </div>
-                  </div>
-                )}
+          {/* ⭐ BARRA DE CONTROL: buscador + filtros por estado + acciones masivas */}
+          {selectedCollection && (
+            <div style={{ marginBottom: '14px', padding: '14px 16px', backgroundColor: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Buscador */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '200px' }}>
+                  <input
+                    className="di-input"
+                    style={{ ...s.input, paddingLeft: '32px' }}
+                    placeholder="Buscar columna del CSV…"
+                    value={columnSearch}
+                    onChange={(e) => setColumnSearch(e.target.value)}
+                  />
+                  <FileSpreadsheet size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                </div>
+                {/* Acciones masivas */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={reAutoMap} style={{ ...s.btnSecondary, padding: '7px 12px' }} title="Volver a emparejar automáticamente por nombre">
+                    <RotateCcw size={13} /> Auto-mapear
+                  </button>
+                  <button type="button" onClick={bulkImportSkipped} style={{ ...s.btnSecondary, padding: '7px 12px', color: '#1d4ed8', borderColor: '#bfdbfe', background: '#eff6ff' }} title="Importar como campo nuevo todas las columnas omitidas">
+                    Importar omitidas
+                  </button>
+                  <button type="button" onClick={bulkSkipCustom} style={{ ...s.btnSecondary, padding: '7px 12px' }} title="No importar las columnas que crearían campos nuevos">
+                    Omitir campos nuevos
+                  </button>
+                </div>
               </div>
-            );
-          })()}
+
+              {/* Filtros por estado (con conteos, clickeables) */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                {filterPill('all', 'Todas', counts.all, '#0f172a')}
+                {filterPill('matched', '✓ En la colección', counts.matched, '#10b981')}
+                {filterPill('custom', '✎ Campo nuevo', counts.custom, '#2563eb')}
+                {filterPill('skipped', '⊘ No se importa', counts.skipped, '#64748b')}
+              </div>
+            </div>
+          )}
 
           {/* TABLA DE MAPEO */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
               <thead>
                 <tr>
-                  <th style={s.th}>CSV Column</th>
-                  <th style={s.th}>Sample Value</th>
-                  <th style={{ ...s.th, width: '40px' }}></th>
+                  <th style={{ ...s.th, width: '132px' }}>Estado</th>
+                  <th style={s.th}><FileSpreadsheet size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} /> Columna del CSV</th>
+                  <th style={s.th}>Ejemplo</th>
+                  <th style={{ ...s.th, width: '36px' }}></th>
                   <th style={s.th}>
+                    <Database size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} />
                     {(() => {
                       const def = getCollectionDef();
-                      return def ? `→ Maps to Field in ${def.name}` : '→ Target Field (select collection first)';
+                      return def ? `Campo en ${def.name}` : 'Campo destino (elige colección)';
                     })()}
                   </th>
-                  <th style={s.th}>Type</th>
+                  <th style={s.th}>Tipo</th>
                 </tr>
               </thead>
               <tbody>
-                {csvHeaders.map(header => {
+                {visibleHeaders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#94a3b8', padding: '28px', fontStyle: 'italic' }}>
+                      {csvHeaders.length === 0 ? 'No hay columnas.' : 'Ninguna columna coincide con la búsqueda/filtro.'}
+                    </td>
+                  </tr>
+                ) : visibleHeaders.map(header => {
                   const mapping = fieldMappings[header];
                   const sampleValue = csvData[0]?.[header] || '';
                   const isSkipped = mapping?.type === 'skip';
                   const collectionDef = getCollectionDef();
                   const knownFields = collectionDef?.fields || [];
-                  // ¿El field actual es uno conocido de la colección, o uno custom?
                   const isKnownField = knownFields.some(f => f.name === mapping?.firestoreField);
-                  // Valor del dropdown:
-                  //   - "" si no hay nada mapeado
-                  //   - field name conocido si match con schema de la colección
-                  //   - "__custom__" si tiene valor pero no está en el schema (o no hay colección elegida)
                   const dropdownValue = !mapping?.firestoreField
                     ? ''
                     : (isKnownField ? mapping.firestoreField : '__custom__');
+                  const status = classifyHeader(header);
+                  const ui = STATUS_UI[status];
 
                   return (
-                    <tr key={header} className="di-row" style={{ opacity: isSkipped ? 0.4 : 1, transition: 'background-color 0.15s' }}>
+                    <tr key={header} className="di-row" style={{ backgroundColor: ui.rowBg, transition: 'filter 0.15s' }}>
+                      {/* Estado */}
+                      <td style={s.td}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 9px', borderRadius: '999px', border: `1px solid ${ui.border}`, background: ui.bg, color: ui.fg, fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: '0.72rem' }}>{ui.icon}</span> {ui.label}
+                        </span>
+                      </td>
+                      {/* Columna del CSV */}
                       <td style={{ ...s.td, fontWeight: 600, color: '#0f172a' }}>{header}</td>
-                      <td style={{ ...s.td, color: '#94a3b8', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: '0.75rem' }}>
+                      {/* Ejemplo */}
+                      <td style={{ ...s.td, color: '#94a3b8', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: '0.75rem' }}>
                         {String(sampleValue).substring(0, 50)}
                       </td>
                       <td style={s.td}><ArrowRight size={13} color="#cbd5e1" strokeWidth={2} /></td>
+                      {/* Campo destino */}
                       <td style={s.td}>
-                        {/* ⭐ Dropdown SIEMPRE visible. Las opciones cambian según haya
-                            colección elegida o no. El input custom aparece debajo cuando
-                            el usuario quiere escribir un nombre que no está en el schema. */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           <select
                             className="di-input"
-                            style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem' }}
+                            style={{ ...s.select, padding: '6px 10px', fontSize: '0.8rem', opacity: isSkipped ? 0.5 : 1 }}
                             value={dropdownValue}
                             disabled={isSkipped}
                             onChange={(e) => {
@@ -763,10 +833,8 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                               if (v === '') {
                                 setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: '' } }));
                               } else if (v === '__custom__') {
-                                // Al elegir Custom, vacía el campo para que el usuario escriba
                                 setFieldMappings(prev => ({ ...prev, [header]: { ...prev[header], firestoreField: isKnownField ? '' : (prev[header]?.firestoreField || '') } }));
                               } else {
-                                // Field conocido elegido: actualiza también el type según el schema
                                 const fieldDef = knownFields.find(f => f.name === v);
                                 setFieldMappings(prev => ({
                                   ...prev,
@@ -788,7 +856,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                             <option value="__custom__">✎ Custom field name…</option>
                           </select>
 
-                          {/* Input para escribir nombre custom — aparece cuando se elige Custom O cuando no hay colección y el usuario ya tiene un valor */}
                           {(dropdownValue === '__custom__' || (!collectionDef && mapping?.firestoreField)) && (
                             <input
                               type="text"
@@ -801,11 +868,11 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
                               }))}
                               disabled={isSkipped}
                               placeholder={collectionDef ? 'customFieldName' : 'Select collection above to use schema'}
-                              autoFocus={dropdownValue === '__custom__'}
                             />
                           )}
                         </div>
                       </td>
+                      {/* Tipo */}
                       <td style={s.td}>
                         <select
                           className="di-input"
@@ -831,7 +898,12 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             </table>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', gap: '10px' }}>
+          {/* Resumen inferior + continuar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '18px', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              Se importarán <strong style={{ color: '#0f172a' }}>{counts.matched + counts.custom}</strong> de {csvHeaders.length} columnas
+              {counts.skipped > 0 && <span> · {counts.skipped} omitida(s)</span>}
+            </div>
             <button 
               onClick={() => setStep('preview')} 
               disabled={!selectedCollection} 
@@ -859,7 +931,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             </button>
           </div>
 
-          {/* CARDS DE PREVIEW */}
           <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
             {csvData.slice(0, 5).map((row, idx) => {
               const transformed = transformRow(row);
@@ -886,7 +957,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
             </p>
           )}
 
-          {/* CONFIRMACIÓN */}
           <div style={{ padding: '14px 16px', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', marginBottom: '18px', display: 'flex', gap: '10px' }}>
             <AlertCircle size={16} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div style={{ fontSize: '0.8rem', color: '#78350f', lineHeight: 1.5 }}>
@@ -919,7 +989,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
               {importProgress.current} of {importProgress.total} records processed
             </p>
 
-            {/* PROGRESS BAR */}
             <div style={{ maxWidth: '360px', margin: '0 auto' }}>
               <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
                 <div
@@ -955,7 +1024,6 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
               )}
             </p>
 
-            {/* ERRORES SI HAY */}
             {importProgress.errors.length > 0 && (
               <details style={{ textAlign: 'left', maxWidth: '560px', margin: '0 auto 22px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 14px' }}>
                 <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#991b1b', fontSize: '0.8rem' }}>
