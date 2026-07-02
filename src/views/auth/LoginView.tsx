@@ -127,7 +127,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           ser más cómodos al tacto (inputs altos, textos más grandes). */}
       <style>{`
         .login-card { width: 100%; max-width: 400px; background-color: #ffffff; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 40px 32px; border: 1px solid #e2e8f0; box-sizing: border-box; }
-        .login-logo { width: 56px; height: 56px; overflow: hidden; }
+        .login-logo { width: 116px; height: 116px; display: flex; align-items: center; justify-content: center; }
         .login-logo img { width: 100%; height: 100%; object-fit: contain; }
         .login-title { font-size: 1.6rem; }
         .login-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; font-size: 0.95rem; background-color: #ffffff; color: #0f172a; }
@@ -137,8 +137,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         @media (max-width: 600px) {
           .login-screen { padding: 16px; align-items: flex-start; padding-top: 8vh; }
           .login-card { max-width: 480px; border-radius: 24px; padding: 40px 28px; }
-          .login-logo { width: 72px; height: 72px; border-radius: 18px; }
-          .login-logo svg { width: 36px; height: 36px; }
+          .login-logo { width: 148px; height: 148px; border-radius: 20px; }
+          .login-logo svg { width: 44px; height: 44px; }
           .login-title { font-size: 1.95rem; }
           .login-subtitle { font-size: 1.05rem; }
           .login-label { font-size: 1rem !important; }
@@ -158,11 +158,12 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       <div className="login-card">
         
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto */}
-          <div className="login-logo" style={{ backgroundColor: branding.logo ? '#ffffff' : '#1e40af', border: branding.logo ? '1px solid #e2e8f0' : 'none', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px auto' }}>
+          {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto.
+              Sin fondo ni borde cuando hay logo, para que un PNG transparente se vea limpio. */}
+          <div className="login-logo" style={{ backgroundColor: branding.logo ? 'transparent' : '#1e40af', border: 'none', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto' }}>
             {branding.logo
               ? <img src={branding.logo} alt={branding.name} />
-              : <LogIn size={28} color="#ffffff" />}
+              : <LogIn size={36} color="#ffffff" />}
           </div>
           <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
             {view === 'login' ? branding.name : 'Recover Access'}
