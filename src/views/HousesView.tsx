@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Percent, PlayCircle, BarChart3, FileImage,
-  Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff
+  Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff, Camera
 } from 'lucide-react';
 
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
@@ -29,6 +29,8 @@ type Property = BaseProperty & {
   employeeFinishedAt?: string | null;
   beforePhotosExcluded?: string[]; // URLs que NO van al PDF
   afterPhotosExcluded?: string[];
+  dateOfIssue?: string;   // ⭐ Fecha de emisión
+  dueDate?: string;       // ⭐ Fecha de vencimiento
 };
 
 interface ServiceRecord {
@@ -467,6 +469,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const [formData, setFormData] = useState<Property>({
     id: '', statusId: '', invoiceStatus: 'Pending', receiveDate: '', scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: '',
+    dateOfIssue: '', dueDate: '',
     beforePhotos: [], afterPhotos: [], assignedWorkers: [] 
   });
 
@@ -483,6 +486,71 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const [photoConfig, setPhotoConfig] = useState<PhotoConfig>(DEFAULT_PHOTO_CONFIG);
   const [isCompressing, setIsCompressing] = useState(false);
+
+  // ⭐ CÁMARA RÁPIDA (ráfaga): se abre una vez y permite tomar varias fotos
+  //    seguidas sin cerrarse. Cada toma se agrega a Before o After.
+  const [cameraOpen, setCameraOpen] = useState<null | 'before' | 'after'>(null);
+  const [burstCount, setBurstCount] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const start = async () => {
+      if (!cameraOpen) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+      } catch (e) {
+        console.error('No se pudo abrir la cámara:', e);
+        alert('No se pudo abrir la cámara. Revisa los permisos del navegador o usa "Cargar/Galería".');
+        setCameraOpen(null);
+      }
+    };
+    start();
+    return () => {
+      active = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraOpen]);
+
+  const openBurstCamera = (type: 'before' | 'after') => {
+    setBurstCount(0);
+    setCameraOpen(type);
+  };
+
+  const captureBurst = async () => {
+    const video = videoRef.current;
+    if (!video || !cameraOpen) return;
+    const w = video.videoWidth || 1280;
+    const h = video.videoHeight || 720;
+    const maxW = 1600;
+    const scale = w > maxW ? maxW / w : 1;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/jpeg', 0.9));
+    if (!blob) return;
+    const file = new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    // Reutiliza el mismo flujo (compresión + preview + cola offline al guardar)
+    await addPhotoFiles([file] as any, cameraOpen);
+    setBurstCount(c => c + 1);
+  };
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
@@ -1146,7 +1214,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       }
     } else {
       const defaultStatus = statuses.length > 0 ? statuses[0].id : '';
-      setFormData({ id: '', statusId: defaultStatus, invoiceStatus: 'Pending', receiveDate: new Date().toISOString().split('T')[0], scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: '', beforePhotos: [], afterPhotos: [], assignedWorkers: [] });
+      setFormData({ id: '', statusId: defaultStatus, invoiceStatus: 'Pending', receiveDate: new Date().toISOString().split('T')[0], scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: '', dateOfIssue: '', dueDate: '', beforePhotos: [], afterPhotos: [], assignedWorkers: [] });
       setFormServices([]);
       setBeforePhotoURLs([]);
       setAfterPhotoURLs([]);
@@ -2037,13 +2105,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={{...s.th, width: '100px', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Actions</th>
                       <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Schedule</th>
                       <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
                       <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
                       <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
                       <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Team</th>
-                      <th style={{ ...s.th, textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Status</th>
+                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Status</th>
+                      <th style={{ ...s.th, width: '100px', textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2059,20 +2127,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
                       return (
                         <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
-                          <td data-label="Actions" style={s.td}>
-                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                              {canEdit && isVisible('admin') && (
-                                <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Edit2 size={16} /> <span className="mobile-action-text">Editar</span>
-                                </button>
-                              )}
-                              {canDelete && isVisible('admin') && (
-                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
-                                </button>
-                              )}
-                            </div>
-                          </td>
                           <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
                             <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate || '-'}
                           </td>
@@ -2093,8 +2147,22 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           <td data-label="Time" style={{ ...s.td, color: '#6b7280' }}><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.timeIn || '08:00 AM'}</td>
                           <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
                           <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
-                          <td data-label="Status" style={{ ...s.td, textAlign: 'right' }}>
+                          <td data-label="Status" style={s.td}>
                             <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(prop.client)} modalSubtitle={prop.address} />
+                          </td>
+                          <td data-label="Actions" style={{ ...s.td, textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', width: '100%' }}>
+                              {canEdit && isVisible('admin') && (
+                                <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Edit2 size={16} /> <span className="mobile-action-text">Editar</span>
+                                </button>
+                              )}
+                              {canDelete && isVisible('admin') && (
+                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2410,6 +2478,20 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
                       </div>
                     )}
+                    <div>
+                      <label style={s.label}>Date of Issue</label>
+                      <div style={s.inputWrapper}>
+                        <CalendarDays style={s.icon} size={16} />
+                        <input type="date" style={s.input} value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={s.label}>Due Date</label>
+                      <div style={s.inputWrapper}>
+                        <CalendarDays style={s.icon} size={16} />
+                        <input type="date" style={s.input} value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} />
+                      </div>
+                    </div>
                     {isElementVisible('timeIn') && (
                       <div>
                         <label style={s.label}>Time In</label>
@@ -2586,18 +2668,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
-                    <PhotoSection label="Before" type="before"
-                      urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
-                      canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
-                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
-                      onRemove={(i: number) => handleRemovePhoto(i, 'before')}
-                      onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
-                    <PhotoSection label="After" type="after"
-                      urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
-                      canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
-                      onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
-                      onRemove={(i: number) => handleRemovePhoto(i, 'after')}
-                      onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
+                    <div>
+                      <button type="button" onClick={() => openBurstCamera('before')} disabled={isSaving}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', marginBottom: '12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
+                        <Camera size={18} /> Cámara rápida · Before
+                      </button>
+                      <PhotoSection label="Before" type="before"
+                        urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
+                        canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
+                        onRemove={(i: number) => handleRemovePhoto(i, 'before')}
+                        onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
+                    </div>
+                    <div>
+                      <button type="button" onClick={() => openBurstCamera('after')} disabled={isSaving}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', marginBottom: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
+                        <Camera size={18} /> Cámara rápida · After
+                      </button>
+                      <PhotoSection label="After" type="after"
+                        urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
+                        canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
+                        onRemove={(i: number) => handleRemovePhoto(i, 'after')}
+                        onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
+                    </div>
                   </div>
                 </div>
                 )}
@@ -2801,6 +2895,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Schedule Date</span>
                         <span style={s.infoValue}>{selectedHouse.scheduleDate || '-'}</span>
+                      </div>
+                      <div style={s.infoRow}>
+                        <span style={s.infoLabel}>Date of Issue</span>
+                        <span style={s.infoValue}>{selectedHouse.dateOfIssue || '-'}</span>
+                      </div>
+                      <div style={s.infoRow}>
+                        <span style={s.infoLabel}>Due Date</span>
+                        <span style={s.infoValue}>{selectedHouse.dueDate || '-'}</span>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Time In</span>
@@ -3073,11 +3175,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> BEFORE PHOTOS</span>
-                        {isElementVisible('btn_exportPdf') && (
-                          <button onClick={() => generatePDF('before')} disabled={isSaving} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <FileImage size={14} /> Export PDF
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          {canEdit && (
+                            <button onClick={() => openBurstCamera('before')} disabled={isSaving} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Camera size={14} /> Cámara rápida
+                            </button>
+                          )}
+                          {isElementVisible('btn_exportPdf') && (
+                            <button onClick={() => generatePDF('before')} disabled={isSaving} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <FileImage size={14} /> Export PDF
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <PhotoSection label="Before" type="before"
                         urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
@@ -3089,11 +3198,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                         <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> AFTER PHOTOS</span>
-                        {isElementVisible('btn_exportPdf') && (
-                          <button onClick={() => generatePDF('after')} disabled={isSaving} style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <FileImage size={14} /> Export PDF
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          {canEdit && (
+                            <button onClick={() => openBurstCamera('after')} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Camera size={14} /> Cámara rápida
+                            </button>
+                          )}
+                          {isElementVisible('btn_exportPdf') && (
+                            <button onClick={() => generatePDF('after')} disabled={isSaving} style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <FileImage size={14} /> Export PDF
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <PhotoSection label="After" type="after"
                         urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
@@ -3362,6 +3478,41 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <Save size={16} /> {isSavingFieldConfig ? 'Saving...' : 'Save Configuration'}
               </button>
             </footer>
+          </div>
+        </div>
+      )}
+
+      {/* --- CÁMARA RÁPIDA (RÁFAGA): se mantiene abierta y permite varias tomas --- */}
+      {cameraOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#000', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', color: '#fff', background: 'rgba(0,0,0,0.45)' }}>
+            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Camera size={18} /> {cameraOpen === 'before' ? 'Fotos Before' : 'Fotos After'} · {burstCount} tomada(s)
+            </div>
+            <button onClick={() => setCameraOpen(null)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <X size={18} /> Cerrar
+            </button>
+          </div>
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            {isCompressing && (
+              <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem' }}>
+                Procesando…
+              </div>
+            )}
+            {burstCount > 0 && (
+              <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(16,185,129,0.9)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 700 }}>
+                {burstCount} foto(s) agregada(s)
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '18px 16px calc(18px + env(safe-area-inset-bottom))', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+            <button onClick={captureBurst} aria-label="Tomar foto"
+              style={{ width: '74px', height: '74px', borderRadius: '50%', background: '#fff', border: '5px solid rgba(255,255,255,0.5)', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.4)', flexShrink: 0 }} />
+            <button onClick={() => setCameraOpen(null)}
+              style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 22px', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' }}>
+              Listo ({burstCount})
+            </button>
           </div>
         </div>
       )}
