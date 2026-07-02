@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
@@ -106,6 +106,261 @@ const uid = () =>
     ? (crypto as any).randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+// ─────────────────────────────────────────────────────────────
+// ⭐ DASHBOARD DE REPORTES (pestaña "Reportes"): KPIs y analítica
+//    calculada a partir de los Quality Checks reales (qcList).
+// ─────────────────────────────────────────────────────────────
+function QCReportsDashboard({
+  qcList, tasks, places,
+}: {
+  qcList: any[]; tasks: any[]; places: any[];
+}) {
+  const stats = useMemo(() => {
+    const taskName = (id: string) => tasks.find((t: any) => String(t.id) === String(id))?.name || 'Tarea';
+    const placeName = (id: string) => places.find((p: any) => String(p.id) === String(id))?.name || 'Área';
+
+    const finished = qcList.filter(q => q.status === 'Finished');
+    const recalls = qcList.filter(q => q.result === 'failed');
+    const totalReports = qcList.length;
+    const finishedCount = finished.length;
+    const passedFirst = finished.filter(q => q.result !== 'failed').length;
+    const recallCount = recalls.length;
+    const recallRate = finishedCount ? (recallCount / finishedCount) * 100 : 0;
+
+    const qcPass = (q: any) => {
+      let yes = 0, no = 0;
+      const data = q.qcData || {};
+      Object.keys(data).forEach(pid => {
+        const t = (data[pid] && data[pid].tasks) || {};
+        Object.values(t).forEach((v: any) => { if (v === 'Yes') yes++; else if (v === 'No') no++; });
+      });
+      const total = yes + no;
+      return { yes, no, rate: total ? (yes / total) * 100 : null };
+    };
+
+    const rates: number[] = [];
+    finished.forEach(q => { const r = qcPass(q).rate; if (r != null) rates.push(r); });
+    const qualityScore = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+
+    const issuesByTask: Record<string, number> = {};
+    const issuesByRoom: Record<string, number> = {};
+    qcList.forEach(q => {
+      const data = q.qcData || {};
+      Object.keys(data).forEach(pid => {
+        const t = (data[pid] && data[pid].tasks) || {};
+        Object.keys(t).forEach(tid => {
+          if (t[tid] === 'No') {
+            const tn = taskName(tid);
+            issuesByTask[tn] = (issuesByTask[tn] || 0) + 1;
+            const pn = placeName(pid);
+            issuesByRoom[pn] = (issuesByRoom[pn] || 0) + 1;
+          }
+        });
+      });
+    });
+    const topIssues = Object.entries(issuesByTask).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const roomHeat = Object.entries(issuesByRoom).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    const teamMap: Record<string, { homes: number; passSum: number; passN: number; recalls: number }> = {};
+    finished.forEach(q => {
+      const tn = q.team || '—';
+      const m = teamMap[tn] = teamMap[tn] || { homes: 0, passSum: 0, passN: 0, recalls: 0 };
+      m.homes++;
+      const r = qcPass(q).rate; if (r != null) { m.passSum += r; m.passN++; }
+      if (q.result === 'failed') m.recalls++;
+    });
+    const teamPerf = Object.entries(teamMap)
+      .map(([team, m]) => ({ team, homes: m.homes, pass: m.passN ? m.passSum / m.passN : null, recalls: m.recalls }))
+      .sort((a, b) => (b.pass ?? 0) - (a.pass ?? 0));
+
+    const inspMap: Record<string, { n: number; passSum: number; passN: number; recalls: number }> = {};
+    finished.forEach(q => {
+      const name = q.inspector || 'Unknown';
+      const m = inspMap[name] = inspMap[name] || { n: 0, passSum: 0, passN: 0, recalls: 0 };
+      m.n++;
+      const r = qcPass(q).rate; if (r != null) { m.passSum += r; m.passN++; }
+      if (q.result === 'failed') m.recalls++;
+    });
+    const inspectors = Object.entries(inspMap)
+      .map(([name, m]) => ({ name, n: m.n, pass: m.passN ? m.passSum / m.passN : null, recalls: m.recalls }))
+      .sort((a, b) => (b.pass ?? 0) - (a.pass ?? 0)).slice(0, 8);
+
+    const byMonth: Record<string, { finished: number; recalls: number }> = {};
+    qcList.forEach(q => {
+      const k = (q.date || '').slice(0, 7); // YYYY-MM
+      if (!k) return;
+      const m = byMonth[k] = byMonth[k] || { finished: 0, recalls: 0 };
+      if (q.status === 'Finished') m.finished++;
+      if (q.result === 'failed') m.recalls++;
+    });
+    const months = Object.keys(byMonth).sort().slice(-6).map(k => ({
+      key: k, finished: byMonth[k].finished, recalls: byMonth[k].recalls,
+      rate: byMonth[k].finished ? (byMonth[k].recalls / byMonth[k].finished) * 100 : 0,
+    }));
+
+    return { totalReports, finishedCount, passedFirst, recallCount, recallRate, qualityScore, topIssues, roomHeat, teamPerf, inspectors, months };
+  }, [qcList, tasks, places]);
+
+  const monthLabel = (k: string) => {
+    const [y, m] = k.split('-');
+    const names = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    return `${names[Number(m) - 1] || m} ${String(y).slice(2)}`;
+  };
+
+  // Color del mapa de calor (rojo = más problemas, verde = menos)
+  const heatColor = (val: number, max: number) => {
+    if (max <= 0) return { bg: '#dcfce7', fg: '#166534' };
+    const r = val / max;
+    if (r >= 0.75) return { bg: '#fecaca', fg: '#991b1b' };
+    if (r >= 0.5) return { bg: '#fed7aa', fg: '#9a3412' };
+    if (r >= 0.25) return { bg: '#fef08a', fg: '#854d0e' };
+    return { bg: '#dcfce7', fg: '#166534' };
+  };
+
+  const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', padding: '18px', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' };
+  const cardTitle: React.CSSProperties = { margin: '0 0 14px 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' };
+
+  const maxIssue = stats.topIssues.length ? stats.topIssues[0][1] : 0;
+  const maxRoom = stats.roomHeat.length ? stats.roomHeat[0][1] : 0;
+  const maxMonth = Math.max(1, ...stats.months.map(m => m.recalls));
+
+  const kpis = [
+    { label: 'Quality Score', value: `${stats.qualityScore.toFixed(1)}%`, color: '#059669', bg: '#ecfdf5' },
+    { label: 'Pasaron a la 1ª', value: String(stats.passedFirst), color: '#2563eb', bg: '#eff6ff' },
+    { label: 'Recalls', value: String(stats.recallCount), color: '#dc2626', bg: '#fef2f2' },
+    { label: 'Tasa de Recall', value: `${stats.recallRate.toFixed(1)}%`, color: '#b45309', bg: '#fffbeb' },
+    { label: 'Inspecciones (Finished)', value: String(stats.finishedCount), color: '#4338ca', bg: '#eef2ff' },
+    { label: 'Reportes totales', value: String(stats.totalReports), color: '#0f172a', bg: '#f1f5f9' },
+  ];
+
+  if (stats.totalReports === 0) {
+    return (
+      <div style={{ ...card, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '40px' }}>
+        Aún no hay Quality Checks registrados. Cuando completes inspecciones, aquí verás los indicadores y reportes.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '14px' }}>
+        {kpis.map(k => (
+          <div key={k.label} style={{ ...card, padding: '16px 18px' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+              <span style={{ fontSize: '1.9rem', fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
+              <span style={{ width: '34px', height: '34px', borderRadius: '10px', background: k.bg, marginLeft: 'auto', flexShrink: 0 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: '18px', alignItems: 'start' }}>
+
+        {/* Problemas más comunes */}
+        <div style={card}>
+          <h3 style={cardTitle}>Problemas más comunes (tareas reprobadas)</h3>
+          {stats.topIssues.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin tareas reprobadas todavía.</div>
+          ) : stats.topIssues.map(([name, count]) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <span style={{ width: '38%', fontSize: '0.82rem', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+              <div style={{ flex: 1, height: '10px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ width: `${maxIssue ? (count / maxIssue) * 100 : 0}%`, height: '100%', background: 'linear-gradient(90deg,#60a5fa,#2563eb)', borderRadius: '999px' }} />
+              </div>
+              <span style={{ width: '30px', textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{count}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Mapa de calor por área */}
+        <div style={card}>
+          <h3 style={cardTitle}>Mapa de calor por área (por recalls/problemas)</h3>
+          {stats.roomHeat.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin datos por área todavía.</div>
+          ) : stats.roomHeat.map(([name, count]) => {
+            const c = heatColor(count, maxRoom);
+            return (
+              <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 12px', borderRadius: '9px', background: c.bg, marginBottom: '7px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: c.fg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 900, color: c.fg, flexShrink: 0 }}>{count}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desempeño por equipo */}
+        <div style={card}>
+          <h3 style={cardTitle}>Desempeño por equipo</h3>
+          {stats.teamPerf.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin inspecciones finalizadas.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '360px' }}>
+                <thead>
+                  <tr>
+                    {['Equipo', 'Casas', 'Pass %', 'Recalls'].map((h, i) => (
+                      <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.teamPerf.map(t => (
+                    <tr key={t.team} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>{t.team}</td>
+                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', color: '#475569', textAlign: 'right' }}>{t.homes}</td>
+                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', fontWeight: 700, textAlign: 'right', color: t.pass == null ? '#94a3b8' : t.pass >= 90 ? '#059669' : t.pass >= 75 ? '#b45309' : '#dc2626' }}>{t.pass == null ? '—' : `${t.pass.toFixed(0)}%`}</td>
+                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', textAlign: 'right', color: t.recalls > 0 ? '#dc2626' : '#94a3b8', fontWeight: t.recalls > 0 ? 700 : 400 }}>{t.recalls}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Ranking de inspectores */}
+        <div style={card}>
+          <h3 style={cardTitle}>Ranking de inspectores</h3>
+          {stats.inspectors.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin inspecciones finalizadas.</div>
+          ) : stats.inspectors.map((ins, idx) => (
+            <div key={ins.name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: idx === 0 ? '#fde68a' : idx === 1 ? '#e2e8f0' : idx === 2 ? '#fed7aa' : '#f1f5f9', color: '#334155', fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{idx + 1}</span>
+              <span style={{ flex: 1, fontSize: '0.88rem', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ins.name}</span>
+              {ins.recalls > 0 && <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 700 }}>{ins.recalls} recall(s)</span>}
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: ins.pass == null ? '#94a3b8' : ins.pass >= 90 ? '#059669' : '#b45309', flexShrink: 0 }}>{ins.pass == null ? '—' : `${ins.pass.toFixed(1)}%`}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Tendencia de recalls por mes */}
+        <div style={{ ...card, gridColumn: '1 / -1' }}>
+          <h3 style={cardTitle}>Tendencia de recalls (últimos meses)</h3>
+          {stats.months.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin datos por mes todavía.</div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', height: '160px', padding: '10px 4px 0' }}>
+              {stats.months.map(m => (
+                <div key={m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', height: '100%', justifyContent: 'flex-end' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626' }}>{m.recalls}</div>
+                  <div title={`${m.recalls} recalls de ${m.finished} inspecciones · ${m.rate.toFixed(1)}%`}
+                    style={{ width: '100%', maxWidth: '48px', height: `${(m.recalls / maxMonth) * 100}%`, minHeight: '4px', background: 'linear-gradient(180deg,#f87171,#dc2626)', borderRadius: '8px 8px 0 0' }} />
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>{monthLabel(m.key)}</div>
+                  <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{m.rate.toFixed(0)}%</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser }: QualityCheckViewProps) {
   const [qcList, setQcList] = useState<QCRecord[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -113,6 +368,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
+  // ⭐ Pestaña principal: Inspecciones (lista/pendientes) vs Reportes (dashboard)
+  const [mainTab, setMainTab] = useState<'inspections' | 'reports'>('inspections');
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -1676,6 +1933,28 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       </button>
 
+      {/* ⭐ PESTAÑAS PRINCIPALES: Inspecciones | Reportes */}
+      <div style={{ display: 'inline-flex', background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '4px', gap: '2px', marginBottom: '18px' }}>
+        <button
+          type="button"
+          onClick={() => setMainTab('inspections')}
+          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: mainTab === 'inspections' ? '#ffffff' : 'transparent', color: mainTab === 'inspections' ? '#1d4ed8' : '#64748b', boxShadow: mainTab === 'inspections' ? '0 1px 2px rgba(15,23,42,0.1)' : 'none' }}
+        >
+          <ClipboardCheck size={16} /> Inspecciones
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('reports')}
+          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: mainTab === 'reports' ? '#ffffff' : 'transparent', color: mainTab === 'reports' ? '#1d4ed8' : '#64748b', boxShadow: mainTab === 'reports' ? '0 1px 2px rgba(15,23,42,0.1)' : 'none' }}
+        >
+          <Activity size={16} /> Reportes
+        </button>
+      </div>
+
+      {mainTab === 'reports' ? (
+        <QCReportsDashboard qcList={qcList} tasks={tasks} places={places} />
+      ) : (
+      <>
       {/* ⭐ Buscador global + pestañas de estado (juntos, ARRIBA del todo) */}
       <div className="qc-toolbar">
         <div className="qc-table-search">
@@ -2007,6 +2286,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           })
         )}
       </div>
+      )}
+
+      </>
       )}
 
       {/* --- MODAL DE QUALITY CHECK --- */}
