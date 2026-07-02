@@ -266,6 +266,8 @@ export default function App() {
   }, [currentUser, roles]);
 
   const isSuperAdmin = isBypass || activeRole?.name === 'Administrator';
+  // ⭐ Data Import: SuperAdmin siempre; o cualquier rol con el permiso "Data Import" (casilla View en Roles).
+  const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Data Import')?.canView;
   const visibleProperties = properties; 
 
   const handleSettingsClick = () => {
@@ -410,8 +412,8 @@ export default function App() {
         
         {activeTab === 'users' && <UsersView onOpenMenu={toggleMenu} roles={roles} />}
 
-        {/* ⭐ DATA IMPORT — Solo accesible si es SuperAdmin (el Sidebar ya lo oculta para otros). */}
-        {activeTab === 'data_import' && isSuperAdmin && <DataImportView onOpenMenu={toggleMenu} />}
+        {/* ⭐ DATA IMPORT — SuperAdmin o rol con permiso "Data Import" (el Sidebar usa la misma regla). */}
+        {activeTab === 'data_import' && canViewDataImport && <DataImportView onOpenMenu={toggleMenu} />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
         {activeTab === 'qc_route' && (

@@ -48,7 +48,8 @@ export default function Sidebar({
   const canViewRoles = canView('Roles & Permissions');
   const canViewUsers = canView('System Users');
   const canViewSettings = canView('Settings');
-  const showAdminSection = canViewRoles || canViewUsers || canViewSettings || isSuperAdmin;
+  const canViewDataImport = canView('Data Import'); // ⭐ permiso propio (Roles > Data Import)
+  const showAdminSection = canViewRoles || canViewUsers || canViewSettings || canViewDataImport || isSuperAdmin;
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
@@ -279,8 +280,9 @@ export default function Sidebar({
             </button>
           )}
 
-          {/* ⭐ DATA IMPORT — Solo SuperAdmin. Útil para migrar datos de Google Sheets a Firestore. */}
-          {isSuperAdmin && (
+          {/* ⭐ DATA IMPORT — SuperAdmin siempre; además cualquier rol con el permiso
+              "Data Import" marcado en Roles & Permissions (casilla View). */}
+          {(isSuperAdmin || canViewDataImport) && (
             <button className={`nav-item ${activeTab === 'data_import' ? 'active' : ''}`} onClick={() => handleNavClick('data_import')}>
               <Database size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Data Import</span>}

@@ -29,6 +29,7 @@ const DEFAULT_MODULES = [
   'Customers',
   'Roles & Permissions',
   'System Users',
+  'Data Import',
   'Settings'
 ];
 
