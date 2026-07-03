@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity, StickyNote } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 
 /* ------------------------------------------------------------------
@@ -411,6 +411,14 @@ export default function PipelineBoardView({
                         <CalendarDays size={12} style={{ flexShrink: 0 }} />
                         <span>{(p as any).scheduleDate || 'Sin fecha'}</span>
                       </div>
+
+                      {/* Nota general (NO la del empleado) */}
+                      {(p as any).note && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, fontSize: '0.78rem', color: '#475569', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '6px 8px' }}>
+                          <StickyNote size={12} style={{ flexShrink: 0, marginTop: 2, color: '#94a3b8' }} />
+                          <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{(p as any).note}</span>
+                        </div>
+                      )}
 
                       {/* Monto (si se provee) */}
                       {getAmount && (
