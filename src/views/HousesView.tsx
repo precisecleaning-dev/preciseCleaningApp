@@ -460,7 +460,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   // ⭐ Modal para agregar un cliente rápido desde el formulario de casa
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
-  const [customerForm, setCustomerForm] = useState({ name: '', email: '', phone: '', address: '' });
+  const [customerForm, setCustomerForm] = useState({ type: 'Residential', color: '#3b82f6', name: '', businessName: '', email: '', phone: '', address: '', cityStateZip: '' });
   const [isServiceFromForm, setIsServiceFromForm] = useState(false);
   const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
   const [formServices, setFormServices] = useState<ServiceRecord[]>([]);
@@ -1306,26 +1306,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   // ⭐ Abre el modal de cliente con el formulario limpio
   const handleOpenCustomerModal = () => {
-    setCustomerForm({ name: '', email: '', phone: '', address: '' });
+    setCustomerForm({ type: 'Residential', color: '#3b82f6', name: '', businessName: '', email: '', phone: '', address: '', cityStateZip: '' });
     setIsCustomerModalOpen(true);
   };
 
   // ⭐ Guarda el nuevo cliente en 'customers', lo selecciona en la casa y cierra el modal
   const handleSaveNewCustomer = async () => {
-    if (!customerForm.name.trim()) return alert('El nombre del cliente es obligatorio.');
+    if (!customerForm.name.trim()) return alert('El nombre completo (Full Name) es obligatorio.');
     try {
       setIsSaving(true);
       const ref = await addDoc(collection(db, 'customers'), {
+        type: customerForm.type,
+        color: customerForm.color,
         name: customerForm.name.trim(),
+        businessName: customerForm.businessName.trim(),
         email: customerForm.email.trim(),
         phone: customerForm.phone.trim(),
         address: customerForm.address.trim(),
+        cityStateZip: customerForm.cityStateZip.trim(),
         createdAt: new Date().toISOString(),
       });
       // El listener de customersList lo recogerá automáticamente; ya lo dejamos seleccionado
       setFormData(prev => ({ ...prev, client: ref.id, address: customerForm.address.trim() || prev.address }));
       setIsCustomerModalOpen(false);
-      setCustomerForm({ name: '', email: '', phone: '', address: '' });
     } catch (e) {
       console.error('Error guardando cliente:', e);
       alert('No se pudo guardar el cliente. Intenta de nuevo.');
@@ -2484,9 +2487,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             type="button"
                             onClick={handleOpenCustomerModal}
                             title="Agregar nuevo cliente"
-                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '0 14px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                            aria-label="Agregar nuevo cliente"
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
                           >
-                            <Plus size={16} /> Nuevo
+                            <Plus size={18} strokeWidth={2.5} />
                           </button>
                         </div>
                       </div>
@@ -3346,56 +3350,95 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
       )}
 
-      {/* --- MODAL: NUEVO CLIENTE --- */}
+      {/* --- MODAL: NUEVO CLIENTE (mismo formulario que Customers) --- */}
       {isCustomerModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsCustomerModalOpen(false)}>
-          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
             <header style={s.header}>
-              <h3 style={s.title}>Nuevo Cliente</h3>
+              <h3 style={s.title}>&nbsp;</h3>
               <button style={s.closeBtn} onClick={() => setIsCustomerModalOpen(false)}><X size={22} /></button>
             </header>
             <div style={{ padding: '24px', overflowY: 'auto' }}>
-              <div style={{ display: 'grid', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '20px' }}>
+
                 <div>
-                  <label style={s.label}>Nombre <span style={{ color: '#3b82f6' }}>*</span></label>
+                  <label style={s.label}>Type</label>
+                  <CustomSelect
+                    options={[{ id: 'Residential', name: 'Residential' }, { id: 'Commercial', name: 'Commercial' }]}
+                    value={customerForm.type}
+                    onChange={(val: string) => setCustomerForm({ ...customerForm, type: val })}
+                    placeholder="Select type..."
+                    icon={Briefcase}
+                  />
+                </div>
+
+                <div>
+                  <label style={s.label}>Color Marker</label>
+                  <input
+                    type="color"
+                    value={customerForm.color}
+                    onChange={e => setCustomerForm({ ...customerForm, color: e.target.value })}
+                    style={{ width: '100%', height: '42px', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', background: '#fff' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={s.label}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
                   <div style={s.inputWrapper}>
                     <User style={s.icon} size={16} />
-                    <input type="text" style={s.input} placeholder="Nombre del cliente..." value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} autoFocus />
+                    <input type="text" style={s.input} value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} autoFocus />
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px' }}>
-                  <div>
-                    <label style={s.label}>Email</label>
-                    <div style={s.inputWrapper}>
-                      <FileText style={s.icon} size={16} />
-                      <input type="email" style={s.input} placeholder="correo@ejemplo.com" value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={s.label}>Teléfono</label>
-                    <div style={s.inputWrapper}>
-                      <Hash style={s.icon} size={16} />
-                      <input type="text" style={s.input} placeholder="(000) 000-0000" value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
+
                 <div>
-                  <label style={s.label}>Dirección</label>
+                  <label style={s.label}>Business Name</label>
+                  <div style={s.inputWrapper}>
+                    <Briefcase style={s.icon} size={16} />
+                    <input type="text" style={s.input} value={customerForm.businessName} onChange={e => setCustomerForm({ ...customerForm, businessName: e.target.value })} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={s.label}>Email</label>
+                  <div style={s.inputWrapper}>
+                    <FileText style={s.icon} size={16} />
+                    <input type="email" style={s.input} value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={s.label}>Phone</label>
+                  <div style={s.inputWrapper}>
+                    <Hash style={s.icon} size={16} />
+                    <input type="text" style={s.input} value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })} />
+                  </div>
+                </div>
+
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={s.label}>Address</label>
                   <div style={s.inputWrapper}>
                     <MapPin style={s.icon} size={16} />
-                    <input type="text" style={s.input} placeholder="Dirección completa..." value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} />
+                    <input type="text" style={s.input} value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} />
                   </div>
                 </div>
+
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={s.label}>City / State / Zip</label>
+                  <div style={s.inputWrapper}>
+                    <MapPin style={s.icon} size={16} />
+                    <input type="text" style={s.input} placeholder="e.g. Maracaibo, Zulia 4001" value={customerForm.cityStateZip} onChange={e => setCustomerForm({ ...customerForm, cityStateZip: e.target.value })} />
+                  </div>
+                </div>
+
               </div>
             </div>
             <footer style={s.footerBetween}>
-              <div />
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div>
                 <button onClick={() => setIsCustomerModalOpen(false)} style={s.btnOutline}>Cancel</button>
-                <button onClick={handleSaveNewCustomer} disabled={isSaving} style={s.btnPrimary}>
-                  <Save size={16} /> {isSaving ? 'Saving...' : 'Save Client'}
-                </button>
               </div>
+              <button onClick={handleSaveNewCustomer} disabled={isSaving} style={{ ...s.btnPrimary, backgroundColor: '#10b981', borderColor: '#10b981' }}>
+                <Save size={16} /> {isSaving ? 'Saving...' : 'Save Customer'}
+              </button>
             </footer>
           </div>
         </div>
