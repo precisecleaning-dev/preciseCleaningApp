@@ -458,6 +458,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   });
 
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  // ⭐ Modal para agregar un cliente rápido desde el formulario de casa
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerForm, setCustomerForm] = useState({ name: '', email: '', phone: '', address: '' });
   const [isServiceFromForm, setIsServiceFromForm] = useState(false);
   const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
   const [formServices, setFormServices] = useState<ServiceRecord[]>([]);
@@ -1102,7 +1105,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
     const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
     const endDateTime = `${endDatePart}T${endTimePart}`;
-    const calendarUrl = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&sf=true&output=xml`;
+    // ⭐ El evento SIEMPRE debe crearse/enviarse a esta cuenta, sin tomar ninguna otra.
+    const CALENDAR_ACCOUNT_EMAIL = 'Account@precisecleaningtx.com';
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&add=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
     window.open(calendarUrl, '_blank');
   };
 
@@ -1296,6 +1301,36 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       setFormData({ ...formData, client: customerId, address: (selectedCust as any).address || formData.address });
     } else {
       setFormData({ ...formData, client: customerId });
+    }
+  };
+
+  // ⭐ Abre el modal de cliente con el formulario limpio
+  const handleOpenCustomerModal = () => {
+    setCustomerForm({ name: '', email: '', phone: '', address: '' });
+    setIsCustomerModalOpen(true);
+  };
+
+  // ⭐ Guarda el nuevo cliente en 'customers', lo selecciona en la casa y cierra el modal
+  const handleSaveNewCustomer = async () => {
+    if (!customerForm.name.trim()) return alert('El nombre del cliente es obligatorio.');
+    try {
+      setIsSaving(true);
+      const ref = await addDoc(collection(db, 'customers'), {
+        name: customerForm.name.trim(),
+        email: customerForm.email.trim(),
+        phone: customerForm.phone.trim(),
+        address: customerForm.address.trim(),
+        createdAt: new Date().toISOString(),
+      });
+      // El listener de customersList lo recogerá automáticamente; ya lo dejamos seleccionado
+      setFormData(prev => ({ ...prev, client: ref.id, address: customerForm.address.trim() || prev.address }));
+      setIsCustomerModalOpen(false);
+      setCustomerForm({ name: '', email: '', phone: '', address: '' });
+    } catch (e) {
+      console.error('Error guardando cliente:', e);
+      alert('No se pudo guardar el cliente. Intenta de nuevo.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1736,7 +1771,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setPayrollForm(prev => ({ ...prev, totalAmount: total }));
   }, [payrollForm.baseAmount, payrollForm.extraAmount, payrollForm.discountAmount]);
 
-  const invoiceOptions = [{ id: 'Pre-Paid', name: 'Pre-Paid' }, { id: 'Needs Invoice', name: 'Needs Invoice' }, { id: 'Pending', name: 'Pending' }, { id: 'Paid', name: 'Paid' }];
+  const invoiceOptions = [{ id: 'Pre-Paid', name: 'Pre-Paid' }, { id: 'Needs Invoice', name: 'Needs Invoice' }, { id: 'Pending', name: 'Pending' }, { id: 'Paid', name: 'Paid' }, { id: 'Not Charged', name: 'Not Charged' }];
   const roomOptions = [1, 2, 3, 4, 5].map(n => ({ id: String(n), name: String(n) }));
   const kpiIcons = [Briefcase, Clock, ShieldCheck, AlertTriangle];
 
@@ -2441,7 +2476,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('client') && (
                       <div>
                         <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                        <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleOpenCustomerModal}
+                            title="Agregar nuevo cliente"
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '0 14px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+                          >
+                            <Plus size={16} /> Nuevo
+                          </button>
+                        </div>
                       </div>
                     )}
                     {isElementVisible('address') && (
@@ -3295,6 +3342,61 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
             </footer>
 
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: NUEVO CLIENTE --- */}
+      {isCustomerModalOpen && (
+        <div className="modal-overlay-centered" onClick={() => setIsCustomerModalOpen(false)}>
+          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            <header style={s.header}>
+              <h3 style={s.title}>Nuevo Cliente</h3>
+              <button style={s.closeBtn} onClick={() => setIsCustomerModalOpen(false)}><X size={22} /></button>
+            </header>
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div>
+                  <label style={s.label}>Nombre <span style={{ color: '#3b82f6' }}>*</span></label>
+                  <div style={s.inputWrapper}>
+                    <User style={s.icon} size={16} />
+                    <input type="text" style={s.input} placeholder="Nombre del cliente..." value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} autoFocus />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px' }}>
+                  <div>
+                    <label style={s.label}>Email</label>
+                    <div style={s.inputWrapper}>
+                      <FileText style={s.icon} size={16} />
+                      <input type="email" style={s.input} placeholder="correo@ejemplo.com" value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={s.label}>Teléfono</label>
+                    <div style={s.inputWrapper}>
+                      <Hash style={s.icon} size={16} />
+                      <input type="text" style={s.input} placeholder="(000) 000-0000" value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label style={s.label}>Dirección</label>
+                  <div style={s.inputWrapper}>
+                    <MapPin style={s.icon} size={16} />
+                    <input type="text" style={s.input} placeholder="Dirección completa..." value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <footer style={s.footerBetween}>
+              <div />
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button onClick={() => setIsCustomerModalOpen(false)} style={s.btnOutline}>Cancel</button>
+                <button onClick={handleSaveNewCustomer} disabled={isSaving} style={s.btnPrimary}>
+                  <Save size={16} /> {isSaving ? 'Saving...' : 'Save Client'}
+                </button>
+              </div>
+            </footer>
           </div>
         </div>
       )}
