@@ -118,7 +118,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({ 
-    order: '', name: '', business: '', color: '#3b82f6', percentage: 0, estimatedTime: '', placeId: '', price: '',
+    order: '', name: '', business: '', color: '#3b82f6', percentage: '' as string, estimatedTime: '', placeId: '', price: '',
     placeTasks: [] as {id: string, name: string}[],
     teamId: '',
     showInDashboard: false, 
@@ -208,7 +208,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       setSelectedItem(item);
       setFormData({ 
         order: item.order || '', name: item.name || '', business: item.business || '', 
-        color: item.color || '#3b82f6', percentage: item.percentage || 0, estimatedTime: item.estimatedTime || '',
+        color: item.color || '#3b82f6', percentage: (item.percentage !== undefined && item.percentage !== null && item.percentage !== 0) ? String(item.percentage) : '', estimatedTime: item.estimatedTime || '',
         placeId: item.placeId || '', price: item.price || '',
         placeTasks: currentSettingView === 'place' ? tasks.filter(t => t.placeId === item.id).map(t => ({id: t.id, name: t.name})) : [],
         teamId: item.teamId || '',
@@ -217,7 +217,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       });
     } else {
       setSelectedItem(null);
-      setFormData({ order: '', name: '', business: '', color: '#3b82f6', percentage: 0, estimatedTime: '', placeId: '', price: '', placeTasks: [], teamId: '', showInDashboard: false, dashboardOrder: '' });
+      setFormData({ order: '', name: '', business: '', color: '#3b82f6', percentage: '', estimatedTime: '', placeId: '', price: '', placeTasks: [], teamId: '', showInDashboard: false, dashboardOrder: '' });
     }
     setNewTaskInput('');
     setIsDetailModalOpen(false); 
@@ -769,7 +769,22 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
               {currentSettingView === 'tax' ? (
                  <div style={s.formGroup}>
                   <label style={s.label}>Tax Percentage (%) <span style={{color: '#3b82f6'}}>*</span></label>
-                  <input type="number" step="0.01" autoFocus style={s.input} value={formData.percentage} onChange={(e) => setFormData({ ...formData, percentage: Number(e.target.value) })} onKeyDown={(e) => e.key === 'Enter' && handleSave()} />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoFocus
+                    style={s.input}
+                    placeholder="Ej. 8.25"
+                    value={formData.percentage}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // Permite vacío y decimales con punto: 8, 8., 8.25, .5
+                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                        setFormData({ ...formData, percentage: v });
+                      }
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  />
                 </div>
               ) : currentSettingView !== 'team_catalog' && (
                 <>

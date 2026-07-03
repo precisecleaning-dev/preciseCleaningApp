@@ -214,19 +214,6 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const visible = filtered.slice(0, limit);
   const selected = (properties || []).find(p => p.id === selectedId) || null;
 
-  // Totales para el resumen (solo lo filtrado). Profit = Total - Payroll.
-  const totals = useMemo(() => {
-    return filtered.reduce((acc, p) => {
-      const b = billingByProp[p.id] || { total: 0, taxes: 0 };
-      const pay = payrollByProp[p.id] || 0;
-      acc.total += b.total;
-      acc.taxes += b.taxes;
-      acc.payroll += pay;
-      acc.profit += (b.total - pay);
-      return acc;
-    }, { total: 0, taxes: 0, payroll: 0, profit: 0 });
-  }, [filtered, billingByProp, payrollByProp]);
-
   // ⭐ Carga TODO el historial de la casa seleccionada (ascendente por fecha)
   useEffect(() => {
     if (!selectedId) { setHistoryAsc([]); return; }
@@ -424,27 +411,6 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
             <button onClick={clearAll} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>Limpiar filtros</button>
           </div>
         )}
-      </div>
-
-      {/* TOTALES ARRIBA (resumen del conjunto filtrado) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '12px', marginBottom: '20px' }}>
-        <div className="sh-card" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}><Receipt size={13} color="#2563eb" /> Total</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.total)}</div>
-        </div>
-        <div className="sh-card" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Taxes</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#b91c1c', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.taxes)}</div>
-        </div>
-        <div className="sh-card" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}><DollarSign size={13} color="#0f766e" /> Payroll</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f766e', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.payroll)}</div>
-        </div>
-        <div className="sh-card" style={{ padding: '14px 16px', background: totals.profit >= 0 ? 'linear-gradient(135deg,#f0fdf4,#ffffff)' : 'linear-gradient(135deg,#fef2f2,#ffffff)', borderColor: totals.profit >= 0 ? '#bbf7d0' : '#fecaca' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.7rem', color: totals.profit >= 0 ? '#15803d' : '#b91c1c', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}><TrendingUp size={13} /> Profit</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 900, color: totals.profit >= 0 ? '#166534' : '#991b1b', marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(totals.profit)}</div>
-          <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '2px' }}>Total − Payroll</div>
-        </div>
       </div>
 
       {/* TABLA ESTILO HOJA (P&L) */}
