@@ -2495,9 +2495,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             onClick={handleOpenCustomerModal}
                             title="Agregar nuevo cliente"
                             aria-label="Agregar nuevo cliente"
-                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '42px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
                           >
-                            <Plus size={18} strokeWidth={2.5} />
+                            <Plus size={22} strokeWidth={3} color="#ffffff" />
                           </button>
                         </div>
                       </div>
@@ -3499,7 +3499,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   )}
                   <div style={s.inputWrapper}>
                     <Percent style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
+                    <input type="number" min="0" step="0.01" inputMode="decimal" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>

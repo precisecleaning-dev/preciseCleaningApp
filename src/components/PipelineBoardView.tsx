@@ -412,11 +412,12 @@ export default function PipelineBoardView({
                         <span>{(p as any).scheduleDate || 'Sin fecha'}</span>
                       </div>
 
-                      {/* Nota general (NO la del empleado) */}
-                      {(p as any).note && (
+                      {/* Nota general (NO la del empleado). Soporta datos de la app (note)
+                          y los importados de AppSheet (generalNotes). */}
+                      {((p as any).note || (p as any).generalNotes) && (
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, fontSize: '0.78rem', color: '#475569', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 6, padding: '6px 8px' }}>
                           <StickyNote size={12} style={{ flexShrink: 0, marginTop: 2, color: '#94a3b8' }} />
-                          <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{(p as any).note}</span>
+                          <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{(p as any).note || (p as any).generalNotes}</span>
                         </div>
                       )}
 
