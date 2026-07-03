@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback } from 'react';
 import { 
   Upload, ArrowRight, AlertCircle, CheckCircle,
-  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown
+  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download
 } from 'lucide-react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { db } from '../config/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 
@@ -222,6 +223,49 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   // ⭐ Búsqueda + filtro por estado (agiliza CSV con muchas columnas)
   const [columnSearch, setColumnSearch] = useState('');
   const [mappingFilter, setMappingFilter] = useState<'all' | 'matched' | 'custom' | 'skipped'>('all');
+
+  // ⭐ Colección elegida SOLO para descargar la plantilla Excel (independiente de
+  //    la colección destino de importación).
+  const [exportCollection, setExportCollection] = useState<string>('');
+
+  const getExportDef = (): CollectionDef | undefined =>
+    AVAILABLE_COLLECTIONS.find(c => c.id === exportCollection);
+
+  // ⭐ Texto de ayuda por tipo de campo (fila 2 de la plantilla)
+  const TYPE_EXAMPLE: Record<FieldType, string> = {
+    string: '[texto]',
+    number: '[número]',
+    boolean: '[VERDADERO/FALSO]',
+    date: '[YYYY-MM-DD]',
+    array: '[valor1, valor2]',
+    skip: '[texto]',
+  };
+
+  // ⭐ Genera y descarga una plantilla .xlsx para la colección elegida:
+  //    Fila 1 = nombres de los campos (schema) · Fila 2 = formato esperado por tipo.
+  const handleDownloadTemplate = () => {
+    const def = getExportDef();
+    if (!def) {
+      alert('Selecciona una colección para descargar su plantilla.');
+      return;
+    }
+
+    // ⭐ La primera columna es 'id': aquí va el ID de AppSheet, que será el ID
+    //    principal del documento en Firestore (marca "usar columna como ID" al importar).
+    const headers = ['id', ...def.fields.map(f => f.name)];
+    const exampleRow = ['[ID de AppSheet — será el ID del documento]', ...def.fields.map(f => TYPE_EXAMPLE[f.type] || '[texto]')];
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    // Ancho de columnas cómodo según el header
+    worksheet['!cols'] = headers.map(h => ({ wch: Math.max(14, h.length + 4) }));
+
+    const workbook = XLSX.utils.book_new();
+    // Excel no permite estos caracteres en el nombre de la hoja: : \ / ? * [ ]
+    const safeSheetName = (def.name.replace(/[:\\/?*[\]]/g, ' ').trim().substring(0, 31)) || 'Plantilla';
+    XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
+
+    XLSX.writeFile(workbook, `plantilla_${def.id}.xlsx`);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -599,6 +643,45 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
           <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.825rem' }}>Import CSV files from Google Sheets into Firestore</p>
         </div>
       </header>
+
+      {/* ⭐ PANEL: DESCARGAR PLANTILLA EXCEL (independiente de la importación) */}
+      <div style={{ ...s.card, marginBottom: '20px', borderColor: '#d1fae5', background: 'linear-gradient(180deg, #f6fefb, #ffffff)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <FileSpreadsheet size={16} color="#059669" />
+          <h2 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 600 }}>Descargar plantilla de Excel</h2>
+        </div>
+        <p style={{ margin: '0 0 14px 0', color: '#64748b', fontSize: '0.8rem', lineHeight: 1.5 }}>
+          Elige una colección y descarga una plantilla <strong>.xlsx</strong> con las columnas correctas. Llénala, expórtala como <strong>CSV</strong> (File → Download → CSV) y súbela abajo para importar.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 280px', minWidth: '220px' }}>
+            <label style={s.label}>
+              <Database size={11} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} />
+              Colección de la plantilla
+            </label>
+            <select className="di-input" style={s.select} value={exportCollection} onChange={(e) => setExportCollection(e.target.value)}>
+              <option value="">— Selecciona una colección —</option>
+              {AVAILABLE_COLLECTIONS.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.description})</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            disabled={!exportCollection}
+            className="di-btn-secondary"
+            style={{ ...s.btnSecondary, background: '#ecfdf5', borderColor: '#a7f3d0', color: '#047857', opacity: !exportCollection ? 0.5 : 1, cursor: !exportCollection ? 'not-allowed' : 'pointer' }}
+          >
+            <Download size={14} /> Descargar Plantilla Excel
+          </button>
+        </div>
+        {exportCollection && (
+          <p style={{ margin: '10px 0 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>
+            La plantilla tendrá <strong style={{ color: '#059669' }}>{(getExportDef()?.fields.length || 0) + 1}</strong> columna(s), incluyendo <strong style={{ color: '#0f172a' }}>id</strong> (el ID de AppSheet que se usará como ID principal del documento). La fila 2 indica el formato esperado de cada campo (p. ej. [YYYY-MM-DD], [número]).
+          </p>
+        )}
+      </div>
 
       {/* PROGRESS BAR */}
       <div style={{ ...s.card, marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', padding: '16px 20px' }}>
