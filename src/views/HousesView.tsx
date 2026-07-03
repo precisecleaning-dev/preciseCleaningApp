@@ -1105,9 +1105,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
     const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
     const endDateTime = `${endDatePart}T${endTimePart}`;
-    // ⭐ El evento SIEMPRE debe crearse/enviarse a esta cuenta, sin tomar ninguna otra.
-    const CALENDAR_ACCOUNT_EMAIL = 'Account@precisecleaningtx.com';
-    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&add=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
+    // ⭐ El evento SIEMPRE debe crearse en esta cuenta, nunca en otra.
+    const CALENDAR_ACCOUNT_EMAIL = 'account@precisecleaningtx.com';
+    const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
+    // Forzamos el selector de cuenta de Google a ese correo y de ahí continuamos al
+    // formulario del evento. Si esa cuenta no está iniciada, Google pedirá entrar con ella,
+    // garantizando que el evento nunca se cree bajo otra cuenta.
+    const calendarUrl = `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&continue=${encodeURIComponent(renderUrl)}`;
     window.open(calendarUrl, '_blank');
   };
 
@@ -1298,7 +1302,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const handleCustomerSelect = (customerId: string) => {
     const selectedCust = customersList.find(c => c.id === customerId);
     if (selectedCust) {
-      setFormData({ ...formData, client: customerId, address: (selectedCust as any).address || formData.address });
+      // ⭐ Regla AppSheet: if([Type]="Private customer", lookup(client, Address), "")
+      //    Si el cliente es "Private customer", trae su dirección (queda editable); si no, vacío.
+      const isPrivate = String((selectedCust as any).type || '').toLowerCase().trim() === 'private customer';
+      setFormData({ ...formData, client: customerId, address: isPrivate ? String((selectedCust as any).address || '') : '' });
     } else {
       setFormData({ ...formData, client: customerId });
     }
@@ -2607,15 +2614,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     {isElementVisible('teamId') && (
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={s.label}>Team</label>
-                      <CustomSelect 
+                      <SearchableSelect 
                         options={teams} 
                         value={formData.teamId} 
                         onChange={(val: string) => {
                           const teamWorkers = employees.filter(emp => emp.teamId === val).map(emp => emp.id);
                           setFormData({ ...formData, teamId: val, assignedWorkers: teamWorkers });
                         }} 
-                        placeholder="Assign Team..." 
+                        placeholder="Type to search Team..." 
                         icon={Users} 
+                        returnKey="id"
                       />
                     </div>
                     )}
@@ -3364,7 +3372,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <div>
                   <label style={s.label}>Type</label>
                   <CustomSelect
-                    options={[{ id: 'Residential', name: 'Residential' }, { id: 'Commercial', name: 'Commercial' }]}
+                    options={[{ id: 'Private customer', name: 'Private customer' }, { id: 'Residential', name: 'Residential' }, { id: 'Commercial', name: 'Commercial' }]}
                     value={customerForm.type}
                     onChange={(val: string) => setCustomerForm({ ...customerForm, type: val })}
                     placeholder="Select type..."
