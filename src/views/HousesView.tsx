@@ -45,6 +45,7 @@ interface ServiceRecord {
   taxPercentage: number;
   taxAmount: number;
   total: number;
+  totalMinusTax: number;   // ⭐ AppSheet "Total Minus Tax"
   notes: string;
   createdAt?: string;
 }
@@ -433,6 +434,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [teams, setTeams] = useState<Team[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [products, setProducts] = useState<any[]>([]); // ⭐ settings_products (fuente de serviceId)
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [customersList, setCustomersList] = useState<Customer[]>([]); 
   const [employees, setEmployees] = useState<any[]>([]); 
@@ -463,7 +465,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const defaultServiceForm: ServiceRecord = {
     propertyId: '', serviceId: '', quantity: 1, price: 0, subtotal: 0,
-    applyTax: 'Yes', minusTax: 'No', taxPercentage: 0, taxAmount: 0, total: 0, notes: ''
+    applyTax: 'Yes', minusTax: 'No', taxPercentage: 0, taxAmount: 0, total: 0, totalMinusTax: 0, notes: ''
   };
   const [serviceForm, setServiceForm] = useState<ServiceRecord>(defaultServiceForm);
 
@@ -555,9 +557,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
+  // ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
+  const recordTotalMinusTax = (r: any): number => {
+    if (typeof r?.totalMinusTax === 'number') return r.totalMinusTax;
+    const subtotal = Number(r?.subtotal) || 0;
+    const taxAmount = Number(r?.taxAmount) || 0;
+    if (r?.minusTax === 'Yes' && r?.applyTax === 'No') return subtotal - taxAmount;
+    if (r?.applyTax === 'Yes' && r?.minusTax === 'No') return subtotal + taxAmount;
+    return subtotal;
+  };
+
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
     return getRelationName(customersList, clientIdOrName, String(clientIdOrName));
+  };
+
+  // ⭐ Resuelve el nombre del serviceId desde settings_products (con respaldo a settings_services)
+  const getServiceName = (serviceId?: string | null): string => {
+    if (!serviceId) return 'Unknown';
+    const safe = String(serviceId).toLowerCase().trim();
+    const inProducts = products.find((p: any) => String(p.id).toLowerCase().trim() === safe || String(p.name).toLowerCase().trim() === safe);
+    if (inProducts) return inProducts.name;
+    const inServices = services.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
+    return inServices ? inServices.name : 'Unknown';
   };
 
   // Estados que NO se muestran en el Pipeline (se gestionan en otras vistas)
@@ -671,7 +693,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setIsLoading(true);
 
     const loadedCollections = new Set<string>();
-    const TOTAL_COLLECTIONS = 9;
+    const TOTAL_COLLECTIONS = 10;
     const markLoaded = (name: string) => {
       loadedCollections.add(name);
       if (loadedCollections.size >= TOTAL_COLLECTIONS) {
@@ -729,6 +751,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         markLoaded('services');
       },
       (err) => { console.error("Error Services:", err); markLoaded('services'); }
+    ));
+
+    // ⭐ Catálogo de productos (settings_products): fuente de serviceId en Billed Services
+    unsubscribes.push(onSnapshot(
+      collection(db, 'settings_products'),
+      (snap) => {
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setProducts(data as any);
+        markLoaded('products');
+      },
+      (err) => { console.error("Error Products:", err); markLoaded('products'); }
     ));
 
     unsubscribes.push(onSnapshot(
@@ -816,8 +849,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       total = subtotal - taxAmount;
     }
 
-    if (subtotal !== serviceForm.subtotal || taxAmount !== serviceForm.taxAmount || total !== serviceForm.total) {
-      setServiceForm(prev => ({ ...prev, subtotal, taxAmount, total }));
+    // ⭐ Total Minus Tax (AppSheet):
+    // IF(minusTax=TRUE & applyTax=FALSE, Total - Tax$,
+    //    IF(applyTax=TRUE & minusTax=FALSE, Total + Tax$, Total))
+    let totalMinusTax = subtotal;
+    if (serviceForm.minusTax === 'Yes' && serviceForm.applyTax === 'No') {
+      totalMinusTax = subtotal - taxAmount;
+    } else if (serviceForm.applyTax === 'Yes' && serviceForm.minusTax === 'No') {
+      totalMinusTax = subtotal + taxAmount;
+    }
+
+    if (subtotal !== serviceForm.subtotal || taxAmount !== serviceForm.taxAmount || total !== serviceForm.total || totalMinusTax !== serviceForm.totalMinusTax) {
+      setServiceForm(prev => ({ ...prev, subtotal, taxAmount, total, totalMinusTax }));
     }
   }, [serviceForm.quantity, serviceForm.price, serviceForm.taxPercentage, serviceForm.applyTax, serviceForm.minusTax, isServiceModalOpen]);
 
@@ -2606,24 +2649,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Price</th>
                           <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Tax</th>
                           <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Total</th>
+                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Total -Tax</th>
                           <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Act</th>
                         </tr>
                       </thead>
                       <tbody>
                         {formServices.length === 0 ? (
-                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
+                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
                         ) : (
                           formServices.map(record => {
-                            const srv = services.find(c => c.id === record.serviceId);
                             return (
                               <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{...s.td, padding: '12px 20px', fontWeight: 600}}>{srv ? srv.name : 'Unknown'}</td>
+                                <td style={{...s.td, padding: '12px 20px', fontWeight: 600}}>{getServiceName(record.serviceId)}</td>
                                 <td style={{...s.td, padding: '12px 20px', textAlign: 'center'}}>{record.quantity}</td>
                                 <td style={{...s.td, padding: '12px 20px', textAlign: 'right'}}>${Number(record.price).toFixed(2)}</td>
                                 <td style={{...s.td, padding: '12px 20px', textAlign: 'right', color: record.taxAmount > 0 ? '#ef4444' : '#64748b'}}>
                                   {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}
                                 </td>
                                 <td style={{...s.td, padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#1e293b'}}>${Number(record.total).toFixed(2)}</td>
+                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#0f766e'}}>${recordTotalMinusTax(record).toFixed(2)}</td>
                                 <td style={{...s.td, padding: '12px 20px', textAlign: 'right'}}>
                                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                     <button type="button" onClick={() => handleOpenServiceForm(record, true)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '2px' }}><Edit2 size={14} /></button>
@@ -3071,24 +3115,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             <th style={{...s.th, textAlign: 'right'}}>Price</th>
                             <th style={{...s.th, textAlign: 'right'}}>Tax</th>
                             <th style={{...s.th, textAlign: 'right'}}>Total</th>
+                            <th style={{...s.th, textAlign: 'right'}}>Total -Tax</th>
                             {canEdit && <th style={{...s.th, textAlign: 'right'}}>Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {houseServices.length === 0 ? (
-                            <tr><td colSpan={canEdit ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No billed services yet.</td></tr>
+                            <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No billed services yet.</td></tr>
                           ) : (
                             houseServices.map(record => {
-                              const srv = services.find(c => c.id === record.serviceId);
                               return (
                                 <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td style={{...s.td, fontWeight: 600}}>{srv ? srv.name : 'Unknown'}</td>
+                                  <td style={{...s.td, fontWeight: 600}}>{getServiceName(record.serviceId)}</td>
                                   <td style={{...s.td, textAlign: 'center'}}>{record.quantity}</td>
                                   <td style={{...s.td, textAlign: 'right'}}>${Number(record.price).toFixed(2)}</td>
                                   <td style={{...s.td, textAlign: 'right', color: record.taxAmount > 0 ? '#ef4444' : '#64748b'}}>
                                     {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}
                                   </td>
                                   <td style={{...s.td, textAlign: 'right', fontWeight: 700}}>${Number(record.total).toFixed(2)}</td>
+                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700, color: '#0f766e'}}>${recordTotalMinusTax(record).toFixed(2)}</td>
                                   {canEdit && (
                                     <td style={{...s.td, textAlign: 'right'}}>
                                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -3266,10 +3311,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={s.label}>Product / Service <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <CustomSelect options={services} value={serviceForm.serviceId} onChange={(val: string) => {
-                    const srv = services.find(c => c.id === val);
+                  <CustomSelect options={products.length ? products : services} value={serviceForm.serviceId} onChange={(val: string) => {
+                    const list = products.length ? products : services;
+                    const srv = list.find((c: any) => c.id === val);
                     setServiceForm(prev => ({ ...prev, serviceId: val, price: srv ? Number((srv as any).price || prev.price) : prev.price }));
-                  }} placeholder="Select Service..." icon={Wrench} />
+                  }} placeholder="Select Product/Service..." icon={Wrench} />
                 </div>
                 <div>
                   <label style={s.label}>Quantity</label>
@@ -3287,6 +3333,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
                 <div>
                   <label style={s.label}>Tax %</label>
+                  {taxes.length > 0 && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <CustomSelect
+                        options={taxes.map((t: any) => ({ id: String(Number(t.percentage)), name: `${t.name} (${Number(t.percentage)}%)` }))}
+                        value={String(Number(serviceForm.taxPercentage))}
+                        onChange={(val: string) => setServiceForm(prev => ({ ...prev, taxPercentage: Number(val) }))}
+                        placeholder="Select tax rate..."
+                        icon={Percent}
+                      />
+                    </div>
+                  )}
                   <div style={s.inputWrapper}>
                     <Percent style={s.icon} size={16} />
                     <input type="number" min="0" step="0.01" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
@@ -3328,6 +3385,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Total</span>
                   <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>${serviceForm.total.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#334155' }}>Total Minus Tax</span>
+                  <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f766e' }}>${Number(serviceForm.totalMinusTax || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>

@@ -103,6 +103,17 @@ const AVAILABLE_COLLECTIONS: CollectionDef[] = [
     ]
   },
   {
+    id: 'settings_products', name: 'Settings: Products', description: 'Products catalog',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'price', type: 'number' },
+      { name: 'description', type: 'string' },
+      { name: 'category', type: 'string' },
+      { name: 'sku', type: 'string' },
+      { name: 'order', type: 'number' }
+    ]
+  },
+  {
     id: 'settings_tax', name: 'Settings: Tax', description: 'Tax rates',
     fields: [
       { name: 'name', type: 'string' },
@@ -172,6 +183,16 @@ const AVAILABLE_COLLECTIONS: CollectionDef[] = [
       { name: 'date', type: 'date' },
       { name: 'score', type: 'number' },
       { name: 'notes', type: 'string' }
+    ]
+  },
+  {
+    id: 'settings_company', name: 'Settings: Company', description: 'Company info / branding',
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'logo', type: 'string' },
+      { name: 'address', type: 'string' },
+      { name: 'phone', type: 'string' },
+      { name: 'email', type: 'string' }
     ]
   },
   {

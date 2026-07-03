@@ -168,6 +168,14 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
   // Lógica de Filtros
   const filteredRecords = useMemo(() => {
+    // ⭐ Orden por fecha: de la más reciente a la más antigua. Tolerante a strings
+    //    'YYYY-MM-DD', Timestamps de Firestore u otros formatos; sin fecha => al final.
+    const toTime = (val: any): number => {
+      if (!val) return 0;
+      if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
+      const t = new Date(val).getTime();
+      return isNaN(t) ? 0 : t;
+    };
     return records.filter(record => {
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
       // ⭐ Comparación tolerante a campo ausente: si no hay status, lo tratamos como 'Pending'
@@ -175,7 +183,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       if (startDate && record.date && record.date < startDate) return false;
       if (endDate && record.date && record.date > endDate) return false;
       return true;
-    });
+    }).sort((a, b) => toTime((b as any).date) - toTime((a as any).date));
   }, [records, startDate, endDate, selectedEmployee, selectedStatus]);
 
   // Cálculos dinámicos
