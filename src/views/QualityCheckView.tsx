@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
-  Building2, Settings, Save, Clock, WifiOff, Zap, Route as RouteIcon, ArrowUp, ArrowDown, Plus, StickyNote,
+  Building2, Save, Clock, WifiOff, Route as RouteIcon, ArrowUp, ArrowDown, Plus, StickyNote,
   Navigation, Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Timer
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
@@ -1762,12 +1762,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
   const brandInitials = (branding.name || 'PC').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'PC';
 
-  // ⭐ Abrir el módulo de configuración de empresa
-  const openCompanyModal = () => {
-    setCompanyDraft(companySettings);
-    setCompanyModalOpen(true);
-  };
-
   // ⭐ Subir/optimizar el logo de la empresa y guardarlo como base64 (autocontenido)
   const handleCompanyLogoUpload = async (file?: File | null) => {
     if (!file) return;
@@ -2287,10 +2281,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setQcData(prev => ({
       ...prev, [placeId]: { ...prev[placeId], tasks: { ...prev[placeId].tasks, [taskId]: value } }
     }));
-  };
-
-  const setCorrectionValue = (placeId: string, value: 'Yes' | 'No') => {
-    setQcData(prev => ({ ...prev, [placeId]: { ...prev[placeId], corrections: value } }));
   };
 
   const setScoreValue = (placeId: string, value: number) => {
