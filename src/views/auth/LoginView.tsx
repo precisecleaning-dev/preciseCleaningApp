@@ -201,25 +201,48 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         .login-input-icon { position: absolute; left: 14px; top: 12px; }
         .login-submit { width: 100%; background-color: #2563eb; color: #ffffff; border: none; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color 0.2s; }
 
+        /* El encabezado "Login to your Account" solo se muestra en móvil */
+        .login-hero { display: none; }
+
         @media (max-width: 600px) {
-          .login-screen { padding: 16px; align-items: flex-start; padding-top: 8vh; }
-          .login-card { max-width: 480px; border-radius: 24px; padding: 40px 28px; }
+          /* ===== Estilo móvil moderno: fondo lavanda + tarjeta limpia centrada ===== */
+          .login-screen {
+            padding: 20px;
+            align-items: center;
+            background: linear-gradient(160deg, #eef1fd 0%, #e2e6fb 100%) !important;
+          }
+          .login-card {
+            max-width: 460px;
+            border-radius: 26px;
+            padding: 34px 26px 30px;
+            border: none;
+            box-shadow: 0 22px 60px rgba(79, 70, 229, 0.18);
+          }
+
+          /* Logo un poco más contenido para dejar aire al título */
           .login-logo { border-radius: 20px; }
-          .login-logo img { width: 320px; max-width: 85%; }
+          .login-logo img { width: 210px; max-width: 70%; }
           .login-logo svg { width: 44px; height: 44px; }
+
+          /* Encabezado tipo "Login to your Account" */
+          .login-hero { display: block; margin-top: 4px; }
+          .login-hero .login-title { font-size: 1.7rem; margin: 0; color: #0f172a; font-weight: 800; }
+          .login-hero .login-subtitle { margin: 8px 0 0 0; color: #64748b; font-size: 1rem; }
+
           .login-title { font-size: 1.95rem; }
           .login-subtitle { font-size: 1.05rem; }
           .login-label { font-size: 1rem !important; }
-          .login-input { padding: 16px 16px 16px 48px; font-size: 1.05rem; border-radius: 14px; }
+          .login-input { padding: 16px 16px 16px 48px; font-size: 1.05rem; border-radius: 14px; background-color: #f8fafc; }
+          .login-input:focus { background-color: #ffffff; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
           .login-input-icon { top: 17px; }
-          .login-submit { padding: 18px; font-size: 1.15rem; border-radius: 14px; }
+          .login-submit { padding: 18px; font-size: 1.15rem; border-radius: 14px; box-shadow: 0 10px 22px rgba(37,99,235,0.28); }
           .login-bypass { padding: 16px !important; font-size: 1rem !important; border-radius: 14px !important; }
           .login-forgot { font-size: 0.95rem !important; }
         }
 
         @media (max-width: 380px) {
-          .login-card { padding: 32px 22px; }
-          .login-title { font-size: 1.7rem; }
+          .login-card { padding: 30px 20px 26px; }
+          .login-hero .login-title { font-size: 1.5rem; }
         }
       `}</style>
 
@@ -233,6 +256,15 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               ? <img src={processedLogo || branding.logo} alt={branding.name} />
               : <LogIn size={36} color="#ffffff" />}
           </div>
+
+          {/* ⭐ Encabezado móvil "Login to your Account" (oculto en escritorio) */}
+          {view === 'login' && (
+            <div className="login-hero">
+              <h1 className="login-title">Login to your Account</h1>
+              <p className="login-subtitle">Welcome back, please sign in to continue</p>
+            </div>
+          )}
+
           {view !== 'login' && (
             <>
               <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
