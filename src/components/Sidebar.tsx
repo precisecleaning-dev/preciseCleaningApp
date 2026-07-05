@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid, Repeat, History, Route
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History
 } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
@@ -176,14 +176,6 @@ export default function Sidebar({
             </button>
           )}
 
-          {/* ⭐ NOTICE BOARD — check propio (antes no tenía) */}
-          {canView('Notice Board') && (
-            <button className={`nav-item ${activeTab === 'board' ? 'active' : ''}`} onClick={() => handleNavClick('board')}>
-              <Megaphone size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Notice Board</span>}
-            </button>
-          )}
-
           {/* ⭐ CALENDAR */}
           {canView('Calendar') && (
             <button className={`nav-item ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => handleNavClick('calendar')}>
@@ -197,22 +189,6 @@ export default function Sidebar({
             <button className={`nav-item ${activeTab === 'qc_report' ? 'active' : ''}`} onClick={() => handleNavClick('qc_report')}>
               <ClipboardCheck size={20} className="nav-icon" />
               {isSidebarOpen && <span className="nav-text">Quality Check</span>}
-            </button>
-          )}
-
-          {/* ⭐ QC ROUTE — hoja de ruta de casas con QC pendiente */}
-          {canView('Quality Check') && (
-            <button className={`nav-item ${activeTab === 'qc_route' ? 'active' : ''}`} onClick={() => handleNavClick('qc_route')}>
-              <Route size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">QC Route</span>}
-            </button>
-          )}
-
-          {/* ⭐ RECALLS — aparece con su propio permiso "Recalls" o donde se vea Quality Check */}
-          {(canView('Recalls') || canView('Quality Check')) && (
-            <button className={`nav-item ${activeTab === 'recalls' ? 'active' : ''}`} onClick={() => handleNavClick('recalls')}>
-              <Repeat size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Recalls</span>}
             </button>
           )}
 
