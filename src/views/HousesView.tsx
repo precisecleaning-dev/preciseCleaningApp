@@ -2006,7 +2006,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, color: '#111827', fontSize: '1.8rem', fontWeight: 700 }}>Pipeline</h1>
+            <h1 style={{ margin: 0, color: '#111827', fontSize: '1.8rem', fontWeight: 700 }}>Overview</h1>
             <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>General operations overview</p>
           </div>
         </div>
@@ -2495,9 +2495,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             onClick={handleOpenCustomerModal}
                             title="Agregar nuevo cliente"
                             aria-label="Agregar nuevo cliente"
-                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '42px', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '42px', padding: 0, background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
                           >
-                            <Plus size={22} strokeWidth={3} color="#ffffff" />
+                            <Plus size={28} strokeWidth={2.5} color="#ffffff" />
                           </button>
                         </div>
                       </div>

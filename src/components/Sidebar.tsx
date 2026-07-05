@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
   ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Megaphone, Database, LayoutGrid, Repeat, History, Route
@@ -6,8 +5,6 @@ import {
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
-import { getCachedBranding, type Branding } from '../utils/companyBranding';
-import { subscribeCompanySettings } from '../services/companyService';
 
 type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'roles' | 'users' | 'data_import';
 
@@ -24,13 +21,6 @@ interface SidebarProps {
 export default function Sidebar({
   isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin
 }: SidebarProps) {
-
-  // ⭐ Logo y nombre de la empresa (del módulo Empresa). Se actualiza en vivo.
-  const [branding, setBranding] = useState<Branding>(() => getCachedBranding());
-  useEffect(() => {
-    const unsub = subscribeCompanySettings(() => setBranding(getCachedBranding()));
-    return () => unsub();
-  }, []);
 
   // ⭐ Helper centralizado para chequear permisos por módulo.
   //    SuperAdmin siempre ve todo. Si no hay role cargado todavía, NO mostrar
@@ -71,10 +61,7 @@ export default function Sidebar({
         .sidebar-container { background-color: #0f172a; color: white; display: flex; flex-direction: column; height: 100vh; width: 260px; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow-x: hidden; flex-shrink: 0; border-right: 1px solid rgba(255,255,255,0.05); }
         .sidebar-container.closed { width: 80px; }
         .mobile-close-btn { display: none; }
-        .sidebar-header { padding: 20px; display: flex; align-items: center; justify-content: space-between; min-height: 70px; }
-        .logo-container { display: flex; align-items: center; gap: 12px; overflow: hidden; white-space: nowrap; }
-        .logo-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-        .logo-icon img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+        .sidebar-header { padding: 8px 20px 0 20px; display: flex; align-items: center; justify-content: flex-end; min-height: 0; }
         .nav-item { display: flex; align-items: center; gap: 16px; padding: 12px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.95rem; font-weight: 500; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
         .nav-item:hover { color: white; background-color: rgba(255,255,255,0.05); }
         .nav-item.active { color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); border-right: 3px solid #3b82f6; }
@@ -158,27 +145,19 @@ export default function Sidebar({
       <aside className={`sidebar-container ${isSidebarOpen ? 'open' : 'closed'}`}>
 
         <div className="sidebar-header">
-          <div className="logo-container">
-            {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto */}
-            <div className="logo-icon">
-              {branding.logo
-                ? <img src={branding.logo} alt={branding.name} />
-                : <Building2 size={24} color="#3b82f6" />}
-            </div>
-            {isSidebarOpen && <span style={{ fontWeight: 700, fontSize: '1.2rem', color: 'white', overflow: 'hidden', textOverflow: 'ellipsis' }}>{branding.name}</span>}
-          </div>
+          <div style={{ flex: 1 }} />
           <button className="mobile-close-btn" onClick={() => setIsSidebarOpen(false)} aria-label="Close menu">
             <X size={22} />
           </button>
         </div>
 
-        <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', paddingTop: '10px' }}>
+        <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', paddingTop: '4px' }}>
 
           {/* ⭐ HOUSES — check propio */}
           {canView('Houses') && (
             <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
               <Home size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Houses</span>}
+              {isSidebarOpen && <span className="nav-text">Overview</span>}
             </button>
           )}
 

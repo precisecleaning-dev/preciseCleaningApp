@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
-  Building2, Settings, Save, Clock, WifiOff, Zap
+  Building2, Settings, Save, Clock, WifiOff, Zap, Route as RouteIcon, ArrowUp, ArrowDown, Plus, StickyNote,
+  Navigation, Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Timer
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -28,6 +29,16 @@ interface QCRecord {
   durationMinutes?: number | null; // minutos totales (salida - entrada)
   selectedPlaces?: string[];
   qcData?: any;
+}
+
+// ⭐ Elemento de la RUTA de inspección (una parada por casa, en orden)
+interface RouteItem {
+  houseId: string;
+  client: string;
+  address: string;
+  team?: string;
+  lat?: number;
+  lng?: number;
 }
 
 // ⭐ Nombre de la base de datos local (IndexedDB) para la cola de fotos offline
@@ -105,6 +116,300 @@ const uid = () =>
   (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
     ? (crypto as any).randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+// ─────────────────────────────────────────────────────────────
+// ⭐ PLANIFICADOR DE RUTAS: helpers de mapa (Leaflet + OpenStreetMap),
+//    geocodificación (Nominatim) y ruteo real de manejo (OSRM). Todo es
+//    gratuito y sin API key; se carga bajo demanda desde CDN.
+// ─────────────────────────────────────────────────────────────
+
+// Minutos estimados de inspección por casa (para el tiempo total de la ruta)
+const INSPECTION_MIN_PER_STOP = 20;
+
+// Carga Leaflet (mapa) desde CDN una sola vez y devuelve window.L
+let leafletPromise: Promise<any> | null = null;
+function ensureLeaflet(): Promise<any> {
+  if (typeof window !== 'undefined' && (window as any).L) return Promise.resolve((window as any).L);
+  if (leafletPromise) return leafletPromise;
+  leafletPromise = new Promise((resolve, reject) => {
+    try {
+      const cssId = 'leaflet-css';
+      if (!document.getElementById(cssId)) {
+        const link = document.createElement('link');
+        link.id = cssId;
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+      const scriptId = 'leaflet-js';
+      const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+      if (existing) {
+        existing.addEventListener('load', () => resolve((window as any).L));
+        return;
+      }
+      const s = document.createElement('script');
+      s.id = scriptId;
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.async = true;
+      s.onload = () => resolve((window as any).L);
+      s.onerror = () => reject(new Error('No se pudo cargar el mapa (Leaflet).'));
+      document.body.appendChild(s);
+    } catch (e) { reject(e); }
+  });
+  return leafletPromise;
+}
+
+// Distancia en km entre dos coordenadas (fórmula de Haversine)
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Geocodifica una dirección con Nominatim (OpenStreetMap). Cachea en localStorage.
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const clean = (address || '').trim();
+  if (!clean) return null;
+  const key = 'geo_v1__' + clean.toLowerCase();
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached) { const j = JSON.parse(cached); if (j && typeof j.lat === 'number') return j; }
+  } catch {}
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(clean);
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    const arr = await res.json();
+    if (Array.isArray(arr) && arr.length > 0) {
+      const p = { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+      try { localStorage.setItem(key, JSON.stringify(p)); } catch {}
+      return p;
+    }
+  } catch (e) { console.warn('Geocode falló:', clean, e); }
+  return null;
+}
+
+// Pide a OSRM (servidor demo) la ruta de manejo por los puntos en orden.
+// Devuelve distancia (km), duración (min) y geometría (GeoJSON LineString).
+async function fetchOSRMRoute(points: { lat: number; lng: number }[]): Promise<{ distanceKm: number; durationMin: number; geometry: any } | null> {
+  if (points.length < 2) return null;
+  const coords = points.map(p => `${p.lng},${p.lat}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const r = data && data.routes && data.routes[0];
+    if (!r) return null;
+    return { distanceKm: r.distance / 1000, durationMin: r.duration / 60, geometry: r.geometry };
+  } catch (e) { console.warn('OSRM falló:', e); return null; }
+}
+
+// Ordena por "vecino más cercano" empezando desde 'start' (heurística de ruta)
+function nearestNeighborOrder(start: { lat: number; lng: number }, items: any[]): any[] {
+  const remaining = items.slice();
+  const ordered: any[] = [];
+  let cur = start;
+  while (remaining.length) {
+    let bestIdx = 0, bestD = Infinity;
+    remaining.forEach((it, i) => { const d = haversineKm(cur, it); if (d < bestD) { bestD = d; bestIdx = i; } });
+    const next = remaining.splice(bestIdx, 1)[0];
+    ordered.push(next);
+    cur = next;
+  }
+  return ordered;
+}
+
+// Obtiene la ubicación actual del dispositivo (GPS del navegador)
+function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { reject(new Error('Geolocalización no disponible en este dispositivo.')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => reject(err),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+  });
+}
+
+// Formatea minutos a "Xh Ym"
+function fmtMinutes(mins: number): string {
+  const m = Math.max(0, Math.round(mins));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return h ? `${h}h ${r}m` : `${r}m`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// ⭐ EDITOR DE FOTO (estilo WhatsApp): dibujar lápiz / círculo / flecha
+//    sobre una foto ya tomada, elegir color, deshacer y guardar.
+// ─────────────────────────────────────────────────────────────
+function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
+  imageUrl: string; saving: boolean; onCancel: () => void; onSave: (blob: Blob) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const drawingRef = useRef<any>(null);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [tool, setTool] = useState<'pen' | 'circle' | 'arrow'>('pen');
+  const [color, setColor] = useState('#ef4444');
+  const [strokes, setStrokes] = useState<any[]>([]);
+
+  const colors = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#000000', '#ffffff'];
+  const LINE = 6;
+
+  const redraw = (all: any[]) => {
+    const c = canvasRef.current, img = imgRef.current;
+    if (!c || !img) return;
+    const ctx = c.getContext('2d'); if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    const drawOne = (st: any) => {
+      ctx.strokeStyle = st.color; ctx.fillStyle = st.color; ctx.lineWidth = st.size || LINE;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (st.tool === 'pen') {
+        ctx.beginPath();
+        (st.points || []).forEach((p: any, i: number) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+        ctx.stroke();
+      } else if (st.tool === 'circle') {
+        const cx = (st.start.x + st.end.x) / 2, cy = (st.start.y + st.end.y) / 2;
+        const rx = Math.abs(st.end.x - st.start.x) / 2, ry = Math.abs(st.end.y - st.start.y) / 2;
+        ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (st.tool === 'arrow') {
+        const { start, end } = st;
+        ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+        const ang = Math.atan2(end.y - start.y, end.x - start.x); const head = 16 + (st.size || LINE);
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - head * Math.cos(ang - Math.PI / 6), end.y - head * Math.sin(ang - Math.PI / 6));
+        ctx.lineTo(end.x - head * Math.cos(ang + Math.PI / 6), end.y - head * Math.sin(ang + Math.PI / 6));
+        ctx.closePath(); ctx.fill();
+      }
+    };
+    all.forEach(drawOne);
+    if (drawingRef.current) drawOne(drawingRef.current);
+  };
+
+  const ptFromEvent = (e: any) => {
+    const c = canvasRef.current!; const rect = c.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * (c.width / rect.width), y: (clientY - rect.top) * (c.height / rect.height) };
+  };
+
+  const startDraw = (e: any) => {
+    if (!ready) return;
+    e.preventDefault();
+    const p = ptFromEvent(e);
+    if (tool === 'pen') drawingRef.current = { tool, color, size: LINE, points: [p] };
+    else drawingRef.current = { tool, color, size: LINE, start: p, end: p };
+    redraw(strokes);
+  };
+  const moveDraw = (e: any) => {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const p = ptFromEvent(e);
+    if (tool === 'pen') drawingRef.current.points.push(p);
+    else drawingRef.current.end = p;
+    redraw(strokes);
+  };
+  const endDraw = () => {
+    if (!drawingRef.current) return;
+    const st = drawingRef.current; drawingRef.current = null;
+    setStrokes(prev => { const nx = [...prev, st]; redraw(nx); return nx; });
+  };
+
+  const undo = () => setStrokes(prev => { const nx = prev.slice(0, -1); redraw(nx); return nx; });
+  const clearAll = () => { setStrokes([]); redraw([]); };
+  const save = () => { const c = canvasRef.current; if (!c) return; c.toBlob(b => { if (b) onSave(b); }, 'image/jpeg', 0.9); };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        let src = imageUrl;
+        try {
+          const r = await fetch(imageUrl, { mode: 'cors' });
+          if (r.ok) { const b = await r.blob(); src = URL.createObjectURL(b); }
+        } catch {}
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          if (cancelled) return;
+          const maxDim = 1280;
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          imgRef.current = img;
+          const c = canvasRef.current;
+          if (c) { c.width = w; c.height = h; }
+          setReady(true);
+          redraw([]);
+        };
+        img.onerror = () => setLoadError('No se pudo cargar la imagen para editar.');
+        img.src = src;
+      } catch { setLoadError('No se pudo cargar la imagen para editar.'); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageUrl]);
+
+  const toolBtn = (active: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '10px',
+    border: active ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.25)',
+    background: active ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.08)', color: '#fff',
+    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer'
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#0b0f19', zIndex: 1600, display: 'flex', flexDirection: 'column' }}>
+      {/* Barra de herramientas */}
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: 'rgba(0,0,0,0.55)' }}>
+        <button style={toolBtn(tool === 'pen')} onClick={() => setTool('pen')}><Pencil size={16} /> Lápiz</button>
+        <button style={toolBtn(tool === 'circle')} onClick={() => setTool('circle')}><CircleShape size={16} /> Círculo</button>
+        <button style={toolBtn(tool === 'arrow')} onClick={() => setTool('arrow')}><MoveUpRight size={16} /> Flecha</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+          {colors.map(col => (
+            <button key={col} onClick={() => setColor(col)} aria-label={col}
+              style={{ width: '26px', height: '26px', borderRadius: '50%', background: col, cursor: 'pointer', border: color === col ? '3px solid #fff' : '2px solid rgba(255,255,255,0.35)' }} />
+          ))}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+          <button style={toolBtn(false)} onClick={undo}><Undo2 size={16} /> Deshacer</button>
+          <button style={toolBtn(false)} onClick={clearAll}><Eraser size={16} /> Limpiar</button>
+        </div>
+      </div>
+
+      {/* Lienzo */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '10px' }}>
+        {loadError ? (
+          <div style={{ color: '#fca5a5', textAlign: 'center', padding: '24px' }}>{loadError}</div>
+        ) : !ready ? (
+          <div style={{ color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '10px' }}><Loader2 size={20} className="spin-qc" /> Cargando imagen…</div>
+        ) : (
+          <canvas
+            ref={canvasRef}
+            style={{ maxWidth: '100%', maxHeight: '100%', touchAction: 'none', borderRadius: '10px', boxShadow: '0 6px 30px rgba(0,0,0,0.5)', cursor: 'crosshair' }}
+            onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
+          />
+        )}
+      </div>
+
+      {/* Acciones */}
+      <div style={{ padding: '14px', display: 'flex', gap: '12px', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))' }}>
+        <button onClick={onCancel} disabled={saving} style={{ padding: '12px 22px', borderRadius: '30px', border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+        <button onClick={save} disabled={saving || !ready} style={{ padding: '12px 32px', borderRadius: '30px', border: 'none', background: '#22c55e', color: '#fff', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          {saving ? <Loader2 size={18} className="spin-qc" /> : <Check size={18} />} Guardar
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // ⭐ DASHBOARD DE REPORTES (pestaña "Reportes"): KPIs y analítica
@@ -371,6 +676,24 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Pestaña principal: Inspecciones (lista/pendientes) vs Reportes (dashboard)
   const [mainTab, setMainTab] = useState<'inspections' | 'reports'>('inspections');
 
+  // ⭐ RUTA de inspección: lista ordenada de casas + estado del panel lateral
+  const [routeItems, setRouteItems] = useState<RouteItem[]>([]);
+  const [routeDrawerOpen, setRouteDrawerOpen] = useState(false);
+
+  // ⭐ PLANIFICADOR de ruta: ubicación actual, plan calculado, mapa
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [routePlanning, setRoutePlanning] = useState(false);
+  const [routePlanError, setRoutePlanError] = useState('');
+  const [routePlan, setRoutePlan] = useState<null | { totalDistanceKm: number; totalDriveMin: number; totalStopMin: number; totalMin: number; ordered: RouteItem[] }>(null);
+  const mapRef = useRef<any>(null);
+  const mapElRef = useRef<HTMLDivElement | null>(null);
+  const mapLayerRef = useRef<any>(null);
+  const routeGeometryRef = useRef<any>(null);
+
+  // ⭐ EDITOR de foto (anotación estilo WhatsApp)
+  const [annotate, setAnnotate] = useState<null | { placeId: string; index: number; url: string }>(null);
+  const [savingAnnotation, setSavingAnnotation] = useState(false);
+
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
@@ -442,14 +765,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
       try {
-        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap, companySnap] = await Promise.all([
+        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap, companySnap, routeSnap] = await Promise.all([
           settingsService.getAll('settings_places').catch(() => []),
           settingsService.getAll('settings_tasks').catch(() => []),
           settingsService.getAll('settings_teams').catch(() => []),
           settingsService.getAll('settings_statuses').catch(() => []),
           getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] })),
-          getDoc(doc(db, 'settings_company', 'main')).catch(() => null)
+          getDoc(doc(db, 'settings_company', 'main')).catch(() => null),
+          getDoc(doc(db, 'settings_qc_route', 'current')).catch(() => null)
         ]);
 
         // ⭐ Cargar configuración de empresa (si existe)
@@ -462,6 +786,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             email: cData.email || '',
             autoSend: cData.autoSend !== false,
           });
+        }
+
+        // ⭐ Cargar la RUTA de inspección guardada (si existe)
+        const rData = (routeSnap && (routeSnap as any).exists && (routeSnap as any).exists()) ? (routeSnap as any).data() : null;
+        if (rData && Array.isArray(rData.items)) {
+          setRouteItems(rData.items as RouteItem[]);
         }
 
         const sortedPlaces = (placesData as Place[]).sort((a, b) => a.name.localeCompare(b.name));
@@ -644,6 +974,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return st ? st.id : null;
   };
 
+  // ⭐ Determina si una casa tiene estado "Recall" (resuelve id o nombre del status)
+  const isRecallStatus = (house: Property): boolean => {
+    const sid = (house as any).statusId;
+    const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
+    const name = String(st?.name || sid || '').toLowerCase().trim();
+    return RECALL_HINTS.some(h => name.includes(h));
+  };
+
   // ⭐ Resuelve el nombre de un status a partir de id o nombre
   const resolveStatusName = (idOrName?: string | null): string => {
     if (!idOrName) return '';
@@ -697,6 +1035,213 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // ⭐ RUTA DE INSPECCIÓN: agregar / quitar / reordenar paradas.
+  //    Se guarda en Firestore (settings_qc_route/current) para que
+  //    persista entre sesiones y dispositivos.
+  // ─────────────────────────────────────────────────────────────
+  const persistRoute = async (items: RouteItem[]) => {
+    setRouteItems(items);
+    try {
+      await setDoc(doc(db, 'settings_qc_route', 'current'), { items, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (e) { console.error('No se pudo guardar la ruta:', e); }
+  };
+  const isInRoute = (houseId: string) => routeItems.some(r => r.houseId === houseId);
+  const addToRoute = (house: Property) => {
+    if (isInRoute(house.id)) return;
+    const item: RouteItem = { houseId: house.id, client: getClientName(house.client), address: house.address || '', team: getTeamNameForHouse(house) };
+    persistRoute([...routeItems, item]);
+  };
+  const removeFromRoute = (houseId: string) => persistRoute(routeItems.filter(r => r.houseId !== houseId));
+  const moveRouteItem = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= routeItems.length) return;
+    const copy = routeItems.slice();
+    const [m] = copy.splice(index, 1);
+    copy.splice(target, 0, m);
+    persistRoute(copy);
+  };
+  const clearRoute = () => { if (window.confirm('¿Vaciar toda la ruta?')) { persistRoute([]); setRoutePlan(null); routeGeometryRef.current = null; } };
+
+  // ─────────────────────────────────────────────────────────────
+  // ⭐ PLANIFICADOR: toma la ubicación actual, ubica cada casa, ordena
+  //    por cercanía, pide la ruta real de manejo (OSRM), calcula el
+  //    tiempo estimado y la dibuja en el mapa.
+  // ─────────────────────────────────────────────────────────────
+  const renderRouteMap = async (loc: { lat: number; lng: number }, ordered: any[], geometry: any) => {
+    try {
+      const L = await ensureLeaflet();
+      if (!mapElRef.current) return;
+      if (!mapRef.current) {
+        mapRef.current = L.map(mapElRef.current, { zoomControl: true });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapRef.current);
+      }
+      const map = mapRef.current;
+      if (mapLayerRef.current) { try { map.removeLayer(mapLayerRef.current); } catch {} }
+      const group = L.layerGroup().addTo(map);
+      mapLayerRef.current = group;
+
+      // Marcador de la ubicación actual
+      L.circleMarker([loc.lat, loc.lng], { radius: 8, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 3 }).bindPopup('Tu ubicación').addTo(group);
+
+      // Marcadores numerados de las casas (en el orden de la ruta)
+      const bounds: any[] = [[loc.lat, loc.lng]];
+      ordered.forEach((o: any, i: number) => {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="background:#4338ca;color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)">${i + 1}</div>`,
+          iconSize: [26, 26], iconAnchor: [13, 13],
+        });
+        L.marker([o.lat, o.lng], { icon }).bindPopup(`<b>${i + 1}. ${o.client || ''}</b><br/>${o.address || ''}`).addTo(group);
+        bounds.push([o.lat, o.lng]);
+      });
+
+      // Línea de la ruta (real si hay OSRM; si no, línea recta punteada)
+      if (geometry && geometry.coordinates) {
+        const latlngs = geometry.coordinates.map((c: number[]) => [c[1], c[0]]);
+        L.polyline(latlngs, { color: '#4338ca', weight: 4, opacity: 0.85 }).addTo(group);
+      } else {
+        const latlngs = [[loc.lat, loc.lng], ...ordered.map((o: any) => [o.lat, o.lng])];
+        L.polyline(latlngs, { color: '#4338ca', weight: 4, opacity: 0.6, dashArray: '6 8' }).addTo(group);
+      }
+
+      try { map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 }); } catch {}
+      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 200);
+    } catch (e) { console.error('No se pudo dibujar el mapa:', e); }
+  };
+
+  const optimizeRoute = async () => {
+    if (routeItems.length === 0) { setRoutePlanError('Agrega casas a la ruta primero.'); return; }
+    setRoutePlanning(true);
+    setRoutePlanError('');
+    try {
+      // 1) Ubicación actual (GPS)
+      let loc = userLocation;
+      if (!loc) { loc = await getCurrentPosition(); setUserLocation(loc); }
+
+      // 2) Coordenadas de cada casa (usa guardadas o geocodifica la dirección)
+      const withCoords: any[] = [];
+      const missing: string[] = [];
+      for (const it of routeItems) {
+        let lat = it.lat, lng = it.lng;
+        if (lat == null || lng == null) {
+          const g = it.address ? await geocodeAddress(it.address) : null;
+          if (g) { lat = g.lat; lng = g.lng; }
+        }
+        if (lat != null && lng != null) withCoords.push({ ...it, lat, lng });
+        else missing.push(it.client || it.address || 'casa');
+      }
+      if (withCoords.length === 0) {
+        setRoutePlanError('No se pudieron ubicar las direcciones en el mapa. Revisa que estén completas.');
+        setRoutePlanning(false);
+        return;
+      }
+
+      // 3) Orden por vecino más cercano desde tu ubicación
+      const ordered = nearestNeighborOrder(loc, withCoords);
+
+      // 4) Ruta real de manejo por [ubicación, ...casas]
+      const waypoints = [loc, ...ordered.map((o: any) => ({ lat: o.lat, lng: o.lng }))];
+      const osrm = await fetchOSRMRoute(waypoints);
+
+      let totalDistanceKm = 0, totalDriveMin = 0;
+      routeGeometryRef.current = null;
+      if (osrm) {
+        totalDistanceKm = osrm.distanceKm; totalDriveMin = osrm.durationMin; routeGeometryRef.current = osrm.geometry;
+      } else {
+        // Respaldo: estimar por línea recta (~40 km/h promedio urbano)
+        let prev = loc;
+        for (const o of ordered) { totalDistanceKm += haversineKm(prev, o); prev = o; }
+        totalDriveMin = (totalDistanceKm / 40) * 60;
+      }
+
+      const totalStopMin = ordered.length * INSPECTION_MIN_PER_STOP;
+      const totalMin = totalDriveMin + totalStopMin;
+
+      // 5) Guardar el nuevo orden (con coordenadas) en la ruta
+      const newItems: RouteItem[] = ordered.map((o: any) => ({ houseId: o.houseId, client: o.client, address: o.address, team: o.team, lat: o.lat, lng: o.lng }));
+      persistRoute(newItems);
+
+      setRoutePlan({ totalDistanceKm, totalDriveMin, totalStopMin, totalMin, ordered: newItems });
+      setRoutePlanError(missing.length ? `No se ubicaron en el mapa: ${missing.join(', ')}.` : '');
+
+      // 6) Dibujar en el mapa
+      await renderRouteMap(loc, ordered, routeGeometryRef.current);
+    } catch (e: any) {
+      console.error('Error planificando ruta:', e);
+      const denied = e && (e.code === 1 || String(e.message || '').toLowerCase().includes('denied'));
+      setRoutePlanError(denied ? 'Permiso de ubicación denegado. Actívalo en el navegador para planificar la ruta.' : (e?.message || 'No se pudo planificar la ruta.'));
+    } finally {
+      setRoutePlanning(false);
+    }
+  };
+
+  // Cierra el panel lateral y libera el mapa (evita fugas al desmontar el contenedor)
+  const closeRouteDrawer = () => {
+    try { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; mapLayerRef.current = null; } } catch {}
+    setRouteDrawerOpen(false);
+  };
+
+  // Al abrir el panel: si ya hay un plan calculado, re-dibuja el mapa
+  useEffect(() => {
+    if (routeDrawerOpen && routePlan && userLocation) {
+      const ordered = (routePlan.ordered || []).filter((o: any) => o.lat != null && o.lng != null);
+      if (ordered.length) setTimeout(() => renderRouteMap(userLocation, ordered, routeGeometryRef.current), 80);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeDrawerOpen]);
+
+  // ⭐ Guarda la foto anotada: sube la nueva versión, reemplaza la URL en el
+  //    reporte y borra la anterior de Storage.
+  const handleSaveAnnotation = async (blob: Blob) => {
+    if (!annotate || !selectedHouse) return;
+    setSavingAnnotation(true);
+    try {
+      const placeName = places.find(p => p.id === annotate.placeId)?.name || annotate.placeId;
+      const file = new File([blob], `qc_annotated_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      const urls = await storageService.uploadQualityCheckPhotos([file], selectedHouse.address, placeName);
+      const newUrl = urls && urls[0];
+      if (!newUrl) throw new Error('sin url');
+      const oldUrl = ((qcData[annotate.placeId] && qcData[annotate.placeId].photos) || [])[annotate.index];
+
+      setQcData(prev => {
+        const photos = (((prev[annotate.placeId] && prev[annotate.placeId].photos) || []) as string[]).slice();
+        photos[annotate.index] = newUrl;
+        return { ...prev, [annotate.placeId]: { ...(prev[annotate.placeId] || {}), photos } };
+      });
+
+      // Si el reporte ya está guardado, parcha el documento con la nueva URL
+      const savedDocId = savedQcDocByHouse.current[selectedHouse.id] || (editingQcId || '');
+      if (savedDocId) {
+        try {
+          const ref = doc(db, 'quality_checks', savedDocId);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const data: any = snap.data() || {};
+            const qc = { ...(data.qcData || {}) };
+            const place = { ...(qc[annotate.placeId] || {}) };
+            const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
+            if (photos[annotate.index] !== undefined) photos[annotate.index] = newUrl;
+            else photos.push(newUrl);
+            place.photos = photos;
+            qc[annotate.placeId] = place;
+            await updateDoc(ref, { qcData: qc });
+          }
+        } catch (e) { console.error('No se pudo parchar el reporte con la foto editada:', e); }
+      }
+
+      if (oldUrl && String(oldUrl).startsWith('http')) {
+        try { await storageService.deletePhotoByUrl(oldUrl); } catch (e) { console.error(e); }
+      }
+      setAnnotate(null);
+    } catch (e) {
+      console.error('No se pudo guardar la anotación:', e);
+      alert('No se pudo guardar la foto editada. Intenta de nuevo.');
+    } finally {
+      setSavingAnnotation(false);
+    }
+  };
+
   // ⭐ Clasifica un QC en uno de los tres grupos:
   //    - Recall:   se presionó "DID NOT PASS" (result === 'failed')
   //    - Finished: inspección terminada y guardada con "Guardar Todo" (pasó)
@@ -705,6 +1250,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (qc.result === 'failed') return 'Recall';
     if (qc.status === 'Finished') return 'Finished';
     return 'Pending';
+  };
+
+  // ⭐ Reúne las notas y daños capturados por área (para mostrarlos en la tarjeta del QC)
+  const collectNotesForCard = (qc: QCRecord): { area: string; notes: string; damage: string }[] => {
+    const data = (qc.qcData as Record<string, any>) || {};
+    const out: { area: string; notes: string; damage: string }[] = [];
+    places.forEach(p => {
+      const d = data[p.id];
+      if (!d) return;
+      const notes = (d.notes || '').trim();
+      const damage = (d.damage || '').trim();
+      if (notes || damage) out.push({ area: p.name, notes, damage });
+    });
+    return out;
   };
 
   // ⭐ Último reporte de QC registrado para una casa
@@ -766,6 +1325,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    (sin QC aprobado y sin QC reprobado: las reprobadas viven en Recall).
   const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id) && !houseFailedQC(h.id));
 
+  // ⭐ RECALL = casas en estado "Recall" en el pipeline (aunque no tengan un QC
+  //    "DID NOT PASS" registrado: muchas llegan a Recall por cambio de status).
+  const recallHouses = properties.filter(h => isRecallStatus(h));
+
   // ⭐ ¿La casa/registro coincide con la búsqueda?
   const matchesSearch = (text: string[]) => {
     const q = tableSearch.trim().toLowerCase();
@@ -775,6 +1338,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Casas pendientes ya filtradas por el buscador
   const filteredPendingHouses = pendingQCHouses.filter(h =>
+    matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
+  );
+
+  // ⭐ Casas en Recall ya filtradas por el buscador
+  const filteredRecallHouses = recallHouses.filter(h =>
     matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
   );
 
@@ -791,18 +1359,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   });
 
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
-  //    Pending = casas esperando inspección · Finished/Recall = registros de QC.
+  //    Pending = casas esperando inspección · Finished = registros de QC ·
+  //    Recall = casas actualmente en estado "Recall" (+ registros DID NOT PASS).
   const finishedCount = qcList.filter(q => qcCategory(q) === 'Finished').length;
-  const recallCount = qcList.filter(q => qcCategory(q) === 'Recall').length;
+  const recallRecordsCount = qcList.filter(q => qcCategory(q) === 'Recall').length;
+  const recallTotal = recallHouses.length + recallRecordsCount;
   const groupCounts = {
-    All: pendingQCHouses.length + finishedCount + recallCount,
+    All: pendingQCHouses.length + finishedCount + recallTotal,
     Pending: pendingQCHouses.length,
     Finished: finishedCount,
-    Recall: recallCount,
+    Recall: recallTotal,
   };
 
   // ⭐ ¿Mostrar cada bloque según la pestaña activa?
   const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
+  const showRecallBlock = statusFilter === 'All' || statusFilter === 'Recall';
   const showRecordsTable = statusFilter !== 'Pending';
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
@@ -1734,6 +2305,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
     td: { padding: '12px 16px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontSize: '0.95rem' },
     closeBtn: { background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
+    routeIconBtn: { background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '7px', width: '30px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } as React.CSSProperties,
     cardTitle: { color: '#3b82f6', fontSize: '1.1rem', borderBottom: '2px solid #3b82f6', paddingBottom: '8px', marginTop: 0, fontWeight: 600 },
     taskItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid #eee' },
     // Las funciones de botón solo devuelven color dinámico; el tamaño/padding lo da la clase .qc-toggle
@@ -1844,6 +2416,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         /* ===== Casas pendientes de Quality Check ===== */
         .qc-pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
 
+        /* ===== Vista lateral de RUTA de inspección ===== */
+        .qc-route-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 1400; display: flex; justify-content: flex-end; }
+        .qc-route-drawer { width: 480px; max-width: 92vw; height: 100%; background: #fff; box-shadow: -8px 0 30px rgba(0,0,0,0.18); display: flex; flex-direction: column; animation: qc-slide-in 0.22s ease; }
+        @keyframes qc-slide-in { from { transform: translateX(40px); opacity: 0.3; } to { transform: translateX(0); opacity: 1; } }
+        .qc-route-item { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+        .qc-route-map { width: 100%; height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #eaeff2; }
+        .qc-route-map .leaflet-container { height: 100%; width: 100%; }
+
         /* ===== Barra de herramientas: buscador + pestañas juntos en una tarjeta ===== */
         .qc-toolbar {
           display: flex; align-items: center; justify-content: space-between;
@@ -1914,6 +2494,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           .qc-photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
           .qc-savebar button { width: 100%; }
           .qc-chip { padding: 10px 16px; font-size: 0.95rem; }
+          .qc-route-drawer { width: 100vw; max-width: 100vw; }
         }
 
         @media (max-width: 480px) {
@@ -1933,7 +2514,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       </button>
 
-      {/* ⭐ PESTAÑAS PRINCIPALES: Inspecciones | Reportes */}
+      {/* ⭐ PESTAÑAS PRINCIPALES: Inspecciones | Route | Reportes */}
       <div style={{ display: 'inline-flex', background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '4px', gap: '2px', marginBottom: '18px' }}>
         <button
           type="button"
@@ -1941,6 +2522,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: mainTab === 'inspections' ? '#ffffff' : 'transparent', color: mainTab === 'inspections' ? '#1d4ed8' : '#64748b', boxShadow: mainTab === 'inspections' ? '0 1px 2px rgba(15,23,42,0.1)' : 'none' }}
         >
           <ClipboardCheck size={16} /> Inspecciones
+        </button>
+        <button
+          type="button"
+          onClick={() => setRouteDrawerOpen(true)}
+          title="Abrir la ruta de inspección"
+          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: 'transparent', color: '#4338ca' }}
+        >
+          <RouteIcon size={16} /> Route{routeItems.length ? ` (${routeItems.length})` : ''}
         </button>
         <button
           type="button"
@@ -1977,13 +2566,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <button className={`qc-tab ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished ({groupCounts.Finished})</button>
           <button className={`qc-tab qc-tab-recall ${statusFilter === 'Recall' ? 'active' : ''}`} onClick={() => setStatusFilter('Recall')}>Recall ({groupCounts.Recall})</button>
         </div>
-        <button
-          onClick={openCompanyModal}
-          title="Configurar empresa: logo, nombre, dirección y email destino"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', height: '44px', padding: '0 16px', borderRadius: '12px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-        >
-          <Building2 size={16} /> Empresa
-        </button>
       </div>
 
       {/* ⭐ Aviso de conexión / fotos pendientes de subir */}
@@ -2056,6 +2638,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <Edit2 size={12} color="#94a3b8" />
                     </button>
                   </div>
+                  {/* ⭐ Agregar esta casa a la RUTA de inspección */}
+                  <button
+                    type="button"
+                    onClick={() => addToRoute(house)}
+                    disabled={isInRoute(house.id)}
+                    style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  >
+                    {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
+                  </button>
                   <button
                     onClick={() => handleStartOrContinueQC(house)}
                     disabled={isLoadingCatalogs}
@@ -2077,616 +2668,526 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       )}
 
-      {/* TABLA (escritorio) */}
+      {/* ⭐ CASAS EN RECALL (estado "Recall" en el pipeline) — se muestran en la pestaña Recall/All */}
+      {!isLoadingCatalogs && showRecallBlock && filteredRecallHouses.length > 0 && (
+        <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #f5f3ff, #ffffff)', border: '1px solid #ddd6fe', borderRadius: '14px', padding: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Repeat size={19} color="#7c3aed" />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#6d28d9' }}>Casas en Recall</div>
+              <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                {filteredRecallHouses.length} casa(s) con estado "Recall" — para re-limpieza y re-inspección
+              </div>
+            </div>
+          </div>
+
+          <div className="qc-pending-grid">
+            {filteredRecallHouses.map(house => (
+              <div key={house.id} style={{ background: '#fdfcff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
+                    {getClientName(house.client)}
+                  </div>
+                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <Repeat size={12} /> Recall
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
+                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <span>{getTeamNameForHouse(house)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openHouseStatusModal(house)}
+                    title="Cambiar status de la casa"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: houseStatusInfo(house).color, flexShrink: 0 }} />
+                    {houseStatusInfo(house).name}
+                    <Edit2 size={12} color="#94a3b8" />
+                  </button>
+                </div>
+                {/* ⭐ Agregar esta casa a la RUTA */}
+                <button
+                  type="button"
+                  onClick={() => addToRoute(house)}
+                  disabled={isInRoute(house.id)}
+                  style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                >
+                  {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
+                </button>
+                <button
+                  onClick={() => handleStartOrContinueQC(house)}
+                  disabled={isLoadingCatalogs}
+                  style={{ height: '46px', borderRadius: '11px', background: '#7c3aed', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <ClipboardCheck size={17} /> Re-inspeccionar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== TABLA DE REGISTROS (escritorio) — Finished + Recall ===== */}
       {showRecordsTable && (
-      <div className="qc-table-wrap" style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto', width: '100%' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
-            <thead>
-              <tr>
-                <th style={{...s.th, width: '150px'}}><Activity size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Status</th>
-                <th style={{...s.th, width: '120px'}}><CalendarDays size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Date</th>
-                <th style={s.th}><MapPin size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Address</th>
-                <th style={s.th}><User size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Client</th>
-                <th style={s.th}><Users size={14} style={{display: 'inline', marginRight: '6px', verticalAlign: 'middle'}}/> Team</th>
-                <th style={{...s.th, width: '140px', textAlign: 'right'}}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoadingCatalogs ? (
-                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>Loading records from database...</td></tr>
-              ) : filteredQcList.length === 0 ? (
-                <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No Quality Checks found.</td></tr>
-              ) : (
-                filteredQcList.map((qc) => {
-                  const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-                  const isFailed = qc.result === 'failed';
+        <div className="qc-table-wrap" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Estado</th>
+                  <th style={s.th}>Fecha</th>
+                  <th style={s.th}>Cliente y dirección</th>
+                  <th style={s.th}>Equipo</th>
+                  <th style={s.th}>Inspector</th>
+                  <th style={s.th}>Duración</th>
+                  <th style={s.th}>Notas</th>
+                  <th style={{ ...s.th, textAlign: 'right' as const }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQcList.length === 0 ? (
+                  <tr>
+                    <td style={{ ...s.td, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '30px' }} colSpan={8}>
+                      No hay registros de Quality Check para mostrar.
+                    </td>
+                  </tr>
+                ) : filteredQcList.map(qc => {
+                  const cat = qcCategory(qc);
+                  const badge = cat === 'Recall'
+                    ? { bg: '#f3e8ff', fg: '#7c3aed', label: 'Recall' }
+                    : { bg: '#dcfce7', fg: '#166534', label: 'Finished' };
+                  const notes = collectNotesForCard(qc);
                   return (
-                    <tr key={qc.id} style={{ transition: 'background-color 0.2s', borderBottom: '1px solid #f1f5f9', backgroundColor: isFailed ? '#fff7f7' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isFailed ? '#fff7f7' : 'transparent'}>
+                    <tr key={qc.id}>
                       <td style={s.td}>
-                        {isFailed ? (
-                          <span title="No pasó Quality Check — pasó a Recall" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                            <Repeat size={12} /> Recall · No pasó
-                          </span>
-                        ) : (
-                          <span style={{ 
-                            backgroundColor: qc.status === 'Finished' ? '#dcfce7' : '#fef3c7', 
-                            color: qc.status === 'Finished' ? '#166534' : '#b45309', 
-                            padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap'
-                          }}>
-                            {qc.status}
-                          </span>
-                        )}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: badge.bg, color: badge.fg, padding: '4px 10px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                          {cat === 'Recall' ? <Repeat size={12} /> : <Check size={12} />} {badge.label}
+                        </span>
                       </td>
                       <td style={s.td}>{formatDate(qc.date)}</td>
-                      <td style={{...s.td, color: '#6b7280'}}>
-                        <div>{qc.address}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
-                          <span>Inspector: {qc.inspector || 'Unknown'}</span>
-                          <span>Entrada: {fmtTime(qc.checkInAt)}</span>
-                          <span>Salida: {fmtTime(qc.checkOutAt)}</span>
-                          <span>Duración: {fmtDuration(recordDuration(qc))}</span>
-                        </div>
+                      <td style={s.td}>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{getClientName(qc.client)}</div>
+                        <div style={{ fontSize: '0.82rem', color: '#64748b' }}>{qc.address || '—'}</div>
                       </td>
-                      <td style={{...s.td, fontWeight: 600}}>{getClientName(qc.client)}</td>
-                      <td style={{...s.td, color: '#475569'}}>{teamLabel}</td>
-                      <td style={{...s.td, textAlign: 'right'}}>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
-                          <button 
-                            onClick={() => handleEditQC(qc)} 
-                            title="Edit Quality Check"
-                            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Edit2 size={16} />
+                      <td style={s.td}>{qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</td>
+                      <td style={s.td}>{qc.inspector || 'Unknown'}</td>
+                      <td style={s.td}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569' }}>
+                          <Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{fmtTime(qc.checkInAt)} – {fmtTime(qc.checkOutAt)}</div>
+                      </td>
+                      <td style={{ ...s.td, maxWidth: '260px' }}>
+                        {notes.length === 0 ? (
+                          <span style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>—</span>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {notes.slice(0, 3).map((n, i) => (
+                              <div key={i} style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.3 }}>
+                                <span style={{ fontWeight: 700, color: '#334155' }}>{n.area}:</span>{' '}
+                                {n.notes && <span>{n.notes}</span>}
+                                {n.damage && <span style={{ color: '#b91c1c' }}>{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
+                              </div>
+                            ))}
+                            {notes.length > 3 && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>+{notes.length - 3} área(s) más…</div>}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...s.td, textAlign: 'right' as const, whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button onClick={() => handleExportFromTable(qc)} title="Exportar PDF" disabled={exportingForQcId === qc.id} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
                           </button>
-                          <button 
-                            onClick={() => handleExportFromTable(qc)} 
-                            disabled={exportingForQcId === qc.id}
-                            title="Export PDF Report"
-                            style={{ 
-                              background: 'none', 
-                              border: 'none', 
-                              color: '#059669', 
-                              cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', 
-                              padding: '4px',
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center',
-                              opacity: exportingForQcId === qc.id ? 0.6 : 1
-                            }}
-                          >
-                            {exportingForQcId === qc.id 
-                              ? <Loader2 size={16} className="spin-qc" /> 
-                              : <Printer size={16} />
-                            }
-                          </button>
-                          <button 
-                            onClick={() => openEmailForQC(qc)} 
-                            title="Email Report"
-                            style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
+                          <button onClick={() => openEmailForQC(qc)} title="Enviar por email" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                             <Mail size={16} />
                           </button>
-                          <button 
-                            onClick={() => handleDeleteQC(qc.id as string)} 
-                            title="Delete Quality Check"
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
+                          <button onClick={() => handleEditQC(qc)} title="Editar" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => qc.id && handleDeleteQC(qc.id)} title="Eliminar" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                             <Trash2 size={16} />
                           </button>
                         </div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       )}
 
-      {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
+      {/* ===== TARJETAS DE REGISTROS (móvil) — Finished + Recall ===== */}
       {showRecordsTable && (
-      <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
-        {isLoadingCatalogs ? (
-          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>Loading records from database...</div>
-        ) : filteredQcList.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>No Quality Checks found.</div>
-        ) : (
-          filteredQcList.map((qc) => {
-            const teamLabel = qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId));
-            const isFinished = qc.status === 'Finished';
-            const isFailed = qc.result === 'failed';
+        <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '12px' }}>
+          {filteredQcList.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px' }}>
+              No hay registros de Quality Check para mostrar.
+            </div>
+          ) : filteredQcList.map(qc => {
+            const cat = qcCategory(qc);
+            const badge = cat === 'Recall'
+              ? { bg: '#f3e8ff', fg: '#7c3aed', label: 'Recall' }
+              : { bg: '#dcfce7', fg: '#166534', label: 'Finished' };
+            const notes = collectNotesForCard(qc);
             return (
-              <div
-                key={qc.id}
-                onClick={() => handleEditQC(qc)}
-                style={{
-                  background: isFailed ? '#fff5f5' : '#ffffff', border: `1px solid ${isFailed ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '16px', padding: '18px',
-                  cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-                  display: 'flex', flexDirection: 'column', gap: '14px',
-                }}
-              >
-                {/* Título + estado */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                  <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
-                    {getClientName(qc.client)}
+              <div key={qc.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1rem' }}>{getClientName(qc.client)}</div>
+                    <div style={{ fontSize: '0.82rem', color: '#64748b' }}>{qc.address || '—'}</div>
+                  </div>
+                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '5px', background: badge.bg, color: badge.fg, padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                    {cat === 'Recall' ? <Repeat size={11} /> : <Check size={11} />} {badge.label}
                   </span>
-                  {isFailed ? (
-                    <span title="No pasó Quality Check — pasó a Recall" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      <Repeat size={13} /> Recall · No pasó
-                    </span>
-                  ) : (
-                    <span style={{
-                      flexShrink: 0,
-                      backgroundColor: isFinished ? '#dcfce7' : '#fef3c7',
-                      color: isFinished ? '#166534' : '#b45309',
-                      padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap'
-                    }}>
-                      {qc.status}
-                    </span>
-                  )}
                 </div>
-
-                {/* Info con iconos */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{qc.address || '—'}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span>{formatDate(qc.date)}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span>{teamLabel}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
-                    <User size={15} color="#cbd5e1" style={{ flexShrink: 0 }} />
-                    <span>Inspector: {qc.inspector || 'Unknown'}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '0.82rem', color: '#94a3b8' }}>
-                    <Clock size={15} color="#cbd5e1" style={{ flexShrink: 0, marginTop: '1px' }} />
-                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
-                      <span>Entrada: {fmtTime(qc.checkInAt)}</span>
-                      <span>Salida: {fmtTime(qc.checkOutAt)}</span>
-                      <span>Duración: {fmtDuration(recordDuration(qc))}</span>
-                    </span>
-                  </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.82rem', color: '#475569' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><CalendarDays size={14} color="#94a3b8" /> {formatDate(qc.date)}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><User size={14} color="#94a3b8" /> {qc.inspector || 'Unknown'}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}</span>
                 </div>
-
-                {/* Acciones */}
-                <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '14px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleEditQC(qc); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Edit2 size={16} /> Editar
+                {notes.length > 0 && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: '9px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <StickyNote size={13} color="#94a3b8" /> Notas
+                    </div>
+                    {notes.map((n, i) => (
+                      <div key={i} style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.35 }}>
+                        <span style={{ fontWeight: 700, color: '#334155' }}>{n.area}:</span>{' '}
+                        {n.notes && <span>{n.notes}</span>}
+                        {n.damage && <span style={{ color: '#b91c1c' }}>{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => handleExportFromTable(qc)} disabled={exportingForQcId === qc.id} style={{ flex: 1, minHeight: '42px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    {exportingForQcId === qc.id ? <Loader2 size={15} className="spin-qc" /> : <Printer size={15} />} PDF
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleExportFromTable(qc); }} 
-                    disabled={exportingForQcId === qc.id}
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: exportingForQcId === qc.id ? 'wait' : 'pointer', opacity: exportingForQcId === qc.id ? 0.6 : 1 }}>
-                    {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />} PDF
+                  <button onClick={() => openEmailForQC(qc)} style={{ flex: 1, minHeight: '42px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <Mail size={15} /> Email
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openEmailForQC(qc); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Mail size={16} /> Email
+                  <button onClick={() => handleEditQC(qc)} style={{ flex: 1, minHeight: '42px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <Edit2 size={15} /> Editar
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleDeleteQC(qc.id as string); }} 
-                    style={{ flex: 1, minWidth: '70px', height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
-                    <Trash2 size={16} /> Borrar
+                  <button onClick={() => qc.id && handleDeleteQC(qc.id)} style={{ minHeight: '42px', width: '46px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '9px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
       )}
 
       </>
       )}
 
-      {/* --- MODAL DE QUALITY CHECK --- */}
+      {/* ═══════════ MODAL DE INSPECCIÓN (Quality Check) ═══════════ */}
       {isFormModalOpen && selectedHouse && (
-        <div className="qc-overlay">
-          <div className="qc-modal">
-            
+        <div className="qc-overlay" onClick={handleCloseForm}>
+          <div className="qc-modal" onClick={e => e.stopPropagation()}>
             <div className="qc-header">
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h1 className="qc-title">
-                  <ClipboardCheck size={22}/> Quality Check Inspection
-                </h1>
-                <p className="qc-prop">
-                  Property: <strong style={{backgroundColor: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px'}}>{getClientName(selectedHouse.client)} - {selectedHouse.address}</strong>
-                </p>
+              <div style={{ minWidth: 0 }}>
+                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check</h2>
+                <p className="qc-prop">{getClientName(selectedHouse.client)} · {selectedHouse.address || '—'}</p>
                 <p className="qc-insp">
-                  <User size={14} /> Inspector: {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User'}
+                  <User size={13} /> {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown'}
+                  {checkInAt && <> · <Clock size={13} /> Entrada {fmtTime(checkInAt)}</>}
                 </p>
-                <p className="qc-insp">
-                  <Users size={14} /> Team: {getTeamNameForHouse(selectedHouse)}
-                </p>
-                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => { if (window.confirm('¿Registrar la hora de ENTRADA como ahora mismo?')) setCheckInAt(new Date().toISOString()); }}
-                    title="Hora de entrada a la inspección (toca para volver a marcarla como ahora)"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', padding: '6px 12px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    <Clock size={14} /> Entrada: {fmtTime(checkInAt)}
-                  </button>
-                </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                <button
-                  onClick={handleExportFromModal}
-                  disabled={isExportingPDF || isLoadingCatalogs}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    cursor: isExportingPDF ? 'wait' : 'pointer',
-                    opacity: isExportingPDF ? 0.7 : 1
-                  }}
-                  title="Generate PDF Report"
-                >
-                  {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
-                  <span className="qc-export-label">{isExportingPDF ? 'Exporting...' : 'Export PDF'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <button onClick={handleExportFromModal} title="Exportar PDF" disabled={isExportingPDF} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', borderRadius: '9px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.82rem' }}>
+                  {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}<span className="qc-export-label">PDF</span>
                 </button>
-                <button
-                  onClick={openEmailForCurrent}
-                  disabled={isLoadingCatalogs}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    backgroundColor: 'rgba(255,255,255,0.2)', color: 'white',
-                    border: '1px solid rgba(255,255,255,0.3)', padding: '8px 14px',
-                    borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer'
-                  }}
-                  title="Email Report"
-                >
-                  <Mail size={16} />
-                  <span className="qc-export-label">Email</span>
+                <button onClick={openEmailForCurrent} title="Enviar por email" style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', borderRadius: '9px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.82rem' }}>
+                  <Mail size={16} /><span className="qc-export-label">Email</span>
                 </button>
-                <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
+                <button onClick={handleCloseForm} style={s.closeBtn} aria-label="Cerrar"><X size={22} /></button>
               </div>
             </div>
 
-            {/* ⭐ Buscador de áreas */}
-            {!isLoadingCatalogs && places.length > 0 && (
-              <div className="qc-search-bar">
-                <div className="qc-search">
-                  <Search size={16} color="#94a3b8" />
-                  <input
-                    type="text"
-                    value={placeSearch}
-                    onChange={(e) => setPlaceSearch(e.target.value)}
-                    placeholder="Buscar área (Bathroom, Kitchen, Bedroom...)"
-                  />
-                  {placeSearch && (
-                    <button type="button" onClick={() => setPlaceSearch('')} aria-label="Limpiar búsqueda">
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
+            <div className="qc-search-bar">
+              <div className="qc-search">
+                <Search size={18} color="#94a3b8" />
+                <input type="text" value={placeSearch} onChange={e => setPlaceSearch(e.target.value)} placeholder="Buscar área para inspeccionar..." />
+                {placeSearch && <button onClick={() => setPlaceSearch('')} aria-label="Limpiar"><X size={16} /></button>}
               </div>
-            )}
-            
+            </div>
+
             <div className="qc-body">
-              
-              {isLoadingCatalogs ? (
-                <div style={{ color: '#6b7280', padding: '20px', textAlign: 'center', gridColumn: '1 / -1' }}>
-                  Loading Inspection Checklist...
+              {/* Selector de áreas (chips) */}
+              <div className="qc-picker">
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+                  Áreas a inspeccionar ({selectedPlaceIds.length} seleccionada(s))
                 </div>
-              ) : places.length === 0 ? (
-                <div style={{ color: '#ef4444', padding: '20px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: '#fef2f2', borderRadius: '8px' }}>
-                  Please go to Settings &gt; Places and configure your rooms and tasks first.
-                </div>
-              ) : availablePlaces.length === 0 ? (
-                <div style={{ color: '#6b7280', padding: '30px', textAlign: 'center', gridColumn: '1 / -1', backgroundColor: 'white', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  Esta casa no tiene áreas asignadas para inspeccionar. Configúralas en el formulario de la casa (Houses).
-                </div>
-              ) : (
-                <>
-                  {/* ⭐ Selector de áreas a inspeccionar */}
-                  <div className="qc-picker">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                      <h2 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <ClipboardCheck size={18} color="#3b82f6" /> Áreas a inspeccionar
-                      </h2>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>{selectedPlaceIds.length} seleccionada(s)</span>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {searchablePlaces.length === 0 ? (
-                        <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                          {placeSearch ? `No se encontraron áreas para "${placeSearch}".` : 'No hay áreas con tareas configuradas.'}
-                        </span>
-                      ) : searchablePlaces.map(p => {
-                        const sel = selectedPlaceIds.includes(p.id);
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className="qc-chip"
-                            onClick={() => togglePlaceSelection(p.id)}
-                            style={{ border: `1px solid ${sel ? '#3b82f6' : '#cbd5e1'}`, background: sel ? '#3b82f6' : '#fff', color: sel ? '#fff' : '#334155' }}
-                          >
-                            {sel && <Check size={14} />} {p.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* ⭐ Tarjetas solo de las áreas seleccionadas */}
-                  {selectedRenderPlaces.length === 0 ? (
-                    <div style={{ gridColumn: '1 / -1', color: '#6b7280', padding: '30px', textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', border: '2px dashed #cbd5e1' }}>
-                      Selecciona una o más áreas arriba para comenzar la inspección.
-                    </div>
-                  ) : (
-                    selectedRenderPlaces.map(place => {
-                      const placeData = qcData[place.id] || { tasks: {}, photos: [] };
-                      const placeTasks = tasks.filter(t => t.placeId === place.id);
-                      const placePhotos: string[] = placeData.photos || [];
-                      const pending = pendingPhotos[place.id] || [];
-                      const queued = queuedByPlace[place.id] || [];
-
+                {searchablePlaces.length === 0 ? (
+                  <div style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No hay áreas con tareas configuradas.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {searchablePlaces.map(p => {
+                      const sel = selectedPlaceIds.includes(p.id);
                       return (
-                        <div key={place.id} className="qc-card">
-                          <h2 style={s.cardTitle}>{place.name}</h2>
-                          
-                          <div style={{ marginBottom: '16px' }}>
-                            {placeTasks.map(task => (
-                              <div key={task.id} style={s.taskItem}>
-                                <span style={{ fontSize: '0.95rem', color: '#374151' }}>{task.name}</span>
-                                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                                  <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'Yes')} style={s.btnYes(placeData.tasks[task.id] === 'Yes')}>Yes</button>
-                                  <button className="qc-toggle" onClick={() => setTaskValue(place.id, task.id, 'No')} style={s.btnNo(placeData.tasks[task.id] === 'No')}>No</button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                        <button key={p.id} className="qc-chip" onClick={() => togglePlaceSelection(p.id)}
+                          style={{ background: sel ? '#3b82f6' : '#fff', color: sel ? '#fff' : '#334155', border: `1px solid ${sel ? '#3b82f6' : '#e1e4e8'}` }}>
+                          {sel ? <Check size={14} /> : <Plus size={14} />} {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-                          <div style={s.extraFields}>
-                            <label style={s.labelQC}>¿Correcciones del Manager?</label>
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                              <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'Yes')} style={s.btnYes(placeData.corrections === 'Yes')}>Yes</button>
-                              <button className="qc-toggle" onClick={() => setCorrectionValue(place.id, 'No')} style={s.btnNo(placeData.corrections === 'No')}>No</button>
-                            </div>
+              {/* Tarjetas por área seleccionada */}
+              {selectedRenderPlaces.map(p => {
+                const placeTasks = tasks.filter(t => t.placeId === p.id);
+                const data = qcData[p.id] || { tasks: {}, notes: '', damage: '', score: null, photos: [] };
+                const savedPhotos: string[] = data.photos || [];
+                const pending = pendingPhotos[p.id] || [];
+                const queued = queuedByPlace[p.id] || [];
+                return (
+                  <div key={p.id} className="qc-card">
+                    <h3 style={s.cardTitle}>{p.name}</h3>
 
-                            <label style={s.labelQC}>Score (1-3)</label>
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
-                              {[1, 2, 3].map(num => (
-                                <button key={num} className="qc-toggle" onClick={() => setScoreValue(place.id, num)} style={s.btnScore(placeData.score === num)}>{num}</button>
-                              ))}
-                            </div>
-                            
-                            {/* ⭐ Sección de fotos — cámara ráfaga como acción principal */}
-                            <label style={s.labelQC}>
-                              Fotos ({placePhotos.length}{pending.length ? ` · ${pending.length} subiendo…` : ''}{queued.length ? ` · ${queued.length} sin conexión` : ''})
-                            </label>
-                            
-                            <div className="qc-photo-actions">
-                              <button
-                                type="button"
-                                className="qc-photo-btn qc-photo-btn-primary"
-                                onClick={() => openBurstCamera(place)}
-                                title="Cámara ráfaga: toma varias fotos seguidas sin cerrar la cámara"
-                              >
-                                <Zap size={16} /> Ráfaga
-                              </button>
-                              <button
-                                type="button"
-                                className="qc-photo-btn"
-                                onClick={() => cameraInputRefs.current[place.id]?.click()}
-                              >
-                                <Camera size={16} /> Foto
-                              </button>
-                              <input
-                                ref={el => { cameraInputRefs.current[place.id] = el; }}
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  handlePhotoUpload(place.id, place.name, e.target.files);
-                                  if (e.target) e.target.value = '';
-                                }}
-                              />
-
-                              <button
-                                type="button"
-                                className="qc-photo-btn"
-                                onClick={() => fileInputRefs.current[place.id]?.click()}
-                              >
-                                <Upload size={14} /> Galería
-                              </button>
-                              <input
-                                ref={el => { fileInputRefs.current[place.id] = el; }}
-                                type="file"
-                                multiple
-                                accept="image/*"
-                                style={{ display: 'none' }}
-                                onChange={(e) => {
-                                  handlePhotoUpload(place.id, place.name, e.target.files);
-                                  if (e.target) e.target.value = '';
-                                }}
-                              />
-                            </div>
-
-                            {(placePhotos.length === 0 && pending.length === 0 && queued.length === 0) ? (
-                              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', padding: '20px', backgroundColor: 'white', borderRadius: '6px', border: '2px dashed #cbd5e1', marginBottom: '12px' }}>
-                                <ImageIcon size={28} style={{ margin: '0 auto 6px', opacity: 0.4 }} />
-                                <div>Aún no hay fotos.</div>
-                              </div>
-                            ) : (
-                              <div className="qc-photo-grid">
-                                {/* Fotos ya subidas (eliminables) */}
-                                {placePhotos.map((url, i) => (
-                                  <div key={`p-${i}`} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', backgroundColor: 'white' }}>
-                                    <img src={url} alt={`QC ${i + 1}`} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                                    <button
-                                      onClick={() => handleRemovePhoto(place.id, i)}
-                                      style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.95)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                    <div style={{ position: 'absolute', bottom: '3px', left: '3px', backgroundColor: 'rgba(0,0,0,0.6)', color: 'white', padding: '1px 5px', borderRadius: '8px', fontSize: '0.6rem', fontWeight: 600 }}>
-                                      {String(i + 1).padStart(2, '0')}
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {/* Previews locales (subiendo en segundo plano) */}
-                                {pending.map(p => (
-                                  <div key={p.id} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', backgroundColor: '#f1f5f9' }}>
-                                    <img src={p.preview} alt="Subiendo…" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.45 }} />
-                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.35)' }}>
-                                      <Loader2 size={22} className="spin-qc" color="#2563eb" />
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {/* Fotos guardadas OFFLINE (se subirán al recuperar señal) */}
-                                {queued.map(p => (
-                                  <div key={`q-${p.id}`} style={{ position: 'relative', aspectRatio: '1 / 1', borderRadius: '6px', overflow: 'hidden', border: '1px solid #fcd34d', backgroundColor: '#fffbeb' }}>
-                                    <img src={p.preview} alt="Sin conexión" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                                    <div style={{ position: 'absolute', bottom: '3px', left: '3px', right: '3px', backgroundColor: 'rgba(180,83,9,0.92)', color: '#fff', padding: '2px 4px', borderRadius: '6px', fontSize: '0.55rem', fontWeight: 700, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
-                                      <WifiOff size={9} /> Sin conexión
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <label style={s.labelQC}>Notas</label>
-                            <textarea 
-                              style={{...s.textareaQC, marginBottom: '12px'}} 
-                              value={placeData.notes || ''} 
-                              onChange={(e) => handleTextChange(place.id, 'notes', e.target.value)}
-                            />
-
-                            <label style={s.labelQC}>Daños</label>
-                            <textarea 
-                              style={s.textareaQC} 
-                              value={placeData.damage || ''} 
-                              onChange={(e) => handleTextChange(place.id, 'damage', e.target.value)}
-                            />
+                    {placeTasks.map(t => {
+                      const val = data.tasks?.[t.id];
+                      return (
+                        <div key={t.id} style={s.taskItem}>
+                          <span style={{ fontSize: '0.92rem', color: '#111827' }}>{t.name}</span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button className="qc-toggle" style={s.btnYes(val === 'Yes')} onClick={() => setTaskValue(p.id, t.id, 'Yes')}>Yes</button>
+                            <button className="qc-toggle" style={s.btnNo(val === 'No')} onClick={() => setTaskValue(p.id, t.id, 'No')}>No</button>
                           </div>
                         </div>
                       );
-                    })
-                  )}
-                </>
-              )}
+                    })}
 
+                    <div style={s.extraFields}>
+                      <label style={s.labelQC}>Score (calidad general)</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {[1, 2, 3].map(n => (
+                          <button key={n} className="qc-toggle" style={s.btnScore(data.score === n)} onClick={() => setScoreValue(p.id, n)}>{n}</button>
+                        ))}
+                      </div>
+
+                      <label style={s.labelQC}>Notas</label>
+                      <textarea style={s.textareaQC} value={data.notes || ''} onChange={e => handleTextChange(p.id, 'notes', e.target.value)} placeholder="Observaciones del área..." />
+
+                      <label style={s.labelQC}>Daños</label>
+                      <textarea style={s.textareaQC} value={data.damage || ''} onChange={e => handleTextChange(p.id, 'damage', e.target.value)} placeholder="Daños encontrados (si aplica)..." />
+                    </div>
+
+                    {/* Fotos */}
+                    <div style={{ marginTop: '14px' }}>
+                      <div className="qc-photo-actions">
+                        <button className="qc-photo-btn qc-photo-btn-primary" onClick={() => openBurstCamera(p)}>
+                          <Camera size={16} /> Cámara
+                        </button>
+                        <button className="qc-photo-btn" onClick={() => cameraInputRefs.current[p.id]?.click()}>
+                          <ImageIcon size={16} /> Tomar foto
+                        </button>
+                        <button className="qc-photo-btn" onClick={() => fileInputRefs.current[p.id]?.click()}>
+                          <Upload size={16} /> Galería
+                        </button>
+                      </div>
+                      <input ref={el => { cameraInputRefs.current[p.id] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
+                      <input ref={el => { fileInputRefs.current[p.id] = el; }} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
+
+                      {(savedPhotos.length > 0 || pending.length > 0 || queued.length > 0) && (
+                        <div className="qc-photo-grid">
+                          {savedPhotos.map((url, idx) => (
+                            <div key={`s-${idx}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e1e4e8' }}>
+                              <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              {/* ⭐ Editar / dibujar sobre la foto (estilo WhatsApp) */}
+                              <button onClick={() => setAnnotate({ placeId: p.id, index: idx, url })} title="Dibujar en la foto" style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(37,99,235,0.92)', color: '#fff', border: 'none', borderRadius: '7px', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Pencil size={13} />
+                              </button>
+                              <button onClick={() => handleRemovePhoto(p.id, idx)} style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(220,38,38,0.9)', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ))}
+                          {pending.map(pp => (
+                            <div key={`p-${pp.id}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e1e4e8', opacity: 0.7 }}>
+                              <img src={pp.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
+                                <Loader2 size={20} color="#fff" className="spin-qc" />
+                              </div>
+                            </div>
+                          ))}
+                          {queued.map(qp => (
+                            <div key={`q-${qp.id}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #fcd34d' }}>
+                              <img src={qp.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(180,83,9,0.9)', color: '#fff', borderRadius: '6px', padding: '2px 6px', fontSize: '0.6rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <WifiOff size={10} /> En cola
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {selectedRenderPlaces.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '30px' }}>
+                  Selecciona al menos un área arriba para comenzar la inspección.
+                </div>
+              )}
             </div>
-            
+
             <div className="qc-savebar">
-              <button style={s.btnSaveQC} onClick={() => handleSaveQC(false)} disabled={isLoadingCatalogs || places.length === 0 || isSaving}>
-                {isSaving ? 'GUARDANDO...' : 'GUARDAR TODO'}
+              <button style={s.btnSaveQC} disabled={isSaving} onClick={() => handleSaveQC(false)}>
+                {isSaving ? <Loader2 size={18} className="spin-qc" /> : <Save size={18} />} Guardar Todo
               </button>
-              <button style={s.btnFailQC} onClick={() => handleSaveQC(true)} disabled={isSaving} title="La casa regresa a Quality Check para corregirse">
+              <button style={s.btnFailQC} disabled={isSaving} onClick={() => handleSaveQC(true)}>
                 <AlertTriangle size={18} /> DID NOT PASS
               </button>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* --- MODAL DE CONFIGURACIÓN DE EMPRESA --- */}
-      {companyModalOpen && (
-        <div className="qc-overlay" style={{ zIndex: 1100, padding: '16px' }} onClick={() => setCompanyModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#4338ca', color: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0 }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={18} /> Configuración de la empresa</h2>
-              <button style={s.closeBtn} onClick={() => setCompanyModalOpen(false)}><X size={22} /></button>
+      {/* ═══════════ CÁMARA EN RÁFAGA ═══════════ */}
+      {cameraOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1200, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
+            <div style={{ fontWeight: 700 }}>{cameraPlace?.name || 'Cámara'}</div>
+            <button onClick={closeBurstCamera} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <X size={18} /> Cerrar
+            </button>
+          </div>
+          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {cameraError ? (
+              <div style={{ color: '#fca5a5', textAlign: 'center', padding: '24px', maxWidth: '440px' }}>{cameraError}</div>
+            ) : (
+              <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            )}
+            {cameraShots.length > 0 && (
+              <div style={{ position: 'absolute', bottom: '12px', left: '12px', right: '12px', display: 'flex', gap: '8px', overflowX: 'auto' }}>
+                {cameraShots.map(sh => (
+                  <img key={sh.id} src={sh.preview} alt="" style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #fff', flexShrink: 0 }} />
+                ))}
+              </div>
+            )}
+          </div>
+          {!cameraError && (
+            <div style={{ padding: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', background: 'rgba(0,0,0,0.6)' }}>
+              <span style={{ color: '#fff', fontSize: '0.85rem' }}>{cameraShots.length} foto(s)</span>
+              <button onClick={captureBurst} disabled={capturing} style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#fff', border: '4px solid #3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {capturing ? <Loader2 size={26} className="spin-qc" color="#3b82f6" /> : <Camera size={28} color="#3b82f6" />}
+              </button>
+              <button onClick={closeBurstCamera} style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px 18px', fontWeight: 700, cursor: 'pointer' }}>Listo</button>
             </div>
+          )}
+        </div>
+      )}
 
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Logo */}
+      {/* ═══════════ MODAL: CAMBIAR STATUS DE LA CASA ═══════════ */}
+      {statusModalHouse && (
+        <div className="qc-overlay" onClick={() => setStatusModalHouse(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(460px, 92vw)', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Cambiar status</h3>
+              <button onClick={() => setStatusModalHouse(null)} style={s.closeBtn}><X size={20} /></button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{getClientName(statusModalHouse.client)}</div>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '16px' }}>{statusModalHouse.address || '—'}</div>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Nuevo status</label>
+              <select value={statusModalSelected} onChange={e => setStatusModalSelected(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#fff', color: '#111827' }}>
+                <option value="">— Selecciona —</option>
+                {statuses.map((st: any) => (
+                  <option key={st.id} value={st.id}>{st.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setStatusModalHouse(null)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={applyHouseStatusChange} disabled={savingStatus || !statusModalSelected} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                {savingStatus ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ MODAL: EMAIL ═══════════ */}
+      {emailModalOpen && emailCtx && (
+        <div className="qc-overlay" onClick={() => setEmailModalOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(520px, 92vw)', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#16a34a', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={18} /> Enviar reporte</h3>
+              <button onClick={() => setEmailModalOpen(false)} style={s.closeBtn}><X size={20} /></button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Para</label>
+              <input type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '14px' }} />
+              <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '6px' }}><strong>Asunto:</strong> {emailCtx.subject}</div>
+              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: '10px', padding: '12px', fontSize: '0.82rem', color: '#475569', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto' }}>{emailCtx.body}</div>
+              <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '10px' }}>Se abrirá el PDF para guardar/adjuntar y luego tu cliente de correo.</p>
+            </div>
+            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setEmailModalOpen(false)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={sendEmail} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                <Mail size={16} /> Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ MODAL: CONFIGURACIÓN DE EMPRESA (latente, sin botón de acceso) ═══════════ */}
+      {companyModalOpen && (
+        <div className="qc-overlay" onClick={() => setCompanyModalOpen(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(520px, 92vw)', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={18} /> Empresa</h3>
+              <button onClick={() => setCompanyModalOpen(false)} style={s.closeBtn}><X size={20} /></button>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Logo</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {companyDraft.logo
-                      ? <img src={companyDraft.logo} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                      : <ImageIcon size={24} color="#cbd5e1" />}
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => companyLogoInputRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '40px', padding: '0 14px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
-                      <Upload size={15} /> Subir logo
-                    </button>
-                    {companyDraft.logo && (
-                      <button type="button" onClick={() => setCompanyDraft(prev => ({ ...prev, logo: '' }))} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', height: '40px', padding: '0 14px', borderRadius: '10px', border: '1px solid #fecaca', background: '#fef2f2', color: '#ef4444', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
-                        <Trash2 size={15} /> Quitar
-                      </button>
-                    )}
-                    <input ref={companyLogoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { handleCompanyLogoUpload(e.target.files?.[0]); if (e.target) e.target.value = ''; }} />
-                  </div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Nombre</label>
+                <input type="text" value={companyDraft.name} onChange={e => setCompanyDraft(prev => ({ ...prev, name: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Dirección</label>
+                <input type="text" value={companyDraft.address} onChange={e => setCompanyDraft(prev => ({ ...prev, address: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Email destino</label>
+                <input type="email" value={companyDraft.email} onChange={e => setCompanyDraft(prev => ({ ...prev, email: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input id="qc-autosend" type="checkbox" checked={companyDraft.autoSend} onChange={e => setCompanyDraft(prev => ({ ...prev, autoSend: e.target.checked }))} />
+                <label htmlFor="qc-autosend" style={{ fontSize: '0.88rem', color: '#334155' }}>Enviar reporte automáticamente al guardar</label>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Logo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {companyDraft.logo && <img src={companyDraft.logo} alt="logo" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0' }} />}
+                  <input ref={companyLogoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCompanyLogoUpload(e.target.files?.[0])} />
+                  <button onClick={() => companyLogoInputRef.current?.click()} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Upload size={15} /> Subir logo
+                  </button>
                 </div>
               </div>
-
-              {/* Nombre */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Nombre de la empresa</label>
-                <input
-                  type="text"
-                  value={companyDraft.name}
-                  onChange={(e) => setCompanyDraft(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Precise Cleaning"
-                  style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              {/* Dirección */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Dirección</label>
-                <textarea
-                  value={companyDraft.address}
-                  onChange={(e) => setCompanyDraft(prev => ({ ...prev, address: e.target.value }))}
-                  placeholder="123 Main St, Killeen, TX 76541"
-                  style={{ width: '100%', minHeight: '60px', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-
-              {/* Email destino */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Email destino (recibe los reportes)</label>
-                <input
-                  type="email"
-                  value={companyDraft.email}
-                  onChange={(e) => setCompanyDraft(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="reportes@empresa.com"
-                  style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              {/* Envío automático */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
-                <input type="checkbox" checked={companyDraft.autoSend !== false} onChange={(e) => setCompanyDraft(prev => ({ ...prev, autoSend: e.target.checked }))} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                <span style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600 }}>Enviar el reporte automáticamente al guardar el QC</span>
-              </label>
-
-              <p style={{ margin: 0, fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.5 }}>
-                El logo, nombre y dirección aparecen en el PDF y en el correo del reporte. El envío automático usa la colección <strong>mail</strong> de Firestore (extensión Firebase “Trigger Email”), que debe estar instalada en tu proyecto para que el correo salga solo.
-              </p>
             </div>
-
-            <div style={{ padding: '16px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px', position: 'sticky', bottom: 0 }}>
-              <button onClick={() => setCompanyModalOpen(false)} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={saveCompanySettings} disabled={savingCompany} style={{ background: '#4338ca', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, cursor: savingCompany ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', opacity: savingCompany ? 0.7 : 1 }}>
+            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setCompanyModalOpen(false)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={saveCompanySettings} disabled={savingCompany} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
                 {savingCompany ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
               </button>
             </div>
@@ -2694,139 +3195,112 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         </div>
       )}
 
-      {/* --- MODAL DE EMAIL --- */}
-      {emailModalOpen && (
-        <div className="qc-overlay" style={{ zIndex: 1100, padding: '16px' }} onClick={() => setEmailModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '460px', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#3b82f6', color: '#fff', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={18} /> Email Report</h2>
-              <button style={s.closeBtn} onClick={() => setEmailModalOpen(false)}><X size={22} /></button>
-            </div>
-            <div style={{ padding: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Recipient</label>
-              <input
-                type="email"
-                value={emailTo}
-                onChange={(e) => setEmailTo(e.target.value)}
-                placeholder="email@example.com"
-                style={{ width: '100%', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px', fontSize: '0.95rem', color: '#111827', outline: 'none', boxSizing: 'border-box' }}
-              />
-              {emailCtx && (
-                <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Subject</div>
-                  <div style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 600, marginTop: '2px' }}>{emailCtx.subject}</div>
-                </div>
-              )}
-              <p style={{ marginTop: '14px', fontSize: '0.8rem', color: '#64748b', lineHeight: 1.5 }}>
-                Your email app will open with the message ready (in English). The report opens in a new tab so you can save it as PDF and attach it before sending.
-              </p>
-            </div>
-            <div style={{ padding: '16px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setEmailModalOpen(false)} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={sendEmail} style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} /> Open Email</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL: CAMBIAR STATUS DE LA CASA --- */}
-      {statusModalHouse && (
-        <div className="qc-overlay" style={{ zIndex: 1200, padding: '16px' }} onClick={() => { if (!savingStatus) setStatusModalHouse(null); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', width: '100%', maxWidth: '440px', maxHeight: '88vh', overflowY: 'auto', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-              <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Repeat size={17} /> Cambiar status</h2>
-                <div style={{ marginTop: '4px', fontSize: '0.82rem', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {getClientName(statusModalHouse.client)} — {statusModalHouse.address || '—'}
-                </div>
-              </div>
-              <button style={s.closeBtn} onClick={() => { if (!savingStatus) setStatusModalHouse(null); }}><X size={22} /></button>
+      {/* ═══════════ VISTA LATERAL: RUTA DE INSPECCIÓN + PLANIFICADOR + MAPA ═══════════ */}
+      {routeDrawerOpen && (
+        <div className="qc-route-overlay" onClick={closeRouteDrawer}>
+          <aside className="qc-route-drawer" onClick={e => e.stopPropagation()}>
+            <div style={{ background: '#4338ca', color: '#fff', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RouteIcon size={19} /> Ruta de inspección
+                {routeItems.length > 0 && <span style={{ background: 'rgba(255,255,255,0.22)', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem' }}>{routeItems.length}</span>}
+              </h3>
+              <button onClick={closeRouteDrawer} style={s.closeBtn} aria-label="Cerrar"><X size={22} /></button>
             </div>
 
-            <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {statuses.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', color: '#94a3b8', textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>No hay estados configurados.</div>
-              ) : statuses.map((st: any) => {
-                const isCurrent = String(st.id) === String((statusModalHouse as any).statusId);
-                const isSel = String(st.id) === String(statusModalSelected);
-                return (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+              {/* ⭐ PLANIFICADOR: botón + mapa + resumen de tiempo */}
+              {routeItems.length > 0 && (
+                <>
                   <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => setStatusModalSelected(String(st.id))}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '9px', textAlign: 'left',
-                      padding: '12px 14px', borderRadius: '12px', cursor: 'pointer',
-                      border: `2px solid ${isSel ? '#2563eb' : '#e2e8f0'}`,
-                      background: isSel ? '#eff6ff' : '#fff',
-                      transition: 'all 0.15s'
-                    }}
+                    onClick={optimizeRoute}
+                    disabled={routePlanning}
+                    style={{ height: '46px', borderRadius: '11px', border: 'none', background: '#4338ca', color: '#fff', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   >
-                    <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: st.color || '#94a3b8', flexShrink: 0 }} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.9rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</span>
-                    {isCurrent && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', padding: '2px 7px', borderRadius: '999px', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Actual</span>}
-                    {isSel && !isCurrent && <Check size={16} color="#2563eb" style={{ flexShrink: 0 }} />}
+                    {routePlanning ? <><Loader2 size={18} className="spin-qc" /> Calculando ruta…</> : <><Navigation size={18} /> {routePlan ? 'Recalcular ruta' : 'Planificar ruta desde mi ubicación'}</>}
                   </button>
-                );
-              })}
+
+                  {routePlanError && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: '10px', padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertTriangle size={15} /> {routePlanError}
+                    </div>
+                  )}
+
+                  {/* Mapa (se dibuja al planificar) */}
+                  <div className="qc-route-map" ref={mapElRef} style={{ display: routePlan ? 'block' : 'none' }} />
+
+                  {/* Resumen de tiempo/distancia */}
+                  {routePlan && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>Total</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#3730a3', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><Timer size={15} /> {fmtMinutes(routePlan.totalMin)}</div>
+                      </div>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Manejo</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>{fmtMinutes(routePlan.totalDriveMin)}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{routePlan.totalDistanceKm.toFixed(1)} km</div>
+                      </div>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inspección</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>{fmtMinutes(routePlan.totalStopMin)}</div>
+                        <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{INSPECTION_MIN_PER_STOP}m × casa</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ height: '1px', background: '#eef2f7', margin: '2px 0' }} />
+                </>
+              )}
+
+              {/* Lista ordenada de paradas */}
+              {routeItems.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 16px' }}>
+                  <RouteIcon size={40} color="#c7d2fe" style={{ marginBottom: '12px' }} />
+                  <div style={{ fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>Ruta vacía</div>
+                  <div style={{ fontSize: '0.85rem' }}>Agrega casas con el botón "Agregar a ruta" en las tarjetas.</div>
+                </div>
+              ) : routeItems.map((item, idx) => (
+                <div key={item.houseId} className="qc-route-item">
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#eef2ff', color: '#4338ca', fontWeight: 800, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{idx + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.92rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.client}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <MapPin size={12} color="#94a3b8" /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.address || '—'}</span>
+                    </div>
+                    {item.team && <div style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><Users size={11} /> {item.team}</div>}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                    <button onClick={() => moveRouteItem(idx, -1)} disabled={idx === 0} style={{ ...s.routeIconBtn, opacity: idx === 0 ? 0.4 : 1 }} title="Subir"><ArrowUp size={14} /></button>
+                    <button onClick={() => moveRouteItem(idx, 1)} disabled={idx === routeItems.length - 1} style={{ ...s.routeIconBtn, opacity: idx === routeItems.length - 1 ? 0.4 : 1 }} title="Bajar"><ArrowDown size={14} /></button>
+                  </div>
+                  <button onClick={() => removeFromRoute(item.houseId)} style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }} title="Quitar de la ruta"><Trash2 size={15} /></button>
+                </div>
+              ))}
             </div>
 
-            <div style={{ padding: '14px 18px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setStatusModalHouse(null)} disabled={savingStatus} style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: '10px', fontWeight: 600, cursor: savingStatus ? 'not-allowed' : 'pointer' }}>Cancelar</button>
-              <button
-                onClick={applyHouseStatusChange}
-                disabled={savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)}
-                style={{ background: '#3b82f6', border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: (savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)) ? 'not-allowed' : 'pointer', opacity: (savingStatus || String(statusModalSelected) === String((statusModalHouse as any).statusId)) ? 0.6 : 1 }}
-              >
-                {savingStatus ? <Loader2 size={16} className="spin-qc" /> : <Check size={16} />} Aceptar
-              </button>
-            </div>
-          </div>
+            {routeItems.length > 0 && (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '10px', flexShrink: 0 }}>
+                <button onClick={clearRoute} style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                  <Trash2 size={16} /> Vaciar ruta
+                </button>
+                <button onClick={closeRouteDrawer} style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', background: '#4338ca', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                  Cerrar
+                </button>
+              </div>
+            )}
+          </aside>
         </div>
       )}
 
-      {/* --- CÁMARA RÁFAGA (se mantiene abierta para tomar varias fotos) --- */}
-      {cameraOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1300, background: '#000', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '14px 16px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: 'rgba(0,0,0,0.6)' }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Zap size={18} /> Ráfaga — {cameraPlace?.name}</div>
-              <div style={{ fontSize: '0.78rem', opacity: 0.8 }}>Toca el botón para tomar varias fotos seguidas</div>
-            </div>
-            <button onClick={closeBurstCamera} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '10px', padding: '8px 14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><Check size={16} /> Listo</button>
-          </div>
-
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {cameraError ? (
-              <div style={{ color: '#fff', textAlign: 'center', padding: '24px', maxWidth: '440px' }}>
-                <AlertTriangle size={32} color="#fca5a5" style={{ margin: '0 auto 10px' }} />
-                <p style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>{cameraError}</p>
-                <button onClick={closeBurstCamera} style={{ marginTop: '14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', padding: '10px 18px', fontWeight: 700, cursor: 'pointer' }}>Cerrar</button>
-              </div>
-            ) : (
-              <video ref={videoRef} playsInline muted autoPlay style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-            )}
-
-            {/* Miniaturas tomadas en esta sesión */}
-            {!cameraError && cameraShots.length > 0 && (
-              <div style={{ position: 'absolute', bottom: '16px', left: 0, right: 0, display: 'flex', gap: '8px', overflowX: 'auto', padding: '0 16px' }}>
-                {cameraShots.map(sh => (
-                  <img key={sh.id} src={sh.preview} alt="" style={{ width: '54px', height: '54px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #fff', flexShrink: 0 }} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {!cameraError && (
-            <div style={{ padding: '18px', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
-              <div style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, minWidth: '74px', textAlign: 'center' }}>{cameraShots.length} foto(s)</div>
-              <button onClick={captureBurst} disabled={capturing} aria-label="Tomar foto" style={{ width: '74px', height: '74px', borderRadius: '50%', background: '#fff', border: '5px solid rgba(255,255,255,0.45)', cursor: capturing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Camera size={30} color="#111827" />
-              </button>
-              <button onClick={closeBurstCamera} style={{ color: '#fff', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '10px', padding: '10px 16px', fontWeight: 700, cursor: 'pointer', minWidth: '74px' }}>Listo</button>
-            </div>
-          )}
-        </div>
+      {/* ═══════════ EDITOR DE FOTO (dibujar estilo WhatsApp) ═══════════ */}
+      {annotate && (
+        <PhotoAnnotator
+          imageUrl={annotate.url}
+          saving={savingAnnotation}
+          onCancel={() => setAnnotate(null)}
+          onSave={handleSaveAnnotation}
+        />
       )}
 
     </div>

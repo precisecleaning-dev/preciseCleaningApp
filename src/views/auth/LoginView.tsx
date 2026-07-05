@@ -24,6 +24,73 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     getBranding().then(setBranding).catch(() => { /* sin permiso/red: se queda el cacheado */ });
   }, []);
 
+  // ⭐ Quita el fondo negro del logo: lo dibuja en un canvas y hace transparentes los
+  //    píxeles casi-negros, dejando solo el logo (azul) sobre el fondo blanco de la tarjeta.
+  const [processedLogo, setProcessedLogo] = useState<string | null>(null);
+  useEffect(() => {
+    const src = branding.logo;
+    if (!src) { setProcessedLogo(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
+        const THRESHOLD = 55; // píxeles casi negros -> transparentes
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] <= THRESHOLD && d[i + 1] <= THRESHOLD && d[i + 2] <= THRESHOLD) {
+            d[i + 3] = 0;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        // Recorta el logo a su contenido real (elimina el margen transparente que
+        // dejaba el fondo negro), para que se vea grande y no perdido en la caja.
+        let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0, found = false;
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            if (d[(y * canvas.width + x) * 4 + 3] > 12) {
+              found = true;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        let outUrl: string;
+        if (found) {
+          const pad = 3;
+          minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+          maxX = Math.min(canvas.width - 1, maxX + pad); maxY = Math.min(canvas.height - 1, maxY + pad);
+          const w = maxX - minX + 1, h = maxY - minY + 1;
+          const crop = document.createElement('canvas');
+          crop.width = w; crop.height = h;
+          const cctx = crop.getContext('2d');
+          if (cctx) cctx.drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
+          outUrl = crop.toDataURL('image/png');
+        } else {
+          outUrl = canvas.toDataURL('image/png');
+        }
+        if (!cancelled) setProcessedLogo(outUrl);
+      } catch (e) {
+        // Si el canvas queda "tainted" (imagen remota sin CORS) no se puede leer: usamos el original
+        if (!cancelled) setProcessedLogo(null);
+      }
+    };
+    img.onerror = () => { if (!cancelled) setProcessedLogo(null); };
+    img.src = src;
+    return () => { cancelled = true; };
+  }, [branding.logo]);
+
   // ⭐ Enviar correo para restablecer la contraseña (flujo nativo de Firebase Auth).
   //    Firebase manda un email con un enlace donde la persona define una nueva contraseña.
   const handlePasswordReset = async (e: React.FormEvent) => {
@@ -127,8 +194,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           ser más cómodos al tacto (inputs altos, textos más grandes). */}
       <style>{`
         .login-card { width: 100%; max-width: 400px; background-color: #ffffff; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 40px 32px; border: 1px solid #e2e8f0; box-sizing: border-box; }
-        .login-logo { width: 116px; height: 116px; display: flex; align-items: center; justify-content: center; }
-        .login-logo img { width: 100%; height: 100%; object-fit: contain; }
+        .login-logo { display: flex; align-items: center; justify-content: center; }
+        .login-logo img { width: 250px; max-width: 80%; height: auto; object-fit: contain; }
         .login-title { font-size: 1.6rem; }
         .login-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; font-size: 0.95rem; background-color: #ffffff; color: #0f172a; }
         .login-input-icon { position: absolute; left: 14px; top: 12px; }
@@ -137,7 +204,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         @media (max-width: 600px) {
           .login-screen { padding: 16px; align-items: flex-start; padding-top: 8vh; }
           .login-card { max-width: 480px; border-radius: 24px; padding: 40px 28px; }
-          .login-logo { width: 148px; height: 148px; border-radius: 20px; }
+          .login-logo { border-radius: 20px; }
+          .login-logo img { width: 320px; max-width: 85%; }
           .login-logo svg { width: 44px; height: 44px; }
           .login-title { font-size: 1.95rem; }
           .login-subtitle { font-size: 1.05rem; }
@@ -160,17 +228,21 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto.
               Sin fondo ni borde cuando hay logo, para que un PNG transparente se vea limpio. */}
-          <div className="login-logo" style={{ backgroundColor: branding.logo ? 'transparent' : '#1e40af', border: 'none', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto' }}>
+          <div className="login-logo" style={{ backgroundColor: branding.logo ? '#ffffff' : '#1e40af', border: 'none', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', padding: branding.logo ? '10px' : '0', boxSizing: 'border-box' }}>
             {branding.logo
-              ? <img src={branding.logo} alt={branding.name} />
+              ? <img src={processedLogo || branding.logo} alt={branding.name} />
               : <LogIn size={36} color="#ffffff" />}
           </div>
-          <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
-            {view === 'login' ? branding.name : 'Recover Access'}
-          </h1>
-          <p className="login-subtitle" style={{ margin: '8px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
-            {view === 'login' ? 'Authorize your session to continue' : 'Contact admin if you lost your password'}
-          </p>
+          {view !== 'login' && (
+            <>
+              <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
+                Recover Access
+              </h1>
+              <p className="login-subtitle" style={{ margin: '8px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
+                Contact admin if you lost your password
+              </p>
+            </>
+          )}
         </div>
 
         {view === 'login' ? (
