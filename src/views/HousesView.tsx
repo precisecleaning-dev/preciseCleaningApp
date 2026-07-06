@@ -1095,15 +1095,36 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (!selectedHouse || !selectedHouse.scheduleDate || !selectedHouse.timeIn) {
       return alert("Por favor asegúrate de que la propiedad tenga fecha de Schedule y hora Time In.");
     }
-    const datePart = selectedHouse.scheduleDate.replace(/-/g, '');
-    const timePart = selectedHouse.timeIn.replace(/:/g, '') + '00';
-    const startDateTime = `${datePart}T${timePart}`;
-    const [year, month, day] = selectedHouse.scheduleDate.split('-').map(Number);
-    const [hour, min] = selectedHouse.timeIn.split(':').map(Number);
-    const endDateObj = new Date(year, month - 1, day, hour + 2, min);
-    const endDatePart = endDateObj.toISOString().split('T')[0].replace(/-/g, '');
-    const endTimePart = endDateObj.toTimeString().split(' ')[0].replace(/:/g, '');
-    const endDateTime = `${endDatePart}T${endTimePart}`;
+    // ⭐ Hora "flotante" (local) exacta: respeta Time In y Time Out tal cual, sin
+    //    convertir a UTC. Google Calendar interpreta YYYYMMDDTHHMMSS (sin 'Z') en la
+    //    zona horaria del calendario, así que la hora/fecha se mantienen idénticas.
+    const toMinutes = (t: string): number => {
+      const s = String(t || '').trim();
+      const ampm = s.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (ampm) { let h = (+ampm[1]) % 12; if (/PM/i.test(ampm[3])) h += 12; return h * 60 + (+ampm[2]); }
+      const [hh = '0', mm = '0'] = s.split(':');
+      return (+hh) * 60 + (+mm);
+    };
+    const shiftDate = (isoDate: string, addDays: number): string => {
+      const y = +isoDate.slice(0, 4), mo = +isoDate.slice(5, 7), d = +isoDate.slice(8, 10);
+      const nd = new Date(y, mo - 1, d + addDays);
+      return `${nd.getFullYear()}${String(nd.getMonth() + 1).padStart(2, '0')}${String(nd.getDate()).padStart(2, '0')}`;
+    };
+    const fmtStamp = (isoDate: string, minutes: number): string => {
+      const days = Math.floor(minutes / 1440);
+      const mins = ((minutes % 1440) + 1440) % 1440;
+      const datePart = days === 0 ? isoDate.replace(/-/g, '') : shiftDate(isoDate, days);
+      const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      const mm = String(mins % 60).padStart(2, '0');
+      return `${datePart}T${hh}${mm}00`;
+    };
+
+    const startMin = toMinutes(selectedHouse.timeIn);
+    // Respeta el Time Out real; si no hay, usa +2h como respaldo.
+    let endMin = selectedHouse.timeOut ? toMinutes(selectedHouse.timeOut) : startMin + 120;
+    if (endMin <= startMin) endMin = startMin + 120; // evita duración cero/negativa
+    const startDateTime = fmtStamp(selectedHouse.scheduleDate, startMin);
+    const endDateTime = fmtStamp(selectedHouse.scheduleDate, endMin);
     // ⭐ El evento SIEMPRE debe crearse en esta cuenta, nunca en otra.
     const CALENDAR_ACCOUNT_EMAIL = 'account@precisecleaningtx.com';
     const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
