@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity, StickyNote } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
+import { formatDate } from '../utils/dateFormat';
 
 /* ------------------------------------------------------------------
    PipelineBoardView.tsx — Vista alternativa tipo tablero (Kanban)
@@ -409,7 +410,7 @@ export default function PipelineBoardView({
                       {/* Schedule date */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#6b7280' }}>
                         <CalendarDays size={12} style={{ flexShrink: 0 }} />
-                        <span>{(p as any).scheduleDate || 'Sin fecha'}</span>
+                        <span>{(p as any).scheduleDate ? formatDate((p as any).scheduleDate) : 'Sin fecha'}</span>
                       </div>
 
                       {/* Nota general (NO la del empleado). Soporta datos de la app (note)

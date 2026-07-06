@@ -16,6 +16,7 @@ import type { PhotoConfig } from '../services/photoConfigService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc, getDoc } from 'firebase/firestore';
+import { formatDate } from '../utils/dateFormat';
 
 // Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
@@ -2216,7 +2217,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       return (
                         <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
                           <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
-                            <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate || '-'}
+                            <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}
                           </td>
                           <td data-label="Client" style={s.td}>
                             <div className="mobile-client-cell">
@@ -2299,7 +2300,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
                           <CalendarDays size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
-                          <span>{prop.scheduleDate || 'Sin fecha'}{prop.timeIn ? `  ·  ${prop.timeIn}` : ''}</span>
+                          <span>{prop.scheduleDate ? formatDate(prop.scheduleDate) : 'Sin fecha'}{prop.timeIn ? `  ·  ${prop.timeIn}` : ''}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem' }}>
                           <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: teamColor ? `${teamColor}20` : '#f1f5f9', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -2835,7 +2836,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Timing & Assignment</h4>
                   </div>
                   <div style={{ paddingLeft: '2.4rem' }}>
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>{formData.scheduleDate || 'No date set'}</p>
+                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>{formData.scheduleDate ? formatDate(formData.scheduleDate) : 'No date set'}</p>
                     <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.timeIn} {formData.timeOut ? `- ${formData.timeOut}` : ''}</p>
                     <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>
                   </div>
@@ -2993,19 +2994,19 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       <div style={s.infoHeader}><CalendarDays size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Schedule & Timing</div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Receive Date</span>
-                        <span style={s.infoValue}>{selectedHouse.receiveDate || '-'}</span>
+                        <span style={s.infoValue}>{selectedHouse.receiveDate ? formatDate(selectedHouse.receiveDate) : '-'}</span>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Schedule Date</span>
-                        <span style={s.infoValue}>{selectedHouse.scheduleDate || '-'}</span>
+                        <span style={s.infoValue}>{selectedHouse.scheduleDate ? formatDate(selectedHouse.scheduleDate) : '-'}</span>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Date of Issue</span>
-                        <span style={s.infoValue}>{selectedHouse.dateOfIssue || '-'}</span>
+                        <span style={s.infoValue}>{selectedHouse.dateOfIssue ? formatDate(selectedHouse.dateOfIssue) : '-'}</span>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Due Date</span>
-                        <span style={s.infoValue}>{selectedHouse.dueDate || '-'}</span>
+                        <span style={s.infoValue}>{selectedHouse.dueDate ? formatDate(selectedHouse.dueDate) : '-'}</span>
                       </div>
                       <div style={s.infoRow}>
                         <span style={s.infoLabel}>Time In</span>
