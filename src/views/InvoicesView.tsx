@@ -50,12 +50,17 @@ const getPayrollTotal = (pay: any): number => {
 // Parser de fecha robusto: acepta "YYYY-MM-DD" y "DD/MM/YYYY"; vacíos al final
 const parseDateForSort = (dateStr?: string | null): number => {
   if (!dateStr) return Number.MAX_SAFE_INTEGER;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return new Date(dateStr).getTime();
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-    const [d, m, y] = dateStr.split('/');
-    return new Date(`${y}-${m}-${d}`).getTime();
+  const str = String(dateStr).trim();
+  const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
+  const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slash) {
+    const a = +slash[1], b = +slash[2], y = +slash[3];
+    let day: number, mon: number;
+    if (a > 12 && b <= 12) { day = a; mon = b; } else { mon = a; day = b; }
+    return new Date(y, mon - 1, day).getTime();
   }
-  const t = new Date(dateStr).getTime();
+  const t = new Date(str).getTime();
   return isNaN(t) ? Number.MAX_SAFE_INTEGER : t;
 };
 
@@ -313,7 +318,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     ));
 
     return () => unsubscribes.forEach(u => u());
-  }, [setProperties]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cambiar status de invoice
   const handleStatusChange = async (propertyId: string, newStatus: string) => {
@@ -361,9 +367,10 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
   // Filtro de scope (sólo lo que el usuario tiene permitido ver)
   const inScope = (prop: Property) => {
-    if (isSuperAdmin) return true;
-    const isAssigned = prop.assignedWorkers?.includes(currentUser?.id || '');
-    const isSameTeam = currentUser?.teamId && (prop.teamId === currentUser.teamId);
+    // ⭐ SuperAdmin o modo Bypass (sin usuario): se ven TODOS los registros.
+    if (isSuperAdmin || !currentUser) return true;
+    const isAssigned = prop.assignedWorkers?.includes(currentUser.id || '');
+    const isSameTeam = currentUser.teamId && (prop.teamId === currentUser.teamId);
     return isAssigned || isSameTeam;
   };
 
@@ -384,8 +391,14 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       const address = (prop.address || '').toLowerCase();
       if (!clientName.includes(q) && !address.includes(q)) return false;
     }
-    if (startDate && prop.scheduleDate && prop.scheduleDate < startDate) return false;
-    if (endDate && prop.scheduleDate && prop.scheduleDate > endDate) return false;
+    // ⭐ Filtro de fechas por TIMESTAMP (antes comparaba strings y fallaba con
+    //    formatos mixtos). Si hay filtro activo, las casas sin fecha quedan fuera.
+    if (startDate || endDate) {
+      if (!prop.scheduleDate) return false;
+      const recT = parseDateForSort(prop.scheduleDate);
+      if (startDate && recT < parseDateForSort(startDate)) return false;
+      if (endDate && recT > parseDateForSort(endDate) + (24 * 60 * 60 * 1000 - 1)) return false;
+    }
     return true;
   }).sort((a, b) => {
     // Sin fecha => siempre al final, sin importar la dirección del orden

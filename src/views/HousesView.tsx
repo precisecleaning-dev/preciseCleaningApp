@@ -1127,7 +1127,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     const endDateTime = fmtStamp(selectedHouse.scheduleDate, endMin);
     // ⭐ El evento SIEMPRE debe crearse en esta cuenta, nunca en otra.
     const CALENDAR_ACCOUNT_EMAIL = 'account@precisecleaningtx.com';
-    const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
+    const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Cleaning: ' + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&ctz=America/Chicago&details=${encodeURIComponent(selectedHouse.note || '')}&location=${encodeURIComponent(selectedHouse.address)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
     // Forzamos el selector de cuenta de Google a ese correo y de ahí continuamos al
     // formulario del evento. Si esa cuenta no está iniciada, Google pedirá entrar con ella,
     // garantizando que el evento nunca se cree bajo otra cuenta.
@@ -3609,12 +3609,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
                 <div>
                   <label style={s.label}>Employee <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <CustomSelect 
-                    options={employees.map(e => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }))} 
+                  <SearchableSelect 
+                    options={employees.map(e => ({ id: e.id, name: [e.firstName, e.lastName].filter(Boolean).join(' ') }))} 
                     value={payrollForm.employeeId} 
                     onChange={(val: string) => setPayrollForm({ ...payrollForm, employeeId: val })} 
-                    placeholder="Select Employee..." 
+                    placeholder="Type to search employee..." 
                     icon={User} 
+                    returnKey="id"
                   />
                 </div>
                 <div>

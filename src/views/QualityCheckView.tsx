@@ -8,6 +8,7 @@ import {
 import type { Property, SystemUser, Place, Task } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
+import { propertiesService } from '../services/propertiesService';
 import { compressImage } from '../utils/imageCompression';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
@@ -109,6 +110,7 @@ interface QualityCheckViewProps {
   houseToInspect: Property | null;
   clearHouseToInspect: () => void;
   currentUser?: SystemUser | null;
+  onOpenHouseDetail?: (house: Property) => void; // ⭐ abre el detalle en HousesView
 }
 
 // Genera un id único para previews locales (con fallback si crypto.randomUUID no existe)
@@ -666,7 +668,7 @@ function QCReportsDashboard({
   );
 }
 
-export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser }: QualityCheckViewProps) {
+export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, onOpenHouseDetail }: QualityCheckViewProps) {
   const [qcList, setQcList] = useState<QCRecord[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
@@ -1595,6 +1597,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       alert("Error trying to save the record.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // ⭐ Eliminar la casa (misma acción que en HousesView).
+  const handleDeleteHouse = async (house: Property) => {
+    if (!window.confirm(`¿Eliminar la casa de ${getClientName(house.client)}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await propertiesService.delete(house.id);
+    } catch (e) {
+      console.error('Error eliminando casa:', e);
+      alert('No se pudo eliminar la casa.');
     }
   };
 
@@ -2593,7 +2606,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             {filteredPendingHouses.map(house => {
               const failed = houseFailedQC(house.id);
               return (
-                <div key={house.id} style={{ background: failed ? '#fff5f5' : '#ffffff', border: `1px solid ${failed ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: failed ? '0 0 0 2px rgba(239,68,68,0.12)' : 'none' }}>
+                <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} style={{ background: failed ? '#fff5f5' : '#ffffff', border: `1px solid ${failed ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: failed ? '0 0 0 2px rgba(239,68,68,0.12)' : 'none', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginBottom: '-4px' }} onClick={(e) => e.stopPropagation()}>
+                    <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" style={{ border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#2563eb', display: 'flex' }}><Edit2 size={15} /></button>
+                    <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><Trash2 size={15} /></button>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                     <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
                       {getClientName(house.client)}
@@ -2619,7 +2636,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     </div>
                     <button
                       type="button"
-                      onClick={() => openHouseStatusModal(house)}
+                      onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
                       title="Cambiar status de la casa"
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
                     >
@@ -2631,14 +2648,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   {/* ⭐ Agregar esta casa a la RUTA de inspección */}
                   <button
                     type="button"
-                    onClick={() => addToRoute(house)}
+                    onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
                     disabled={isInRoute(house.id)}
                     style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
                   >
                     {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
                   </button>
                   <button
-                    onClick={() => handleStartOrContinueQC(house)}
+                    onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                     disabled={isLoadingCatalogs}
                     style={{ marginTop: '2px', height: '46px', borderRadius: '11px', background: failed ? '#ef4444' : '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                   >
@@ -2675,7 +2692,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
           <div className="qc-pending-grid">
             {filteredRecallHouses.map(house => (
-              <div key={house.id} style={{ background: '#fdfcff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} style={{ background: '#fdfcff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginBottom: '-4px' }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" style={{ border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#2563eb', display: 'flex' }}><Edit2 size={15} /></button>
+                  <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><Trash2 size={15} /></button>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
                     {getClientName(house.client)}
@@ -2695,7 +2716,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   </div>
                   <button
                     type="button"
-                    onClick={() => openHouseStatusModal(house)}
+                    onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
                     title="Cambiar status de la casa"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
                   >
@@ -2707,14 +2728,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 {/* ⭐ Agregar esta casa a la RUTA */}
                 <button
                   type="button"
-                  onClick={() => addToRoute(house)}
+                  onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
                   disabled={isInRoute(house.id)}
                   style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
                 >
                   {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
                 </button>
                 <button
-                  onClick={() => handleStartOrContinueQC(house)}
+                  onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                   disabled={isLoadingCatalogs}
                   style={{ height: '46px', borderRadius: '11px', background: '#7c3aed', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                 >
