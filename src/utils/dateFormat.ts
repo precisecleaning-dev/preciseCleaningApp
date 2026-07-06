@@ -57,3 +57,33 @@ export function formatDateTime(value: any): string {
   if (!d || isNaN(d.getTime())) return formatDate(value);
   return `${toMDY(d)}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
 }
+
+// ⭐ Valor numérico (timestamp) para ORDENAR fechas de formatos mixtos.
+//    Sin fecha => 0 (queda al final en orden descendente).
+export function dateSortValue(value: any): number {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'object' && typeof (value as any).toDate === 'function') {
+    const d = (value as any).toDate();
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  if (value instanceof Date) return isNaN(value.getTime()) ? 0 : value.getTime();
+  if (typeof value === 'number') return value;
+
+  const str = String(value).trim();
+  const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])).getTime();
+
+  const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (slash) {
+    const a = Number(slash[1]);
+    const b = Number(slash[2]);
+    const y = Number(slash[3]);
+    let day: number, mon: number;
+    if (a > 12 && b <= 12) { day = a; mon = b; }   // DD/MM
+    else { mon = a; day = b; }                      // MM/DD (o ambiguo)
+    return new Date(y, mon - 1, day).getTime();
+  }
+
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity, StickyNote } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
-import { formatDate } from '../utils/dateFormat';
+import { formatDate, dateSortValue } from '../utils/dateFormat';
 
 /* ------------------------------------------------------------------
    PipelineBoardView.tsx — Vista alternativa tipo tablero (Kanban)
@@ -248,7 +248,9 @@ export default function PipelineBoardView({
       // Quality Check y Recall: nunca se filtran por fecha
       if (isAlwaysVisibleStatus(st)) return true;
       return inDateRange(p);
-    });
+    })
+    // ⭐ Orden por fecha descendente (más reciente primero). Usa scheduleDate, si no receiveDate.
+    .sort((a, b) => dateSortValue((b as any).scheduleDate || (b as any).receiveDate) - dateSortValue((a as any).scheduleDate || (a as any).receiveDate));
 
   // Contadores para el indicador del filtro
   const totalJobs = properties.filter(p => (getRel(statuses, p.statusId, '') || '').toLowerCase() !== 'invoice').length;

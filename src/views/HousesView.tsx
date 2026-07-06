@@ -16,7 +16,7 @@ import type { PhotoConfig } from '../services/photoConfigService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc, getDoc } from 'firebase/firestore';
-import { formatDate } from '../utils/dateFormat';
+import { formatDate, dateSortValue } from '../utils/dateFormat';
 
 // Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
@@ -989,12 +989,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     
     return passStatus && passHouse && passInvoice && passStatusFilter && passPriority && passSearch;
   }).sort((a, b) => {
-    const dateA = a.scheduleDate || '';
-    const dateB = b.scheduleDate || '';
-    if (!dateA && !dateB) return 0;
-    if (!dateA) return 1;
-    if (!dateB) return -1;
-    return dateA.localeCompare(dateB);
+    // ⭐ Orden por fecha (scheduleDate) descendente: de la más reciente a la más antigua.
+    //    Sin fecha => al final. Tolerante a formatos mixtos (ISO y DD/MM).
+    return dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
   });
 
   const dashboardTabs = statuses
