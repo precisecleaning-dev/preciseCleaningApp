@@ -446,6 +446,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [isLoading, setIsLoading] = useState(true);
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
+  const [workerSearch, setWorkerSearch] = useState(''); // ⭐ buscador de empleados
 
   const [formConfig, setFormConfig] = useState<FormVisibilityConfig>(DEFAULT_FORM_CONFIG);
   const [isFieldConfigOpen, setIsFieldConfigOpen] = useState(false);
@@ -2641,25 +2642,47 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
                         </button>
                         {isAssigningWorkerForm && (
-                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', maxWidth: 'calc(100vw - 40px)', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
-                            <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
-                            {employees.map(emp => {
-                              const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
-                              return (
-                                <div 
-                                  key={emp.id} 
-                                  onClick={() => toggleWorkerAssignmentForm(emp.id)}
-                                  style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
-                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
-                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
-                                >
-                                  <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
-                                    {emp.firstName} {emp.lastName}
-                                  </span>
-                                  {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
-                                </div>
-                              )
-                            })}
+                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '260px', maxWidth: 'calc(100vw - 40px)', zIndex: 10, maxHeight: '260px', overflowY: 'auto' }}>
+                            <div style={{ position: 'sticky', top: 0, background: 'white', padding: '8px', borderBottom: '1px solid #e2e8f0', zIndex: 1 }}>
+                              <div style={{ position: 'relative' }}>
+                                <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)' }} />
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={workerSearch}
+                                  onChange={(e) => setWorkerSearch(e.target.value)}
+                                  placeholder="Buscar empleado..."
+                                  style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px 7px 30px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.82rem', outline: 'none' }}
+                                />
+                              </div>
+                            </div>
+                            {(() => {
+                              const q = workerSearch.trim().toLowerCase();
+                              const list = employees.filter(emp => {
+                                if (!q) return true;
+                                return `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase().includes(q);
+                              });
+                              if (list.length === 0) {
+                                return <div style={{ padding: '14px 12px', fontSize: '0.82rem', color: '#94a3b8', fontStyle: 'italic', textAlign: 'center' }}>Sin resultados</div>;
+                              }
+                              return list.map(emp => {
+                                const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
+                                return (
+                                  <div 
+                                    key={emp.id} 
+                                    onClick={() => toggleWorkerAssignmentForm(emp.id)}
+                                    style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
+                                  >
+                                    <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
+                                      {emp.firstName} {emp.lastName}
+                                    </span>
+                                    {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         )}
                       </div>

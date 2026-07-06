@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, Filter, RotateCcw, X, Activity, StickyNote } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CheckCircle, CalendarDays, X, Activity, StickyNote } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 
@@ -50,14 +50,7 @@ const getRelColor = (list: any[], idOrName?: string | null) => {
   return list.find(i => String(i.id).toLowerCase().trim() === v || String(i.name).toLowerCase().trim() === v)?.color;
 };
 
-/* Columnas que NUNCA se ocultan con el filtro de fechas */
-const isAlwaysVisibleStatus = (st: { name?: string }) => {
-  const n = String(st?.name || '').toLowerCase();
-  return n.includes('quality') || n.includes('recall');
-};
-
 /* Normaliza una fecha a 'YYYY-MM-DD' para comparar como string (ISO) */
-const normDate = (d?: string | null) => (d ? String(d).slice(0, 10) : '');
 
 // Configuración que la tarjeta envía al modal central de cambio de estado.
 type StatusModalConfig = {
@@ -217,24 +210,8 @@ export default function PipelineBoardView({
 }: PipelineBoardViewProps) {
 
   // --- FILTRO DE FECHAS (rango Desde / Hasta) ---
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const filterActive = !!(fromDate || toDate);
-
-  const clearFilter = () => { setFromDate(''); setToDate(''); };
-
   // Modal central de cambio de estado (null = cerrado)
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
-
-  // ¿La propiedad cae dentro del rango? (usa scheduleDate, si no receiveDate)
-  const inDateRange = (p: Property) => {
-    if (!fromDate && !toDate) return true;
-    const d = normDate(p.scheduleDate || p.receiveDate);
-    if (!d) return false; // sin fecha: se oculta cuando hay filtro (salvo columnas siempre visibles)
-    if (fromDate && d < fromDate) return false;
-    if (toDate && d > toDate) return false;
-    return true;
-  };
 
   // Columnas = todos los status (excluye "invoice", igual que tu tabla)
   const columns = statuses.filter(s => s.name?.toLowerCase() !== 'invoice');
@@ -245,73 +222,14 @@ export default function PipelineBoardView({
       if (!match) return false;
       const isInvoice = (getRel(statuses, p.statusId, '') || '').toLowerCase() === 'invoice';
       if (isInvoice) return false;
-      // Quality Check y Recall: nunca se filtran por fecha
-      if (isAlwaysVisibleStatus(st)) return true;
-      return inDateRange(p);
+      return true;
     })
     // ⭐ Orden por fecha descendente (más reciente primero). Usa scheduleDate, si no receiveDate.
     .sort((a, b) => dateSortValue((b as any).scheduleDate || (b as any).receiveDate) - dateSortValue((a as any).scheduleDate || (a as any).receiveDate));
 
   // Contadores para el indicador del filtro
-  const totalJobs = properties.filter(p => (getRel(statuses, p.statusId, '') || '').toLowerCase() !== 'invoice').length;
-  const visibleJobs = columns.reduce((n, st) => n + propsForStatus(st).length, 0);
-
-  // Estilos del filtro
-  const dateInputStyle: React.CSSProperties = {
-    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 10px',
-    fontSize: '0.85rem', color: '#111827', fontFamily: 'inherit', outline: 'none', cursor: 'pointer',
-  };
-  const fieldLabelStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#64748b',
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 12 }}>
-
-      {/* --- BARRA DE FILTRO DE FECHAS --- */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '10px 14px',
-      }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-          <Filter size={15} color="#3b82f6" /> Filtrar por fecha
-        </span>
-
-        <label style={fieldLabelStyle}>
-          Desde
-          <input type="date" value={fromDate} max={toDate || undefined}
-            onChange={e => setFromDate(e.target.value)} style={dateInputStyle} />
-        </label>
-
-        <label style={fieldLabelStyle}>
-          Hasta
-          <input type="date" value={toDate} min={fromDate || undefined}
-            onChange={e => setToDate(e.target.value)} style={dateInputStyle} />
-        </label>
-
-        {filterActive && (
-          <button onClick={clearFilter} style={{
-            display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc', border: '1px solid #e5e7eb',
-            borderRadius: 8, padding: '7px 12px', fontSize: '0.82rem', fontWeight: 600, color: '#475569', cursor: 'pointer',
-          }}>
-            <RotateCcw size={14} /> Limpiar
-          </button>
-        )}
-
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-            {visibleJobs} <span style={{ color: '#94a3b8', fontWeight: 600 }}>de {totalJobs} trabajos</span>
-          </span>
-          {filterActive && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', fontWeight: 700,
-              color: '#0369a1', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 999, padding: '3px 10px',
-            }}>
-              <CheckCircle size={12} /> QC y Recall siempre visibles
-            </span>
-          )}
-        </span>
-      </div>
 
       {/* --- TABLERO --- */}
       <div className="pipeline-board" style={{
@@ -336,7 +254,6 @@ export default function PipelineBoardView({
         {columns.map(st => {
           const items = propsForStatus(st);
           const total = getAmount ? items.reduce((sum, p) => sum + (getAmount(p) || 0), 0) : null;
-          const alwaysVisible = isAlwaysVisibleStatus(st);
           return (
             <div key={st.id} className="board-column" style={{
               flex: '0 0 300px', maxWidth: 300, display: 'flex', flexDirection: 'column',
@@ -355,15 +272,6 @@ export default function PipelineBoardView({
                 {total !== null && (
                   <div style={{ marginTop: 4, fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600 }}>
                     ${total.toFixed(2)} total
-                  </div>
-                )}
-                {/* Aviso "siempre visible" cuando hay un filtro activo */}
-                {filterActive && alwaysVisible && (
-                  <div style={{
-                    marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.68rem',
-                    fontWeight: 700, color: '#0369a1', background: '#e0f2fe', borderRadius: 999, padding: '2px 8px',
-                  }}>
-                    <CheckCircle size={11} /> Sin filtrar
                   </div>
                 )}
               </div>

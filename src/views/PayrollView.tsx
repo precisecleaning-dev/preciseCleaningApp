@@ -4,7 +4,7 @@ import {
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
-import { db } from '../config/firebase';
+import { db, auth } from '../config/firebase';
 import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 
@@ -166,45 +166,74 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     return () => unsubscribes.forEach(u => u());
   }, []);
 
+  // ⭐ Formateo de fecha a MM/DD/YYYY (autocontenido).
+  const fmtDate = (val: any): string => {
+    if (val === null || val === undefined || val === '') return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (typeof val === 'object' && typeof (val as any).toDate === 'function') {
+      const d = (val as any).toDate(); return isNaN(d.getTime()) ? '' : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+    }
+    const str = String(val).trim();
+    const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) return `${pad(+iso[2])}/${pad(+iso[3])}/${iso[1]}`;
+    const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (slash) { const a = +slash[1], b = +slash[2]; if (a > 12 && b <= 12) return `${pad(b)}/${pad(a)}/${slash[3]}`; return `${pad(a)}/${pad(b)}/${slash[3]}`; }
+    const d = new Date(str); return isNaN(d.getTime()) ? str : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+  };
+
   // Lógica de Filtros
   const filteredRecords = useMemo(() => {
-    // ⭐ Orden por fecha: de la más reciente a la más antigua. Tolerante a strings
-    //    'YYYY-MM-DD', Timestamps de Firestore u otros formatos; sin fecha => al final.
+    // Tiempo real a partir de strings 'YYYY-MM-DD', Timestamps u otros formatos.
     const toTime = (val: any): number => {
-      if (!val) return 0;
+      if (!val) return NaN;
       if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
       const t = new Date(val).getTime();
-      return isNaN(t) ? 0 : t;
+      return isNaN(t) ? NaN : t;
     };
+    // ⭐ Filtro de fechas por TIMESTAMP (antes comparaba strings y fallaba con formatos mixtos).
+    //    endDate es inclusivo (hasta el final de ese día).
+    const startT = startDate ? toTime(startDate) : null;
+    const endT = endDate ? toTime(endDate) + (24 * 60 * 60 * 1000 - 1) : null;
+
     return records.filter(record => {
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
-      // ⭐ Comparación tolerante a campo ausente: si no hay status, lo tratamos como 'Pending'
       if (selectedStatus && (record.status || 'Pending') !== selectedStatus) return false;
-      if (startDate && record.date && record.date < startDate) return false;
-      if (endDate && record.date && record.date > endDate) return false;
+      if (startT !== null || endT !== null) {
+        const recT = toTime((record as any).date);
+        if (isNaN(recT)) return false; // sin fecha válida: fuera del rango
+        if (startT !== null && recT < startT) return false;
+        if (endT !== null && recT > endT) return false;
+      }
       return true;
-    }).sort((a, b) => toTime((b as any).date) - toTime((a as any).date));
+    }).sort((a, b) => {
+      const ta = toTime((a as any).date), tb = toTime((b as any).date);
+      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+    });
   }, [records, startDate, endDate, selectedEmployee, selectedStatus]);
 
   // Cálculos dinámicos
   const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
   const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
 
-  const handleMarkAsPaid = async (id: string) => {
+  const handleMarkAsPaid = async (record: any) => {
     if (!window.confirm("Mark this record as Paid?")) return;
+    const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
+    const paidAt = new Date().toISOString().split('T')[0]; // fecha en que se pagó (YYYY-MM-DD)
     try {
-      await payrollService.update(id, { status: 'Paid' });
-      // onSnapshot actualizará records automáticamente
+      const { id, ...rest } = record;
+      // Esparcimos el registro completo para no perder campos aunque el service sobrescriba.
+      await payrollService.update(id, { ...rest, status: 'Paid', paidAt, paidBy });
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
     }
   };
 
-  const handleMarkAsPending = async (id: string) => {
+  const handleMarkAsPending = async (record: any) => {
     if (!window.confirm("Change status back to Pending?")) return;
     try {
-      await payrollService.update(id, { status: 'Pending' });
+      const { id, ...rest } = record;
+      await payrollService.update(id, { ...rest, status: 'Pending', paidAt: '', paidBy: '' });
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
@@ -425,7 +454,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                       <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
                     </td>
                     
-                    <td style={s.td}>{record.date}</td>
+                    <td style={s.td}>{fmtDate(record.date)}</td>
                     
                     <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
                     
@@ -433,11 +462,18 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                     
                     <td style={{...s.td, textAlign: 'center'}}>
                       {isPaid ? (
-                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record.id as string); }} style={{ background: 'none', border: 'none', color: '#10b981', padding: '6px 12px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', margin: '0 auto' }}>
-                          <CheckCircle size={14}/> Paid
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                          <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record); }} style={{ background: 'none', border: 'none', color: '#10b981', padding: '4px 12px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle size={14}/> Paid
+                          </button>
+                          {((record as any).paidAt || (record as any).paidBy) && (
+                            <span style={{ fontSize: '0.68rem', color: '#94a3b8', lineHeight: 1.2, textAlign: 'center' }}>
+                              {(record as any).paidAt ? fmtDate((record as any).paidAt) : ''}{(record as any).paidBy ? ` · ${(record as any).paidBy}` : ''}
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record.id as string); }} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', margin: '0 auto', display: 'block' }}>
+                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record); }} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', margin: '0 auto', display: 'block' }}>
                           Mark Paid
                         </button>
                       )}
@@ -475,7 +511,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                           <User size={22} color="#3b82f6" /> {emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown Employee'}
                         </h4>
                         <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <CalendarDays size={16} /> Paid on: {selectedPayroll.date}
+                          <CalendarDays size={16} /> Paid on: {fmtDate((selectedPayroll as any).paidAt || selectedPayroll.date)}{(selectedPayroll as any).paidBy ? ` · by ${(selectedPayroll as any).paidBy}` : ''}
                         </div>
                       </div>
                       <span style={{ backgroundColor: isPaid ? '#d1fae5' : '#ffedd5', color: isPaid ? '#047857' : '#b45309', padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 700 }}>
@@ -531,9 +567,9 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
             <footer style={{ padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button style={s.btnOutline} onClick={() => setSelectedPayroll(null)}>Close</button>
               {selectedPayroll.status === 'Paid' ? (
-                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(selectedPayroll.id as string); setSelectedPayroll(null); }} style={s.btnOutline}>Mark as Pending</button>
+                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(selectedPayroll); setSelectedPayroll(null); }} style={s.btnOutline}>Mark as Pending</button>
               ) : (
-                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(selectedPayroll.id as string); setSelectedPayroll(null); }} style={{...s.btnPrimary, backgroundColor: '#10b981'}}><CheckCircle size={18}/> Mark as Paid</button>
+                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(selectedPayroll); setSelectedPayroll(null); }} style={{...s.btnPrimary, backgroundColor: '#10b981'}}><CheckCircle size={18}/> Mark as Paid</button>
               )}
             </footer>
           </div>
