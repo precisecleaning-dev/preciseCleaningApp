@@ -186,11 +186,23 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
   // Lógica de Filtros
   const filteredRecords = useMemo(() => {
-    // Tiempo real a partir de strings 'YYYY-MM-DD', Timestamps u otros formatos.
+    // Tiempo real robusto: soporta ISO 'YYYY-MM-DD', MM/DD/YYYY, DD/MM/YYYY,
+    // Timestamps de Firestore y Date. Sin fecha válida => NaN.
     const toTime = (val: any): number => {
-      if (!val) return NaN;
-      if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
-      const t = new Date(val).getTime();
+      if (val === null || val === undefined || val === '') return NaN;
+      if (typeof val === 'object' && typeof val.toDate === 'function') { const d = val.toDate(); return isNaN(d.getTime()) ? NaN : d.getTime(); }
+      if (val instanceof Date) return isNaN(val.getTime()) ? NaN : val.getTime();
+      const str = String(val).trim();
+      const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
+      const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (slash) {
+        const a = +slash[1], b = +slash[2], y = +slash[3];
+        let day: number, mon: number;
+        if (a > 12 && b <= 12) { day = a; mon = b; } else { mon = a; day = b; }
+        return new Date(y, mon - 1, day).getTime();
+      }
+      const t = new Date(str).getTime();
       return isNaN(t) ? NaN : t;
     };
     // ⭐ Filtro de fechas por TIMESTAMP (antes comparaba strings y fallaba con formatos mixtos).
