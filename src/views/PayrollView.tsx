@@ -166,6 +166,9 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     return () => unsubscribes.forEach(u => u());
   }, []);
 
+  // ⭐ Nombre del empleado sin "undefined" cuando falta el apellido.
+  const empName = (e: any) => e ? [e.firstName, e.lastName].filter(Boolean).join(' ').trim() : '';
+
   // ⭐ Formateo de fecha a MM/DD/YYYY (autocontenido).
   const fmtDate = (val: any): string => {
     if (val === null || val === undefined || val === '') return '';
@@ -368,7 +371,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
             <User size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
             <select style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}>
               <option value="">All Employees...</option>
-              {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>)}
+              {employees.map(emp => <option key={emp.id} value={emp.id}>{empName(emp)}</option>)}
             </select>
           </div>
         </div>
@@ -456,7 +459,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                     
                     <td style={s.td}>{fmtDate(record.date)}</td>
                     
-                    <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
+                    <td style={{...s.td, fontWeight: 600}}>{empName(emp) || 'Unknown'}</td>
                     
                     <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${getTotal(record).toFixed(2)}</td>
                     
@@ -508,7 +511,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
                       <div>
                         <h4 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <User size={22} color="#3b82f6" /> {emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown Employee'}
+                          <User size={22} color="#3b82f6" /> {empName(emp) || 'Unknown Employee'}
                         </h4>
                         <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <CalendarDays size={16} /> Paid on: {fmtDate((selectedPayroll as any).paidAt || selectedPayroll.date)}{(selectedPayroll as any).paidBy ? ` · by ${(selectedPayroll as any).paidBy}` : ''}
@@ -728,7 +731,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                         return (
                           <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <User size={12} color="#64748b" />
-                            {emp.firstName} {emp.lastName}
+                            {empName(emp)}
                           </div>
                         )
                       })
