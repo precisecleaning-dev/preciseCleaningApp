@@ -3,7 +3,9 @@ import {
   ChevronLeft, ChevronRight, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ChevronDown, ClipboardCheck, MapPin, Filter, RotateCcw
 } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
+import './CalendarView.css';
 
 // --- FIREBASE SERVICES ---
 import { propertiesService } from '../services/propertiesService';
@@ -30,36 +32,34 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 
   return (
-    <div tabIndex={0} onBlur={() => setIsOpen(false)} style={{ position: 'relative', width: '100%', outline: 'none' }}>
-      <div 
+    <div tabIndex={0} onBlur={() => setIsOpen(false)} className="cs-wrap">
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        style={{ backgroundColor: '#ffffff', padding: '12px 14px 12px 40px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', position: 'relative' }}
+        className="cs-trigger"
       >
-        <Icon size={16} style={{ position: 'absolute', left: '14px', color: '#6b7280' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {selected?.color && <span style={{ backgroundColor: selected.color, width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-          <span style={{ color: selected ? '#111827' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
+        <Icon size={16} className="cs-trigger-icon" />
+        <div className="cs-selected-wrap">
+          {selected?.color && <span className="cs-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
+          <span className={`cs-label${selected ? ' selected' : ''}`}>
             {selected ? selected.name : placeholder}
           </span>
         </div>
-        <ChevronDown size={16} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={16} color="#9ca3af" className={`cs-chevron${isOpen ? ' open' : ''}`} />
       </div>
 
       {isOpen && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
-          <div style={{ padding: '12px 14px', cursor: 'pointer', color: '#9ca3af', borderBottom: '1px solid #f3f4f6' }} onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
+        <div className="cs-dropdown">
+          <div className="cs-option-none" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
             None / Unassigned
           </div>
           {options.map((o: any) => (
-            <div 
-              key={o.id} 
-              style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: '1px solid #f9fafb' }}
+            <div
+              key={o.id}
+              className="cs-option"
               onMouseDown={(e) => { e.preventDefault(); onChange(o[returnKey] || o.id); setIsOpen(false); }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
-              {o.color && <span style={{ backgroundColor: o.color, display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></span>}
-              <span style={{ color: '#111827', fontWeight: 500 }}>{o.name}</span>
+              {o.color && <span className="cs-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
+              <span className="cs-option-label">{o.name}</span>
             </div>
           ))}
         </div>
@@ -345,13 +345,13 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
       return dailyJobs.map(job => {
         const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
         return (
-          <div 
-            key={job.id} 
+          <div
+            key={job.id}
             className="calendar-event-month"
-            style={{ backgroundColor: `${statusColor}15`, color: '#1e293b', borderLeft: `3px solid ${statusColor}` }}
+            style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
             onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
           >
-            <span style={{ fontWeight: 700 }}>{job.timeIn || '--:--'}</span> {getClientName(job.client)}
+            <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
           </div>
         );
       });
@@ -370,16 +370,16 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
       const height = ((endMin - startMin) / 60) * PIXELS_PER_HOUR;
 
       return (
-        <div 
-          key={job.id} 
+        <div
+          key={job.id}
           className="calendar-event-absolute"
-          style={{ 
-            top: `${topOffset}px`, 
-            height: `${height}px`,
-            backgroundColor: `${statusColor}20`, 
-            border: `1px solid ${statusColor}50`,
-            borderLeft: `4px solid ${statusColor}`
-          }}
+          style={{
+            '--event-top': `${topOffset}px`,
+            '--event-height': `${height}px`,
+            '--event-bg': `${statusColor}20`,
+            '--event-border': `${statusColor}50`,
+            '--event-color': statusColor
+          } as CSSProperties}
           onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
         >
           <div className="event-title">{getClientName(job.client)}</div>
@@ -389,111 +389,21 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     });
   };
 
-  // --- STYLES OBJECT ---
-  const s = {
-    overlayCentered: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px', boxSizing: 'border-box' } as React.CSSProperties,
-    modal70: { backgroundColor: '#ffffff', width: '100%', maxWidth: '1000px', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' } as React.CSSProperties,
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
-    title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 },
-    body: { padding: '30px', overflowY: 'auto', paddingBottom: '60px' } as React.CSSProperties,
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
-    footerBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
-    label: { fontSize: '0.85rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'block' } as React.CSSProperties,
-    inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center', width: '100%' } as React.CSSProperties,
-    icon: { position: 'absolute', left: '14px', color: '#6b7280', pointerEvents: 'none' } as React.CSSProperties,
-    input: { backgroundColor: '#ffffff', padding: '12px 14px 12px 40px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#111827', width: '100%', boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.2s' } as React.CSSProperties,
-    btnPrimary: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s', opacity: isSaving ? 0.7 : 1 } as React.CSSProperties,
-    btnOutline: { backgroundColor: 'white', border: '1px solid #e5e7eb', color: '#111827', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' } as React.CSSProperties,
-    btnDangerLight: { backgroundColor: '#fef2f2', color: '#ef4444', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s' } as React.CSSProperties,
-    closeBtn: { background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' },
-    detailBanner: { border: '1px solid #bfdbfe', borderRadius: '8px', padding: '24px', backgroundColor: '#eff6ff', display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '24px' } as React.CSSProperties,
-    detailItem: { display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' } as React.CSSProperties,
-    detailLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', fontWeight: 600 } as React.CSSProperties,
-    detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' } as React.CSSProperties,
-    noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
-    noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
-    // Filtro de fechas
-    filterCard: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '10px 14px', marginBottom: '20px' } as React.CSSProperties,
-    filterFieldLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' } as React.CSSProperties,
-    filterDateInput: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '7px 10px', fontSize: '0.85rem', color: '#111827', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' } as React.CSSProperties,
-  };
-
   return (
-    <div className="fade-in" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      
-      {/* INJECTED CALENDAR CSS PARA LAS VISTAS GOOGLE CALENDAR Y MES */}
-      <style>{`
-        .calendar-wrapper { display: flex; flex-direction: column; flex: 1; background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
-        
-        /* Controles de vista */
-        .view-toggles { display: flex; background: #f1f5f9; border-radius: 8px; padding: 4px; border: 1px solid #e2e8f0; }
-        .view-btn { padding: 6px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; color: #64748b; background: transparent; transition: all 0.2s; }
-        .view-btn.active { background: white; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-
-        /* Mes View */
-        .calendar-header-grid { display: grid; grid-template-columns: repeat(7, 1fr); background-color: #f8fafc; border-bottom: 1px solid #e5e7eb; }
-        .calendar-header-cell { padding: 12px; text-align: center; font-weight: 600; font-size: 0.85rem; color: #64748b; text-transform: uppercase; }
-        .calendar-body-grid { display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; background-color: #e5e7eb; gap: 1px; }
-        .calendar-day-cell { background-color: #ffffff; min-height: 120px; padding: 8px; display: flex; flex-direction: column; gap: 4px; transition: background-color 0.2s; }
-        .calendar-day-cell:hover { background-color: #f8fafc; }
-        .calendar-day-cell.empty { background-color: #f9fafb; cursor: default; }
-        .calendar-date-number { font-weight: 600; font-size: 0.95rem; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .calendar-event-month { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid rgba(0,0,0,0.05); }
-        .calendar-event-month:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); filter: brightness(0.95); }
-
-        /* Time Grid (Día / Semana) */
-        .week-scroll-container { display: flex; flex-direction: column; flex: 1; overflow-x: auto; overflow-y: hidden; }
-        .week-grid-inner { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-        .week-view-active { min-width: 750px; } /* Fuerza el scroll horizontal en móvil para la semana */
-        .day-view-active { min-width: 100%; }
-
-        .time-grid-container { display: flex; flex: 1; overflow-y: auto; position: relative; }
-        .time-axis { width: 60px; flex-shrink: 0; background: white; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; }
-        .time-label { height: 60px; padding-right: 8px; text-align: right; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #f1f5f9; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: flex-end; padding-top: 4px;}
-        
-        .day-columns-wrapper { display: flex; flex: 1; flex-direction: row; }
-        .day-column-time { flex: 1; border-right: 1px solid #e5e7eb; position: relative; min-width: 0; }
-        .day-column-time:last-child { border-right: none; }
-        .hour-grid-line { height: 60px; border-bottom: 1px solid #f1f5f9; box-sizing: border-box; width: 100%; }
-        
-        /* Eventos Absolutos (Google Calendar Style) */
-        .calendar-event-absolute { position: absolute; left: 4px; right: 4px; border-radius: 6px; padding: 6px 8px; font-size: 0.75rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10; cursor: pointer; transition: transform 0.1s, filter 0.2s; display: flex; flex-direction: column; gap: 2px; }
-        .calendar-event-absolute:hover { transform: scale(1.02); z-index: 20; filter: brightness(0.95); }
-        .calendar-event-absolute .event-title { font-weight: 700; color: #0f172a; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;}
-        .calendar-event-absolute .event-time { font-size: 0.7rem; color: #475569; }
-
-        .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
-        .col-span-full { grid-column: 1 / -1; }
-        
-        /* Ajustes Responsivos */
-        @media (max-width: 768px) {
-          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-          .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
-          
-          /* En vista de mes, PERMITIR SCROLL HORIZONTAL en vez de colapsar verticalmente */
-          .month-scroll-container {
-            overflow-x: auto;
-            width: 100%;
-          }
-          .month-grid-inner {
-            min-width: 800px; /* Fuerza el ancho mínimo para mantener la cuadrícula de 7 días */
-          }
-        }
-      `}</style>
-
+    <div className="fade-in cv-page">
       {/* HEADER */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+      <header className="cv-header">
         <div className="view-header-title-group">
           <button onClick={onOpenMenu} className="hamburger-btn" aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#111827', fontWeight: 700 }}>Calendar</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>Schedule & Planning</p>
+            <h1 className="cv-title">Calendar</h1>
+            <p className="cv-subtitle">Schedule & Planning</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+        <div className="cv-header-actions">
           {/* VIEW TOGGLES */}
           <div className="view-toggles">
             <button className={`view-btn ${viewMode === 'day' ? 'active' : ''}`} onClick={() => setViewMode('day')}>Day</button>
@@ -502,46 +412,40 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
           </div>
 
           {/* DATE NAVIGATION */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', backgroundColor: 'white', padding: '6px 12px', borderRadius: '24px', border: '1px solid #e5e7eb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-            <button onClick={prevTime} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', color: '#64748b' }}><ChevronLeft size={20}/></button>
-            <span style={{ fontWeight: 700, color: '#1e293b', minWidth: '160px', textAlign: 'center', textTransform: 'capitalize', fontSize: '0.9rem' }}>{headerTitle}</span>
-            <button onClick={nextTime} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', color: '#64748b' }}><ChevronRight size={20}/></button>
+          <div className="cv-date-nav">
+            <button onClick={prevTime} className="cv-nav-btn"><ChevronLeft size={20}/></button>
+            <span className="cv-date-label">{headerTitle}</span>
+            <button onClick={nextTime} className="cv-nav-btn"><ChevronRight size={20}/></button>
           </div>
         </div>
       </header>
 
       {/* --- BARRA DE FILTRO DE FECHAS --- */}
-      <div style={s.filterCard}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+      <div className="cv-filter-card">
+        <span className="cv-filter-title">
           <Filter size={15} color="#3b82f6" /> Filtrar por fecha
         </span>
 
-        <label style={s.filterFieldLabel}>
+        <label className="cv-filter-label">
           Desde
           <input type="date" value={filterFrom} max={filterTo || undefined}
-            onChange={e => setFilterFrom(e.target.value)} style={s.filterDateInput} />
+            onChange={e => setFilterFrom(e.target.value)} className="cv-filter-date-input" />
         </label>
 
-        <label style={s.filterFieldLabel}>
+        <label className="cv-filter-label">
           Hasta
           <input type="date" value={filterTo} min={filterFrom || undefined}
-            onChange={e => setFilterTo(e.target.value)} style={s.filterDateInput} />
+            onChange={e => setFilterTo(e.target.value)} className="cv-filter-date-input" />
         </label>
 
         {filterActive && (
-          <button onClick={clearFilter} style={{
-            display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #e5e7eb',
-            borderRadius: '8px', padding: '7px 12px', fontSize: '0.82rem', fontWeight: 600, color: '#475569', cursor: 'pointer',
-          }}>
+          <button onClick={clearFilter} className="cv-btn-clear-filter">
             <RotateCcw size={14} /> Limpiar
           </button>
         )}
 
         {filterActive && (
-          <span style={{
-            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem',
-            fontWeight: 700, color: '#0369a1', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: '999px', padding: '3px 10px',
-          }}>
+          <span className="cv-filter-badge">
             <ClipboardCheck size={12} /> Quality Check y Recall siempre visibles
           </span>
         )}
@@ -549,7 +453,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
       {/* CALENDAR RENDER */}
       {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>Loading calendar data...</div>
+        <div className="cv-loading">Loading calendar data...</div>
       ) : (
         <div className="calendar-wrapper">
           
@@ -583,11 +487,11 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
               <div className={`week-grid-inner ${viewMode === 'week' ? 'week-view-active' : 'day-view-active'}`}>
                 
                 {/* Header de la semana/día */}
-                <div style={{ paddingLeft: '60px', display: 'flex', borderBottom: '1px solid #e5e7eb', backgroundColor: '#f8fafc' }}>
+                <div className="cv-week-header-row">
                   {(viewMode === 'week' ? weekDaysDates : [currentDate]).map((date, i) => (
-                    <div key={i} style={{ flex: 1, padding: '12px', textAlign: 'center', borderRight: '1px solid #e5e7eb' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>{weekDaysLabels[date.getDay()]}</div>
-                      <div style={{ fontSize: '1.2rem', color: '#1e293b', fontWeight: 800, marginTop: '2px' }}>{date.getDate()}</div>
+                    <div key={i} className="cv-week-header-cell">
+                      <div className="cv-week-day-label">{weekDaysLabels[date.getDay()]}</div>
+                      <div className="cv-week-day-number">{date.getDate()}</div>
                     </div>
                   ))}
                 </div>
@@ -625,117 +529,117 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
       {/* --- FORM MODAL --- */}
       {isFormModalOpen && (
-        <div style={s.overlayCentered} onClick={handleCloseForm}>
-          <div style={s.modal70} onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>{selectedHouse ? 'Edit Property Details' : 'Register New Property'}</h3>
-              <button style={s.closeBtn} onClick={handleCloseForm}><X size={24} /></button>
+        <div className="cv-modal-overlay" onClick={handleCloseForm}>
+          <div className="cv-modal" onClick={e => e.stopPropagation()}>
+            <header className="cv-modal-header">
+              <h3 className="cv-modal-title">{selectedHouse ? 'Edit Property Details' : 'Register New Property'}</h3>
+              <button className="cv-modal-close" onClick={handleCloseForm}><X size={24} /></button>
             </header>
 
-            <div style={s.body}>
+            <div className="cv-modal-body">
               <div className="grid-3-cols">
 
                 <div>
-                  <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <CustomSelect 
-                    options={customersList} 
-                    value={formData.client} 
-                    onChange={handleCustomerSelect} 
-                    placeholder="Select Client..." 
-                    icon={User} 
-                    returnKey="name" 
+                  <label className="cv-label">Client <span className="cv-required">*</span></label>
+                  <CustomSelect
+                    options={customersList}
+                    value={formData.client}
+                    onChange={handleCustomerSelect}
+                    placeholder="Select Client..."
+                    icon={User}
+                    returnKey="name"
                   />
                 </div>
                 <div>
-                  <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <div style={s.inputWrapper}>
-                    <MapPin style={s.icon} size={16} />
-                    <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                  <label className="cv-label">Address <span className="cv-required">*</span></label>
+                  <div className="cv-input-wrap">
+                    <MapPin className="cv-input-icon" size={16} />
+                    <input type="text" className="cv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Status <span style={{ color: '#3b82f6' }}>*</span></label>
+                  <label className="cv-label">Status <span className="cv-required">*</span></label>
                   <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
                 </div>
 
                 <div>
-                  <label style={s.label}>Invoice Status</label>
+                  <label className="cv-label">Invoice Status</label>
                   <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                 </div>
                 <div>
-                  <label style={s.label}>Services</label>
+                  <label className="cv-label">Services</label>
                   <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
                 </div>
                 <div>
-                  <label style={s.label}>Priority</label>
+                  <label className="cv-label">Priority</label>
                   <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
                 </div>
 
                 <div>
-                  <label style={s.label}>Receive Date</label>
-                  <div style={s.inputWrapper}>
-                    <CalendarDays style={s.icon} size={16} />
-                    <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                  <label className="cv-label">Receive Date</label>
+                  <div className="cv-input-wrap">
+                    <CalendarDays className="cv-input-icon" size={16} />
+                    <input type="date" className="cv-input" value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Schedule Date</label>
-                  <div style={s.inputWrapper}>
-                    <CalendarDays style={s.icon} size={16} />
-                    <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                  <label className="cv-label">Schedule Date</label>
+                  <div className="cv-input-wrap">
+                    <CalendarDays className="cv-input-icon" size={16} />
+                    <input type="date" className="cv-input" value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Team</label>
+                  <label className="cv-label">Team</label>
                   <CustomSelect options={teams} value={formData.teamId} onChange={(val: string) => setFormData({ ...formData, teamId: val })} placeholder="Assign Team..." icon={Users} />
                 </div>
 
                 <div>
-                  <label style={s.label}>Time In</label>
-                  <div style={s.inputWrapper}>
-                    <Clock style={s.icon} size={16} />
-                    <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                  <label className="cv-label">Time In</label>
+                  <div className="cv-input-wrap">
+                    <Clock className="cv-input-icon" size={16} />
+                    <input type="time" className="cv-input" value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Time Out</label>
-                  <div style={s.inputWrapper}>
-                    <Clock style={s.icon} size={16} />
-                    <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                  <label className="cv-label">Time Out</label>
+                  <div className="cv-input-wrap">
+                    <Clock className="cv-input-icon" size={16} />
+                    <input type="time" className="cv-input" value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Rooms</label>
+                  <label className="cv-label">Rooms</label>
                   <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
                 </div>
-                
+
                 <div>
-                  <label style={s.label}>Bathrooms</label>
+                  <label className="cv-label">Bathrooms</label>
                   <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
                 </div>
 
                 <div className="col-span-full">
-                  <label style={s.label}>Note</label>
-                  <div style={{ ...s.inputWrapper, alignItems: 'flex-start' }}>
-                    <StickyNote style={{ ...s.icon, top: '14px' }} size={16} />
-                    <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical' }} placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
+                  <label className="cv-label">Note</label>
+                  <div className="cv-input-wrap align-top">
+                    <StickyNote className="cv-input-icon textarea" size={16} />
+                    <textarea className="cv-input textarea" placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
                   </div>
                 </div>
 
                 <div className="col-span-full">
-                  <label style={s.label}>Employee's Note</label>
-                  <div style={{ ...s.inputWrapper, alignItems: 'flex-start' }}>
-                    <PenTool style={{ ...s.icon, top: '14px' }} size={16} />
-                    <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical' }} placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
+                  <label className="cv-label">Employee's Note</label>
+                  <div className="cv-input-wrap align-top">
+                    <PenTool className="cv-input-icon textarea" size={16} />
+                    <textarea className="cv-input textarea" placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
                   </div>
                 </div>
 
               </div>
             </div>
-            
-            <footer style={s.footer}>
-              <button style={s.btnOutline} onClick={handleCloseForm} disabled={isSaving}>Cancel</button>
-              <button style={s.btnPrimary} onClick={handleSave} disabled={isSaving}>
+
+            <footer className="cv-modal-footer">
+              <button className="cv-btn-outline" onClick={handleCloseForm} disabled={isSaving}>Cancel</button>
+              <button className="cv-btn-primary" onClick={handleSave} disabled={isSaving}>
                 {isSaving ? 'Saving...' : 'Save Property'}
               </button>
             </footer>
@@ -745,116 +649,116 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
       {/* --- DETAIL MODAL --- */}
       {isDetailModalOpen && selectedHouse && (
-        <div style={s.overlayCentered} onClick={() => setIsDetailModalOpen(false)}>
-          <div style={s.modal70} onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Property Overview</h3>
-              <button style={s.closeBtn} onClick={() => setIsDetailModalOpen(false)}><X size={24} /></button>
+        <div className="cv-modal-overlay" onClick={() => setIsDetailModalOpen(false)}>
+          <div className="cv-modal" onClick={e => e.stopPropagation()}>
+            <header className="cv-modal-header">
+              <h3 className="cv-modal-title">Property Overview</h3>
+              <button className="cv-modal-close" onClick={() => setIsDetailModalOpen(false)}><X size={24} /></button>
             </header>
 
-            <div style={s.body}>
-              <div style={s.detailBanner}>
-                <div style={s.detailItem}>
-                  <span style={{ ...s.detailLabel, color: '#1e40af' }}><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span style={{ fontSize: '1.25rem', color: '#1e3a8a', fontWeight: 600, marginTop: '4px' }}>{selectedHouse.address}</span>
+            <div className="cv-modal-body">
+              <div className="cv-detail-banner">
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
+                  <span className="cv-address-value">{selectedHouse.address}</span>
                 </div>
               </div>
 
               <div className="grid-3-cols">
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Activity size={14} /> STATUS</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    <span style={{ backgroundColor: getRelationColor(statuses, selectedHouse.statusId) || '#ccc', width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>
-                    <span style={s.detailValue}>{getRelationName(statuses, selectedHouse.statusId, 'UNASSIGNED')}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Activity size={14} /> STATUS</span>
+                  <div className="cv-dot-row">
+                    <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(statuses, selectedHouse.statusId) || '#ccc' } as CSSProperties}></span>
+                    <span className="cv-detail-value">{getRelationName(statuses, selectedHouse.statusId, 'UNASSIGNED')}</span>
                   </div>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><FileText size={14} /> INVOICE STATUS</span>
-                  <span style={s.detailValue}>{selectedHouse.invoiceStatus || '-'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
+                  <span className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><User size={14} /> CLIENT</span>
-                  <span style={s.detailValue}>{getClientName(selectedHouse.client)}</span>
-                </div>
-
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span style={s.detailValue}>{selectedHouse.receiveDate || '-'}</span>
-                </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span style={s.detailValue}>{selectedHouse.scheduleDate || '-'}</span>
-                </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Wrench size={14} /> SERVICE</span>
-                  <span style={s.detailValue}>{getRelationName(services, selectedHouse.serviceId)}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><User size={14} /> CLIENT</span>
+                  <span className="cv-detail-value">{getClientName(selectedHouse.client)}</span>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME IN</span>
-                  <span style={s.detailValue}>{selectedHouse.timeIn || '-'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
+                  <span className="cv-detail-value">{selectedHouse.receiveDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME OUT</span>
-                  <span style={s.detailValue}>{selectedHouse.timeOut || '-'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
+                  <span className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Flag size={14} /> PRIORITY</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(priorities, selectedHouse.priorityId) && <span style={{ backgroundColor: getRelationColor(priorities, selectedHouse.priorityId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(priorities, selectedHouse.priorityId)}</span>
-                  </div>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Wrench size={14} /> SERVICE</span>
+                  <span className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</span>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> ROOMS</span>
-                  <span style={s.detailValue}>{selectedHouse.rooms || '-'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Clock size={14} /> TIME IN</span>
+                  <span className="cv-detail-value">{selectedHouse.timeIn || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> BATHROOMS</span>
-                  <span style={s.detailValue}>{selectedHouse.bathrooms || '-'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Clock size={14} /> TIME OUT</span>
+                  <span className="cv-detail-value">{selectedHouse.timeOut || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Users size={14} /> TEAM</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(teams, selectedHouse.teamId) && <span style={{ backgroundColor: getRelationColor(teams, selectedHouse.teamId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Flag size={14} /> PRIORITY</span>
+                  <div className="cv-dot-row">
+                    {getRelationColor(priorities, selectedHouse.priorityId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
+                    <span className="cv-detail-value">{getRelationName(priorities, selectedHouse.priorityId)}</span>
                   </div>
                 </div>
 
-                <div className="col-span-full">
-                  <div style={s.noteBoxGray}>
-                    <span style={{ ...s.detailLabel, marginBottom: '8px' }}><StickyNote size={14} /> GENERAL NOTE</span>
-                    <span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No notes provided.'}</span>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Hash size={14} /> ROOMS</span>
+                  <span className="cv-detail-value">{selectedHouse.rooms || '-'}</span>
+                </div>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Hash size={14} /> BATHROOMS</span>
+                  <span className="cv-detail-value">{selectedHouse.bathrooms || '-'}</span>
+                </div>
+                <div className="cv-detail-item">
+                  <span className="cv-detail-label"><Users size={14} /> TEAM</span>
+                  <div className="cv-dot-row">
+                    {getRelationColor(teams, selectedHouse.teamId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
+                    <span className="cv-detail-value">{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
                   </div>
                 </div>
 
                 <div className="col-span-full">
-                  <div style={s.noteBoxOrange}>
-                    <span style={{ ...s.detailLabel, marginBottom: '8px', color: '#c2410c' }}><PenTool size={14} /> EMPLOYEE'S NOTE</span>
-                    <span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.employeeNote || 'No employee notes provided.'}</span>
+                  <div className="cv-note-box">
+                    <span className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span>
+                    <span className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</span>
+                  </div>
+                </div>
+
+                <div className="col-span-full">
+                  <div className="cv-note-box orange">
+                    <span className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</span>
+                    <span className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</span>
                   </div>
                 </div>
 
               </div>
             </div>
 
-            <footer style={s.footerBetween}>
-              <button style={s.btnDangerLight} onClick={handleDelete} disabled={isSaving}>
-                <Trash2 size={16} style={{ marginRight: '6px' }} /> {isSaving ? 'Deleting...' : 'Delete Property'}
+            <footer className="cv-modal-footer between">
+              <button className="cv-btn-danger-light" onClick={handleDelete} disabled={isSaving}>
+                <Trash2 size={16} className="cv-icon-mr" /> {isSaving ? 'Deleting...' : 'Delete Property'}
               </button>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button style={s.btnOutline} onClick={() => setIsDetailModalOpen(false)}>Close</button>
-                
-                <button 
+              <div className="cv-footer-actions">
+                <button className="cv-btn-outline" onClick={() => setIsDetailModalOpen(false)}>Close</button>
+
+                <button
                   onClick={() => { setIsDetailModalOpen(false); onCheckHouse && onCheckHouse(selectedHouse); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', padding: '10px 20px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                  className="cv-btn-qc"
                 >
                   <ClipboardCheck size={16} /> Quality Check
                 </button>
 
-                <button style={s.btnPrimary} onClick={() => handleOpenForm(selectedHouse)}><Edit2 size={16} /> Edit Details</button>
+                <button className="cv-btn-primary" onClick={() => handleOpenForm(selectedHouse)}><Edit2 size={16} /> Edit Details</button>
               </div>
             </footer>
           </div>

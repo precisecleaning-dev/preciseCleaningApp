@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import {
   Repeat, AlertTriangle, Trophy, Award, Users, MapPin, CalendarDays,
   Search, X, TrendingUp, BarChart3, Loader2, ListChecks, FileBarChart, Check, ChevronDown
@@ -10,6 +11,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
 import PropertyDetailModal from '../components/PropertyDetailModal';
+import './RecallsView.css';
 
 /* =========================================================================
    CONFIG / HEURÍSTICAS
@@ -106,45 +108,40 @@ function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = fal
   }, [open]);
 
   return (
-    <div ref={btnRef} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto' }}>
+    <div ref={btnRef} className={`rcv-pill-wrap${fullWidth ? ' full' : ''}`}>
       <div
         onClick={toggle}
-        style={{ background: '#fff', color: '#111827', padding: '6px 10px 6px 12px', borderRadius: fullWidth ? '12px' : '20px', fontSize: '0.8rem', fontWeight: 600, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px', width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box', cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${open ? color : '#e5e7eb'}`, boxShadow: open ? `0 0 0 3px ${color}22` : '0 1px 2px rgba(0,0,0,0.05)', whiteSpace: 'nowrap', transition: 'all .15s' }}
+        className={`rcv-pill-trigger${fullWidth ? ' full' : ''}${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}
+        style={{ '--dot-color': color, '--pill-ring': `${color}22` } as CSSProperties}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        <span className="rcv-pill-label">
+          <span className="rcv-pill-dot" />
+          <span className="rcv-pill-text">{text}</span>
         </span>
-        <ChevronDown size={14} color="#94a3b8" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0 }} />
+        <ChevronDown size={14} color="#94a3b8" className={`rcv-pill-chevron${open ? ' open' : ''}`} />
       </div>
 
       {open && (
         <>
           {/* Backdrop transparente para cerrar al hacer clic fuera */}
-          <div onClick={(e) => { e.stopPropagation(); setOpen(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1000 }} />
+          <div onClick={(e) => { e.stopPropagation(); setOpen(false); }} className="rcv-pill-backdrop" />
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'fixed', top: coords.top, left: coords.left, width: coords.width,
-              background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.18)', zIndex: 1001, overflow: 'hidden',
-              animation: 'rc-pop .12s ease-out',
-            }}
+            className="rcv-pill-menu"
+            style={{ top: coords.top, left: coords.left, width: coords.width }}
           >
-            <div style={{ padding: '10px 14px', fontSize: '0.68rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+            <div className="rcv-pill-menu-header">
               Cambiar status
             </div>
-            <div style={{ maxHeight: '290px', overflowY: 'auto' }}>
+            <div className="rcv-pill-menu-list">
               {statuses.map((s: any) => {
                 const isCurrent = String(s.id) === String(statusId) || String(s.name) === String(statusId);
                 return (
                   <div key={s.id}
                     onClick={(e) => { e.stopPropagation(); if (!isCurrent) onChange(s.id); setOpen(false); }}
-                    style={{ padding: '11px 14px', fontSize: '0.88rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '10px', cursor: isCurrent ? 'default' : 'pointer', borderBottom: '1px solid #f6f7f9', background: isCurrent ? '#f8fafc' : 'transparent', fontWeight: isCurrent ? 700 : 500 }}
-                    onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = '#f1f5f9'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = isCurrent ? '#f8fafc' : 'transparent'; }}>
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: s.color, flexShrink: 0, boxShadow: `0 0 0 3px ${s.color}1f` }} />
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                    className={`rcv-pill-option${isCurrent ? ' current' : ''}`}>
+                    <span className="rcv-pill-option-dot" style={{ '--dot-color': s.color, '--dot-ring': `${s.color}1f` } as CSSProperties} />
+                    <span className="rcv-pill-option-name">{s.name}</span>
                     {isCurrent && <Check size={16} color="#16a34a" />}
                   </div>
                 );
@@ -289,7 +286,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   const FailedQCBadge = ({ compact = false }: { compact?: boolean }) => (
     <span
       title="Esta casa viene de Quality Check y NO pasó la inspección"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: compact ? '3px 8px' : '4px 10px', borderRadius: '10px', fontSize: compact ? '0.66rem' : '0.7rem', fontWeight: 800, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+      className={`rcv-failed-qc-badge${compact ? ' compact' : ''}`}
     >
       <Repeat size={compact ? 11 : 12} /> Vino de QC · No pasó
     </span>
@@ -509,74 +506,26 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
 
   const scoreColor = (v: number) => v >= 85 ? '#047857' : v >= 70 ? '#b45309' : '#b91c1c';
 
-  const s = {
-    th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
-    td: { padding: '12px 16px', borderBottom: '1px solid #f1f5f9', color: '#111827', fontSize: '0.92rem' },
-  };
-
   return (
-    <div className="fade-in recalls-view" style={{ padding: '20px', boxSizing: 'border-box' }}>
-      <style>{`
-        .rc-spin { animation: rc-spin 1s linear infinite; }
-        @keyframes rc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes rc-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        .rc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-        .rc-highlights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
-        .rc-cols { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; margin-bottom: 24px; align-items: start; }
-        .rc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .rc-bar-track { flex: 1; height: 10px; background: #f1f5f9; border-radius: 6px; overflow: hidden; }
-        .rc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
-        .rc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
-        .rc-select { height: 42px; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 14px; background: #fff; color: #374151; font-size: 0.9rem; cursor: pointer; outline: none; }
-        .rc-tab { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #64748b; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all .15s; }
-        .rc-tab.active { background: #fff; color: #7c3aed; border-color: #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-        .rc-date { height: 42px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 12px; background: #fff; color: #374151; font-size: 0.9rem; outline: none; }
-
-        /* Por defecto (escritorio): tablas visibles, tarjetas ocultas */
-        .rc-cards-wrap { display: none; }
-        .recalls-view { overflow-x: hidden; max-width: 100%; }
-
-        @media (max-width: 900px) {
-          .rc-kpis { grid-template-columns: repeat(2, 1fr); }
-          .rc-highlights { grid-template-columns: 1fr; }
-          .rc-cols { grid-template-columns: 1fr; }
-        }
-
-        /* ====== MÓVIL: tarjetas en vez de tablas, sin scroll horizontal ====== */
-        @media (max-width: 820px) {
-          html, body { overflow-x: hidden; max-width: 100%; }
-          .recalls-view { padding: 14px !important; }
-          .rc-table-wrap { display: none !important; }
-          .rc-cards-wrap { display: flex !important; }
-          .rc-toolbar { flex-direction: column; align-items: stretch !important; }
-          .rc-table-search { width: 100%; }
-          .rc-select { width: 100%; }
-          .rc-toolbar .rc-count { margin-left: 0 !important; }
-        }
-
-        @media (max-width: 560px) {
-          .rc-kpis { grid-template-columns: 1fr; }
-          .recalls-view { padding: 10px !important; }
-        }
-      `}</style>
+    <div className="fade-in recalls-view rcv-page">
 
       {/* HEADER */}
-      <header className="main-header" style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', flexShrink: 0 }}>
+      <header className="main-header rcv-header">
+        <div className="rcv-header-title-group">
+          <button className="hamburger-btn rcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, color: '#111827', fontSize: '2rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 className="rcv-title">
               <Repeat size={26} color="#7c3aed" /> Recalls
             </h1>
-            <p style={{ marginTop: '4px', color: '#6b7280' }}>Re-cleaning callbacks and team performance ranking</p>
+            <p className="rcv-subtitle">Re-cleaning callbacks and team performance ranking</p>
           </div>
         </div>
       </header>
 
       {/* TABS */}
-      <div style={{ display: 'inline-flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '12px', marginBottom: '20px' }}>
+      <div className="rcv-tabs-wrap">
         <button className={`rc-tab ${tab === 'recalls' ? 'active' : ''}`} onClick={() => setTab('recalls')}>
           <ListChecks size={17} /> Recalls
         </button>
@@ -586,18 +535,18 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
       </div>
 
       {loading ? (
-        <div style={{ padding: '60px', textAlign: 'center', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+        <div className="rcv-loading">
           <Loader2 size={20} className="rc-spin" /> Loading recall data...
         </div>
       ) : tab === 'recalls' ? (
         /* ====================== SUB-VISTA 1: TABLA ====================== */
         <>
-          <div className="rc-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="rc-toolbar">
             <div className="rc-table-search">
               <Search size={16} color="#9ca3af" />
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por cliente, dirección, equipo, motivo..." />
               {search && (
-                <button type="button" onClick={() => setSearch('')} aria-label="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+                <button type="button" onClick={() => setSearch('')} aria-label="Limpiar" className="rcv-clear-search-btn">
                   <X size={16} />
                 </button>
               )}
@@ -605,61 +554,61 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             <select className="rc-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               {teamOptions.map(t => <option key={t} value={t}>{t === 'All' ? 'All teams' : t}</option>)}
             </select>
-            <span className="rc-count" style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span className="rc-count">
               {filteredRecalls.length} registro{filteredRecalls.length === 1 ? '' : 's'}
             </span>
           </div>
 
           {/* TABLA (escritorio) */}
-          <div className="rc-card rc-table-wrap" style={{ overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto', width: '100%' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '760px' }}>
+          <div className="rc-card rc-table-wrap rcv-table-wrap-inner">
+            <div className="rcv-table-scroll">
+              <table className="rcv-table min-760">
                 <thead>
                   <tr>
-                    <th style={s.th}><Users size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Client</th>
-                    <th style={s.th}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Address</th>
-                    <th style={s.th}>Team</th>
-                    <th style={{ ...s.th, width: '180px' }}><CalendarDays size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} /> Entró a Recall</th>
-                    <th style={{ ...s.th, width: '180px' }}>Salió de Recall</th>
-                    <th style={s.th}>Current Status</th>
+                    <th className="rcv-th"><Users size={14} className="rcv-th-icon" /> Client</th>
+                    <th className="rcv-th"><MapPin size={14} className="rcv-th-icon" /> Address</th>
+                    <th className="rcv-th">Team</th>
+                    <th className="rcv-th w-180"><CalendarDays size={14} className="rcv-th-icon" /> Entró a Recall</th>
+                    <th className="rcv-th w-180">Salió de Recall</th>
+                    <th className="rcv-th">Current Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRecalls.length === 0 ? (
-                    <tr><td colSpan={6} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</td></tr>
+                    <tr><td colSpan={6} className="rcv-td empty">No recalls found.</td></tr>
                   ) : filteredRecalls.map((r) => {
                     const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
                     const fromQC = cameFromFailedQC(r.houseId);
                     return (
-                      <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ transition: 'background-color 0.2s', cursor: houseObj ? 'pointer' : 'default', background: fromQC ? '#faf5ff' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = fromQC ? '#faf5ff' : 'transparent'}>
-                        <td style={{ ...s.td, fontWeight: 600 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} className={`rcv-row${houseObj ? ' clickable' : ''}${fromQC ? ' from-qc' : ''}`}>
+                        <td className="rcv-td strong">
+                          <div className="rcv-client-cell">
                             {r.client}
                             {fromQC && <FailedQCBadge compact />}
                           </div>
                         </td>
-                        <td style={{ ...s.td, color: '#6b7280' }}>{r.address}</td>
-                        <td style={s.td}>
-                          <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.team}</span>
+                        <td className="rcv-td muted">{r.address}</td>
+                        <td className="rcv-td">
+                          <span className="rcv-team-chip">{r.team}</span>
                         </td>
-                        <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#b45309', fontWeight: 600 }}>
-                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> {formatDateTime(r.enteredAt || r.date)}
+                        <td className="rcv-td nowrap">
+                          <span className="rcv-date-entered">
+                            <span className="rcv-dot-7 red" /> {formatDateTime(r.enteredAt || r.date)}
                           </span>
                         </td>
-                        <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                        <td className="rcv-td nowrap">
                           {r.exitedAt ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#047857', fontWeight: 600 }}>
-                              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a' }} /> {formatDateTime(r.exitedAt)}
+                            <span className="rcv-date-exited">
+                              <span className="rcv-dot-7 green" /> {formatDateTime(r.exitedAt)}
                             </span>
                           ) : (
-                            <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Aún en recall</span>
+                            <span className="rcv-still-badge">Aún en recall</span>
                           )}
                         </td>
-                        <td style={s.td} onClick={(e) => e.stopPropagation()}>
+                        <td className="rcv-td" onClick={(e) => e.stopPropagation()}>
                           {houseObj ? (
                             <RowStatusPill statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
-                          ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                          ) : <span className="rcv-no-house">—</span>}
                         </td>
                       </tr>
                     );
@@ -670,48 +619,48 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           </div>
 
           {/* TARJETAS (móvil) */}
-          <div className="rc-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+          <div className="rc-cards-wrap rcv-recall-houses-cards">
             {filteredRecalls.length === 0 ? (
-              <div className="rc-card" style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No recalls found.</div>
+              <div className="rc-card rcv-empty-note-30">No recalls found.</div>
             ) : filteredRecalls.map((r) => {
               const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
               const fromQC = cameFromFailedQC(r.houseId);
               return (
-                <div key={r.id} className="rc-card" onClick={() => houseObj && setDetailHouse(houseObj as Property)} style={{ padding: '16px', cursor: houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px', border: `1px solid ${fromQC ? '#ddd6fe' : '#e5e7eb'}`, background: fromQC ? '#faf5ff' : '#fff' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{r.client}</span>
-                    <span style={{ flexShrink: 0, backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 12px', borderRadius: '12px', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.team}</span>
+                <div key={r.id} className={`rc-card rcv-recall-card${houseObj ? ' clickable' : ''}${fromQC ? ' from-qc' : ''}`} onClick={() => houseObj && setDetailHouse(houseObj as Property)}>
+                  <div className="rcv-recall-card-top">
+                    <span className="rcv-recall-client-name">{r.client}</span>
+                    <span className="rcv-team-chip card rcv-shrink-0">{r.team}</span>
                   </div>
 
                   {fromQC && <div><FailedQCBadge /></div>}
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.address || '—'}</span>
+                  <div className="rcv-address-row">
+                    <MapPin size={16} color="#94a3b8" className="rcv-shrink-0" />
+                    <span className="rcv-ellipsis">{r.address || '—'}</span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '10px 12px' }}>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Entró a Recall</div>
-                      <div style={{ fontSize: '0.82rem', color: '#b45309', fontWeight: 700, marginTop: '3px' }}>{formatDateTime(r.enteredAt || r.date)}</div>
+                  <div className="rcv-mini-grid">
+                    <div className="rcv-mini-box entered">
+                      <div className="rcv-mini-label entered">Entró a Recall</div>
+                      <div className="rcv-mini-value entered">{formatDateTime(r.enteredAt || r.date)}</div>
                     </div>
-                    <div style={{ background: r.exitedAt ? '#ecfdf5' : '#fef2f2', border: `1px solid ${r.exitedAt ? '#a7f3d0' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px' }}>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: r.exitedAt ? '#065f46' : '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Salió de Recall</div>
-                      <div style={{ fontSize: '0.82rem', color: r.exitedAt ? '#047857' : '#b91c1c', fontWeight: 700, marginTop: '3px' }}>{r.exitedAt ? formatDateTime(r.exitedAt) : 'Aún en recall'}</div>
+                    <div className={`rcv-mini-box ${r.exitedAt ? 'exited' : 'still'}`}>
+                      <div className={`rcv-mini-label ${r.exitedAt ? 'exited' : 'still'}`}>Salió de Recall</div>
+                      <div className={`rcv-mini-value ${r.exitedAt ? 'exited' : 'still'}`}>{r.exitedAt ? formatDateTime(r.exitedAt) : 'Aún en recall'}</div>
                     </div>
                   </div>
 
                   <div onClick={(e) => e.stopPropagation()}>
                     {houseObj ? (
                       <RowStatusPill fullWidth statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
-                    ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                    ) : <span className="rcv-no-house">—</span>}
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <p style={{ marginTop: '14px', fontSize: '0.78rem', color: '#94a3b8' }}>
+          <p className="rcv-footnote">
             Histórico permanente: se registra la fecha y hora de cuándo cada casa entró a Recall y cuándo salió (vía status_history). Si aún no ha salido, se marca “Aún en recall”. Las marcadas con “Vino de QC · No pasó” llegaron a Recall por no pasar un Quality Check. La columna “Current Status” muestra el status actual y puedes cambiarlo aquí mismo.
           </p>
         </>
@@ -719,57 +668,57 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
         /* ====================== SUB-VISTA 2: REPORTE ====================== */
         <>
           {/* Filtro de fechas */}
-          <div className="rc-card" style={{ padding: '16px 20px', marginBottom: '24px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Desde</label>
+          <div className="rc-card rcv-report-filter-card">
+            <div className="rcv-date-field">
+              <label className="rcv-date-label">Desde</label>
               <input type="date" className="rc-date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hasta</label>
+            <div className="rcv-date-field">
+              <label className="rcv-date-label">Hasta</label>
               <input type="date" className="rc-date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
             {(startDate || endDate) && (
-              <button type="button" onClick={() => { setStartDate(''); setEndDate(''); }} style={{ height: '42px', padding: '0 16px', borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff', color: '#64748b', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <button type="button" onClick={() => { setStartDate(''); setEndDate(''); }} className="rcv-clear-dates-btn">
                 <X size={15} /> Limpiar fechas
               </button>
             )}
-            <span style={{ fontSize: '0.82rem', color: '#94a3b8', marginLeft: 'auto' }}>
+            <span className="rcv-filter-status-note">
               {startDate || endDate ? 'Reporte filtrado por fechas' : 'Mostrando todo el periodo'}
             </span>
           </div>
 
           {/* HIGHLIGHTS */}
           <div className="rc-highlights">
-            <div className="rc-card" style={{ padding: '20px', background: 'linear-gradient(135deg, #ecfdf5, #ffffff)', borderColor: '#a7f3d0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div className="rc-card rcv-highlight-card best">
+              <div className="rcv-highlight-header best">
                 <Trophy size={16} /> Best Performing Team
               </div>
               {bestTeam ? (
                 <>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#065f46', marginTop: '8px' }}>{bestTeam.team}</div>
-                  <div style={{ display: 'flex', gap: '18px', marginTop: '10px', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>Score: <strong style={{ color: '#047857' }}>{bestTeam.overall}</strong></div>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>QC: <strong>{bestTeam.avgPass != null ? bestTeam.avgPass + '%' : '—'}</strong></div>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>Recalls: <strong>{bestTeam.recalls}</strong></div>
+                  <div className="rcv-highlight-team-name best">{bestTeam.team}</div>
+                  <div className="rcv-highlight-stats-row">
+                    <div className="rcv-highlight-stat">Score: <strong className="rcv-highlight-inline-accent">{bestTeam.overall}</strong></div>
+                    <div className="rcv-highlight-stat">QC: <strong>{bestTeam.avgPass != null ? bestTeam.avgPass + '%' : '—'}</strong></div>
+                    <div className="rcv-highlight-stat">Recalls: <strong>{bestTeam.recalls}</strong></div>
                   </div>
                 </>
-              ) : <div style={{ color: '#94a3b8', marginTop: '10px' }}>No data yet.</div>}
+              ) : <div className="rcv-highlight-empty">No data yet.</div>}
             </div>
 
-            <div className="rc-card" style={{ padding: '20px', background: 'linear-gradient(135deg, #fef2f2, #ffffff)', borderColor: '#fecaca' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b91c1c', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div className="rc-card rcv-highlight-card worst">
+              <div className="rcv-highlight-header worst">
                 <AlertTriangle size={16} /> Most Recalls
               </div>
               {mostRecallsTeam ? (
                 <>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#991b1b', marginTop: '8px' }}>{mostRecallsTeam.team}</div>
-                  <div style={{ display: 'flex', gap: '18px', marginTop: '10px', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>Recalls: <strong style={{ color: '#b91c1c' }}>{mostRecallsTeam.recalls}</strong></div>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>QC: <strong>{mostRecallsTeam.avgPass != null ? mostRecallsTeam.avgPass + '%' : '—'}</strong></div>
-                    <div style={{ fontSize: '0.85rem', color: '#475569' }}>Score: <strong>{mostRecallsTeam.overall}</strong></div>
+                  <div className="rcv-highlight-team-name worst">{mostRecallsTeam.team}</div>
+                  <div className="rcv-highlight-stats-row">
+                    <div className="rcv-highlight-stat">Recalls: <strong className="rcv-highlight-inline-accent-red">{mostRecallsTeam.recalls}</strong></div>
+                    <div className="rcv-highlight-stat">QC: <strong>{mostRecallsTeam.avgPass != null ? mostRecallsTeam.avgPass + '%' : '—'}</strong></div>
+                    <div className="rcv-highlight-stat">Score: <strong>{mostRecallsTeam.overall}</strong></div>
                   </div>
                 </>
-              ) : <div style={{ color: '#94a3b8', marginTop: '10px' }}>No recalls recorded.</div>}
+              ) : <div className="rcv-highlight-empty">No recalls recorded.</div>}
             </div>
           </div>
 
@@ -781,43 +730,43 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
               { label: 'Teams Tracked', value: teamStats.length, color: '#2563eb', Icon: BarChart3 },
               { label: 'Avg. Team Score', value: teamStats.length ? Math.round(teamStats.reduce((a, b) => a + b.overall, 0) / teamStats.length) : '—', color: '#047857', Icon: TrendingUp },
             ].map((k, i) => (
-              <div key={i} className="rc-card" style={{ padding: '18px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{k.label}</div>
+              <div key={i} className="rc-card rcv-kpi-card">
+                <div className="rcv-kpi-top-row">
+                  <div className="rcv-kpi-label">{k.label}</div>
                   <k.Icon size={18} color={k.color} />
                 </div>
-                <div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>{k.value}</div>
+                <div className="rcv-kpi-value">{k.value}</div>
               </div>
             ))}
           </div>
 
           {/* RANKING + BAR CHART */}
           <div className="rc-cols">
-            <div className="rc-card" style={{ padding: '20px' }}>
-              <h2 style={{ margin: '0 0 4px', fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="rc-card rcv-ranking-card">
+              <h2 className="rcv-ranking-title">
                 <Award size={18} color="#2563eb" /> Team Performance Ranking
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: '#94a3b8' }}>Higher Quality Check, fewer recalls = better score.</p>
+              <p className="rcv-ranking-hint">Higher Quality Check, fewer recalls = better score.</p>
               {ranked.length === 0 ? (
-                <div style={{ color: '#94a3b8', padding: '20px', textAlign: 'center' }}>No team data available.</div>
+                <div className="rcv-ranking-empty">No team data available.</div>
               ) : ranked.map((t, i) => (
-                <div key={t.team} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: i < ranked.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem', background: i === 0 ? '#fef9c3' : '#f1f5f9', color: i === 0 ? '#a16207' : '#64748b', border: i === 0 ? '1px solid #fde68a' : '1px solid #e5e7eb' }}>
+                <div key={t.team} className={`rcv-ranking-row${i === ranked.length - 1 ? ' last' : ''}`}>
+                  <div className={`rcv-ranking-rank${i === 0 ? ' top' : ''}`}>
                     {i + 1}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.team}</span>
-                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: scoreColor(t.overall) }}>{t.overall}</span>
+                  <div className="rcv-ranking-body">
+                    <div className="rcv-ranking-top-line">
+                      <span className="rcv-ranking-team-name">{t.team}</span>
+                      <span className="rcv-ranking-score" style={{ '--score-color': scoreColor(t.overall) } as CSSProperties}>{t.overall}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <div className="rcv-ranking-bar-row">
                       <div className="rc-bar-track">
-                        <div style={{ width: `${t.overall}%`, height: '100%', background: scoreColor(t.overall), borderRadius: '6px' }} />
+                        <div className="rcv-ranking-bar-fill" style={{ '--bar-width': `${t.overall}%`, '--score-color': scoreColor(t.overall) } as CSSProperties} />
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '14px', marginTop: '6px', fontSize: '0.74rem', color: '#64748b' }}>
+                    <div className="rcv-ranking-meta-row">
                       <span>QC {t.avgPass != null ? t.avgPass + '%' : '—'}</span>
-                      <span style={{ color: t.recalls > 0 ? '#b91c1c' : '#64748b' }}>{t.recalls} recall{t.recalls === 1 ? '' : 's'}</span>
+                      <span className="rcv-ranking-meta-recalls" style={{ '--recalls-color': t.recalls > 0 ? '#b91c1c' : '#64748b' } as CSSProperties}>{t.recalls} recall{t.recalls === 1 ? '' : 's'}</span>
                       <span>{t.qcCount} QC{t.qcCount === 1 ? '' : 's'}</span>
                     </div>
                   </div>
@@ -825,20 +774,20 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
               ))}
             </div>
 
-            <div className="rc-card" style={{ padding: '20px' }}>
-              <h2 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="rc-card rcv-ranking-card">
+              <h2 className="rcv-ranking-title no-hint">
                 <AlertTriangle size={18} color="#b91c1c" /> Recalls by Team
               </h2>
               {byRecalls.filter(t => t.recalls > 0).length === 0 ? (
-                <div style={{ color: '#94a3b8', padding: '20px', textAlign: 'center' }}>No recalls recorded.</div>
+                <div className="rcv-ranking-empty">No recalls recorded.</div>
               ) : byRecalls.filter(t => t.recalls > 0).map((t) => (
-                <div key={t.team} style={{ marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                    <span style={{ color: '#334155', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.team}</span>
-                    <span style={{ color: '#b91c1c', fontWeight: 800 }}>{t.recalls}</span>
+                <div key={t.team} className="rcv-recalls-by-team">
+                  <div className="rcv-recalls-by-team-top">
+                    <span className="rcv-recalls-by-team-name">{t.team}</span>
+                    <span className="rcv-recalls-by-team-count">{t.recalls}</span>
                   </div>
                   <div className="rc-bar-track">
-                    <div style={{ width: `${(t.recalls / maxRecallBar) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #f87171, #dc2626)', borderRadius: '6px' }} />
+                    <div className="rcv-recalls-bar-fill" style={{ '--bar-width': `${(t.recalls / maxRecallBar) * 100}%` } as CSSProperties} />
                   </div>
                 </div>
               ))}
@@ -846,74 +795,72 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           </div>
 
           {/* LISTA DE CASAS EN / QUE ESTUVIERON EN RECALL */}
-          <div className="rc-card" style={{ overflow: 'hidden', marginBottom: '24px' }}>
-            <div style={{ padding: '18px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="rc-card rcv-recall-houses-card">
+            <div className="rcv-recall-houses-header">
+              <h2 className="rcv-recall-houses-title">
                 <Repeat size={18} color="#7c3aed" /> Casas en / que estuvieron en Recall
               </h2>
-              <div style={{ display: 'flex', gap: '14px', fontSize: '0.8rem', color: '#64748b' }}>
-                <span><strong style={{ color: '#b91c1c' }}>{currentlyInRecall}</strong> en recall ahora</span>
-                <span><strong style={{ color: '#0f172a' }}>{reportRecallHouses.length}</strong> en total</span>
+              <div className="rcv-recall-houses-stats">
+                <span><strong className="red">{currentlyInRecall}</strong> en recall ahora</span>
+                <span><strong className="dark">{reportRecallHouses.length}</strong> en total</span>
               </div>
             </div>
 
             {/* TABLA (escritorio) */}
-            <div className="rc-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '960px' }}>
+            <div className="rc-table-wrap rcv-table-scroll">
+              <table className="rcv-table min-960">
                 <thead>
                   <tr>
-                    <th style={{ ...s.th, width: '140px' }}>Estado</th>
-                    <th style={s.th}>Client</th>
-                    <th style={s.th}>Address</th>
-                    <th style={s.th}>Team</th>
-                    <th style={{ ...s.th, width: '170px' }}>Entró a Recall</th>
-                    <th style={{ ...s.th, width: '170px' }}>Salió de Recall</th>
-                    <th style={{ ...s.th, width: '60px', textAlign: 'center' }}>Veces</th>
-                    <th style={s.th}>Current Status</th>
+                    <th className="rcv-th w-140">Estado</th>
+                    <th className="rcv-th">Client</th>
+                    <th className="rcv-th">Address</th>
+                    <th className="rcv-th">Team</th>
+                    <th className="rcv-th w-170">Entró a Recall</th>
+                    <th className="rcv-th w-170">Salió de Recall</th>
+                    <th className="rcv-th w-60-center">Veces</th>
+                    <th className="rcv-th">Current Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportRecallHouses.length === 0 ? (
-                    <tr><td colSpan={8} style={{ ...s.td, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px' }}>No hay casas en recall en este periodo.</td></tr>
+                    <tr><td colSpan={8} className="rcv-td empty">No hay casas en recall en este periodo.</td></tr>
                   ) : reportRecallHouses.map((h) => {
                     const fromQC = cameFromFailedQC(h.houseId);
                     return (
                     <tr key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
-                      style={{ transition: 'background-color 0.2s', cursor: h.houseObj ? 'pointer' : 'default', background: h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : 'transparent') }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fee2e2' : '#f8fafc'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : 'transparent')}>
-                      <td style={s.td}>
+                      className={`rcv-recall-row${h.houseObj ? ' clickable' : ''}${h.current ? ' current' : (fromQC ? ' from-qc' : '')}`}>
+                      <td className="rcv-td">
                         {h.current ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
-                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> En recall
+                          <span className="rcv-status-chip current">
+                            <span className="rcv-dot-7 red" /> En recall
                           </span>
                         ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
+                          <span className="rcv-status-chip was">
                             Estuvo
                           </span>
                         )}
                       </td>
-                      <td style={{ ...s.td, fontWeight: 600 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <td className="rcv-td strong">
+                        <div className="rcv-client-cell">
                           {h.client}
                           {fromQC && <FailedQCBadge compact />}
                         </div>
                       </td>
-                      <td style={{ ...s.td, color: '#6b7280' }}>{h.address}</td>
-                      <td style={s.td}>
-                        <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{h.team}</span>
+                      <td className="rcv-td muted">{h.address}</td>
+                      <td className="rcv-td">
+                        <span className="rcv-team-chip">{h.team}</span>
                       </td>
-                      <td style={{ ...s.td, color: '#b45309', whiteSpace: 'nowrap' }}>{formatDateTime(h.lastEntered)}</td>
-                      <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
+                      <td className="rcv-td nowrap rcv-entered-cell">{formatDateTime(h.lastEntered)}</td>
+                      <td className="rcv-td nowrap">
                         {h.lastExited
-                          ? <span style={{ color: '#047857' }}>{formatDateTime(h.lastExited)}</span>
-                          : <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Aún en recall</span>}
+                          ? <span className="rcv-exited-cell">{formatDateTime(h.lastExited)}</span>
+                          : <span className="rcv-still-badge">Aún en recall</span>}
                       </td>
-                      <td style={{ ...s.td, textAlign: 'center', fontWeight: 700, color: h.count > 1 ? '#b91c1c' : '#0f172a' }}>{h.count}</td>
-                      <td style={s.td} onClick={(e) => e.stopPropagation()}>
+                      <td className={`rcv-td center-tone ${h.count > 1 ? 'high' : 'dark'}`}>{h.count}</td>
+                      <td className="rcv-td" onClick={(e) => e.stopPropagation()}>
                         {h.houseObj ? (
                           <RowStatusPill statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
-                        ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                        ) : <span className="rcv-no-house">—</span>}
                       </td>
                     </tr>
                     );
@@ -923,52 +870,52 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             </div>
 
             {/* TARJETAS (móvil) */}
-            <div className="rc-cards-wrap" style={{ flexDirection: 'column', gap: '14px', padding: '14px' }}>
+            <div className="rc-cards-wrap rcv-recall-houses-cards">
               {reportRecallHouses.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '20px' }}>No hay casas en recall en este periodo.</div>
+                <div className="rcv-empty-note-20">No hay casas en recall en este periodo.</div>
               ) : reportRecallHouses.map((h) => {
                 const fromQC = cameFromFailedQC(h.houseId);
                 return (
                 <div key={String(h.houseId || h.client)} onClick={() => h.houseObj && setDetailHouse(h.houseObj as Property)}
-                  style={{ background: h.current ? '#fef2f2' : (fromQC ? '#faf5ff' : '#ffffff'), border: `1px solid ${h.current ? '#fecaca' : (fromQC ? '#ddd6fe' : '#e5e7eb')}`, borderRadius: '14px', padding: '16px', cursor: h.houseObj ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.1rem', lineHeight: 1.25, minWidth: 0 }}>{h.client}</span>
+                  className={`rcv-recall-card${h.houseObj ? ' clickable' : ''}${h.current ? ' current' : (fromQC ? ' from-qc' : '')}`}>
+                  <div className="rcv-recall-card-top">
+                    <span className="rcv-recall-client-name">{h.client}</span>
                     {h.current ? (
-                      <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>
-                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} /> En recall
+                      <span className="rcv-status-chip current card rcv-shrink-0">
+                        <span className="rcv-dot-7 red" /> En recall
                       </span>
                     ) : (
-                      <span style={{ flexShrink: 0, background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap' }}>Estuvo</span>
+                      <span className="rcv-status-chip was card rcv-shrink-0">Estuvo</span>
                     )}
                   </div>
 
                   {fromQC && <div><FailedQCBadge /></div>}
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.address || '—'}</span>
+                  <div className="rcv-address-row">
+                    <MapPin size={16} color="#94a3b8" className="rcv-shrink-0" />
+                    <span className="rcv-ellipsis">{h.address || '—'}</span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ backgroundColor: '#ede9fe', color: '#6d28d9', padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 }}>{h.team}</span>
-                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Veces en recall: <strong style={{ color: h.count > 1 ? '#b91c1c' : '#0f172a' }}>{h.count}</strong></span>
+                  <div className="rcv-recall-card-team-row">
+                    <span className="rcv-team-chip">{h.team}</span>
+                    <span className="rcv-count-text">Veces en recall: <strong className={h.count > 1 ? 'high' : ''}>{h.count}</strong></span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '10px 12px' }}>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Entró a Recall</div>
-                      <div style={{ fontSize: '0.82rem', color: '#b45309', fontWeight: 700, marginTop: '3px' }}>{formatDateTime(h.lastEntered)}</div>
+                  <div className="rcv-mini-grid">
+                    <div className="rcv-mini-box entered">
+                      <div className="rcv-mini-label entered">Entró a Recall</div>
+                      <div className="rcv-mini-value entered">{formatDateTime(h.lastEntered)}</div>
                     </div>
-                    <div style={{ background: h.lastExited ? '#ecfdf5' : '#fef2f2', border: `1px solid ${h.lastExited ? '#a7f3d0' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px' }}>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: h.lastExited ? '#065f46' : '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Salió de Recall</div>
-                      <div style={{ fontSize: '0.82rem', color: h.lastExited ? '#047857' : '#b91c1c', fontWeight: 700, marginTop: '3px' }}>{h.lastExited ? formatDateTime(h.lastExited) : 'Aún en recall'}</div>
+                    <div className={`rcv-mini-box ${h.lastExited ? 'exited' : 'still'}`}>
+                      <div className={`rcv-mini-label ${h.lastExited ? 'exited' : 'still'}`}>Salió de Recall</div>
+                      <div className={`rcv-mini-value ${h.lastExited ? 'exited' : 'still'}`}>{h.lastExited ? formatDateTime(h.lastExited) : 'Aún en recall'}</div>
                     </div>
                   </div>
 
                   <div onClick={(e) => e.stopPropagation()}>
                     {h.houseObj ? (
                       <RowStatusPill fullWidth statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
-                    ) : <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>}
+                    ) : <span className="rcv-no-house">—</span>}
                   </div>
                 </div>
                 );
@@ -976,7 +923,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             </div>
           </div>
 
-          <p style={{ marginTop: '4px', fontSize: '0.78rem', color: '#94a3b8' }}>
+          <p className="rcv-footnote tight">
             Score = Quality Check pass rate − ({RECALL_PENALTY_PER} × recalls). El reporte considera los recalls y Quality Checks dentro del rango de fechas seleccionado.
           </p>
         </>

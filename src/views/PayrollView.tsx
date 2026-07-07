@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { 
+import type { CSSProperties } from 'react';
+import {
   Calendar, User, DollarSign, CheckCircle, Activity, MapPin, 
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save
 } from 'lucide-react';
@@ -7,6 +8,7 @@ import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
 import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
+import './PayrollView.css';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -304,94 +306,53 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   }, [editForm?.baseAmount, editForm?.extraAmount, editForm?.discountAmount]);
 
 
-  const s = {
-    input: { padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '0.95rem', outline: 'none', width: '100%', boxSizing: 'border-box' as const, backgroundColor: '#ffffff', color: '#111827', colorScheme: 'light' as const },
-    label: { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: '6px' },
-    th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, borderBottom: '1px solid #f1f5f9' },
-    td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
-    
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
-    title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 },
-    body: { padding: '30px', overflowY: 'auto', paddingBottom: '30px' } as React.CSSProperties, 
-    detailBanner: { border: '1px solid #bfdbfe', borderRadius: '8px', padding: '24px', backgroundColor: '#eff6ff', display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '24px' } as React.CSSProperties,
-    detailItem: { display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' } as React.CSSProperties,
-    detailLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', fontWeight: 600 } as React.CSSProperties,
-    detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' } as React.CSSProperties,
-    noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
-    noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
-    
-    btnPrimary: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s' } as React.CSSProperties,
-    btnOutline: { backgroundColor: 'white', border: '1px solid #cbd5e1', color: '#334155', padding: '10px 20px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' } as React.CSSProperties,
-    closeBtn: { background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' } as React.CSSProperties
-  };
-
   return (
-    <div className="fade-in" style={{ padding: '20px' }}>
-      <style>{`
-        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-        .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
-        @media (min-width: 769px) { .modal-70 { width: 70%; } }
-        .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
-        .col-span-full { grid-column: 1 / -1; }
-        
-        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .hamburger-btn:hover { background-color: #f8fafc; }
-        
-        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
-        .fade-in *::-webkit-scrollbar-track { background: transparent; }
-        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; }
-        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
-        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-
-        @media (max-width: 768px) {
-          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-        }
-      `}</style>
+    <div className="fade-in pv-page">
 
       {/* HEADER */}
-      <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-        <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <header className="main-header dashboard-header-container pv-header">
+        <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#111827', fontWeight: 700 }}>Payroll & Payments</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>Manage employee payments and debts</p>
+            <h1 className="pv-title">Payroll & Payments</h1>
+            <p className="pv-subtitle">Manage employee payments and debts</p>
           </div>
         </div>
       </header>
 
       {/* FILTROS */}
-      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e5e7eb', marginBottom: '24px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 180px' }}>
-          <label style={s.label}>Start Date</label>
-          <div style={{ position: 'relative' }}>
-            <Calendar size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-            <input type="date" style={{...s.input, paddingLeft: '36px'}} value={startDate} onChange={e => setStartDate(e.target.value)} />
+      <div className="pv-filters">
+        <div className="pv-filter-item">
+          <label className="pv-label">Start Date</label>
+          <div className="pv-input-wrap">
+            <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
+            <input type="date" className="pv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
           </div>
         </div>
-        <div style={{ flex: '1 1 180px' }}>
-          <label style={s.label}>End Date</label>
-          <div style={{ position: 'relative' }}>
-            <Calendar size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-            <input type="date" style={{...s.input, paddingLeft: '36px'}} value={endDate} onChange={e => setEndDate(e.target.value)} />
+        <div className="pv-filter-item">
+          <label className="pv-label">End Date</label>
+          <div className="pv-input-wrap">
+            <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
+            <input type="date" className="pv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
         </div>
-        <div style={{ flex: '1 1 250px' }}>
-          <label style={s.label}>Employee</label>
-          <div style={{ position: 'relative' }}>
-            <User size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-            <select style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}>
+        <div className="pv-filter-item employee">
+          <label className="pv-label">Employee</label>
+          <div className="pv-input-wrap">
+            <User size={16} color="#9ca3af" className="pv-input-icon" />
+            <select className="pv-input selectable" value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}>
               <option value="">All Employees...</option>
               {employees.map(emp => <option key={emp.id} value={emp.id}>{empName(emp)}</option>)}
             </select>
           </div>
         </div>
-        <div style={{ flex: '1 1 200px' }}>
-          <label style={s.label}>Status</label>
-          <div style={{ position: 'relative' }}>
-            <Activity size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-            <select style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
+        <div className="pv-filter-item status">
+          <label className="pv-label">Status</label>
+          <div className="pv-input-wrap">
+            <Activity size={16} color="#9ca3af" className="pv-input-icon" />
+            <select className="pv-input selectable" value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
               <option value="">All Statuses</option>
               <option value="Pending">Pending</option>
               <option value="Paid">Paid</option>
@@ -401,44 +362,44 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       </div>
 
       {/* RESUMEN FINANCIERO */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-        <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', padding: '24px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#d1fae5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle size={24} /></div>
+      <div className="pv-summary-grid">
+        <div className="pv-summary-card paid">
+          <div className="pv-summary-icon-box paid"><CheckCircle size={24} /></div>
           <div>
-            <div style={{ fontSize: '0.85rem', color: '#047857', fontWeight: 600, textTransform: 'uppercase' }}>Total Paid (Filtered)</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#065f46' }}>${totalPaid.toFixed(2)}</div>
+            <div className="pv-summary-label paid">Total Paid (Filtered)</div>
+            <div className="pv-summary-value paid">${totalPaid.toFixed(2)}</div>
           </div>
         </div>
-        <div style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa', padding: '24px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: '#ffedd5', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><DollarSign size={24} /></div>
+        <div className="pv-summary-card pending">
+          <div className="pv-summary-icon-box pending"><DollarSign size={24} /></div>
           <div>
-            <div style={{ fontSize: '0.85rem', color: '#b45309', fontWeight: 600, textTransform: 'uppercase' }}>Total Pending (Filtered)</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#92400e' }}>${totalPending.toFixed(2)}</div>
+            <div className="pv-summary-label pending">Total Pending (Filtered)</div>
+            <div className="pv-summary-value pending">${totalPending.toFixed(2)}</div>
           </div>
         </div>
       </div>
 
       {/* REGISTROS */}
-      <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+      <div className="pv-table-wrap">
+        <table className="pv-table">
           <thead>
             <tr>
-              <th style={{...s.th, width: '100px'}}>Actions</th>
-              <th style={s.th}>Property</th>
-              <th style={s.th}>Date</th>
-              <th style={s.th}>Employee</th>
-              <th style={{...s.th, textAlign: 'right'}}>Total Amount</th>
-              <th style={{...s.th, textAlign: 'center'}}>Status</th>
+              <th className="pv-th actions">Actions</th>
+              <th className="pv-th">Property</th>
+              <th className="pv-th">Date</th>
+              <th className="pv-th">Employee</th>
+              <th className="pv-th right">Total Amount</th>
+              <th className="pv-th center">Status</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading payroll data...</td></tr>
+              <tr><td colSpan={6} className="pv-empty-cell">Loading payroll data...</td></tr>
             ) : records.length === 0 ? (
               // ⭐ Distinguir entre "BD vacía" y "filtros excluyen todo"
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No payroll records in database yet. Register payments from the Houses view.</td></tr>
+              <tr><td colSpan={6} className="pv-empty-cell">No payroll records in database yet. Register payments from the Houses view.</td></tr>
             ) : filteredRecords.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic' }}>
+              <tr><td colSpan={6} className="pv-empty-cell italic">
                 {records.length} records loaded but none match the current filters. Try resetting Status to "All Statuses" or clearing dates.
               </td></tr>
             ) : (
@@ -450,50 +411,48 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                 const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
 
                 return (
-                  <tr 
-                    key={record.id} 
+                  <tr
+                    key={record.id}
                     onClick={() => setSelectedPayroll(record)}
-                    style={{ transition: 'background-color 0.2s', cursor: 'pointer' }} 
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    className="pv-row"
                   >
-                    <td style={s.td} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button onClick={() => handleOpenEditModal(record)} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex' }}><Edit2 size={16} /></button>
-                        <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex' }}><Trash2 size={16} /></button>
+                    <td className="pv-td" onClick={(e) => e.stopPropagation()}>
+                      <div className="pv-row-actions">
+                        <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit"><Edit2 size={16} /></button>
+                        <button onClick={() => handleDeletePayroll(record.id as string)} className="pv-icon-btn delete"><Trash2 size={16} /></button>
                       </div>
                     </td>
 
-                    <td style={s.td}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{clientName}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
+                    <td className="pv-td">
+                      <div className="pv-client-name">{clientName}</div>
+                      <div className="pv-client-address"><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
                     </td>
-                    
-                    <td style={s.td}>{fmtDate(record.date)}</td>
-                    
-                    <td style={{...s.td, fontWeight: 600}}>{empName(emp) || 'Unknown'}</td>
-                    
-                    <td style={{...s.td, fontWeight: 700, color: '#111827', textAlign: 'right', fontSize: '1.05rem'}}>${getTotal(record).toFixed(2)}</td>
-                    
-                    <td style={{...s.td, textAlign: 'center'}}>
+
+                    <td className="pv-td">{fmtDate(record.date)}</td>
+
+                    <td className="pv-td strong">{empName(emp) || 'Unknown'}</td>
+
+                    <td className="pv-td amount">${getTotal(record).toFixed(2)}</td>
+
+                    <td className="pv-td center">
                       {isPaid ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
-                          <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record); }} style={{ background: 'none', border: 'none', color: '#10b981', padding: '4px 12px', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div className="pv-paid-col">
+                          <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record); }} className="pv-paid-btn">
                             <CheckCircle size={14}/> Paid
                           </button>
                           {((record as any).paidAt || (record as any).paidBy) && (
-                            <span style={{ fontSize: '0.68rem', color: '#94a3b8', lineHeight: 1.2, textAlign: 'center' }}>
+                            <span className="pv-paid-meta">
                               {(record as any).paidAt ? fmtDate((record as any).paidAt) : ''}{(record as any).paidBy ? ` · ${(record as any).paidBy}` : ''}
                             </span>
                           )}
                         </div>
                       ) : (
-                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record); }} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', margin: '0 auto', display: 'block' }}>
+                        <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(record); }} className="pv-mark-paid-btn">
                           Mark Paid
                         </button>
                       )}
                     </td>
-                    
+
                   </tr>
                 )
               })
@@ -505,13 +464,13 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       {/* --- MODAL DETALLE DEL PAGO --- */}
       {selectedPayroll && (
         <div className="modal-overlay-centered" onClick={() => setSelectedPayroll(null)}>
-          <div className="modal-70" style={{ maxWidth: '650px' }} onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Payment Details</h3>
-              <button style={s.closeBtn} onClick={() => setSelectedPayroll(null)}><X size={24} /></button>
+          <div className="modal-70 pv-payment-modal" onClick={e => e.stopPropagation()}>
+            <header className="pv-modal-header">
+              <h3 className="pv-modal-title">Payment Details</h3>
+              <button className="pv-modal-close" onClick={() => setSelectedPayroll(null)}><X size={24} /></button>
             </header>
 
-            <div style={s.body}>
+            <div className="pv-modal-body">
               {(() => {
                 const emp = employees.find(e => e.id === selectedPayroll.employeeId);
                 const prop = properties.find(p => p.id === selectedPayroll.propertyId);
@@ -520,71 +479,69 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
                 return (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                    <div className="pv-payment-top-row">
                       <div>
-                        <h4 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h4 className="pv-payment-employee-name">
                           <User size={22} color="#3b82f6" /> {empName(emp) || 'Unknown Employee'}
                         </h4>
-                        <div style={{ color: '#64748b', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div className="pv-payment-paid-on">
                           <CalendarDays size={16} /> Paid on: {fmtDate((selectedPayroll as any).paidAt || selectedPayroll.date)}{(selectedPayroll as any).paidBy ? ` · by ${(selectedPayroll as any).paidBy}` : ''}
                         </div>
                       </div>
-                      <span style={{ backgroundColor: isPaid ? '#d1fae5' : '#ffedd5', color: isPaid ? '#047857' : '#b45309', padding: '8px 16px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: 700 }}>
+                      <span className={`pv-payment-status-chip ${isPaid ? 'paid' : 'pending'}`}>
                         {selectedPayroll.status || 'Pending'}
                       </span>
                     </div>
 
-                    <div style={s.detailBanner}>
-                      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ ...s.detailLabel, color: '#1e40af' }}><Home size={14} /> PROPERTY COMPLETED</span>
-                          <span style={{ fontSize: '1.15rem', color: '#1e3a8a', fontWeight: 700, marginTop: '4px' }}>{clientName}</span>
-                          <span style={{ fontSize: '0.85rem', color: '#3b82f6', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <div className="pv-detail-banner">
+                      <div className="pv-property-banner-inner">
+                        <div className="pv-property-banner-col">
+                          <span className="pv-detail-label blue"><Home size={14} /> PROPERTY COMPLETED</span>
+                          <span className="pv-property-banner-client">{clientName}</span>
+                          <span className="pv-property-banner-address">
                             <MapPin size={14}/> {prop ? prop.address : 'Unknown Address'}
                           </span>
                         </div>
-                        <button 
+                        <button
                           onClick={() => { setSelectedHouse(prop || null); setSelectedPayroll(null); }}
-                          style={{ backgroundColor: 'white', border: '1px solid #bfdbfe', color: '#1e40af', padding: '10px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#eff6ff'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+                          className="pv-view-property-btn"
                         >
                           <FileText size={18} /> View Property
                         </button>
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                      <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Base Amount</span>
-                        <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', marginTop: '4px' }}>${Number(selectedPayroll.baseAmount || 0).toFixed(2)}</span>
+                    <div className="pv-amounts-grid">
+                      <div className="pv-amount-box">
+                        <span className="pv-amount-label">Base Amount</span>
+                        <span className="pv-amount-value">${Number(selectedPayroll.baseAmount || 0).toFixed(2)}</span>
                       </div>
-                      <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Extra Amount</span>
-                        <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', marginTop: '4px' }}>+ ${Number(selectedPayroll.extraAmount || 0).toFixed(2)}</span>
-                        {selectedPayroll.extraNote && <span style={{fontSize: '0.8rem', color: '#64748b', marginTop: '6px', fontStyle: 'italic'}}>"{selectedPayroll.extraNote}"</span>}
+                      <div className="pv-amount-box">
+                        <span className="pv-amount-label">Extra Amount</span>
+                        <span className="pv-amount-value">+ ${Number(selectedPayroll.extraAmount || 0).toFixed(2)}</span>
+                        {selectedPayroll.extraNote && <span className="pv-amount-note">"{selectedPayroll.extraNote}"</span>}
                       </div>
-                      <div style={{ padding: '16px', backgroundColor: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca', display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>Discount</span>
-                        <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#dc2626', marginTop: '4px' }}>- ${Number(selectedPayroll.discountAmount || 0).toFixed(2)}</span>
-                        {selectedPayroll.discountNote && <span style={{fontSize: '0.8rem', color: '#991b1b', marginTop: '6px', fontStyle: 'italic'}}>"{selectedPayroll.discountNote}"</span>}
+                      <div className="pv-amount-box discount">
+                        <span className="pv-amount-label discount">Discount</span>
+                        <span className="pv-amount-value discount">- ${Number(selectedPayroll.discountAmount || 0).toFixed(2)}</span>
+                        {selectedPayroll.discountNote && <span className="pv-amount-note discount">"{selectedPayroll.discountNote}"</span>}
                       </div>
-                      <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>TOTAL PAYOUT</span>
-                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>${getTotal(selectedPayroll).toFixed(2)}</span>
+                      <div className="pv-amount-box total">
+                        <span className="pv-amount-label total">TOTAL PAYOUT</span>
+                        <span className="pv-amount-value total">${getTotal(selectedPayroll).toFixed(2)}</span>
                       </div>
                     </div>
                   </>
                 );
               })()}
             </div>
-            
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button style={s.btnOutline} onClick={() => setSelectedPayroll(null)}>Close</button>
+
+            <footer className="pv-modal-footer">
+              <button className="pv-btn-outline-modal" onClick={() => setSelectedPayroll(null)}>Close</button>
               {selectedPayroll.status === 'Paid' ? (
-                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(selectedPayroll); setSelectedPayroll(null); }} style={s.btnOutline}>Mark as Pending</button>
+                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(selectedPayroll); setSelectedPayroll(null); }} className="pv-btn-outline-modal">Mark as Pending</button>
               ) : (
-                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(selectedPayroll); setSelectedPayroll(null); }} style={{...s.btnPrimary, backgroundColor: '#10b981'}}><CheckCircle size={18}/> Mark as Paid</button>
+                <button onClick={(e) => { e.stopPropagation(); handleMarkAsPaid(selectedPayroll); setSelectedPayroll(null); }} className="pv-btn-primary-modal green"><CheckCircle size={18}/> Mark as Paid</button>
               )}
             </footer>
           </div>
@@ -594,53 +551,53 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       {/* --- MODAL EDICIÓN DEL PAGO --- */}
       {isEditingPayroll && editForm && (
         <div className="modal-overlay-centered" onClick={() => setIsEditingPayroll(false)}>
-          <div className="modal-70" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Edit Payment</h3>
-              <button style={s.closeBtn} onClick={() => setIsEditingPayroll(false)}><X size={20} /></button>
+          <div className="modal-70 pv-edit-modal" onClick={e => e.stopPropagation()}>
+            <header className="pv-modal-header">
+              <h3 className="pv-modal-title">Edit Payment</h3>
+              <button className="pv-modal-close" onClick={() => setIsEditingPayroll(false)}><X size={20} /></button>
             </header>
-            
-            <div style={s.body}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Base Amount ($) <span style={{ color: '#3b82f6' }}>*</span></label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={editForm.baseAmount || ''} onChange={(e) => setEditForm({ ...editForm, baseAmount: Number(e.target.value) })} />
+
+            <div className="pv-modal-body">
+              <div className="pv-edit-grid">
+                <div className="pv-edit-row">
+                  <div className="pv-edit-field">
+                    <label className="pv-label">Base Amount ($) <span className="pv-required-mark">*</span></label>
+                    <input type="number" step="0.01" className="pv-input" placeholder="0.00" value={editForm.baseAmount || ''} onChange={(e) => setEditForm({ ...editForm, baseAmount: Number(e.target.value) })} />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Extra ($)</label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={editForm.extraAmount || ''} onChange={(e) => setEditForm({ ...editForm, extraAmount: Number(e.target.value) })} />
+                <div className="pv-edit-row">
+                  <div className="pv-edit-field">
+                    <label className="pv-label">Extra ($)</label>
+                    <input type="number" step="0.01" className="pv-input" placeholder="0.00" value={editForm.extraAmount || ''} onChange={(e) => setEditForm({ ...editForm, extraAmount: Number(e.target.value) })} />
                   </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={s.label}>Extra Note</label>
-                    <input type="text" style={s.input} placeholder="Reason for extra..." value={editForm.extraNote || ''} onChange={(e) => setEditForm({ ...editForm, extraNote: e.target.value })} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={s.label}>Discount ($)</label>
-                    <input type="number" step="0.01" style={s.input} placeholder="0.00" value={editForm.discountAmount || ''} onChange={(e) => setEditForm({ ...editForm, discountAmount: Number(e.target.value) })} />
-                  </div>
-                  <div style={{ flex: 2 }}>
-                    <label style={s.label}>Discount Note</label>
-                    <input type="text" style={s.input} placeholder="Reason for discount..." value={editForm.discountNote || ''} onChange={(e) => setEditForm({ ...editForm, discountNote: e.target.value })} />
+                  <div className="pv-edit-field wide">
+                    <label className="pv-label">Extra Note</label>
+                    <input type="text" className="pv-input" placeholder="Reason for extra..." value={editForm.extraNote || ''} onChange={(e) => setEditForm({ ...editForm, extraNote: e.target.value })} />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ecfdf5', border: '1px solid #10b981', borderRadius: '8px', marginTop: '8px' }}>
-                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#047857' }}>TOTAL TO PAY:</span>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#047857' }}>${(editForm.totalAmount || 0).toFixed(2)}</span>
+                <div className="pv-edit-row">
+                  <div className="pv-edit-field">
+                    <label className="pv-label">Discount ($)</label>
+                    <input type="number" step="0.01" className="pv-input" placeholder="0.00" value={editForm.discountAmount || ''} onChange={(e) => setEditForm({ ...editForm, discountAmount: Number(e.target.value) })} />
+                  </div>
+                  <div className="pv-edit-field wide">
+                    <label className="pv-label">Discount Note</label>
+                    <input type="text" className="pv-input" placeholder="Reason for discount..." value={editForm.discountNote || ''} onChange={(e) => setEditForm({ ...editForm, discountNote: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="pv-total-row">
+                  <span className="pv-total-label">TOTAL TO PAY:</span>
+                  <span className="pv-total-value">${(editForm.totalAmount || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>
 
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button style={s.btnOutline} onClick={() => setIsEditingPayroll(false)}>Cancel</button>
-              <button style={{ ...s.btnPrimary, backgroundColor: '#3b82f6' }} onClick={handleSaveEdit} disabled={isSaving}>
+            <footer className="pv-modal-footer">
+              <button className="pv-btn-outline-modal" onClick={() => setIsEditingPayroll(false)}>Cancel</button>
+              <button className="pv-btn-primary-modal" onClick={handleSaveEdit} disabled={isSaving}>
                 {isSaving ? 'Saving...' : <><Save size={18}/> Save Changes</>}
               </button>
             </footer>
@@ -652,96 +609,96 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       {selectedHouse && (
         <div className="modal-overlay-centered" onClick={() => setSelectedHouse(null)}>
           <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Property Overview</h3>
-              <button style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' }} onClick={() => setSelectedHouse(null)}><X size={24} /></button>
+            <header className="pv-modal-header">
+              <h3 className="pv-modal-title">Property Overview</h3>
+              <button className="pv-modal-close" onClick={() => setSelectedHouse(null)}><X size={24} /></button>
             </header>
 
-            <div style={s.body}>
-              <div style={s.detailBanner}>
-                <div style={s.detailItem}>
-                  <span style={{ ...s.detailLabel, color: '#1e40af' }}><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span style={{ fontSize: '1.25rem', color: '#1e3a8a', fontWeight: 600, marginTop: '4px' }}>{selectedHouse.address}</span>
+            <div className="pv-modal-body">
+              <div className="pv-detail-banner">
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
+                  <span className="pv-property-banner-client-static">{selectedHouse.address}</span>
                 </div>
               </div>
 
               <div className="grid-3-cols">
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Activity size={14} /> STATUS</span>
-                  <div style={{ marginTop: '4px' }}>
-                    <span style={{ backgroundColor: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Activity size={14} /> STATUS</span>
+                  <div className="pv-mt-4">
+                    <span className="pv-status-chip">
                       {getRelationName(statuses, selectedHouse.statusId, selectedHouse.statusId)}
                     </span>
                   </div>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><FileText size={14} /> INVOICE STATUS</span>
-                  <span style={s.detailValue}>{selectedHouse.invoiceStatus || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
+                  <span className="pv-detail-value">{selectedHouse.invoiceStatus || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><User size={14} /> CLIENT</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><User size={14} /> CLIENT</span>
                   {/* ⭐ FIX: nombre del cliente resuelto desde customers */}
-                  <span style={s.detailValue}>{getClientName(selectedHouse.client)}</span>
+                  <span className="pv-detail-value">{getClientName(selectedHouse.client)}</span>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span style={s.detailValue}>{selectedHouse.receiveDate || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
+                  <span className="pv-detail-value">{selectedHouse.receiveDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span style={s.detailValue}>{selectedHouse.scheduleDate || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
+                  <span className="pv-detail-value">{selectedHouse.scheduleDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Wrench size={14} /> SERVICE</span>
-                  <span style={s.detailValue}>{getRelationName(services, selectedHouse.serviceId)}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Wrench size={14} /> SERVICE</span>
+                  <span className="pv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</span>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME IN</span>
-                  <span style={s.detailValue}>{selectedHouse.timeIn || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Clock size={14} /> TIME IN</span>
+                  <span className="pv-detail-value">{selectedHouse.timeIn || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME OUT</span>
-                  <span style={s.detailValue}>{selectedHouse.timeOut || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Clock size={14} /> TIME OUT</span>
+                  <span className="pv-detail-value">{selectedHouse.timeOut || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Flag size={14} /> PRIORITY</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(priorities, selectedHouse.priorityId) && <span style={{ backgroundColor: getRelationColor(priorities, selectedHouse.priorityId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(priorities, selectedHouse.priorityId)}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Flag size={14} /> PRIORITY</span>
+                  <div className="pv-dot-row">
+                    {getRelationColor(priorities, selectedHouse.priorityId) && <span className="pv-dot-12" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
+                    <span className="pv-detail-value">{getRelationName(priorities, selectedHouse.priorityId)}</span>
                   </div>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> ROOMS</span>
-                  <span style={s.detailValue}>{selectedHouse.rooms || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Hash size={14} /> ROOMS</span>
+                  <span className="pv-detail-value">{selectedHouse.rooms || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> BATHROOMS</span>
-                  <span style={s.detailValue}>{selectedHouse.bathrooms || '-'}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Hash size={14} /> BATHROOMS</span>
+                  <span className="pv-detail-value">{selectedHouse.bathrooms || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Users size={14} /> TEAM</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(teams, selectedHouse.teamId) && <span style={{ backgroundColor: getRelationColor(teams, selectedHouse.teamId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
+                <div className="pv-detail-item">
+                  <span className="pv-detail-label"><Users size={14} /> TEAM</span>
+                  <div className="pv-dot-row">
+                    {getRelationColor(teams, selectedHouse.teamId) && <span className="pv-dot-12" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
+                    <span className="pv-detail-value">{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
                   </div>
                 </div>
 
-                <div className="col-span-full" style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> ASSIGNED WORKERS</span>
+                <div className="col-span-full pv-workers-box">
+                  <div className="pv-workers-header">
+                    <span className="pv-detail-label"><User size={14} className="pv-label-icon-inline"/> ASSIGNED WORKERS</span>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <div className="pv-worker-chips">
                     {!(selectedHouse.assignedWorkers && selectedHouse.assignedWorkers.length > 0) ? (
-                      <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned.</span>
+                      <span className="pv-workers-none-text">No workers assigned.</span>
                     ) : (
                       selectedHouse.assignedWorkers.map(workerId => {
                         const emp = employees.find(e => e.id === workerId);
                         if (!emp) return null;
                         return (
-                          <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div key={workerId} className="pv-worker-chip">
                             <User size={12} color="#64748b" />
                             {empName(emp)}
                           </div>
@@ -751,14 +708,14 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                   </div>
                 </div>
 
-                <div className="col-span-full"><div style={s.noteBoxGray}><span style={{ ...s.detailLabel, marginBottom: '8px' }}><StickyNote size={14} /> GENERAL NOTE</span><span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No notes.'}</span></div></div>
-                <div className="col-span-full"><div style={s.noteBoxOrange}><span style={{ ...s.detailLabel, marginBottom: '8px', color: '#c2410c' }}><PenTool size={14} /> EMPLOYEE'S NOTE</span><span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.employeeNote || 'No employee notes.'}</span></div></div>
+                <div className="col-span-full"><div className="pv-note-box"><span className="pv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span><span className="pv-detail-value small">{selectedHouse.note || 'No notes.'}</span></div></div>
+                <div className="col-span-full"><div className="pv-note-box orange"><span className="pv-detail-label orange spaced"><PenTool size={14} /> EMPLOYEE'S NOTE</span><span className="pv-detail-value small">{selectedHouse.employeeNote || 'No employee notes.'}</span></div></div>
 
               </div>
             </div>
-            
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px' }}>
-              <button style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', color: '#111827', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => setSelectedHouse(null)}>Close</button>
+
+            <footer className="pv-modal-footer alt-bg">
+              <button className="pv-btn-close-plain" onClick={() => setSelectedHouse(null)}>Close</button>
             </footer>
           </div>
         </div>

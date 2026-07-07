@@ -1,0 +1,77 @@
+.rv-page { padding: 20px; }
+.rv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.rv-title { margin: 0; font-size: 1.8rem; color: #111827; font-weight: 700; }
+.rv-subtitle { margin: 4px 0 0 0; color: #6b7280; font-size: 0.95rem; }
+.rv-btn-create { display: flex; align-items: center; gap: 8px; background-color: #111827; color: white; border: none; padding: 12px 24px; border-radius: 20px; font-weight: 600; cursor: pointer; }
+.rv-btn-create:disabled { cursor: not-allowed; }
+
+.rv-table-card { background-color: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.rv-table { width: 100%; border-collapse: collapse; }
+.rv-th { padding: 12px 20px; text-align: left; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #f1f5f9; }
+.rv-th.right { text-align: right; }
+.rv-th.center { text-align: center; }
+.rv-td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; color: #0f172a; }
+.rv-td.right { text-align: right; }
+.rv-td.center { text-align: center; }
+.rv-td.strong { font-weight: 600; }
+.rv-td.role-name { font-weight: 600; color: #2563eb; }
+.rv-td.muted { color: #64748b; }
+.rv-empty-row { text-align: center; padding: 40px; color: #94a3b8; }
+.rv-icon-inline { display: inline; margin-right: 8px; }
+.rv-icon-btn { background: none; border: none; cursor: pointer; padding: 8px; }
+.rv-icon-btn.edit { color: #3b82f6; }
+.rv-icon-btn.delete { color: #ef4444; margin-left: 8px; }
+
+/* Modal */
+.rv-modal-overlay { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; }
+.rv-modal { background-color: white; width: 100%; max-width: 900px; border-radius: 16px; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+.rv-modal-header { padding: 20px 24px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+.rv-modal-title { margin: 0; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+.rv-modal-close { background: none; border: none; cursor: pointer; color: #64748b; }
+.rv-modal-body { padding: 24px; overflow-y: auto; }
+.rv-modal-footer { padding: 20px 24px; border-top: 1px solid #f1f5f9; background-color: #f8fafc; display: flex; justify-content: flex-end; gap: 12px; border-radius: 0 0 16px 16px; }
+
+.rv-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px; }
+.rv-label { font-size: 0.85rem; font-weight: 600; color: #475569; display: block; margin-bottom: 8px; }
+.rv-input { width: 100%; box-sizing: border-box; padding: 10px 14px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none; background-color: #ffffff; color: #0f172a; font-size: 0.95rem; }
+
+.rv-section-title { margin: 0 0 20px 0; font-size: 1rem; font-weight: 700; color: #0f172a; }
+.rv-matrix-card { border: 1px solid #f1f5f9; border-radius: 12px; overflow: hidden; overflow-x: auto; }
+.rv-matrix-table { width: 100%; border-collapse: collapse; min-width: 600px; }
+.rv-matrix-thead { background-color: #f8fafc; }
+.rv-matrix-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+.rv-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #2563eb; }
+.rv-checkbox.top { margin-top: 2px; }
+.rv-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.85rem; outline: none; background-color: #ffffff; color: #0f172a; cursor: pointer; }
+
+.rv-panel { margin-top: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+.rv-panel-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px; }
+.rv-panel-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rv-panel-title-group { display: flex; align-items: center; gap: 8px; }
+.rv-panel-title { margin: 0; font-size: 1rem; font-weight: 700; color: #0f172a; }
+.rv-panel-desc { margin: 0 0 16px 0; font-size: 0.85rem; color: #64748b; }
+.rv-panel-empty { padding: 16px; text-align: center; color: #94a3b8; font-size: 0.85rem; font-style: italic; }
+.rv-btn-row { display: flex; gap: 8px; }
+.rv-btn-chip { padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.rv-btn-chip.primary { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.rv-btn-chip.neutral { background: white; color: #64748b; border: 1px solid #cbd5e1; }
+
+.rv-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.rv-status-option { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background-color: white; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.rv-status-option.checked { border-color: #2563eb; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1); }
+.rv-status-dot { width: 10px; height: 10px; border-radius: 50%; background-color: var(--dot-color); flex-shrink: 0; }
+.rv-status-name { font-size: 0.9rem; font-weight: 500; color: #1e293b; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-summary-box { margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; }
+.rv-summary-box.info { background-color: #eff6ff; color: #1e40af; }
+.rv-summary-box.warning { background-color: #fff7ed; color: #9a3412; }
+
+.rv-groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.rv-group-option { display: flex; align-items: flex-start; gap: 12px; padding: 14px; background-color: white; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.rv-group-option.visible { border-color: #2563eb; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.08); }
+.rv-group-text { flex: 1; }
+.rv-group-label { font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 2px; }
+.rv-group-desc { font-size: 0.75rem; color: #64748b; line-height: 1.4; }
+
+.rv-btn-cancel { background-color: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.rv-btn-save { display: flex; align-items: center; gap: 8px; background: #2563eb; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.rv-btn-save:disabled { cursor: wait; opacity: 0.7; }

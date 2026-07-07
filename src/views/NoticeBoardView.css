@@ -1,0 +1,77 @@
+.nb-page { padding: 20px; max-width: 800px; margin: 0 auto; }
+
+.post-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); overflow: hidden; }
+.post-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px; border-bottom: 1px solid #f1f5f9; }
+.post-avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #e0f2fe; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
+.post-body { padding: 20px; color: #334155; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap; }
+.post-actions { display: flex; gap: 16px; padding: 12px 20px; border-top: 1px solid #f1f5f9; background-color: #f8fafc; align-items: center; }
+.action-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; padding: 6px 10px; border-radius: 6px; }
+.action-btn:hover { background-color: #e2e8f0; }
+.comments-section { padding: 20px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; }
+.comment-bubble { background: white; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 16px; border-top-left-radius: 4px; margin-bottom: 12px; display: inline-block; max-width: 90%; }
+
+/* ===================== Header ===================== */
+.nb-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.nb-header-title-group { display: flex; align-items: center; gap: 16px; }
+.nb-title { margin: 0; font-size: 1.8rem; color: #111827; font-weight: 800; }
+.nb-subtitle { margin: 4px 0 0 0; color: #64748b; font-size: 0.95rem; }
+.nb-new-btn { display: flex; align-items: center; gap: 8px; background-color: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(59,130,246,0.3); }
+
+/* ===================== Create post box ===================== */
+.nb-create-box { background-color: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 24px; margin-bottom: 30px; box-shadow: 0 10px 25px -5px rgba(59,130,246,0.1); }
+.nb-create-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.nb-create-title { margin: 0; color: #1e3a8a; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+.nb-create-close { background: none; border: none; color: #94a3b8; cursor: pointer; }
+.nb-title-input { width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 12px; font-size: 1rem; font-weight: 600; outline: none; box-sizing: border-box; background-color: #ffffff; color: #111827; }
+.nb-content-textarea { width: 100%; padding: 16px; border: 1px solid #cbd5e1; border-radius: 8px; min-height: 120px; font-size: 0.95rem; resize: vertical; outline: none; box-sizing: border-box; font-family: inherit; background-color: #ffffff; color: #111827; }
+.nb-create-footer { display: flex; justify-content: flex-end; margin-top: 16px; }
+.nb-publish-btn { background-color: #3b82f6; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.nb-publish-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ===================== Empty / loading states ===================== */
+.nb-loading { text-align: center; padding: 40px; color: #64748b; }
+.nb-empty { text-align: center; padding: 60px; background-color: white; border-radius: 12px; border: 1px dashed #cbd5e1; color: #94a3b8; }
+.nb-empty-icon { margin: 0 auto 16px auto; opacity: 0.3; }
+
+/* ===================== Post header ===================== */
+.nb-post-author-row { display: flex; gap: 16px; align-items: center; }
+.nb-author-name { font-weight: 700; color: #0f172a; font-size: 1.05rem; }
+.nb-post-meta { display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 0.8rem; margin-top: 2px; }
+.nb-admin-badge { background-color: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 700; }
+.nb-delete-post-btn { background: none; border: none; color: #ef4444; cursor: pointer; padding: 8px; opacity: 0.5; }
+
+/* ===================== Post body ===================== */
+.nb-post-title { margin: 0 0 12px 0; color: #111827; font-size: 1.25rem; }
+.nb-post-content { white-space: pre-wrap; }
+
+/* ===================== Stats & viewer lists ===================== */
+.nb-stats-wrap { padding: 0 20px 12px 20px; display: flex; flex-direction: column; gap: 12px; }
+.nb-stats-row { display: flex; justify-content: space-between; align-items: center; color: #94a3b8; font-size: 0.85rem; }
+.nb-stats-left { display: flex; gap: 16px; }
+.nb-stats-seen { display: flex; align-items: center; gap: 4px; }
+.nb-viewer-lists { background-color: #f8fafc; padding: 12px; border-radius: 8px; font-size: 0.8rem; color: #64748b; display: flex; flex-direction: column; gap: 6px; }
+.nb-viewer-row { display: flex; align-items: flex-start; gap: 6px; }
+.nb-viewer-icon { flex-shrink: 0; margin-top: 2px; }
+.nb-viewer-strong { color: #475569; }
+
+/* ===================== Interaction bar ===================== */
+.nb-action-btn-flex { flex: 1; justify-content: center; }
+.nb-action-btn-flex.default { color: #64748b; }
+.nb-action-btn-flex.liked { color: #3b82f6; }
+.nb-action-btn-flex.seen-btn { color: #10b981; background-color: #ecfdf5; border: 1px solid #a7f3d0; }
+.nb-seen-indicator { color: #10b981; flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; }
+
+/* ===================== Comments ===================== */
+.nb-comments-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.nb-comment-row { display: flex; gap: 12px; }
+.nb-comment-avatar { width: 32px; height: 32px; border-radius: 50%; background-color: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+.nb-comment-author { font-weight: 700; font-size: 0.85rem; color: #1e293b; margin-bottom: 4px; }
+.nb-comment-content { font-size: 0.9rem; color: #334155; }
+.nb-comment-time { font-size: 0.7rem; color: #94a3b8; margin-left: 8px; }
+
+.nb-add-comment-row { display: flex; gap: 12px; align-items: flex-start; }
+.nb-add-comment-avatar { width: 32px; height: 32px; border-radius: 50%; background-color: #e0f2fe; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
+.nb-comment-input-wrap { position: relative; flex: 1; }
+.nb-comment-textarea { width: 100%; padding: 12px 45px 12px 16px; border: 1px solid #cbd5e1; border-radius: 16px; outline: none; font-size: 0.9rem; resize: none; min-height: 45px; box-sizing: border-box; font-family: inherit; background-color: #ffffff; color: #111827; }
+.nb-send-comment-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 4px; }
+.nb-send-comment-btn.active { color: #3b82f6; }

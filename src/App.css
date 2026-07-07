@@ -32,6 +32,14 @@ button, a, .nav-item, [role="button"] {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Scrollbar fina para vistas con .fade-in (Payroll, Invoices, Users, Houses) */
+.fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
+.fade-in *::-webkit-scrollbar-track { background: transparent; }
+.fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
+.fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
+.fade-in *::-webkit-scrollbar-corner { background: transparent; }
+.fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
+
 /* Animación de los modales antiguos (.modal-content) — faltaba definirla */
 @keyframes modalScaleIn {
   from { opacity: 0; transform: scale(0.96); }
@@ -84,6 +92,7 @@ button, a, .nav-item, [role="button"] {
 /* Cabecera Principal */
 .main-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; gap: 16px; flex-wrap: wrap; }
 .header-titles { display: flex; flex-direction: column; gap: 4px; }
+.header-title-group { display: flex; align-items: center; gap: 12px; }
 .header-titles h1 { font-size: 2rem; color: var(--text-primary); margin: 0; }
 .header-titles p { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
 .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
@@ -209,10 +218,38 @@ button, a, .nav-item, [role="button"] {
 .btn-outline { background-color: white; border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 16px; height: 40px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; }
 .btn-outline:hover { background-color: var(--bg-gray); }
 
+/* Side Panel (drawer lateral deslizante) — usado por SidePanel.tsx */
+.side-panel-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(3px); z-index: 1000; }
+.side-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(480px, 100vw); background-color: white; box-shadow: -10px 0 25px rgba(0, 0, 0, 0.15); z-index: 1001; display: flex; flex-direction: column; }
+.fade-in-right { animation: fadeInRight 0.25s ease-out; }
+@keyframes fadeInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.side-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
+.side-panel-title { display: flex; align-items: center; gap: 12px; }
+.side-panel-title h3 { font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+.side-panel-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.side-panel-body { flex: 1; overflow-y: auto; padding: 24px; }
+.btn-icon { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: background-color 0.2s; }
+.btn-icon:hover { background-color: var(--bg-gray); }
+
+@media (max-width: 768px) {
+  .side-panel { width: 100vw; }
+}
+
+/* Modal ancho "70%" (usado en Payroll, Invoices, Houses, Customers) */
+.modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
+@media (min-width: 769px) { .modal-70 { width: 70%; } }
+/* Variante más angosta usada por CustomersView */
+.modal-70.modal-narrow { max-width: 800px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+
 /* =========================================
    DASHBOARD & LAYOUTS (NUEVO RESPONSIVO)
    ========================================= */
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+.grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
+.col-span-full { grid-column: 1 / -1; }
 .main-columns { display: flex; gap: 24px; flex-wrap: wrap; }
 .left-col { flex: 2 1 600px; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .right-col { flex: 1 1 300px; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
@@ -303,6 +340,9 @@ button, a, .nav-item, [role="button"] {
 
   /* Acciones de la cabecera del Dashboard */
   .dashboard-actions-wrapper { width: 100%; flex-wrap: wrap; gap: 12px; }
+
+  /* Grid de 3 columnas (Payroll, Calendar, Invoices, Houses) pasa a 1 columna */
+  .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
 
   /* Búsqueda: primera, a todo el ancho y alta */
   .search-box-container {
@@ -408,3 +448,14 @@ button, a, .nav-item, [role="button"] {
   /* Acciones del detalle a 1 columna en pantallas muy chicas */
   .modal-90 > header > div:last-child { grid-template-columns: 1fr; }
 }
+
+/* ---------- Pantalla de carga global (App.tsx) ---------- */
+@keyframes spin-load { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.app-loading-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #f8fafc; gap: 16px; }
+.app-loading-spinner { width: 48px; height: 48px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin-load 0.8s linear infinite; }
+.app-loading-text { font-size: 0.9rem; color: #64748b; font-weight: 500; }
+
+/* ---------- Pantalla "Under Construction" (App.tsx) ---------- */
+.app-under-construction { padding: 40px; text-align: center; color: #6b7280; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
+.app-under-construction-title { color: #111827; font-size: 1.5rem; margin: 0 0 8px 0; }
+.app-under-construction-text { margin: 0; }

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import { ClipboardCheck, BarChart3 } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
 import QualityCheckView from './QualityCheckView';
 import QCDashboardView from './QCDashboardView';
+import './QualityCheckHub.css';
 
 // ============================================================================
 //  Contenedor con dos pestañas:
@@ -29,15 +31,8 @@ export default function QualityCheckHub(props: Props) {
     return (
       <button
         onClick={() => setTab(key)}
-        style={{
-          border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px',
-          fontWeight: 700, fontSize: '0.9rem', whiteSpace: 'nowrap',
-          display: 'inline-flex', alignItems: 'center', gap: '8px',
-          background: active ? '#ffffff' : 'transparent',
-          color: active ? activeColor : '#64748b',
-          boxShadow: active ? '0 1px 2px rgba(15,23,42,0.1)' : 'none',
-          transition: 'all 0.15s',
-        }}
+        className={`qch-tab-btn${active ? ' active' : ''}`}
+        style={active ? ({ '--qch-active-color': activeColor } as CSSProperties) : undefined}
       >
         <Icon size={16} /> {label}
       </button>
@@ -45,14 +40,10 @@ export default function QualityCheckHub(props: Props) {
   };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="qch-root">
       {/* Barra de pestañas principal */}
-      <div style={{ padding: '16px 20px 0 20px', boxSizing: 'border-box' }}>
-        <div style={{
-          display: 'inline-flex', gap: '2px', background: '#f1f5f9',
-          border: '1px solid #e5e7eb', borderRadius: '12px', padding: '4px',
-          maxWidth: '100%', flexWrap: 'wrap',
-        }}>
+      <div className="qch-tabbar-wrap">
+        <div className="qch-tabbar">
           {tabBtn('inspections', 'Inspecciones', ClipboardCheck, '#1d4ed8')}
           {tabBtn('dashboard', 'Dashboard', BarChart3, '#4338ca')}
         </div>

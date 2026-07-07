@@ -46,16 +46,9 @@ const getInitialTab = (): TabOptions => {
 
 // ⭐ Pantalla de carga reutilizable (verificando sesión / cargando datos).
 const LoadingScreen = ({ text }: { text: string }) => (
-  <div style={{
-    position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '16px'
-  }}>
-    <style>{`@keyframes spin-load { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    <div style={{
-      width: '48px', height: '48px', border: '4px solid #e2e8f0',
-      borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin-load 0.8s linear infinite'
-    }} />
-    <div style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 500 }}>{text}</div>
+  <div className="app-loading-screen">
+    <div className="app-loading-spinner" />
+    <div className="app-loading-text">{text}</div>
   </div>
 );
 
@@ -425,9 +418,9 @@ export default function App() {
         )}
 
         {activeTab === 'done' && (
-          <div className="fade-in" style={{ padding: '40px', textAlign: 'center', color: '#6b7280', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <h2 style={{ color: '#111827', fontSize: '1.5rem', margin: '0 0 8px 0' }}>Under Construction</h2>
-            <p style={{ margin: 0 }}>The {activeTab.replace('_', ' ')} view is currently being developed.</p>
+          <div className="fade-in app-under-construction">
+            <h2 className="app-under-construction-title">Under Construction</h2>
+            <p className="app-under-construction-text">The {activeTab.replace('_', ' ')} view is currently being developed.</p>
           </div>
         )}
       </main>

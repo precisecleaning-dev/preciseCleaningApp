@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
+import type { CSSProperties } from 'react';
+import {
   Search, MapPin, Plus, X, Edit2, Trash2, 
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Percent, PlayCircle, BarChart3, FileImage,
@@ -22,6 +23,7 @@ import { formatDate, dateSortValue } from '../utils/dateFormat';
 import PhotoSection from '../components/PhotoSection';
 import PipelineBoardView from '../components/PipelineBoardView';
 import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
+import './HousesView.css';
 
 type Property = BaseProperty & {
   employeeStartedBy?: string | null;
@@ -121,11 +123,11 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
   const filteredOptions = options.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', width: '100%', outline: 'none' }}>
-      <div style={{ backgroundColor: '#ffffff', padding: '0 14px 0 40px', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'flex', alignItems: 'center', height: '42px', position: 'relative' }}>
-        <Icon size={16} style={{ position: 'absolute', left: '14px', color: '#6b7280' }} />
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
+      <div className="hv-searchsel-trigger">
+        <Icon size={16} className="hv-searchsel-icon" />
         <input
-          style={{ border: 'none', outline: 'none', width: '100%', height: '100%', fontSize: '0.95rem', color: '#111827', backgroundColor: 'transparent' }}
+          className="hv-searchsel-input"
           placeholder={placeholder}
           value={displayValue}
           onChange={(e) => {
@@ -134,23 +136,21 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
           }}
           onClick={() => { setIsOpen(true); setSearch(''); }}
         />
-        <ChevronDown size={16} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', cursor: 'pointer' }} onClick={() => setIsOpen(!isOpen)} />
+        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron clickable${isOpen ? ' open' : ''}`} onClick={() => setIsOpen(!isOpen)} />
       </div>
       {isOpen && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
-          {filteredOptions.length === 0 ? <div style={{padding: '12px 14px', color: '#9ca3af', fontSize: '0.9rem'}}>No results found</div> : null}
+        <div className="hv-searchsel-dropdown">
+          {filteredOptions.length === 0 ? <div className="hv-searchsel-empty">No results found</div> : null}
           {filteredOptions.map((o: any) => (
             <div
               key={o.id}
-              style={{ padding: '12px 14px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', fontSize: '0.95rem', color: '#111827', fontWeight: 500 }}
+              className="hv-searchsel-option"
               onMouseDown={(e) => {
                 e.preventDefault();
                 onChange(o[returnKey] || o.id);
                 setIsOpen(false);
                 setSearch('');
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               {o.name}
             </div>
@@ -170,36 +170,34 @@ const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, retur
   );
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', width: '100%', outline: 'none' }}>
-      <div 
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
+      <div
         onClick={() => setIsOpen(!isOpen)}
-        style={{ backgroundColor: '#ffffff', padding: '0 14px 0 40px', border: '1px solid #cbd5e1', borderRadius: '8px', display: 'flex', alignItems: 'center', height: '42px', position: 'relative', cursor: 'pointer' }}
+        className="hv-searchsel-trigger hv-cursor-pointer"
       >
-        <Icon size={16} style={{ position: 'absolute', left: '14px', color: '#6b7280' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
-          {selected?.color && <span style={{ backgroundColor: selected.color, width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block', flexShrink: 0 }}></span>}
-          <span style={{ color: selected ? '#111827' : '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.95rem' }}>
+        <Icon size={16} className="hv-searchsel-icon" />
+        <div className="hv-customsel-selected-wrap">
+          {selected?.color && <span className="hv-customsel-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
+          <span className={`hv-customsel-label${selected ? ' selected' : ''}`}>
             {selected ? selected.name : placeholder}
           </span>
         </div>
-        <ChevronDown size={16} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron${isOpen ? ' open' : ''}`} />
       </div>
 
       {isOpen && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1000, maxHeight: '220px', overflowY: 'auto', marginTop: '4px' }}>
-          <div style={{ padding: '12px 14px', cursor: 'pointer', color: '#9ca3af', borderBottom: '1px solid #f3f4f6' }} onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
+        <div className="hv-searchsel-dropdown">
+          <div className="hv-customsel-none-option" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
             None / Unassigned
           </div>
           {options.map((o: any) => (
-            <div 
-              key={o.id} 
-              style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: '1px solid #f9fafb', backgroundColor: value === o.id ? '#f1f5f9' : 'transparent' }}
+            <div
+              key={o.id}
+              className={`hv-customsel-option${value === o.id ? ' selected' : ''}`}
               onClick={() => { onChange(o[returnKey] || o.id); setIsOpen(false); }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = value === o.id ? '#f1f5f9' : 'transparent')}
             >
-              {o.color && <span style={{ backgroundColor: o.color, display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', flexShrink: 0 }}></span>}
-              <span style={{ color: '#111827', fontWeight: 500 }}>{o.name}</span>
+              {o.color && <span className="hv-customsel-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
+              <span className="hv-customsel-option-label">{o.name}</span>
             </div>
           ))}
         </div>
@@ -241,46 +239,31 @@ const StatusPillSelector = ({
     onRequestOpen({ currentId: currentStatusId, onSelect: onChange, title: modalTitle, subtitle: modalSubtitle });
   };
 
-  const baseStyle: React.CSSProperties = large ? {
-    backgroundColor: `${pointColor}12`, color: pointColor,
-    padding: '18px 20px', borderRadius: '14px',
-    fontSize: '1.1rem', fontWeight: 800,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
-    width: '100%', boxSizing: 'border-box',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    border: `2px solid ${pointColor}`, transition: 'all 0.2s',
-    boxShadow: `0 2px 10px ${pointColor}26`,
-    opacity: disabled ? 0.65 : 1
-  } : {
-    backgroundColor: `${pointColor}14`, color: '#1e293b',
-    padding: fullWidth ? '13px 16px' : '7px 14px',
-    borderRadius: fullWidth ? '12px' : '999px',
-    fontSize: '0.85rem', fontWeight: 700,
-    display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-    width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    border: `1px solid ${pointColor}40`, transition: 'all 0.2s',
-    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-    opacity: disabled ? 0.65 : 1
-  };
+  const pillVars = {
+    '--pill-bg': large ? `${pointColor}12` : `${pointColor}14`,
+    '--pill-border': large ? pointColor : `${pointColor}40`,
+    '--pill-text': large ? pointColor : '#1e293b',
+    '--pill-shadow': `${pointColor}26`,
+    '--dot-color': pointColor,
+    '--dot-ring': `${pointColor}22`,
+  } as CSSProperties;
 
   return (
-    <div style={{ display: block ? 'block' : 'inline-block', width: block ? '100%' : 'auto' }}>
+    <div className={`hv-statuspill-outer${block ? ' block' : ''}`}>
       <div
         role="button"
         tabIndex={disabled ? -1 : 0}
         onClick={handleOpen}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOpen(e); }}
-        style={baseStyle}
-        onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.filter = 'brightness(0.97)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+        className={`hv-statuspill${large ? ' large' : fullWidth ? ' full' : ''}${disabled ? ' disabled' : ''}`}
+        style={pillVars}
         title={disabled ? undefined : 'Cambiar estado'}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: large ? '12px' : '8px', minWidth: 0 }}>
-          <span style={{ width: large ? '14px' : '9px', height: large ? '14px' : '9px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0, boxShadow: large ? `0 0 0 4px ${pointColor}22` : 'none' }}></span>
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        <span className={`hv-statuspill-label-wrap${large ? ' large' : ''}`}>
+          <span className={`hv-statuspill-dot${large ? ' large' : ''}`}></span>
+          <span className="hv-statuspill-text">{text}</span>
         </span>
-        <ChevronDown size={large ? 22 : (fullWidth ? 16 : 14)} color={large ? pointColor : '#94a3b8'} style={{ flexShrink: 0 }} />
+        <ChevronDown size={large ? 22 : (fullWidth ? 16 : 14)} color={large ? pointColor : '#94a3b8'} className="hv-shrink-0" />
       </div>
     </div>
   );
@@ -316,53 +299,42 @@ const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalC
     <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
       <div className="status-modal" onClick={e => e.stopPropagation()}>
         <header className="status-modal-head">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '11px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="hv-statuschange-head-info">
+            <div className="hv-statuschange-icon">
               <Activity size={20} color="#2563eb" />
             </div>
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Cambiar estado</h3>
+            <div className="hv-min-w-0">
+              <h3 className="hv-statuschange-title">Cambiar estado</h3>
               {config.title && (
-                <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <p className="hv-statuschange-subtitle">
                   {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
                 </p>
               )}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '8px', flexShrink: 0 }}>
+          <button onClick={onClose} aria-label="Cerrar" className="hv-statuschange-close">
             <X size={22} />
           </button>
         </header>
 
         <div className="status-modal-grid">
           {statuses.length === 0 ? (
-            <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px' }}>No hay estados configurados.</div>
+            <div className="hv-statuschange-empty">No hay estados configurados.</div>
           ) : statuses.map(st => {
             const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
             const isSelected = st.id === selectedId;
             return (
               <button
                 key={st.id}
-                className="status-option"
+                className={`status-option${isSelected ? ' selected' : ''}`}
                 onClick={() => setSelectedId(st.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '14px 16px', borderRadius: '12px', cursor: 'pointer',
-                  textAlign: 'left', width: '100%', minHeight: '56px',
-                  // Resaltado neutro (azul claro) para que el texto SIEMPRE se lea,
-                  // sin importar si el color del estado es oscuro o negro.
-                  background: isSelected ? '#eff6ff' : '#ffffff',
-                  border: `2px solid ${isSelected ? '#2563eb' : '#e5e7eb'}`,
-                  boxShadow: isSelected ? '0 2px 10px rgba(37,99,235,0.18)' : '0 1px 2px rgba(0,0,0,0.03)',
-                  transition: 'all 0.15s'
-                }}
               >
-                <span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: st.color, flexShrink: 0, boxShadow: `0 0 0 4px ${st.color}1f`, border: '1px solid rgba(0,0,0,0.12)' }}></span>
-                <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', lineHeight: 1.3, wordBreak: 'break-word' }}>{st.name}</span>
+                <span className="hv-statuschange-dot" style={{ '--dot-color': st.color, '--dot-ring': `${st.color}1f` } as CSSProperties}></span>
+                <span className="hv-statuschange-name">{st.name}</span>
                 {isCurrent && !isSelected && (
-                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>Actual</span>
+                  <span className="hv-statuschange-current-badge">Actual</span>
                 )}
-                {isSelected && <CheckCircle size={18} color="#2563eb" style={{ flexShrink: 0 }} />}
+                {isSelected && <CheckCircle size={18} color="#2563eb" className="hv-shrink-0" />}
               </button>
             );
           })}
@@ -370,7 +342,7 @@ const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalC
 
         <footer className="status-modal-foot">
           <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
-          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept" style={{ opacity: selectedIsCurrent ? 0.55 : 1 }}>
+          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept">
             <CheckCircle size={16} /> Aceptar
           </button>
         </footer>
@@ -1814,284 +1786,68 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const formTotalBilled = formServices.reduce((sum, r) => sum + r.total, 0);
 
-  const s = {
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 },
-    title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 },
-    body: { padding: '36px 40px', overflowY: 'auto', paddingBottom: '60px', flex: 1, minHeight: 0 } as React.CSSProperties, 
-    footer: { display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
-    footerBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '16px 24px', backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', borderRadius: '0 0 12px 12px', flexShrink: 0, flexWrap: 'wrap' } as React.CSSProperties,
-
-    label: { fontSize: '0.8rem', color: '#64748B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px', display: 'block' } as React.CSSProperties,
-    inputWrapper: { position: 'relative', display: 'flex', alignItems: 'center', width: '100%' } as React.CSSProperties,
-    icon: { position: 'absolute', left: '14px', color: '#6b7280', pointerEvents: 'none' } as React.CSSProperties,
-    input: { backgroundColor: '#ffffff', padding: '10px 14px 10px 40px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.95rem', color: '#111827', width: '100%', boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.2s' } as React.CSSProperties,
-
-    actionBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', height: '36px', padding: '0 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', transition: 'all 0.2s', boxSizing: 'border-box' as const, whiteSpace: 'nowrap' as const },
-    btnPrimary: { backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s', opacity: isSaving ? 0.7 : 1 } as React.CSSProperties,
-    btnOutline: { backgroundColor: 'white', border: '1px solid #e5e7eb', color: '#111827', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' } as React.CSSProperties,
-    btnDangerLight: { backgroundColor: '#fef2f2', color: '#ef4444', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s' } as React.CSSProperties,
-    closeBtn: { background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' },
-
-    infoCard: { backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column' as const },
-    infoHeader: { backgroundColor: '#f8fafc', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#334155', fontSize: '0.8rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' },
-    infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f1f5f9' },
-    infoLabel: { color: '#64748b', fontSize: '0.85rem', fontWeight: 600 },
-    infoValue: { color: '#1e293b', fontSize: '0.9rem', fontWeight: 600, textAlign: 'right' as const, display: 'flex', alignItems: 'center', gap: '6px' },
-
-    detailLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', fontWeight: 600 } as React.CSSProperties,
-    detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' } as React.CSSProperties,
-    noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
-    noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
-
-    kpiCard: { backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
-    kpiIconBox: (color: string) => ({ backgroundColor: `${color}15`, color: color, width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }),
-    tableHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '16px', flexShrink: 0 } as React.CSSProperties,
-    pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#10b981' : 'transparent', color: active ? 'white' : '#6b7280', transition: 'all 0.2s', whiteSpace: 'nowrap' as const }),
-
-    th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
-    td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827', verticalAlign: 'middle' as const },
-
-    dashGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px', marginBottom: '24px', flexShrink: 0 } as React.CSSProperties,
-    mainColumns: { display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', flex: 1, minHeight: 0, overflow: 'hidden' } as React.CSSProperties,
-
-    segmentContainer: { display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px', gap: '4px' },
-    segmentBtn: (active: boolean, type: 'yes' | 'no') => ({ 
-      flex: 1, height: '32px', borderRadius: '6px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s', border: 'none',
-      backgroundColor: active ? 'white' : 'transparent', 
-      boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', 
-      color: active ? (type === 'yes' ? '#10b981' : '#ef4444') : '#64748b'
-    }),
-    detailTab: (active: boolean) => ({ 
-      padding: '10px 4px', border: 'none', borderBottom: active ? '3px solid #3b82f6' : '3px solid transparent', 
-      color: active ? '#1e40af' : '#64748b', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', 
-      background: 'none', transition: 'all 0.2s', marginBottom: '-1px' 
-    }),
-  };
-
   return (
-    <div className="fade-in houses-view" style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-      <style>{`
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
-        .fade-in *::-webkit-scrollbar-track { background: transparent; }
-        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
-        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
-        .fade-in *::-webkit-scrollbar-corner { background: transparent; }
-        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-
-        .modal-overlay-centered *::-webkit-scrollbar { width: 6px; height: 6px; }
-        .modal-overlay-centered *::-webkit-scrollbar-track { background: transparent; }
-        .modal-overlay-centered *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
-        .modal-overlay-centered *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
-        .modal-overlay-centered *::-webkit-scrollbar-corner { background: transparent; }
-        .modal-overlay-centered * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
-        .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
-        .modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
-        
-        .modal-90 .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-        .modal-90 .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
-        .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 10px; }
-        .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.6); }
-        .modal-90 .modal-body-scroll { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) transparent; }
-        
-        .modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-        .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
-        .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
-
-        /* === MODAL DE CAMBIO DE ESTADO (reemplaza la lista desplegable) === */
-        .status-modal {
-          background-color: #ffffff; width: 100%; max-width: 480px;
-          border-radius: 18px; box-shadow: 0 24px 48px -12px rgba(15,23,42,0.35);
-          display: flex; flex-direction: column; max-height: 85vh; overflow: hidden;
-          animation: statusModalIn 0.18s ease-out;
-        }
-        @keyframes statusModalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
-        .status-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
-        .status-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
-        .status-option { font-family: inherit; }
-        .status-option:hover { border-color: #93c5fd !important; }
-        .status-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid #eef2f7; flex-shrink: 0; background: #ffffff; }
-        .status-btn-cancel { padding: 11px 18px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
-        .status-btn-cancel:hover { background: #f8fafc; }
-        .status-btn-accept { padding: 11px 20px; border-radius: 10px; border: none; background: #2563eb; color: #ffffff; font-weight: 700; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.25); transition: background 0.15s; }
-        .status-btn-accept:hover:not(:disabled) { background: #1d4ed8; }
-        .status-btn-accept:disabled { cursor: not-allowed; box-shadow: none; }
-
-        @media (max-width: 1024px) {
-          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
-          .main-columns { overflow: visible; }
-          .houses-view { height: auto !important; min-height: 100%; }
-          .left-col > div, .right-col > div { height: auto !important; }
-        }
-
-        @media (min-width: 769px) { 
-          .modal-70 { width: 70%; } 
-          .modal-90 { width: 95%; }
-        }
-        
-        .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
-        .col-span-full { grid-column: 1 / -1; }
-        
-        .view-header-title-group { display: flex; align-items: center; gap: 16px; }
-
-        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .hamburger-btn:hover { background-color: #f8fafc; }
-        
-        .filters-section { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; width: 100%; justify-content: space-between; margin-top: 16px; }
-        .tabs-container { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
-        .property-select-container { display: flex; align-items: center; gap: 8px; white-space: nowrap; position: relative; }
-
-        .left-col { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; height: 100%; }
-        .right-col { flex: 0 0 300px; width: 300px; display: flex; flex-direction: column; height: 100%; }
-
-        @media (max-width: 1024px) {
-          .left-col, .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
-          .main-columns { overflow: auto; }
-        }
-
-        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
-        .jobs-cards-wrap { display: none; }
-
-        @media (max-width: 768px) {
-          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-          .grid-3-cols { grid-template-columns: 1fr; gap: 16px; }
-
-          .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 12px !important; }
-          .search-box-container { height: 48px !important; }
-          .filters-section { flex-direction: column; align-items: stretch; }
-          .property-select-container { width: 100%; }
-          .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
-
-          .jobs-table-wrap { display: none !important; }
-          .jobs-cards-wrap { display: flex !important; }
-
-          .modal-90 > header > div:last-child > button {
-            height: 44px !important; min-height: 44px !important;
-            padding: 0 16px !important; border-radius: 10px !important; font-size: 0.9rem !important;
-          }
-          .modal-full-right button { padding: 1rem !important; font-size: 1rem !important; min-height: 50px; }
-          .modal-70 footer button,
-          .modal-90 footer button { min-height: 46px !important; padding: 12px 18px !important; border-radius: 10px !important; }
-        }
-        
-        .mobile-action-text { display: none; }
-
-        .houses-view { overflow-x: hidden; max-width: 100%; }
-        .dashboard-actions-wrapper { flex-wrap: wrap; }
-
-        @media (max-width: 768px) {
-          html, body { overflow-x: hidden; max-width: 100%; }
-          .houses-view { padding: 14px !important; }
-
-          .dashboard-actions-wrapper { width: 100%; }
-          .search-box-container { flex: 1 1 100% !important; min-width: 0 !important; }
-          .add-btn-mobile { flex: 1 1 auto; }
-
-          .modal-overlay-centered { padding: 0 !important; }
-          .modal-full { flex-direction: column; width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; }
-          .modal-full-left { padding: 1.25rem 1rem !important; width: 100%; }
-          .modal-full-right { width: 100% !important; border-left: none; border-top: 1px solid #E2E8F0; }
-          .modal-70, .modal-90 { width: 100vw !important; max-width: 100vw !important; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
-          .modal-90 .modal-body-scroll { padding: 18px 16px !important; }
-          .modal-70 > div { padding: 18px 16px !important; }
-          .modal-70 header, .modal-90 header { padding: 16px !important; }
-          .modal-70 footer, .modal-90 footer { padding: 14px 16px !important; }
-
-          /* En móvil el modal de estado entra como hoja inferior (bottom sheet) */
-          .status-modal-overlay { align-items: flex-end !important; }
-          .status-modal {
-            max-width: 100% !important; width: 100% !important;
-            border-radius: 22px 22px 0 0 !important; max-height: 82vh;
-            animation: statusSheetIn 0.22s ease-out;
-          }
-          .status-modal-grid { grid-template-columns: 1fr !important; gap: 10px; padding: 18px 16px; }
-          .status-option { min-height: 60px !important; padding: 16px !important; font-size: 1rem; }
-          .status-modal-foot { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
-          .status-btn-cancel, .status-btn-accept { flex: 1; justify-content: center; min-height: 50px; }
-        }
-        @keyframes statusSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
-
-        @media (max-width: 480px) {
-          .houses-view { padding: 10px !important; }
-        }
-      `}</style>
-
+    <div className="fade-in houses-view">
       {/* DASHBOARD HEADER */}
-      <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', flexShrink: 0 }}>
+      <header className="main-header dashboard-header-container hv-header">
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, color: '#111827', fontSize: '1.8rem', fontWeight: 700 }}>Overview</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>General operations overview</p>
+            <h1 className="hv-title">Overview</h1>
+            <p className="hv-subtitle">General operations overview</p>
           </div>
         </div>
 
-        <div className="dashboard-actions-wrapper" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          
+        <div className="dashboard-actions-wrapper hv-header-actions">
+
           {(!isOnline || pendingTotal > 0) && (
             <div title={isOnline ? 'Subiendo fotos pendientes…' : 'Sin conexión'}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 42, padding: '0 14px',
-                borderRadius: 20, fontSize: '0.8rem', fontWeight: 700,
-                background: isOnline ? '#fffbeb' : '#fef2f2',
-                color: isOnline ? '#b45309' : '#b91c1c',
-                border: `1px solid ${isOnline ? '#fde68a' : '#fecaca'}` }}>
+              className={`hv-sync-badge ${isOnline ? 'online' : 'offline'}`}>
               <CloudOff size={14} /> {isOnline ? `${pendingTotal} por subir` : 'Offline'}
             </div>
           )}
 
-          <div className="search-box-container" style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '0 16px', height: '42px', flex: 1, minWidth: '200px' }}>
+          <div className="search-box-container hv-search-box">
             <Search size={16} color="#9ca3af" />
-            <input 
-              type="text" 
-              placeholder="Buscar por dirección o cliente..." 
+            <input
+              type="text"
+              placeholder="Buscar por dirección o cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ backgroundColor: 'transparent', border: 'none', outline: 'none', padding: '10px', fontSize: '0.9rem', width: '100%', color: '#111827', minWidth: 0 }} 
+              className="hv-search-input"
             />
           </div>
-          
+
           {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canAdd) && (
-            <button className="add-btn-mobile" onClick={() => handleOpenForm()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: '#111827', color: 'white', border: 'none', padding: '0 20px', height: '42px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', flexShrink: 0 }}>
+            <button className="add-btn-mobile hv-btn-add" onClick={() => handleOpenForm()}>
               <Plus size={16} /> New Job
             </button>
           )}
         </div>
       </header>
 
-      <div className="dash-grid" style={s.dashGrid}>
+      <div className="dash-grid hv-kpi-grid">
         {isLoading ? (
-          <div style={{ color: '#6b7280' }}>Loading metrics...</div>
+          <div className="hv-loading-text">Loading metrics...</div>
         ) : (
           statuses.slice(0, 4).map((status, index) => {
             const Icon = kpiIcons[index % kpiIcons.length];
             const count = propertiesWithScope.filter(p => p.statusId === status.id || p.statusId === status.name).length;
             const isActive = activeFilter === status.name;
             return (
-              <div 
-                style={{ 
-                  ...s.kpiCard, 
-                  cursor: 'pointer', 
-                  border: `1px solid ${isActive ? status.color : '#e5e7eb'}`,
-                  boxShadow: isActive 
-                    ? `0 0 0 2px ${status.color}30, 0 1px 3px rgba(0,0,0,0.05)` 
-                    : '0 1px 3px rgba(0,0,0,0.03)',
-                  transition: 'all 0.2s ease'
-                }} 
+              <div
+                className={`hv-kpi-card${isActive ? ' active' : ''}`}
+                style={{ '--kpi-color': status.color, '--kpi-color-30': `${status.color}30`, '--kpi-icon-bg': `${status.color}15` } as CSSProperties}
                 key={status.id}
                 onClick={() => setActiveFilter(isActive ? 'All' : status.name)}
                 title={isActive ? 'Click para limpiar filtro' : `Filtrar trabajos por ${status.name}`}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.borderColor = status.color; }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.borderColor = '#e5e7eb'; }}
               >
-                <div style={s.kpiIconBox(status.color)}><Icon size={18} /></div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.name}</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#111827', lineHeight: '1.2' }}>{count}</div>
+                <div className="hv-kpi-icon-box"><Icon size={18} /></div>
+                <div className="hv-min-w-0">
+                  <div className="hv-kpi-label">{status.name}</div>
+                  <div className="hv-kpi-count">{count}</div>
                 </div>
               </div>
             );
@@ -2112,44 +1868,44 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           isSaving={isSaving}
         />
       ) : (
-        <div className="main-columns" style={s.mainColumns}>
+        <div className="main-columns">
 
           {/* LEFT COLUMN: DAILY JOBS */}
           <div className="left-col">
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
-              
-              <div style={s.tableHeader}>
+            <div className="hv-panel-card">
+
+              <div className="hv-table-header">
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#111827', fontWeight: 700 }}>Daily Jobs</h2>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>{dateCapitalized}</p>
+                  <h2 className="hv-panel-title">Daily Jobs</h2>
+                  <p className="hv-panel-date">{dateCapitalized}</p>
                 </div>
 
                 <div className="filters-section">
                   <div className="tabs-container">
-                    <button onClick={() => setActiveFilter('All')} style={s.pillBtn(activeFilter === 'All')}>All</button>
+                    <button onClick={() => setActiveFilter('All')} className={`hv-pill-btn${activeFilter === 'All' ? ' active' : ''}`}>All</button>
                     {dashboardTabs.map(st => (
-                      <button key={st.id} onClick={() => setActiveFilter(st.name)} style={s.pillBtn(activeFilter === st.name)}>
+                      <button key={st.id} onClick={() => setActiveFilter(st.name)} className={`hv-pill-btn${activeFilter === st.name ? ' active' : ''}`}>
                         {st.name}
                       </button>
                     ))}
                   </div>
 
                   <div className="property-select-container">
-                    <button 
+                    <button
                       onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                      style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '20px', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      className="hv-btn-filters"
                     >
-                      <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span style={{backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem'}}>!</span>}
+                      <Filter size={16} /> Filters {(houseFilter !== 'All' || invoiceFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All') && <span className="hv-filter-badge-dot">!</span>}
                     </button>
 
                     {isFilterMenuOpen && (
-                      <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', padding: '16px', zIndex: 100, minWidth: '220px', maxWidth: 'calc(100vw - 28px)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <div className="hv-filter-dropdown">
 
                         <div>
-                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Status</label>
-                          <select 
-                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                            value={statusFilter} 
+                          <label className="hv-filter-field-label">Status</label>
+                          <select
+                            className="hv-filter-select"
+                            value={statusFilter}
                             onChange={e => setStatusFilter(e.target.value)}
                           >
                             <option value="All">All Statuses</option>
@@ -2160,10 +1916,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
 
                         <div>
-                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Priority</label>
-                          <select 
-                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                            value={priorityFilter} 
+                          <label className="hv-filter-field-label">Priority</label>
+                          <select
+                            className="hv-filter-select"
+                            value={priorityFilter}
                             onChange={e => setPriorityFilter(e.target.value)}
                           >
                             <option value="All">All Priorities</option>
@@ -2172,12 +1928,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             ))}
                           </select>
                         </div>
-                        
+
                         <div>
-                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Property</label>
-                          <select 
-                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                            value={houseFilter} 
+                          <label className="hv-filter-field-label">Property</label>
+                          <select
+                            className="hv-filter-select"
+                            value={houseFilter}
                             onChange={e => setHouseFilter(e.target.value)}
                           >
                             <option value="All">All Properties</option>
@@ -2188,10 +1944,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         </div>
 
                         <div>
-                          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px', display: 'block' }}>Invoice Status</label>
-                          <select 
-                            style={{...s.input, padding: '8px 12px', cursor: 'pointer'}} 
-                            value={invoiceFilter} 
+                          <label className="hv-filter-field-label">Invoice Status</label>
+                          <select
+                            className="hv-filter-select"
+                            value={invoiceFilter}
                             onChange={e => setInvoiceFilter(e.target.value)}
                           >
                             <option value="All">All Invoices</option>
@@ -2209,24 +1965,24 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
 
               {/* ====== VISTA TABLA (escritorio) ====== */}
-              <div className="jobs-table-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="jobs-table-wrap hv-jobs-table-wrap">
+                <table className="responsive-table hv-table">
                   <thead>
                     <tr>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Schedule</th>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Client</th>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Time</th>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Type</th>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Team</th>
-                      <th style={{...s.th, position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1}}>Status</th>
-                      <th style={{ ...s.th, width: '100px', textAlign: 'right', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 1 }}>Actions</th>
+                      <th className="hv-th sticky">Schedule</th>
+                      <th className="hv-th sticky">Client</th>
+                      <th className="hv-th sticky">Time</th>
+                      <th className="hv-th sticky">Type</th>
+                      <th className="hv-th sticky">Team</th>
+                      <th className="hv-th sticky">Status</th>
+                      <th className="hv-th sticky w-100 right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>Loading database...</td></tr>
+                      <tr><td colSpan={7} className="hv-empty-row">Loading database...</td></tr>
                     ) : filteredProperties.length === 0 ? (
-                      <tr><td colSpan={7} style={{textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic'}}>No jobs to display for your team.</td></tr>
+                      <tr><td colSpan={7} className="hv-empty-row italic">No jobs to display for your team.</td></tr>
                     ) : filteredProperties.map((prop) => {
                       const teamName = getRelationName(teams, prop.teamId, 'Unassigned');
                       const serviceName = getRelationName(services, prop.serviceId, 'Regular');
@@ -2234,39 +1990,39 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       const isHighPriority = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
 
                       return (
-                        <tr key={prop.id} onClick={() => handleOpenDetail(prop)} style={{ cursor: 'pointer', transition: 'background-color 0.2s', backgroundColor: isHighPriority ? '#fffafa' : 'transparent' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isHighPriority ? '#fffafa' : 'transparent'}>
-                          <td data-label="Schedule" style={{ ...s.td, color: '#6b7280' }}>
-                            <CalendarDays size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}
+                        <tr key={prop.id} onClick={() => handleOpenDetail(prop)} className={`hv-job-row${isHighPriority ? ' high-priority' : ''}`}>
+                          <td data-label="Schedule" className="hv-td muted">
+                            <CalendarDays size={14} className="hv-icon-inline" /> {prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}
                           </td>
-                          <td data-label="Client" style={s.td}>
+                          <td data-label="Client" className="hv-td">
                             <div className="mobile-client-cell">
-                              <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <div className="hv-client-name-row">
                                 {isHighPriority && (
-                                  <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                  <span title="HIGH priority" className="hv-badge-high">
                                     <AlertTriangle size={11} /> HIGH
                                   </span>
                                 )}
                                 {getClientName(prop.client)}
-                                {(prop as any).employeeFinishedBy && <span title="Finished" style={{ display: 'flex' }}><CheckCircle size={14} color="#10b981" /></span>}
+                                {(prop as any).employeeFinishedBy && <span title="Finished" className="hv-finished-icon"><CheckCircle size={14} color="#10b981" /></span>}
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={12} /> {prop.address}</div>
+                              <div className="hv-client-address"><MapPin size={12} /> {prop.address}</div>
                             </div>
                           </td>
-                          <td data-label="Time" style={{ ...s.td, color: '#6b7280' }}><Clock size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} /> {prop.timeIn || '08:00 AM'}</td>
-                          <td data-label="Type" style={{ ...s.td, fontWeight: 500 }}>{serviceName}</td>
-                          <td data-label="Team" style={{ ...s.td, color: '#6b7280' }}>{teamName}</td>
-                          <td data-label="Status" style={s.td}>
+                          <td data-label="Time" className="hv-td muted"><Clock size={14} className="hv-icon-inline" /> {prop.timeIn || '08:00 AM'}</td>
+                          <td data-label="Type" className="hv-td strong">{serviceName}</td>
+                          <td data-label="Team" className="hv-td muted">{teamName}</td>
+                          <td data-label="Status" className="hv-td">
                             <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(prop.client)} modalSubtitle={prop.address} />
                           </td>
-                          <td data-label="Actions" style={{ ...s.td, textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', width: '100%' }}>
+                          <td data-label="Actions" className="hv-td right">
+                            <div className="hv-actions-cell-row">
                               {canEdit && isVisible('admin') && (
-                                <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }} style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}>
                                   <Edit2 size={16} /> <span className="mobile-action-text">Editar</span>
                                 </button>
                               )}
                               {canDelete && isVisible('admin') && (
-                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}>
                                   <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
                                 </button>
                               )}
@@ -2280,11 +2036,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
 
               {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
-              <div className="jobs-cards-wrap" style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '16px', flexDirection: 'column', gap: '14px', backgroundColor: '#f1f5f9' }}>
+              <div className="jobs-cards-wrap">
                 {isLoading ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading database...</div>
+                  <div className="hv-cards-empty">Loading database...</div>
                 ) : filteredProperties.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280', fontStyle: 'italic' }}>No jobs to display for your team.</div>
+                  <div className="hv-cards-empty italic">No jobs to display for your team.</div>
                 ) : filteredProperties.map((prop) => {
                   const teamName = getRelationName(teams, prop.teamId, '');
                   const teamColor = getRelationColor(teams, prop.teamId);
@@ -2296,36 +2052,32 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     <div
                       key={prop.id}
                       onClick={() => handleOpenDetail(prop)}
-                      style={{
-                        background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px',
-                        cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-                        display: 'flex', flexDirection: 'column', gap: '16px',
-                      }}
+                      className="hv-job-card"
                     >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.2rem', lineHeight: 1.25 }}>
+                      <div className="hv-card-top-row">
+                        <span className="hv-card-client-name">
                           {getClientName(prop.client)}
                         </span>
-                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginTop: '2px' }}>
+                        <div className="hv-card-flags">
                           {(prop as any).employeeFinishedBy && <CheckCircle size={18} color="#10b981" />}
                           {isHighPriority && <AlertTriangle size={18} color="#dc2626" />}
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
-                          <MapPin size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prop.address || '—'}</span>
+                      <div className="hv-card-info-col">
+                        <div className="hv-card-info-row">
+                          <MapPin size={18} color="#94a3b8" className="hv-shrink-0" />
+                          <span className="hv-card-info-text">{prop.address || '—'}</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem', color: '#475569' }}>
-                          <CalendarDays size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
+                        <div className="hv-card-info-row">
+                          <CalendarDays size={18} color="#94a3b8" className="hv-shrink-0" />
                           <span>{prop.scheduleDate ? formatDate(prop.scheduleDate) : 'Sin fecha'}{prop.timeIn ? `  ·  ${prop.timeIn}` : ''}</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem' }}>
-                          <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: teamColor ? `${teamColor}20` : '#f1f5f9', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                        <div className="hv-card-team-row">
+                          <span className="hv-card-team-avatar" style={{ '--team-bg': teamColor ? `${teamColor}20` : '#f1f5f9' } as CSSProperties}>
                             <Users size={15} color={teamColor || '#94a3b8'} />
                           </span>
-                          <span style={{ fontWeight: teamName ? 600 : 400, color: teamName ? '#334155' : '#94a3b8' }}>{assignedLabel}</span>
+                          <span className={`hv-card-team-label${teamName ? ' assigned' : ''}`}>{assignedLabel}</span>
                         </div>
                       </div>
 
@@ -2343,16 +2095,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
 
                       {(canEdit || canDelete) && isVisible('admin') && (
-                        <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+                        <div className="hv-card-actions-row">
                           {canEdit && (
                             <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}
-                              style={{ flex: 1, height: '46px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer' }}>
+                              className="hv-card-btn-edit">
                               <Edit2 size={17} /> Editar
                             </button>
                           )}
                           {canDelete && (
                             <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}
-                              style={{ flex: 1, height: '46px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer' }}>
+                              className="hv-card-btn-delete">
                               <Trash2 size={17} /> Eliminar
                             </button>
                           )}
@@ -2368,13 +2120,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
           {/* RIGHT COLUMN: ACTIVE TEAMS */}
           <div className="right-col">
-            <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <h3 style={{ margin: '0', padding: '14px 16px', fontSize: '1rem', color: '#111827', fontWeight: 700, borderBottom: '1px solid #f1f5f9' }}>Active Teams</h3>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div className="hv-panel-card">
+              <h3 className="hv-panel-heading">Active Teams</h3>
+              <div className="hv-teams-list">
                 {isLoading ? (
-                  <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Loading teams...</div>
+                  <div className="hv-teams-status-text">Loading teams...</div>
                 ) : teamsWithScope.length === 0 ? (
-                  <div style={{ color: '#6b7280', fontSize: '0.9rem', fontStyle: 'italic' }}>No configured teams.</div>
+                  <div className="hv-teams-status-text empty">No configured teams.</div>
                 ) : (
                   teamsWithScope
                     .filter(team => propertiesWithScope.some(p => {
@@ -2399,31 +2151,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       });
                     const isExpanded = expandedTeamId === team.id;
                     return (
-                      <div 
-                        key={team.id} 
+                      <div
+                        key={team.id}
                         onClick={() => setExpandedTeamId(isExpanded ? null : team.id)}
-                        style={{ border: `1px solid ${isExpanded ? team.color : '#f1f5f9'}`, padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: 'all 0.2s' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = team.color; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = isExpanded ? team.color : '#f1f5f9'; e.currentTarget.style.boxShadow = 'none'; }}
+                        className={`hv-team-item${isExpanded ? ' expanded' : ''}`}
+                        style={{ '--team-color': team.color, '--team-icon-bg': `${team.color}20` } as CSSProperties}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: `${team.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: team.color }}><Users size={16} /></div>
+                        <div className="hv-team-item-head">
+                          <div className="hv-team-info-row">
+                            <div className="hv-team-icon-box"><Users size={16} /></div>
                             <div>
-                              <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.85rem' }}>{team.name}</div>
-                              <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{assignedProps.length > 0 ? `${assignedProps.length} jobs` : 'Free'}</div>
+                              <div className="hv-team-name">{team.name}</div>
+                              <div className="hv-team-job-count">{assignedProps.length > 0 ? `${assignedProps.length} jobs` : 'Free'}</div>
                             </div>
                           </div>
-                          <ChevronDown size={16} color="#94a3b8" style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+                          <ChevronDown size={16} color="#94a3b8" className={`hv-team-chevron${isExpanded ? ' expanded' : ''}`} />
                         </div>
-                        <div style={{ width: '100%', height: '3px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
-                          <div style={{ width: assignedProps.length > 0 ? '100%' : '0%', height: '100%', backgroundColor: team.color, borderRadius: '2px', transition: 'width 0.3s ease' }}></div>
+                        <div className="hv-team-progress-track">
+                          <div className={`hv-team-progress-fill${assignedProps.length > 0 ? ' filled' : ''}`} style={{ '--team-color': team.color } as CSSProperties}></div>
                         </div>
 
                         {isExpanded && (
-                          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="hv-team-jobs-list">
                             {assignedProps.length === 0 ? (
-                              <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>No hay casas asignadas a este equipo.</span>
+                              <span className="hv-team-jobs-empty">No hay casas asignadas a este equipo.</span>
                             ) : (
                               assignedProps.map(prop => {
                                 const stProp = statuses.find(s => s.id === prop.statusId || s.name === prop.statusId);
@@ -2431,27 +2182,26 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                 const prObj = priorities.find(pp => pp.id === prop.priorityId || pp.name === prop.priorityId);
                                 const isHigh = prObj?.name?.toLowerCase() === 'high' || prop.priorityId?.toLowerCase() === 'high';
                                 return (
-                                  <div 
-                                    key={prop.id} 
+                                  <div
+                                    key={prop.id}
                                     onClick={(e) => { e.stopPropagation(); handleOpenDetail(prop); }}
-                                    style={{ backgroundColor: 'white', border: `1px solid ${isRecall ? '#fca5a5' : isHigh ? '#fdba74' : '#e2e8f0'}`, borderRadius: '6px', padding: '8px 10px', cursor: 'pointer', transition: 'all 0.15s' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                                    className="hv-team-job-item"
+                                    style={{ '--job-border': isRecall ? '#fca5a5' : isHigh ? '#fdba74' : '#e2e8f0' } as CSSProperties}
                                   >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>{getClientName(prop.client)}</div>
-                                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                                    <div className="hv-team-job-top">
+                                      <div className="hv-team-job-name">{getClientName(prop.client)}</div>
+                                      <div className="hv-team-job-flags">
                                         {isRecall && (
-                                          <span style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Recall</span>
+                                          <span className="hv-badge-recall">Recall</span>
                                         )}
                                         {isHigh && (
-                                          <span title="HIGH priority" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', backgroundColor: '#fff7ed', color: '#c2410c', padding: '2px 6px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                          <span title="HIGH priority" className="hv-badge-high-orange">
                                             <AlertTriangle size={10} /> High
                                           </span>
                                         )}
                                       </div>
                                     </div>
-                                    <div style={{ fontSize: '0.72rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><MapPin size={10} /> {prop.address || '-'}</div>
+                                    <div className="hv-team-job-address"><MapPin size={10} /> {prop.address || '-'}</div>
                                   </div>
                                 );
                               })
@@ -2474,22 +2224,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           <div className="modal-full" onClick={e => e.stopPropagation()}>
             
             <div className="modal-full-left">
-              <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '12px', flexWrap: 'wrap' }}>
-                  <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+              <div className="hv-form-inner">
+
+                <div className="hv-form-top-row">
+                  <h2 className="hv-form-title">
                     {formData.id ? 'Edit Property Details' : 'Register New Property'}
                   </h2>
                   {(isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Roles & Permissions')?.canEdit) && (
                     <button
                       type="button"
                       onClick={openFieldConfigModal}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        backgroundColor: '#eff6ff', color: '#2563eb',
-                        border: '1px solid #bfdbfe', padding: '10px 16px',
-                        borderRadius: '8px', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer'
-                      }}
+                      className="hv-btn-configure"
                       title="Configure which fields each role can see"
                     >
                       <Settings size={16} /> Configure Fields
@@ -2498,16 +2243,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 {/* CARD 1: GENERAL INFO */}
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <h3 className="hv-form-card-title">
                     <User size={20} color="#3B82F6"/> General Information
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.5rem' }}>
+                  <div className="hv-form-grid cols-300">
                     {isElementVisible('client') && (
                       <div>
-                        <label style={s.label}>Client <span style={{ color: '#3b82f6' }}>*</span></label>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                        <label className="hv-label">Client <span className="hv-required">*</span></label>
+                        <div className="hv-client-row">
+                          <div className="hv-flex-1-minw0">
                             <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
                           </div>
                           <button
@@ -2515,7 +2260,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             onClick={handleOpenCustomerModal}
                             title="Agregar nuevo cliente"
                             aria-label="Agregar nuevo cliente"
-                            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '44px', height: '42px', padding: 0, background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                            className="hv-btn-add-customer"
                           >
                             <Plus size={28} strokeWidth={2.5} color="#ffffff" />
                           </button>
@@ -2524,10 +2269,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     )}
                     {isElementVisible('address') && (
                       <div>
-                        <label style={s.label}>Address <span style={{ color: '#3b82f6' }}>*</span></label>
-                        <div style={s.inputWrapper}>
-                          <MapPin style={s.icon} size={16} />
-                          <input type="text" style={s.input} placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                        <label className="hv-label">Address <span className="hv-required">*</span></label>
+                        <div className="hv-input-wrap">
+                          <MapPin className="hv-input-icon" size={16} />
+                          <input type="text" className="hv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                         </div>
                       </div>
                     )}
@@ -2535,40 +2280,40 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 {/* CARD 2: LOGISTICS & SETTINGS */}
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <h3 className="hv-form-card-title">
                     <Settings size={20} color="#8B5CF6"/> Logistics & Settings
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1.5rem' }}>
+                  <div className="hv-form-grid cols-200">
                     <div>
-                      <label style={s.label}>Status <span style={{ color: '#3b82f6' }}>*</span></label>
+                      <label className="hv-label">Status <span className="hv-required">*</span></label>
                       <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
                     </div>
                     <div>
-                      <label style={s.label}>Invoice Status</label>
+                      <label className="hv-label">Invoice Status</label>
                       <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                     </div>
                     {isElementVisible('serviceId') && (
                       <div>
-                        <label style={s.label}>Services</label>
+                        <label className="hv-label">Services</label>
                         <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
                       </div>
                     )}
                     {isElementVisible('priorityId') && (
                       <div>
-                        <label style={s.label}>Priority</label>
+                        <label className="hv-label">Priority</label>
                         <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
                       </div>
                     )}
                     {isElementVisible('rooms') && (
                       <div>
-                        <label style={s.label}>Rooms</label>
+                        <label className="hv-label">Rooms</label>
                         <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
                       </div>
                     )}
                     {isElementVisible('bathrooms') && (
                       <div>
-                        <label style={s.label}>Bathrooms</label>
+                        <label className="hv-label">Bathrooms</label>
                         <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
                       </div>
                     )}
@@ -2576,73 +2321,73 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 {/* CARD 3: SCHEDULE & TEAM */}
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <h3 className="hv-form-card-title">
                     <CalendarClock size={20} color="#10B981"/> Schedule & Team
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                  <div className="hv-form-grid cols-200">
                     {isElementVisible('receiveDate') && (
                       <div>
-                        <label style={s.label}>Receive Date</label>
-                        <div style={s.inputWrapper}>
-                          <CalendarDays style={s.icon} size={16} />
-                          <input type="date" style={s.input} value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                        <label className="hv-label">Receive Date</label>
+                        <div className="hv-input-wrap">
+                          <CalendarDays className="hv-input-icon" size={16} />
+                          <input type="date" className="hv-input" value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
                         </div>
                       </div>
                     )}
                     {isElementVisible('scheduleDate') && (
                       <div>
-                        <label style={s.label}>Schedule Date</label>
-                        <div style={s.inputWrapper}>
-                          <CalendarDays style={s.icon} size={16} />
-                          <input type="date" style={s.input} value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                        <label className="hv-label">Schedule Date</label>
+                        <div className="hv-input-wrap">
+                          <CalendarDays className="hv-input-icon" size={16} />
+                          <input type="date" className="hv-input" value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
                         </div>
                       </div>
                     )}
                     <div>
-                      <label style={s.label}>Date of Issue</label>
-                      <div style={s.inputWrapper}>
-                        <CalendarDays style={s.icon} size={16} />
-                        <input type="date" style={s.input} value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} />
+                      <label className="hv-label">Date of Issue</label>
+                      <div className="hv-input-wrap">
+                        <CalendarDays className="hv-input-icon" size={16} />
+                        <input type="date" className="hv-input" value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} />
                       </div>
                     </div>
                     <div>
-                      <label style={s.label}>Due Date</label>
-                      <div style={s.inputWrapper}>
-                        <CalendarDays style={s.icon} size={16} />
-                        <input type="date" style={s.input} value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} />
+                      <label className="hv-label">Due Date</label>
+                      <div className="hv-input-wrap">
+                        <CalendarDays className="hv-input-icon" size={16} />
+                        <input type="date" className="hv-input" value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} />
                       </div>
                     </div>
                     {isElementVisible('timeIn') && (
                       <div>
-                        <label style={s.label}>Time In</label>
-                        <div style={s.inputWrapper}>
-                          <Clock style={s.icon} size={16} />
-                          <input type="time" style={s.input} value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                        <label className="hv-label">Time In</label>
+                        <div className="hv-input-wrap">
+                          <Clock className="hv-input-icon" size={16} />
+                          <input type="time" className="hv-input" value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
                         </div>
                       </div>
                     )}
                     {isElementVisible('timeOut') && (
                       <div>
-                        <label style={s.label}>Time Out</label>
-                        <div style={s.inputWrapper}>
-                          <Clock style={s.icon} size={16} />
-                          <input type="time" style={s.input} value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                        <label className="hv-label">Time Out</label>
+                        <div className="hv-input-wrap">
+                          <Clock className="hv-input-icon" size={16} />
+                          <input type="time" className="hv-input" value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
                         </div>
                       </div>
                     )}
                     {isElementVisible('teamId') && (
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={s.label}>Team</label>
-                      <SearchableSelect 
-                        options={teams} 
-                        value={formData.teamId} 
+                    <div className="hv-full-col">
+                      <label className="hv-label">Team</label>
+                      <SearchableSelect
+                        options={teams}
+                        value={formData.teamId}
                         onChange={(val: string) => {
                           const teamWorkers = employees.filter(emp => emp.teamId === val).map(emp => emp.id);
                           setFormData({ ...formData, teamId: val, assignedWorkers: teamWorkers });
-                        }} 
-                        placeholder="Type to search Team..." 
-                        icon={Users} 
+                        }}
+                        placeholder="Type to search Team..."
+                        icon={Users}
                         returnKey="id"
                       />
                     </div>
@@ -2650,30 +2395,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
 
                   {isElementVisible('assignedWorkers') && (
-                  <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      <span style={s.label}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> Assigned Workers</span>
-                      <div style={{ position: 'relative' }}>
-                        <button 
-                          type="button" 
-                          onClick={() => setIsAssigningWorkerForm(!isAssigningWorkerForm)} 
+                  <div className="hv-workers-box">
+                    <div className="hv-workers-header">
+                      <span className="hv-label"><User size={14} className="hv-label-icon-inline"/> Assigned Workers</span>
+                      <div className="hv-relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsAssigningWorkerForm(!isAssigningWorkerForm)}
                           disabled={isSaving}
-                          style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                          className="hv-btn-toggle-workers"
                         >
                           {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
                         </button>
                         {isAssigningWorkerForm && (
-                          <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '260px', maxWidth: 'calc(100vw - 40px)', zIndex: 10, maxHeight: '260px', overflowY: 'auto' }}>
-                            <div style={{ position: 'sticky', top: 0, background: 'white', padding: '8px', borderBottom: '1px solid #e2e8f0', zIndex: 1 }}>
-                              <div style={{ position: 'relative' }}>
-                                <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)' }} />
+                          <div className="hv-workers-dropdown">
+                            <div className="hv-workers-search-head">
+                              <div className="hv-workers-search-wrap">
+                                <Search size={14} color="#94a3b8" className="hv-workers-search-icon" />
                                 <input
                                   autoFocus
                                   type="text"
                                   value={workerSearch}
                                   onChange={(e) => setWorkerSearch(e.target.value)}
                                   placeholder="Buscar empleado..."
-                                  style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px 7px 30px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.82rem', outline: 'none' }}
+                                  className="hv-workers-search-input"
                                 />
                               </div>
                             </div>
@@ -2684,19 +2429,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                 return `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase().includes(q);
                               });
                               if (list.length === 0) {
-                                return <div style={{ padding: '14px 12px', fontSize: '0.82rem', color: '#94a3b8', fontStyle: 'italic', textAlign: 'center' }}>Sin resultados</div>;
+                                return <div className="hv-workers-empty">Sin resultados</div>;
                               }
                               return list.map(emp => {
                                 const isAssigned = (formData.assignedWorkers || []).includes(emp.id);
                                 return (
-                                  <div 
-                                    key={emp.id} 
+                                  <div
+                                    key={emp.id}
                                     onClick={() => toggleWorkerAssignmentForm(emp.id)}
-                                    style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
-                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
+                                    className={`hv-worker-option${isAssigned ? ' assigned' : ''}`}
                                   >
-                                    <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
+                                    <span className={`hv-worker-name${isAssigned ? ' assigned' : ''}`}>
                                       {emp.firstName} {emp.lastName}
                                     </span>
                                     {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
@@ -2708,18 +2451,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         )}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <div className="hv-worker-chips">
                       {!(formData.assignedWorkers && formData.assignedWorkers.length > 0) ? (
-                        <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned specifically for this job yet. Select a Team to auto-fill or add manually.</span>
+                        <span className="hv-workers-none-text">No workers assigned specifically for this job yet. Select a Team to auto-fill or add manually.</span>
                       ) : (
                         formData.assignedWorkers.map(workerId => {
                           const emp = employees.find(e => e.id === workerId);
                           if (!emp) return null;
                           return (
-                            <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div key={workerId} className="hv-worker-chip">
                               <User size={12} color="#64748b" />
                               {emp.firstName} {emp.lastName}
-                              <button type="button" onClick={() => toggleWorkerAssignmentForm(workerId)} style={{ background: 'none', border: 'none', padding: 0, margin: 0, marginLeft: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center' }}><X size={14}/></button>
+                              <button type="button" onClick={() => toggleWorkerAssignmentForm(workerId)} className="hv-chip-remove-btn"><X size={14}/></button>
                             </div>
                           )
                         })
@@ -2731,48 +2474,48 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
                 {/* CARD 4: BILLED SERVICES */}
                 {isVisible('financial') && isElementVisible('card_billedServices') && (
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                    <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: 0, fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <div className="hv-card-header-row">
+                    <h3 className="hv-form-card-title hv-no-mb">
                       <Layers size={20} color="#F59E0B"/> Billed Services
                     </h3>
-                    <button type="button" onClick={() => handleOpenServiceForm(undefined, true)} className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.85rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button type="button" onClick={() => handleOpenServiceForm(undefined, true)} className="btn btn-primary hv-btn-add-service">
                       <Plus size={16} /> Add Service
                     </button>
                   </div>
 
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                  <div className="hv-service-table-wrap">
+                    <table className="hv-service-table">
                       <thead>
                         <tr>
-                          <th style={{...s.th, backgroundColor: '#f8fafc'}}>Service</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'center'}}>Qty</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Price</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Tax</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Total</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Total -Tax</th>
-                          <th style={{...s.th, backgroundColor: '#f8fafc', textAlign: 'right'}}>Act</th>
+                          <th className="hv-service-th">Service</th>
+                          <th className="hv-service-th center">Qty</th>
+                          <th className="hv-service-th right">Price</th>
+                          <th className="hv-service-th right">Tax</th>
+                          <th className="hv-service-th right">Total</th>
+                          <th className="hv-service-th right">Total -Tax</th>
+                          <th className="hv-service-th right">Act</th>
                         </tr>
                       </thead>
                       <tbody>
                         {formServices.length === 0 ? (
-                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No services added yet.</td></tr>
+                          <tr><td colSpan={7} className="hv-service-empty-row">No services added yet.</td></tr>
                         ) : (
                           formServices.map(record => {
                             return (
-                              <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{...s.td, padding: '12px 20px', fontWeight: 600}}>{getServiceName(record.serviceId)}</td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'center'}}>{record.quantity}</td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right'}}>${Number(record.price).toFixed(2)}</td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right', color: record.taxAmount > 0 ? '#ef4444' : '#64748b'}}>
+                              <tr key={record.id}>
+                                <td className="hv-service-td strong">{getServiceName(record.serviceId)}</td>
+                                <td className="hv-service-td center">{record.quantity}</td>
+                                <td className="hv-service-td right">${Number(record.price).toFixed(2)}</td>
+                                <td className={`hv-service-td right tax ${record.taxAmount > 0 ? 'positive' : 'neutral'}`}>
                                   {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}
                                 </td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#1e293b'}}>${Number(record.total).toFixed(2)}</td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: '#0f766e'}}>${recordTotalMinusTax(record).toFixed(2)}</td>
-                                <td style={{...s.td, padding: '12px 20px', textAlign: 'right'}}>
-                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                    <button type="button" onClick={() => handleOpenServiceForm(record, true)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '2px' }}><Edit2 size={14} /></button>
-                                    <button type="button" onClick={() => handleDeleteServiceLocal(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
+                                <td className="hv-service-td right total">${Number(record.total).toFixed(2)}</td>
+                                <td className="hv-service-td right total-minus-tax">${recordTotalMinusTax(record).toFixed(2)}</td>
+                                <td className="hv-service-td right">
+                                  <div className="hv-service-actions-row">
+                                    <button type="button" onClick={() => handleOpenServiceForm(record, true)} className="hv-service-action-btn edit"><Edit2 size={14} /></button>
+                                    <button type="button" onClick={() => handleDeleteServiceLocal(record.id as string)} className="hv-service-action-btn delete"><Trash2 size={14} /></button>
                                   </div>
                                 </td>
                               </tr>
@@ -2786,21 +2529,21 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 )}
 
                 {/* CARD 5: NOTES */}
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <h3 className="hv-form-card-title">
                     <StickyNote size={20} color="#F43F5E"/> Notes
                   </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <div className="hv-notes-col">
                     {isElementVisible('note') && (
                     <div>
-                      <label style={s.label}>General Note</label>
-                      <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px' }} placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
+                      <label className="hv-label">General Note</label>
+                      <textarea className="hv-input hv-textarea" placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
                     </div>
                     )}
                     {isElementVisible('employeeNote') && (
                     <div>
-                      <label style={{...s.label, color: '#991B1B'}}>Employee's Note</label>
-                      <textarea style={{ ...s.input, minHeight: '80px', resize: 'vertical', padding: '14px', backgroundColor: '#FEF2F2', borderColor: '#FECACA' }} placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
+                      <label className="hv-label danger">Employee's Note</label>
+                      <textarea className="hv-input hv-textarea danger" placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
                     </div>
                     )}
                   </div>
@@ -2808,14 +2551,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
                 {/* CARD 6: PHOTOS EN EL FORMULARIO */}
                 {isVisible('media') && isElementVisible('card_photos') && (
-                <div style={{ padding: '2rem', backgroundColor: 'white', borderRadius: '12px', border: '1px solid #E2E8F0', marginBottom: '2rem' }}>
-                  <h3 style={{ display:'flex', alignItems:'center', gap:'10px', margin: '0 0 1.5rem 0', fontSize: '1.1rem', color: '#1E293B' }}>
+                <div className="hv-form-card">
+                  <h3 className="hv-form-card-title">
                     <ImageIcon size={20} color="#0EA5E9"/> Photos
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
+                  <div className="hv-form-grid cols-280">
                     <div>
                       <button type="button" onClick={() => openBurstCamera('before')} disabled={isSaving}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', marginBottom: '12px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
+                        className="hv-btn-camera before">
                         <Camera size={18} /> Cámara rápida · Before
                       </button>
                       <PhotoSection label="Before" type="before"
@@ -2827,7 +2570,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                     <div>
                       <button type="button" onClick={() => openBurstCamera('after')} disabled={isSaving}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', marginBottom: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '10px', padding: '12px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}>
+                        className="hv-btn-camera after">
                         <Camera size={18} /> Cámara rápida · After
                       </button>
                       <PhotoSection label="After" type="after"
@@ -2846,67 +2589,67 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             
             {/* LADO DERECHO: SUMMARY & ACTIONS */}
             <aside className="modal-full-right">
-              <div style={{ padding: '2rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                
+              <div className="hv-summary-content">
+
                 <div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1E293B', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 0.5rem 0' }}>
+                  <h2 className="hv-summary-title">
                     Job Summary
-                    <span style={{ padding: '0.3rem 0.6rem', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: '#E0F2FE', color: '#1E40AF', textTransform: 'uppercase' }}>
+                    <span className="hv-summary-status-pill">
                       {getRelationName(statuses, formData.statusId, 'New')}
                     </span>
                   </h2>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748B', fontWeight: 500 }}>
+                  <p className="hv-summary-subtitle">
                     {formData.id ? 'Edit Job' : 'New Job'} • {getRelationName(services, formData.serviceId, 'Standard')}
                   </p>
                 </div>
 
-                <div style={{ backgroundColor: '#F8FAFC', padding: '1.2rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                    <div style={{ padding: '0.4rem', backgroundColor: '#E0E7FF', borderRadius: '6px', color: '#4F46E5' }}><User size={16} /></div>
-                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Client Details</h4>
+                <div className="hv-info-box">
+                  <div className="hv-info-box-header">
+                    <div className="hv-info-icon-badge indigo"><User size={16} /></div>
+                    <h4 className="hv-info-box-label">Client Details</h4>
                   </div>
-                  <div style={{ paddingLeft: '2.4rem' }}>
-                    <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: formData.client ? '#0F172A' : '#94A3B8' }}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>
-                    {formData.address && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.address}</p>}
-                  </div>
-                </div>
-
-                <div style={{ backgroundColor: '#F8FAFC', padding: '1.2rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                    <div style={{ padding: '0.4rem', backgroundColor: '#DCFCE7', borderRadius: '6px', color: '#059669' }}><CalendarClock size={16} /></div>
-                    <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Timing & Assignment</h4>
-                  </div>
-                  <div style={{ paddingLeft: '2.4rem' }}>
-                    <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>{formData.scheduleDate ? formatDate(formData.scheduleDate) : 'No date set'}</p>
-                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.85rem', color: '#64748B' }}>{formData.timeIn} {formData.timeOut ? `- ${formData.timeOut}` : ''}</p>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>
+                  <div className="hv-info-box-body">
+                    <p className={`hv-info-primary-text${formData.client ? ' filled' : ''}`}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>
+                    {formData.address && <p className="hv-info-secondary-text">{formData.address}</p>}
                   </div>
                 </div>
 
-                <div style={{ marginTop: 'auto', paddingTop: '1.5rem', borderTop: '2px solid #F1F5F9' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+                <div className="hv-info-box">
+                  <div className="hv-info-box-header">
+                    <div className="hv-info-icon-badge green"><CalendarClock size={16} /></div>
+                    <h4 className="hv-info-box-label">Timing & Assignment</h4>
+                  </div>
+                  <div className="hv-info-box-body">
+                    <p className="hv-schedule-date">{formData.scheduleDate ? formatDate(formData.scheduleDate) : 'No date set'}</p>
+                    <p className="hv-schedule-time">{formData.timeIn} {formData.timeOut ? `- ${formData.timeOut}` : ''}</p>
+                    <p className="hv-schedule-team">Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>
+                  </div>
+                </div>
+
+                <div className="hv-cost-summary">
+                  <div className="hv-cost-header-row">
                     <Receipt size={18} color="#0F172A" />
-                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0F172A' }}>Service Costs</h4>
+                    <h4 className="hv-cost-title">Service Costs</h4>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#475569' }}>
+                  <div className="hv-cost-rows">
+                    <div className="hv-cost-row">
                       <span>Items Count</span> <span>{formServices.length}</span>
                     </div>
-                    <div style={{ margin: '0.5rem 0', borderTop: '1px dashed #CBD5E1' }}></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem' }}>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0F172A' }}>Total</span> 
-                      <span style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', lineHeight: 1 }}>${formTotalBilled.toFixed(2)}</span>
+                    <div className="hv-cost-divider"></div>
+                    <div className="hv-cost-total-row">
+                      <span className="hv-cost-total-label">Total</span>
+                      <span className="hv-cost-total-value">${formTotalBilled.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
 
               </div>
 
-              <div style={{ padding: '1.5rem', backgroundColor: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                <button onClick={handleSave} disabled={isSaving} style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+              <div className="hv-summary-footer">
+                <button onClick={handleSave} disabled={isSaving} className="hv-btn-save-form">
                   <Save size={18} /> {isSaving ? 'Saving...' : 'Confirm & Save'}
                 </button>
-                <button onClick={handleCloseForm} disabled={isSaving} style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', backgroundColor: 'white', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <button onClick={handleCloseForm} disabled={isSaving} className="hv-btn-cancel-form">
                   <XCircle size={18} /> Cancel
                 </button>
               </div>
@@ -2920,89 +2663,79 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {isDetailModalOpen && selectedHouse && (
         <div className="modal-overlay-centered" onClick={() => setIsDetailModalOpen(false)}>
           <div className="modal-90" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <h3 style={s.title}>{getClientName(selectedHouse.client)}</h3>
+            <header className="hv-modal-header">
+              <div className="hv-detail-title-group">
+                <h3 className="hv-modal-title">{getClientName(selectedHouse.client)}</h3>
                 {(selectedHouse as any).employeeFinishedBy && (
-                  <span style={{ backgroundColor: '#d1fae5', color: '#047857', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle size={14} /> 
+                  <span className="hv-finished-badge">
+                    <CheckCircle size={14} />
                     Finished by {(selectedHouse as any).employeeFinishedBy.split(' ')[0]} ({formatDateTime((selectedHouse as any).employeeFinishedAt)})
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="hv-detail-actions">
                 {isVisible('workflow') && isElementVisible('btn_sync') && (
-                  <button 
-                    onClick={handleGoogleCalendarSync} 
-                    style={{ ...s.actionBtn, backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74' }}
+                  <button
+                    onClick={handleGoogleCalendarSync}
+                    className="hv-action-btn sync"
                   >
                     <Calendar size={16} /> Sync
                   </button>
                 )}
                 {isVisible('workflow') && isElementVisible('btn_startJob') && (
-                  <button 
-                    onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob} 
-                    disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy} 
-                    style={{ 
-                      ...s.actionBtn,
-                      backgroundColor: (selectedHouse as any).employeeStartedBy ? '#f8fafc' : '#eff6ff', 
-                      color: (selectedHouse as any).employeeStartedBy ? '#64748b' : '#3b82f6', 
-                      border: (selectedHouse as any).employeeStartedBy ? '1px solid #e2e8f0' : '1px solid #bfdbfe'
-                    }}
+                  <button
+                    onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob}
+                    disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy}
+                    className={`hv-action-btn start${(selectedHouse as any).employeeStartedBy ? ' done' : ''}`}
                   >
-                    <PlayCircle size={16} color={(selectedHouse as any).employeeStartedBy ? "#64748b" : "currentColor"} /> 
+                    <PlayCircle size={16} color={(selectedHouse as any).employeeStartedBy ? "#64748b" : "currentColor"} />
                     {(selectedHouse as any).employeeStartedBy ? 'Undo Start' : 'Start Job'}
                   </button>
                 )}
                 {isVisible('workflow') && isElementVisible('btn_markFinished') && (
-                  <button 
-                    onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished} 
-                    disabled={isSaving} 
-                    style={{ 
-                      ...s.actionBtn,
-                      backgroundColor: (selectedHouse as any).employeeFinishedBy ? '#f8fafc' : '#d1fae5', 
-                      color: (selectedHouse as any).employeeFinishedBy ? '#64748b' : '#047857', 
-                      border: (selectedHouse as any).employeeFinishedBy ? '1px solid #e2e8f0' : '1px solid #a7f3d0'
-                    }}
+                  <button
+                    onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished}
+                    disabled={isSaving}
+                    className={`hv-action-btn finish${(selectedHouse as any).employeeFinishedBy ? ' done' : ''}`}
                   >
                     <span title={(selectedHouse as any).employeeFinishedBy ? `Finished at ${formatDateTime((selectedHouse as any).employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
-                      <CheckCircle size={16} color={(selectedHouse as any).employeeFinishedBy ? "#10b981" : "currentColor"} /> 
+                      <CheckCircle size={16} color={(selectedHouse as any).employeeFinishedBy ? "#10b981" : "currentColor"} />
                     </span>
                     {(selectedHouse as any).employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
                   </button>
                 )}
                 {canEdit && isVisible('financial') && isElementVisible('btn_pay') && (
-                  <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: '#ecfdf5', color: '#10b981', border: '1px solid #a7f3d0' }}>
+                  <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} className="hv-action-btn pay">
                     <DollarSign size={16} /> Pay
                   </button>
                 )}
                 {canEdit && isVisible('admin') && isElementVisible('btn_duplicate') && (
-                  <button onClick={handleDuplicate} disabled={isSaving} style={{ ...s.actionBtn, backgroundColor: 'white', color: '#475569', border: '1px solid #e2e8f0' }}>
+                  <button onClick={handleDuplicate} disabled={isSaving} className="hv-action-btn duplicate">
                     <Copy size={16} /> Duplicate
                   </button>
                 )}
-                <button style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', borderRadius: '4px', marginLeft: '4px' }} onClick={() => setIsDetailModalOpen(false)}>
+                <button className="hv-detail-close-btn" onClick={() => setIsDetailModalOpen(false)}>
                   <X size={24} />
                 </button>
               </div>
             </header>
 
-            <div className="modal-body-scroll" style={s.body}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '1rem', fontWeight: 500, paddingBottom: '16px' }}>
+            <div className="modal-body-scroll hv-detail-body">
+
+              <div className="hv-detail-address-row">
                 <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
               </div>
 
               {/* ⭐ SELECTOR DE STATUS PROMINENTE — mover la casa de lugar fácilmente */}
               {isVisible('workflow') && (
-                <div style={{ background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '16px 18px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(59,130,246,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <div style={{ width: '34px', height: '34px', borderRadius: '9px', backgroundColor: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div className="hv-status-banner">
+                  <div className="hv-status-banner-head">
+                    <div className="hv-status-banner-icon">
                       <Activity size={18} color="#2563eb" />
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#1e3a8a' }}>Estado del trabajo</div>
-                      <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>Toca para mover la casa de lugar</div>
+                      <div className="hv-status-banner-title">Estado del trabajo</div>
+                      <div className="hv-status-banner-subtitle">Toca para mover la casa de lugar</div>
                     </div>
                   </div>
                   <StatusPillSelector
@@ -3018,119 +2751,117 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
               )}
 
-              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '24px', gap: '24px', flexWrap: 'wrap' }}>
-                <button style={s.detailTab(activeDetailTab === 'overview')} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Overview & Log</button>
+              <div className="hv-detail-tabs">
+                <button className={`hv-detail-tab${activeDetailTab === 'overview' ? ' active' : ''}`} onClick={() => setActiveDetailTab('overview')}><Briefcase size={14} className="hv-tab-icon-inline"/> Overview & Log</button>
                 {isVisible('financial') && isElementVisible('btn_tabFinancials') && (
-                  <button style={s.detailTab(activeDetailTab === 'financials')} onClick={() => setActiveDetailTab('financials')}><BarChart3 size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Financials & Billing</button>
+                  <button className={`hv-detail-tab${activeDetailTab === 'financials' ? ' active' : ''}`} onClick={() => setActiveDetailTab('financials')}><BarChart3 size={14} className="hv-tab-icon-inline"/> Financials & Billing</button>
                 )}
                 {isVisible('media') && isElementVisible('btn_tabMedia') && (
-                  <button style={s.detailTab(activeDetailTab === 'media')} onClick={() => setActiveDetailTab('media')}><FileImage size={14} style={{display:'inline', marginBottom:'-2px', marginRight:'4px'}}/> Notes & Photos</button>
+                  <button className={`hv-detail-tab${activeDetailTab === 'media' ? ' active' : ''}`} onClick={() => setActiveDetailTab('media')}><FileImage size={14} className="hv-tab-icon-inline"/> Notes & Photos</button>
                 )}
               </div>
 
               {activeDetailTab === 'overview' && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
-                    <div style={s.infoCard}>
-                      <div style={s.infoHeader}><CalendarDays size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Schedule & Timing</div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Receive Date</span>
-                        <span style={s.infoValue}>{selectedHouse.receiveDate ? formatDate(selectedHouse.receiveDate) : '-'}</span>
+                  <div className="hv-detail-grid">
+                    <div className="hv-info-card">
+                      <div className="hv-info-header"><CalendarDays size={14} className="hv-icon-inline-tb"/> Schedule & Timing</div>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Receive Date</span>
+                        <span className="hv-info-value">{selectedHouse.receiveDate ? formatDate(selectedHouse.receiveDate) : '-'}</span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Schedule Date</span>
-                        <span style={s.infoValue}>{selectedHouse.scheduleDate ? formatDate(selectedHouse.scheduleDate) : '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Schedule Date</span>
+                        <span className="hv-info-value">{selectedHouse.scheduleDate ? formatDate(selectedHouse.scheduleDate) : '-'}</span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Date of Issue</span>
-                        <span style={s.infoValue}>{selectedHouse.dateOfIssue ? formatDate(selectedHouse.dateOfIssue) : '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Date of Issue</span>
+                        <span className="hv-info-value">{selectedHouse.dateOfIssue ? formatDate(selectedHouse.dateOfIssue) : '-'}</span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Due Date</span>
-                        <span style={s.infoValue}>{selectedHouse.dueDate ? formatDate(selectedHouse.dueDate) : '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Due Date</span>
+                        <span className="hv-info-value">{selectedHouse.dueDate ? formatDate(selectedHouse.dueDate) : '-'}</span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Time In</span>
-                        <span style={s.infoValue}><Clock size={12} color="#94a3b8"/> {selectedHouse.timeIn || '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Time In</span>
+                        <span className="hv-info-value"><Clock size={12} color="#94a3b8"/> {selectedHouse.timeIn || '-'}</span>
                       </div>
-                      <div style={{...s.infoRow, borderBottom: 'none'}}>
-                        <span style={s.infoLabel}>Time Out</span>
-                        <span style={s.infoValue}><Clock size={12} color="#94a3b8"/> {selectedHouse.timeOut || '-'}</span>
+                      <div className="hv-info-row no-border">
+                        <span className="hv-info-label">Time Out</span>
+                        <span className="hv-info-value"><Clock size={12} color="#94a3b8"/> {selectedHouse.timeOut || '-'}</span>
                       </div>
                     </div>
 
-                    <div style={s.infoCard}>
-                      <div style={s.infoHeader}><Wrench size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Job Specifications</div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Service</span>
-                        <span style={s.infoValue}>{getRelationName(services, selectedHouse.serviceId)}</span>
+                    <div className="hv-info-card">
+                      <div className="hv-info-header"><Wrench size={14} className="hv-icon-inline-tb"/> Job Specifications</div>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Service</span>
+                        <span className="hv-info-value">{getRelationName(services, selectedHouse.serviceId)}</span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Priority</span>
-                        <span style={s.infoValue}>
-                          {getRelationColor(priorities, selectedHouse.priorityId) && <span style={{ backgroundColor: getRelationColor(priorities, selectedHouse.priorityId), width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }}></span>}
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Priority</span>
+                        <span className="hv-info-value">
+                          {getRelationColor(priorities, selectedHouse.priorityId) && <span className="hv-dot-10" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
                           {getRelationName(priorities, selectedHouse.priorityId)}
                         </span>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Rooms</span>
-                        <span style={s.infoValue}><Hash size={12} color="#94a3b8"/> {selectedHouse.rooms || '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Rooms</span>
+                        <span className="hv-info-value"><Hash size={12} color="#94a3b8"/> {selectedHouse.rooms || '-'}</span>
                       </div>
-                      <div style={{...s.infoRow, borderBottom: 'none'}}>
-                        <span style={s.infoLabel}>Bathrooms</span>
-                        <span style={s.infoValue}><Hash size={12} color="#94a3b8"/> {selectedHouse.bathrooms || '-'}</span>
+                      <div className="hv-info-row no-border">
+                        <span className="hv-info-label">Bathrooms</span>
+                        <span className="hv-info-value"><Hash size={12} color="#94a3b8"/> {selectedHouse.bathrooms || '-'}</span>
                       </div>
                     </div>
 
-                    <div style={s.infoCard}>
-                      <div style={s.infoHeader}><Activity size={14} style={{display:'inline', verticalAlign:'text-bottom', marginRight:'6px'}}/> Status & Assignment</div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Job Status</span>
-                        <div style={{textAlign: 'right'}}><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
+                    <div className="hv-info-card">
+                      <div className="hv-info-header"><Activity size={14} className="hv-icon-inline-tb"/> Status & Assignment</div>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Job Status</span>
+                        <div className="hv-text-right"><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
                       </div>
-                      <div style={s.infoRow}>
-                        <span style={s.infoLabel}>Invoice Status</span>
-                        <span style={{...s.infoValue, color: '#475569', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem'}}>{selectedHouse.invoiceStatus || '-'}</span>
+                      <div className="hv-info-row">
+                        <span className="hv-info-label">Invoice Status</span>
+                        <span className="hv-info-value hv-invoice-status-badge">{selectedHouse.invoiceStatus || '-'}</span>
                       </div>
-                      <div style={{...s.infoRow, borderBottom: 'none'}}>
-                        <span style={s.infoLabel}>Assigned Team</span>
-                        <span style={s.infoValue}>
-                          {getRelationColor(teams, selectedHouse.teamId) && <span style={{ backgroundColor: getRelationColor(teams, selectedHouse.teamId), width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }}></span>}
+                      <div className="hv-info-row no-border">
+                        <span className="hv-info-label">Assigned Team</span>
+                        <span className="hv-info-value">
+                          {getRelationColor(teams, selectedHouse.teamId) && <span className="hv-dot-10" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
                           {getRelationName(teams, selectedHouse.teamId, 'Unassigned')}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> SPECIFIC ASSIGNED WORKERS</span>
-                        
+                  <div className="hv-detail-grid no-mb">
+                    <div className="hv-subcard">
+                      <div className="hv-workers-header">
+                        <span className="hv-detail-label"><User size={14} className="hv-label-icon-inline"/> SPECIFIC ASSIGNED WORKERS</span>
+
                         {canEdit && isVisible('admin') && (
-                          <div style={{ position: 'relative' }}>
-                            <button 
-                              onClick={() => setIsAssigningWorker(!isAssigningWorker)} 
+                          <div className="hv-relative">
+                            <button
+                              onClick={() => setIsAssigningWorker(!isAssigningWorker)}
                               disabled={isSaving}
-                              style={{ background: '#e0f2fe', color: '#2563eb', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                              className="hv-btn-toggle-workers"
                             >
                               {isAssigningWorker ? 'Close' : '+ Assign / Remove'}
                             </button>
 
                             {isAssigningWorker && (
-                              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', width: '250px', maxWidth: 'calc(100vw - 48px)', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
-                                <div style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>ALL EMPLOYEES</div>
+                              <div className="hv-workers-dropdown-sm">
+                                <div className="hv-workers-dropdown-label">ALL EMPLOYEES</div>
                                 {employees.map(emp => {
                                   const isAssigned = (selectedHouse.assignedWorkers || []).includes(emp.id);
                                   return (
-                                    <div 
-                                      key={emp.id} 
+                                    <div
+                                      key={emp.id}
                                       onClick={() => toggleWorkerAssignmentDetail(emp.id)}
-                                      style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', backgroundColor: isAssigned ? '#eff6ff' : 'transparent' }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : '#f8fafc'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isAssigned ? '#eff6ff' : 'transparent'}
+                                      className={`hv-worker-option${isAssigned ? ' assigned' : ''}`}
                                     >
-                                      <span style={{ fontSize: '0.85rem', fontWeight: isAssigned ? 600 : 500, color: isAssigned ? '#1e40af' : '#334155' }}>
+                                      <span className={`hv-worker-name${isAssigned ? ' assigned' : ''}`}>
                                         {emp.firstName} {emp.lastName}
                                       </span>
                                       {isAssigned && <CheckSquare size={14} color="#3b82f6" />}
@@ -3142,15 +2873,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <div className="hv-worker-chips">
                         {!(selectedHouse.assignedWorkers && selectedHouse.assignedWorkers.length > 0) ? (
-                          <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No specific workers assigned.</span>
+                          <span className="hv-workers-none-text">No specific workers assigned.</span>
                         ) : (
                           selectedHouse.assignedWorkers.map(workerId => {
                             const emp = employees.find(e => e.id === workerId);
                             if (!emp) return null;
                             return (
-                              <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div key={workerId} className="hv-worker-chip">
                                 <User size={12} color="#64748b" />
                                 {emp.firstName} {emp.lastName}
                               </div>
@@ -3160,18 +2891,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       </div>
                     </div>
 
-                    <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <span style={s.detailLabel}><PenTool size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> WORK LOG</span>
-                      <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                          <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><PlayCircle size={14} color="#3b82f6"/> Started By</span>
-                          <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                    <div className="hv-subcard">
+                      <span className="hv-detail-label"><PenTool size={14} className="hv-label-icon-inline"/> WORK LOG</span>
+                      <div className="hv-worklog-rows-wrap">
+                        <div className="hv-worklog-row">
+                          <span className="hv-worklog-label"><PlayCircle size={14} color="#3b82f6"/> Started By</span>
+                          <span className="hv-worklog-value">
                             {(selectedHouse as any).employeeStartedBy ? `${(selectedHouse as any).employeeStartedBy} (${formatDateTime((selectedHouse as any).employeeStartedAt)})` : 'Not started'}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                          <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}><CheckCircle size={14} color="#10b981"/> Finished By</span>
-                          <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                        <div className="hv-worklog-row">
+                          <span className="hv-worklog-label"><CheckCircle size={14} color="#10b981"/> Finished By</span>
+                          <span className="hv-worklog-value">
                             {(selectedHouse as any).employeeFinishedBy ? `${(selectedHouse as any).employeeFinishedBy} (${formatDateTime((selectedHouse as any).employeeFinishedAt)})` : 'Not finished'}
                           </span>
                         </div>
@@ -3183,63 +2914,63 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'financials' && isVisible('financial') && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '24px' }}>
-                    <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Revenue</div>
-                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#166534', marginTop: '4px' }}>${totalBilled.toFixed(2)}</div>
+                  <div className="hv-fin-kpi-grid">
+                    <div className="hv-fin-kpi-card revenue">
+                      <div className="hv-fin-kpi-label revenue">Total Revenue</div>
+                      <div className="hv-fin-kpi-value revenue">${totalBilled.toFixed(2)}</div>
                     </div>
-                    <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '20px' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Payroll</div>
-                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#991b1b', marginTop: '4px' }}>${totalPayroll.toFixed(2)}</div>
+                    <div className="hv-fin-kpi-card payroll">
+                      <div className="hv-fin-kpi-label payroll">Total Payroll</div>
+                      <div className="hv-fin-kpi-value payroll">${totalPayroll.toFixed(2)}</div>
                     </div>
-                    <div style={{ backgroundColor: netProfit >= 0 ? '#eff6ff' : '#fffbeb', border: `1px solid ${netProfit >= 0 ? '#bfdbfe' : '#fde68a'}`, borderRadius: '12px', padding: '20px' }}>
-                      <div style={{ fontSize: '0.8rem', color: netProfit >= 0 ? '#1d4ed8' : '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Net Profit</div>
-                      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: netProfit >= 0 ? '#1e40af' : '#92400e', marginTop: '4px' }}>${netProfit.toFixed(2)}</div>
+                    <div className={`hv-fin-kpi-card profit ${netProfit >= 0 ? 'positive' : 'negative'}`}>
+                      <div className={`hv-fin-kpi-label profit ${netProfit >= 0 ? 'positive' : 'negative'}`}>Net Profit</div>
+                      <div className={`hv-fin-kpi-value profit ${netProfit >= 0 ? 'positive' : 'negative'}`}>${netProfit.toFixed(2)}</div>
                     </div>
                   </div>
 
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><Layers size={18} color="#f59e0b"/> Billed Services</h4>
+                  <div className="hv-fin-table-card">
+                    <div className="hv-fin-table-header">
+                      <h4 className="hv-fin-table-title"><Layers size={18} color="#f59e0b"/> Billed Services</h4>
                       {canEdit && (
-                        <button onClick={() => handleOpenServiceForm(undefined, false)} disabled={isSaving} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button onClick={() => handleOpenServiceForm(undefined, false)} disabled={isSaving} className="hv-fin-btn-add blue">
                           <Plus size={16} /> Add Service
                         </button>
                       )}
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                    <div className="hv-fin-table-scroll">
+                      <table className="hv-fin-table">
                         <thead>
                           <tr>
-                            <th style={s.th}>Service</th>
-                            <th style={{...s.th, textAlign: 'center'}}>Qty</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Price</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Tax</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Total</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Total -Tax</th>
-                            {canEdit && <th style={{...s.th, textAlign: 'right'}}>Actions</th>}
+                            <th className="hv-service-th">Service</th>
+                            <th className="hv-service-th center">Qty</th>
+                            <th className="hv-service-th right">Price</th>
+                            <th className="hv-service-th right">Tax</th>
+                            <th className="hv-service-th right">Total</th>
+                            <th className="hv-service-th right">Total -Tax</th>
+                            {canEdit && <th className="hv-service-th right">Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {houseServices.length === 0 ? (
-                            <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No billed services yet.</td></tr>
+                            <tr><td colSpan={canEdit ? 7 : 6} className="hv-fin-empty-row">No billed services yet.</td></tr>
                           ) : (
                             houseServices.map(record => {
                               return (
-                                <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td style={{...s.td, fontWeight: 600}}>{getServiceName(record.serviceId)}</td>
-                                  <td style={{...s.td, textAlign: 'center'}}>{record.quantity}</td>
-                                  <td style={{...s.td, textAlign: 'right'}}>${Number(record.price).toFixed(2)}</td>
-                                  <td style={{...s.td, textAlign: 'right', color: record.taxAmount > 0 ? '#ef4444' : '#64748b'}}>
+                                <tr key={record.id}>
+                                  <td className="hv-fin-td strong">{getServiceName(record.serviceId)}</td>
+                                  <td className="hv-fin-td center">{record.quantity}</td>
+                                  <td className="hv-fin-td right">${Number(record.price).toFixed(2)}</td>
+                                  <td className={`hv-fin-td right tax ${record.taxAmount > 0 ? 'positive' : 'neutral'}`}>
                                     {record.taxAmount > 0 ? `+$${record.taxAmount.toFixed(2)}` : record.minusTax === 'Yes' ? `-$${Math.abs(record.taxAmount).toFixed(2)}` : '$0.00'}
                                   </td>
-                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700}}>${Number(record.total).toFixed(2)}</td>
-                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700, color: '#0f766e'}}>${recordTotalMinusTax(record).toFixed(2)}</td>
+                                  <td className="hv-fin-td right bold">${Number(record.total).toFixed(2)}</td>
+                                  <td className="hv-fin-td right total-minus-tax">${recordTotalMinusTax(record).toFixed(2)}</td>
                                   {canEdit && (
-                                    <td style={{...s.td, textAlign: 'right'}}>
-                                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                        <button onClick={() => handleOpenServiceForm(record, false)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '2px' }}><Edit2 size={14} /></button>
-                                        <button onClick={() => handleDeleteService(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
+                                    <td className="hv-fin-td right">
+                                      <div className="hv-service-actions-row">
+                                        <button onClick={() => handleOpenServiceForm(record, false)} className="hv-service-action-btn edit"><Edit2 size={14} /></button>
+                                        <button onClick={() => handleDeleteService(record.id as string)} className="hv-service-action-btn delete"><Trash2 size={14} /></button>
                                       </div>
                                     </td>
                                   )}
@@ -3252,45 +2983,45 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                   </div>
 
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}><DollarSign size={18} color="#10b981"/> Registered Payments</h4>
+                  <div className="hv-fin-table-card no-mb">
+                    <div className="hv-fin-table-header">
+                      <h4 className="hv-fin-table-title"><DollarSign size={18} color="#10b981"/> Registered Payments</h4>
                       {canEdit && (
-                        <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} className="hv-fin-btn-add green">
                           <Plus size={16} /> Register Payment
                         </button>
                       )}
                     </div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                    <div className="hv-fin-table-scroll">
+                      <table className="hv-fin-table">
                         <thead>
                           <tr>
-                            <th style={s.th}>Date</th>
-                            <th style={s.th}>Employee</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Base</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Extra</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Discount</th>
-                            <th style={{...s.th, textAlign: 'right'}}>Total</th>
-                            {canEdit && <th style={{...s.th, textAlign: 'right'}}>Act</th>}
+                            <th className="hv-service-th">Date</th>
+                            <th className="hv-service-th">Employee</th>
+                            <th className="hv-service-th right">Base</th>
+                            <th className="hv-service-th right">Extra</th>
+                            <th className="hv-service-th right">Discount</th>
+                            <th className="hv-service-th right">Total</th>
+                            {canEdit && <th className="hv-service-th right">Act</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {housePayrollRecords.length === 0 ? (
-                            <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8', fontStyle: 'italic' }}>No payments registered yet.</td></tr>
+                            <tr><td colSpan={canEdit ? 7 : 6} className="hv-fin-empty-row">No payments registered yet.</td></tr>
                           ) : (
                             housePayrollRecords.map(record => {
                               const emp = employees.find(e => e.id === record.employeeId);
                               return (
-                                <tr key={record.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td style={{...s.td, color: '#64748b'}}>{record.date}</td>
-                                  <td style={{...s.td, fontWeight: 600}}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
-                                  <td style={{...s.td, textAlign: 'right'}}>${Number(record.baseAmount).toFixed(2)}</td>
-                                  <td style={{...s.td, textAlign: 'right', color: '#10b981'}}>+${Number(record.extraAmount).toFixed(2)}</td>
-                                  <td style={{...s.td, textAlign: 'right', color: '#ef4444'}}>-${Number(record.discountAmount).toFixed(2)}</td>
-                                  <td style={{...s.td, textAlign: 'right', fontWeight: 700}}>${Number(record.totalAmount).toFixed(2)}</td>
+                                <tr key={record.id}>
+                                  <td className="hv-fin-td muted">{record.date}</td>
+                                  <td className="hv-fin-td strong">{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
+                                  <td className="hv-fin-td right">${Number(record.baseAmount).toFixed(2)}</td>
+                                  <td className="hv-fin-td right extra">+${Number(record.extraAmount).toFixed(2)}</td>
+                                  <td className="hv-fin-td right discount">-${Number(record.discountAmount).toFixed(2)}</td>
+                                  <td className="hv-fin-td right bold">${Number(record.totalAmount).toFixed(2)}</td>
                                   {canEdit && (
-                                    <td style={{...s.td, textAlign: 'right'}}>
-                                      <button onClick={() => handleDeletePayroll(record.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={14} /></button>
+                                    <td className="hv-fin-td right">
+                                      <button onClick={() => handleDeletePayroll(record.id as string)} className="hv-service-action-btn delete"><Trash2 size={14} /></button>
                                     </td>
                                   )}
                                 </tr>
@@ -3306,29 +3037,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
               {activeDetailTab === 'media' && isVisible('media') && (
                 <div className="fade-in">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px', marginBottom: '24px' }}>
-                    <div style={s.noteBoxGray}>
-                      <span style={s.detailLabel}><StickyNote size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> GENERAL NOTE</span>
-                      <p style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.note || 'No general notes.'}</p>
+                  <div className="hv-media-grid">
+                    <div className="hv-note-box">
+                      <span className="hv-detail-label"><StickyNote size={14} className="hv-label-icon-inline"/> GENERAL NOTE</span>
+                      <p className="hv-note-text">{selectedHouse.note || 'No general notes.'}</p>
                     </div>
-                    <div style={s.noteBoxOrange}>
-                      <span style={{...s.detailLabel, color: '#c2410c'}}><StickyNote size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> EMPLOYEE'S NOTE</span>
-                      <p style={{ ...s.detailValue, fontSize: '0.95rem' }}>{selectedHouse.employeeNote || 'No employee notes.'}</p>
+                    <div className="hv-note-box orange">
+                      <span className="hv-detail-label orange"><StickyNote size={14} className="hv-label-icon-inline"/> EMPLOYEE'S NOTE</span>
+                      <p className="hv-note-text">{selectedHouse.employeeNote || 'No employee notes.'}</p>
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
+                  <div className="hv-media-grid no-mb">
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> BEFORE PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                      <div className="hv-workers-header">
+                        <span className="hv-detail-label"><ImageIcon size={14} className="hv-label-icon-inline"/> BEFORE PHOTOS</span>
+                        <div className="hv-photo-actions-row">
                           {canEdit && (
-                            <button onClick={() => openBurstCamera('before')} disabled={isSaving} style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button onClick={() => openBurstCamera('before')} disabled={isSaving} className="hv-btn-compact bg-blue">
                               <Camera size={14} /> Cámara rápida
                             </button>
                           )}
                           {isElementVisible('btn_exportPdf') && (
-                            <button onClick={() => generatePDF('before')} disabled={isSaving} style={{ backgroundColor: '#1e3a8a', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button onClick={() => generatePDF('before')} disabled={isSaving} className="hv-btn-compact bg-dark-blue">
                               <FileImage size={14} /> Export PDF
                             </button>
                           )}
@@ -3342,16 +3073,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={s.detailLabel}><ImageIcon size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> AFTER PHOTOS</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                      <div className="hv-workers-header">
+                        <span className="hv-detail-label"><ImageIcon size={14} className="hv-label-icon-inline"/> AFTER PHOTOS</span>
+                        <div className="hv-photo-actions-row">
                           {canEdit && (
-                            <button onClick={() => openBurstCamera('after')} disabled={isSaving} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button onClick={() => openBurstCamera('after')} disabled={isSaving} className="hv-btn-compact bg-green">
                               <Camera size={14} /> Cámara rápida
                             </button>
                           )}
                           {isElementVisible('btn_exportPdf') && (
-                            <button onClick={() => generatePDF('after')} disabled={isSaving} style={{ backgroundColor: '#047857', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button onClick={() => generatePDF('after')} disabled={isSaving} className="hv-btn-compact bg-dark-green">
                               <FileImage size={14} /> Export PDF
                             </button>
                           )}
@@ -3367,8 +3098,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   </div>
 
                   {canEdit && (
-                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-                      <button onClick={handleSavePhotosFromDetail} disabled={isSaving} style={{ ...s.btnPrimary, justifyContent: 'center' }}>
+                    <div className="hv-save-photos-row">
+                      <button onClick={handleSavePhotosFromDetail} disabled={isSaving} className="hv-btn-primary-modal center">
                         <Save size={16} /> {isSaving ? 'Saving...' : 'Save Photos'}
                       </button>
                     </div>
@@ -3378,18 +3109,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
             </div>
 
-            <footer style={s.footerBetween}>
+            <footer className="hv-modal-footer-between">
               <div>
                 {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && (
-                  <button onClick={handleDelete} disabled={isSaving} style={s.btnDangerLight}>
+                  <button onClick={handleDelete} disabled={isSaving} className="hv-btn-danger-light-modal">
                     <Trash2 size={16} /> Delete Property
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={() => setIsDetailModalOpen(false)} style={s.btnOutline}>Close</button>
+              <div className="hv-footer-actions">
+                <button onClick={() => setIsDetailModalOpen(false)} className="hv-btn-outline-modal">Close</button>
                 {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && (
-                  <button onClick={() => handleOpenForm(selectedHouse)} style={s.btnPrimary}>
+                  <button onClick={() => handleOpenForm(selectedHouse)} className="hv-btn-primary-modal">
                     <Edit2 size={16} /> Edit Details
                   </button>
                 )}
@@ -3403,16 +3134,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {/* --- MODAL: NUEVO CLIENTE (mismo formulario que Customers) --- */}
       {isCustomerModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsCustomerModalOpen(false)}>
-          <div className="modal-70" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
-            <header style={s.header}>
-              <h3 style={s.title}>&nbsp;</h3>
-              <button style={s.closeBtn} onClick={() => setIsCustomerModalOpen(false)}><X size={22} /></button>
+          <div className="modal-70 hv-customer-modal" onClick={e => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">&nbsp;</h3>
+              <button className="hv-modal-close-btn" onClick={() => setIsCustomerModalOpen(false)}><X size={22} /></button>
             </header>
-            <div style={{ padding: '24px', overflowY: 'auto' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '20px' }}>
+            <div className="hv-modal-body-padded">
+              <div className="hv-form-grid cols-260">
 
                 <div>
-                  <label style={s.label}>Type</label>
+                  <label className="hv-label">Type</label>
                   <CustomSelect
                     options={[{ id: 'Private customer', name: 'Private customer' }, { id: 'Residential', name: 'Residential' }, { id: 'Commercial', name: 'Commercial' }]}
                     value={customerForm.type}
@@ -3423,70 +3154,70 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
 
                 <div>
-                  <label style={s.label}>Color Marker</label>
+                  <label className="hv-label">Color Marker</label>
                   <input
                     type="color"
                     value={customerForm.color}
                     onChange={e => setCustomerForm({ ...customerForm, color: e.target.value })}
-                    style={{ width: '100%', height: '42px', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', background: '#fff' }}
+                    className="hv-color-input"
                   />
                 </div>
 
                 <div>
-                  <label style={s.label}>Full Name <span style={{ color: '#ef4444' }}>*</span></label>
-                  <div style={s.inputWrapper}>
-                    <User style={s.icon} size={16} />
-                    <input type="text" style={s.input} value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} autoFocus />
+                  <label className="hv-label">Full Name <span className="hv-required">*</span></label>
+                  <div className="hv-input-wrap">
+                    <User className="hv-input-icon" size={16} />
+                    <input type="text" className="hv-input" value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })} autoFocus />
                   </div>
                 </div>
 
                 <div>
-                  <label style={s.label}>Business Name</label>
-                  <div style={s.inputWrapper}>
-                    <Briefcase style={s.icon} size={16} />
-                    <input type="text" style={s.input} value={customerForm.businessName} onChange={e => setCustomerForm({ ...customerForm, businessName: e.target.value })} />
+                  <label className="hv-label">Business Name</label>
+                  <div className="hv-input-wrap">
+                    <Briefcase className="hv-input-icon" size={16} />
+                    <input type="text" className="hv-input" value={customerForm.businessName} onChange={e => setCustomerForm({ ...customerForm, businessName: e.target.value })} />
                   </div>
                 </div>
 
                 <div>
-                  <label style={s.label}>Email</label>
-                  <div style={s.inputWrapper}>
-                    <FileText style={s.icon} size={16} />
-                    <input type="email" style={s.input} value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} />
+                  <label className="hv-label">Email</label>
+                  <div className="hv-input-wrap">
+                    <FileText className="hv-input-icon" size={16} />
+                    <input type="email" className="hv-input" value={customerForm.email} onChange={e => setCustomerForm({ ...customerForm, email: e.target.value })} />
                   </div>
                 </div>
 
                 <div>
-                  <label style={s.label}>Phone</label>
-                  <div style={s.inputWrapper}>
-                    <Hash style={s.icon} size={16} />
-                    <input type="text" style={s.input} value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })} />
+                  <label className="hv-label">Phone</label>
+                  <div className="hv-input-wrap">
+                    <Hash className="hv-input-icon" size={16} />
+                    <input type="text" className="hv-input" value={customerForm.phone} onChange={e => setCustomerForm({ ...customerForm, phone: e.target.value })} />
                   </div>
                 </div>
 
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={s.label}>Address</label>
-                  <div style={s.inputWrapper}>
-                    <MapPin style={s.icon} size={16} />
-                    <input type="text" style={s.input} value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} />
+                <div className="hv-full-col">
+                  <label className="hv-label">Address</label>
+                  <div className="hv-input-wrap">
+                    <MapPin className="hv-input-icon" size={16} />
+                    <input type="text" className="hv-input" value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })} />
                   </div>
                 </div>
 
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={s.label}>City / State / Zip</label>
-                  <div style={s.inputWrapper}>
-                    <MapPin style={s.icon} size={16} />
-                    <input type="text" style={s.input} placeholder="e.g. Maracaibo, Zulia 4001" value={customerForm.cityStateZip} onChange={e => setCustomerForm({ ...customerForm, cityStateZip: e.target.value })} />
+                <div className="hv-full-col">
+                  <label className="hv-label">City / State / Zip</label>
+                  <div className="hv-input-wrap">
+                    <MapPin className="hv-input-icon" size={16} />
+                    <input type="text" className="hv-input" placeholder="e.g. Maracaibo, Zulia 4001" value={customerForm.cityStateZip} onChange={e => setCustomerForm({ ...customerForm, cityStateZip: e.target.value })} />
                   </div>
                 </div>
 
               </div>
             </div>
-            <footer style={s.footerBetween}>
+            <footer className="hv-modal-footer-between">
               <div>
-                <button onClick={() => setIsCustomerModalOpen(false)} style={s.btnOutline}>Cancel</button>
+                <button onClick={() => setIsCustomerModalOpen(false)} className="hv-btn-outline-modal">Cancel</button>
               </div>
-              <button onClick={handleSaveNewCustomer} disabled={isSaving} style={{ ...s.btnPrimary, backgroundColor: '#10b981', borderColor: '#10b981' }}>
+              <button onClick={handleSaveNewCustomer} disabled={isSaving} className="hv-btn-primary-modal green">
                 <Save size={16} /> {isSaving ? 'Saving...' : 'Save Customer'}
               </button>
             </footer>
@@ -3498,14 +3229,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {isServiceModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsServiceModalOpen(false)}>
           <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>{serviceForm.id ? 'Edit Service' : 'Add Billed Service'}</h3>
-              <button style={s.closeBtn} onClick={() => setIsServiceModalOpen(false)}><X size={22} /></button>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">{serviceForm.id ? 'Edit Service' : 'Add Billed Service'}</h3>
+              <button className="hv-modal-close-btn" onClick={() => setIsServiceModalOpen(false)}><X size={22} /></button>
             </header>
-            <div style={{ padding: '24px', overflowY: 'auto' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={s.label}>Product / Service <span style={{ color: '#3b82f6' }}>*</span></label>
+            <div className="hv-modal-body-padded">
+              <div className="hv-form-grid cols-240">
+                <div className="hv-full-col">
+                  <label className="hv-label">Product / Service <span className="hv-required">*</span></label>
                   <CustomSelect options={products.length ? products : services} value={serviceForm.serviceId} onChange={(val: string) => {
                     const list = products.length ? products : services;
                     const srv = list.find((c: any) => c.id === val);
@@ -3513,23 +3244,23 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   }} placeholder="Select Product/Service..." icon={Wrench} />
                 </div>
                 <div>
-                  <label style={s.label}>Quantity</label>
-                  <div style={s.inputWrapper}>
-                    <Hash style={s.icon} size={16} />
-                    <input type="number" min="1" style={s.input} value={serviceForm.quantity} onChange={e => setServiceForm({ ...serviceForm, quantity: Number(e.target.value) })} />
+                  <label className="hv-label">Quantity</label>
+                  <div className="hv-input-wrap">
+                    <Hash className="hv-input-icon" size={16} />
+                    <input type="number" min="1" className="hv-input" value={serviceForm.quantity} onChange={e => setServiceForm({ ...serviceForm, quantity: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Unit Price</label>
-                  <div style={s.inputWrapper}>
-                    <DollarSign style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" style={s.input} value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
+                  <label className="hv-label">Unit Price</label>
+                  <div className="hv-input-wrap">
+                    <DollarSign className="hv-input-icon" size={16} />
+                    <input type="number" min="0" step="0.01" className="hv-input" value={serviceForm.price} onChange={e => setServiceForm({ ...serviceForm, price: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Tax %</label>
+                  <label className="hv-label">Tax %</label>
                   {taxes.length > 0 && (
-                    <div style={{ marginBottom: '8px' }}>
+                    <div className="hv-tax-select-wrap">
                       <CustomSelect
                         options={taxes.map((t: any) => ({ id: String(Number(t.percentage)), name: `${t.name} (${Number(t.percentage)}%)` }))}
                         value={String(Number(serviceForm.taxPercentage))}
@@ -3539,57 +3270,57 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                       />
                     </div>
                   )}
-                  <div style={s.inputWrapper}>
-                    <Percent style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" inputMode="decimal" style={s.input} value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
+                  <div className="hv-input-wrap">
+                    <Percent className="hv-input-icon" size={16} />
+                    <input type="number" min="0" step="0.01" inputMode="decimal" className="hv-input" value={serviceForm.taxPercentage} onChange={e => setServiceForm({ ...serviceForm, taxPercentage: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Apply Tax (add)</label>
-                  <div style={s.segmentContainer}>
-                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'Yes', minusTax: 'No' })} style={s.segmentBtn(serviceForm.applyTax === 'Yes', 'yes')}>Yes</button>
-                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'No' })} style={s.segmentBtn(serviceForm.applyTax === 'No', 'no')}>No</button>
+                  <label className="hv-label">Apply Tax (add)</label>
+                  <div className="hv-segment-container">
+                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'Yes', minusTax: 'No' })} className={`hv-segment-btn${serviceForm.applyTax === 'Yes' ? ' active yes' : ''}`}>Yes</button>
+                    <button onClick={() => setServiceForm({ ...serviceForm, applyTax: 'No' })} className={`hv-segment-btn${serviceForm.applyTax === 'No' ? ' active no' : ''}`}>No</button>
                   </div>
                 </div>
                 {serviceForm.applyTax === 'No' && (
                   <div>
-                    <label style={s.label}>Minus Tax (subtract)</label>
-                    <div style={s.segmentContainer}>
-                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })} style={s.segmentBtn(serviceForm.minusTax === 'Yes', 'yes')}>Yes</button>
-                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })} style={s.segmentBtn(serviceForm.minusTax === 'No', 'no')}>No</button>
+                    <label className="hv-label">Minus Tax (subtract)</label>
+                    <div className="hv-segment-container">
+                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'Yes' })} className={`hv-segment-btn${serviceForm.minusTax === 'Yes' ? ' active yes' : ''}`}>Yes</button>
+                      <button onClick={() => setServiceForm({ ...serviceForm, minusTax: 'No' })} className={`hv-segment-btn${serviceForm.minusTax === 'No' ? ' active no' : ''}`}>No</button>
                     </div>
                   </div>
                 )}
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={s.label}>Notes</label>
-                  <textarea style={{ ...s.input, minHeight: '60px', resize: 'vertical', padding: '12px 14px' }} value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })} placeholder="Optional notes..."></textarea>
+                <div className="hv-full-col">
+                  <label className="hv-label">Notes</label>
+                  <textarea className="hv-input hv-textarea compact" value={serviceForm.notes} onChange={e => setServiceForm({ ...serviceForm, notes: e.target.value })} placeholder="Optional notes..."></textarea>
                 </div>
               </div>
 
-              <div style={{ marginTop: '24px', backgroundColor: '#f8fafc', borderRadius: '12px', padding: '20px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
-                  <span>Subtotal</span><span style={{ fontWeight: 600, color: '#1e293b' }}>${serviceForm.subtotal.toFixed(2)}</span>
+              <div className="hv-service-summary-box">
+                <div className="hv-summary-row">
+                  <span>Subtotal</span><span className="hv-summary-row-value">${serviceForm.subtotal.toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748b', marginBottom: '8px' }}>
+                <div className="hv-summary-row">
                   <span>Tax</span>
-                  <span style={{ fontWeight: 600, color: serviceForm.applyTax === 'Yes' ? '#ef4444' : serviceForm.minusTax === 'Yes' ? '#10b981' : '#1e293b' }}>
+                  <span className={`hv-summary-row-value${serviceForm.applyTax === 'Yes' ? ' tax-add' : serviceForm.minusTax === 'Yes' ? ' tax-subtract' : ''}`}>
                     {serviceForm.applyTax === 'Yes' ? '+' : serviceForm.minusTax === 'Yes' ? '-' : ''}${serviceForm.taxAmount.toFixed(2)}
                   </span>
                 </div>
-                <div style={{ borderTop: '1px dashed #cbd5e1', margin: '12px 0' }}></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Total</span>
-                  <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>${serviceForm.total.toFixed(2)}</span>
+                <div className="hv-summary-divider"></div>
+                <div className="hv-summary-total-row">
+                  <span className="hv-summary-total-label">Total</span>
+                  <span className="hv-summary-total-value">${serviceForm.total.toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#334155' }}>Total Minus Tax</span>
-                  <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f766e' }}>${Number(serviceForm.totalMinusTax || 0).toFixed(2)}</span>
+                <div className="hv-summary-minustax-row">
+                  <span className="hv-summary-minustax-label">Total Minus Tax</span>
+                  <span className="hv-summary-minustax-value">${Number(serviceForm.totalMinusTax || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>
-            <footer style={s.footer}>
-              <button onClick={() => setIsServiceModalOpen(false)} style={s.btnOutline}>Cancel</button>
-              <button onClick={handleSaveService} disabled={isSaving} style={s.btnPrimary}>
+            <footer className="hv-modal-footer">
+              <button onClick={() => setIsServiceModalOpen(false)} className="hv-btn-outline-modal">Cancel</button>
+              <button onClick={handleSaveService} disabled={isSaving} className="hv-btn-primary-modal">
                 <Save size={16} /> {isSaving ? 'Saving...' : 'Save Service'}
               </button>
             </footer>
@@ -3601,69 +3332,69 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {isPayrollModalOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsPayrollModalOpen(false)}>
           <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Register Payment</h3>
-              <button style={s.closeBtn} onClick={() => setIsPayrollModalOpen(false)}><X size={22} /></button>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">Register Payment</h3>
+              <button className="hv-modal-close-btn" onClick={() => setIsPayrollModalOpen(false)}><X size={22} /></button>
             </header>
-            <div style={{ padding: '24px', overflowY: 'auto' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '20px' }}>
+            <div className="hv-modal-body-padded">
+              <div className="hv-form-grid cols-240">
                 <div>
-                  <label style={s.label}>Employee <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <SearchableSelect 
-                    options={employees.map(e => ({ id: e.id, name: [e.firstName, e.lastName].filter(Boolean).join(' ') }))} 
-                    value={payrollForm.employeeId} 
-                    onChange={(val: string) => setPayrollForm({ ...payrollForm, employeeId: val })} 
-                    placeholder="Type to search employee..." 
-                    icon={User} 
+                  <label className="hv-label">Employee <span className="hv-required">*</span></label>
+                  <SearchableSelect
+                    options={employees.map(e => ({ id: e.id, name: [e.firstName, e.lastName].filter(Boolean).join(' ') }))}
+                    value={payrollForm.employeeId}
+                    onChange={(val: string) => setPayrollForm({ ...payrollForm, employeeId: val })}
+                    placeholder="Type to search employee..."
+                    icon={User}
                     returnKey="id"
                   />
                 </div>
                 <div>
-                  <label style={s.label}>Date</label>
-                  <div style={s.inputWrapper}>
-                    <CalendarDays style={s.icon} size={16} />
-                    <input type="date" style={s.input} value={payrollForm.date} onChange={e => setPayrollForm({ ...payrollForm, date: e.target.value })} />
+                  <label className="hv-label">Date</label>
+                  <div className="hv-input-wrap">
+                    <CalendarDays className="hv-input-icon" size={16} />
+                    <input type="date" className="hv-input" value={payrollForm.date} onChange={e => setPayrollForm({ ...payrollForm, date: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Base Amount <span style={{ color: '#3b82f6' }}>*</span></label>
-                  <div style={s.inputWrapper}>
-                    <DollarSign style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.baseAmount} onChange={e => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
+                  <label className="hv-label">Base Amount <span className="hv-required">*</span></label>
+                  <div className="hv-input-wrap">
+                    <DollarSign className="hv-input-icon" size={16} />
+                    <input type="number" min="0" step="0.01" className="hv-input" value={payrollForm.baseAmount} onChange={e => setPayrollForm({ ...payrollForm, baseAmount: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Extra Amount</label>
-                  <div style={s.inputWrapper}>
-                    <DollarSign style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.extraAmount} onChange={e => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
+                  <label className="hv-label">Extra Amount</label>
+                  <div className="hv-input-wrap">
+                    <DollarSign className="hv-input-icon" size={16} />
+                    <input type="number" min="0" step="0.01" className="hv-input" value={payrollForm.extraAmount} onChange={e => setPayrollForm({ ...payrollForm, extraAmount: Number(e.target.value) })} />
                   </div>
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={s.label}>Extra Note</label>
-                  <input type="text" style={{...s.input, paddingLeft: '14px'}} value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} placeholder="Reason for extra..." />
+                <div className="hv-full-col">
+                  <label className="hv-label">Extra Note</label>
+                  <input type="text" className="hv-input no-icon" value={payrollForm.extraNote} onChange={e => setPayrollForm({ ...payrollForm, extraNote: e.target.value })} placeholder="Reason for extra..." />
                 </div>
                 <div>
-                  <label style={s.label}>Discount Amount</label>
-                  <div style={s.inputWrapper}>
-                    <DollarSign style={s.icon} size={16} />
-                    <input type="number" min="0" step="0.01" style={s.input} value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
+                  <label className="hv-label">Discount Amount</label>
+                  <div className="hv-input-wrap">
+                    <DollarSign className="hv-input-icon" size={16} />
+                    <input type="number" min="0" step="0.01" className="hv-input" value={payrollForm.discountAmount} onChange={e => setPayrollForm({ ...payrollForm, discountAmount: Number(e.target.value) })} />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Discount Note</label>
-                  <input type="text" style={{...s.input, paddingLeft: '14px'}} value={payrollForm.discountNote} onChange={e => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} placeholder="Reason for discount..." />
+                  <label className="hv-label">Discount Note</label>
+                  <input type="text" className="hv-input no-icon" value={payrollForm.discountNote} onChange={e => setPayrollForm({ ...payrollForm, discountNote: e.target.value })} placeholder="Reason for discount..." />
                 </div>
               </div>
 
-              <div style={{ marginTop: '24px', backgroundColor: '#f0fdf4', borderRadius: '12px', padding: '20px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#166534' }}>Total Payment</span>
-                <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#166534' }}>${Number(payrollForm.totalAmount).toFixed(2)}</span>
+              <div className="hv-payroll-summary-box">
+                <span className="hv-payroll-summary-label">Total Payment</span>
+                <span className="hv-payroll-summary-value">${Number(payrollForm.totalAmount).toFixed(2)}</span>
               </div>
             </div>
-            <footer style={s.footer}>
-              <button onClick={() => setIsPayrollModalOpen(false)} style={s.btnOutline}>Cancel</button>
-              <button onClick={handleSavePayroll} disabled={isSaving} style={{...s.btnPrimary, backgroundColor: '#10b981'}}>
+            <footer className="hv-modal-footer">
+              <button onClick={() => setIsPayrollModalOpen(false)} className="hv-btn-outline-modal">Cancel</button>
+              <button onClick={handleSavePayroll} disabled={isSaving} className="hv-btn-primary-modal green">
                 <Save size={16} /> {isSaving ? 'Saving...' : 'Register Payment'}
               </button>
             </footer>
@@ -3675,29 +3406,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       {isFieldConfigOpen && (
         <div className="modal-overlay-centered" onClick={() => setIsFieldConfigOpen(false)}>
           <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
+            <header className="hv-modal-header">
               <div>
-                <h3 style={s.title}>Field & Button Visibility</h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Marca un rol para OCULTARLE ese elemento.</p>
+                <h3 className="hv-modal-title">Field & Button Visibility</h3>
+                <p className="hv-modal-subtitle">Marca un rol para OCULTARLE ese elemento.</p>
               </div>
-              <button style={s.closeBtn} onClick={() => setIsFieldConfigOpen(false)}><X size={22} /></button>
+              <button className="hv-modal-close-btn" onClick={() => setIsFieldConfigOpen(false)}><X size={22} /></button>
             </header>
-            <div style={{ padding: '24px', overflowY: 'auto' }}>
+            <div className="hv-modal-body-padded">
               {rolesList.length === 0 ? (
-                <div style={{ color: '#6b7280', fontStyle: 'italic', textAlign: 'center', padding: '20px' }}>No hay roles configurados.</div>
+                <div className="hv-fieldconfig-empty">No hay roles configurados.</div>
               ) : (
                 <>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>Form Fields</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
+                  <h4 className="hv-fieldconfig-section-title">Form Fields</h4>
+                  <div className="hv-fieldconfig-list">
                     {CONFIGURABLE_FIELDS.map(field => (
-                      <div key={field.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>{field.label} <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {field.section}</span></div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <div key={field.id} className="hv-fieldconfig-row">
+                        <div className="hv-fieldconfig-row-label">{field.label} <span className="hv-fieldconfig-section-tag">· {field.section}</span></div>
+                        <div className="hv-fieldconfig-roles-wrap">
                           {rolesList.map(role => {
                             const hidden = (fieldConfigDraft.visibility?.[field.id] || []).includes(role.id);
                             return (
                               <button key={role.id} onClick={() => toggleElementVisibilityForRole(field.id, role.id)}
-                                style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${hidden ? '#fca5a5' : '#cbd5e1'}`, backgroundColor: hidden ? '#fef2f2' : 'white', color: hidden ? '#dc2626' : '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                className={`hv-role-toggle${hidden ? ' hidden' : ''}`}>
                                 {hidden ? <X size={12} /> : <CheckSquare size={12} />} {role.name}
                               </button>
                             );
@@ -3707,17 +3438,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     ))}
                   </div>
 
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>Buttons & Tabs</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <h4 className="hv-fieldconfig-section-title">Buttons & Tabs</h4>
+                  <div className="hv-fieldconfig-list no-mb">
                     {CONFIGURABLE_BUTTONS.map(btn => (
-                      <div key={btn.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>{btn.label} <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {btn.section}</span></div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <div key={btn.id} className="hv-fieldconfig-row">
+                        <div className="hv-fieldconfig-row-label">{btn.label} <span className="hv-fieldconfig-section-tag">· {btn.section}</span></div>
+                        <div className="hv-fieldconfig-roles-wrap">
                           {rolesList.map(role => {
                             const hidden = (fieldConfigDraft.visibility?.[btn.id] || []).includes(role.id);
                             return (
                               <button key={role.id} onClick={() => toggleElementVisibilityForRole(btn.id, role.id)}
-                                style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${hidden ? '#fca5a5' : '#cbd5e1'}`, backgroundColor: hidden ? '#fef2f2' : 'white', color: hidden ? '#dc2626' : '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                className={`hv-role-toggle${hidden ? ' hidden' : ''}`}>
                                 {hidden ? <X size={12} /> : <CheckSquare size={12} />} {role.name}
                               </button>
                             );
@@ -3729,9 +3460,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </>
               )}
             </div>
-            <footer style={s.footer}>
-              <button onClick={() => setIsFieldConfigOpen(false)} style={s.btnOutline}>Cancel</button>
-              <button onClick={saveFieldConfig} disabled={isSavingFieldConfig} style={s.btnPrimary}>
+            <footer className="hv-modal-footer">
+              <button onClick={() => setIsFieldConfigOpen(false)} className="hv-btn-outline-modal">Cancel</button>
+              <button onClick={saveFieldConfig} disabled={isSavingFieldConfig} className="hv-btn-primary-modal">
                 <Save size={16} /> {isSavingFieldConfig ? 'Saving...' : 'Save Configuration'}
               </button>
             </footer>
@@ -3741,33 +3472,33 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       {/* --- CÁMARA RÁPIDA (RÁFAGA): se mantiene abierta y permite varias tomas --- */}
       {cameraOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: '#000', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', color: '#fff', background: 'rgba(0,0,0,0.45)' }}>
-            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="hv-camera-overlay">
+          <div className="hv-camera-topbar">
+            <div className="hv-camera-title">
               <Camera size={18} /> {cameraOpen === 'before' ? 'Fotos Before' : 'Fotos After'} · {burstCount} tomada(s)
             </div>
-            <button onClick={() => setCameraOpen(null)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button onClick={() => setCameraOpen(null)} className="hv-camera-close-btn">
               <X size={18} /> Cerrar
             </button>
           </div>
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div className="hv-camera-video-wrap">
+            <video ref={videoRef} playsInline muted className="hv-camera-video" />
             {isCompressing && (
-              <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '0.8rem' }}>
+              <div className="hv-camera-processing-badge">
                 Procesando…
               </div>
             )}
             {burstCount > 0 && (
-              <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(16,185,129,0.9)', color: '#fff', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 700 }}>
+              <div className="hv-camera-count-badge">
                 {burstCount} foto(s) agregada(s)
               </div>
             )}
           </div>
-          <div style={{ padding: '18px 16px calc(18px + env(safe-area-inset-bottom))', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+          <div className="hv-camera-controls">
             <button onClick={captureBurst} aria-label="Tomar foto"
-              style={{ width: '74px', height: '74px', borderRadius: '50%', background: '#fff', border: '5px solid rgba(255,255,255,0.5)', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.4)', flexShrink: 0 }} />
+              className="hv-camera-shutter" />
             <button onClick={() => setCameraOpen(null)}
-              style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 22px', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' }}>
+              className="hv-camera-done-btn">
               Listo ({burstCount})
             </button>
           </div>

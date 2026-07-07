@@ -4,6 +4,7 @@ import { auth } from '../../config/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import { usersService } from '../../services/usersService';
 import { getCachedBranding, getBranding, type Branding } from '../../utils/companyBranding';
+import './LoginView.css';
 
 interface LoginViewProps {
   onLoginSuccess: () => void;
@@ -188,70 +189,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   };
 
   return (
-    <div className="login-screen" style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', zIndex: 9999, fontFamily: 'inherit', padding: '20px', boxSizing: 'border-box' }}>
-
-      {/* ⭐ Estilos responsive: en móvil la tarjeta y sus elementos crecen para
-          ser más cómodos al tacto (inputs altos, textos más grandes). */}
-      <style>{`
-        .login-card { width: 100%; max-width: 400px; background-color: #ffffff; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 40px 32px; border: 1px solid #e2e8f0; box-sizing: border-box; }
-        .login-logo { display: flex; align-items: center; justify-content: center; }
-        .login-logo img { width: 250px; max-width: 80%; height: auto; object-fit: contain; }
-        .login-title { font-size: 1.6rem; }
-        .login-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; font-size: 0.95rem; background-color: #ffffff; color: #0f172a; }
-        .login-input-icon { position: absolute; left: 14px; top: 12px; }
-        .login-submit { width: 100%; background-color: #2563eb; color: #ffffff; border: none; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color 0.2s; }
-
-        /* El encabezado "Login to your Account" solo se muestra en móvil */
-        .login-hero { display: none; }
-
-        @media (max-width: 600px) {
-          /* ===== Estilo móvil moderno: fondo lavanda + tarjeta limpia centrada ===== */
-          .login-screen {
-            padding: 20px;
-            align-items: center;
-            background: linear-gradient(160deg, #eef1fd 0%, #e2e6fb 100%) !important;
-          }
-          .login-card {
-            max-width: 460px;
-            border-radius: 26px;
-            padding: 34px 26px 30px;
-            border: none;
-            box-shadow: 0 22px 60px rgba(79, 70, 229, 0.18);
-          }
-
-          /* Logo un poco más contenido para dejar aire al título */
-          .login-logo { border-radius: 20px; }
-          .login-logo img { width: 210px; max-width: 70%; }
-          .login-logo svg { width: 44px; height: 44px; }
-
-          /* Encabezado tipo "Login to your Account" */
-          .login-hero { display: block; margin-top: 4px; }
-          .login-hero .login-title { font-size: 1.7rem; margin: 0; color: #0f172a; font-weight: 800; }
-          .login-hero .login-subtitle { margin: 8px 0 0 0; color: #64748b; font-size: 1rem; }
-
-          .login-title { font-size: 1.95rem; }
-          .login-subtitle { font-size: 1.05rem; }
-          .login-label { font-size: 1rem !important; }
-          .login-input { padding: 16px 16px 16px 48px; font-size: 1.05rem; border-radius: 14px; background-color: #f8fafc; }
-          .login-input:focus { background-color: #ffffff; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
-          .login-input-icon { top: 17px; }
-          .login-submit { padding: 18px; font-size: 1.15rem; border-radius: 14px; box-shadow: 0 10px 22px rgba(37,99,235,0.28); }
-          .login-bypass { padding: 16px !important; font-size: 1rem !important; border-radius: 14px !important; }
-          .login-forgot { font-size: 0.95rem !important; }
-        }
-
-        @media (max-width: 380px) {
-          .login-card { padding: 30px 20px 26px; }
-          .login-hero .login-title { font-size: 1.5rem; }
-        }
-      `}</style>
-
+    <div className="login-screen">
       <div className="login-card">
-        
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+
+        <div className="login-header">
           {/* ⭐ Logo de la empresa (del módulo Empresa); si no hay, ícono por defecto.
               Sin fondo ni borde cuando hay logo, para que un PNG transparente se vea limpio. */}
-          <div className="login-logo" style={{ backgroundColor: branding.logo ? '#ffffff' : '#1e40af', border: 'none', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto', padding: branding.logo ? '10px' : '0', boxSizing: 'border-box' }}>
+          <div className={`login-logo${branding.logo ? ' has-logo' : ''}`}>
             {branding.logo
               ? <img src={processedLogo || branding.logo} alt={branding.name} />
               : <LogIn size={36} color="#ffffff" />}
@@ -267,10 +211,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
           {view !== 'login' && (
             <>
-              <h1 className="login-title" style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>
+              <h1 className="login-title recover">
                 Recover Access
               </h1>
-              <p className="login-subtitle" style={{ margin: '8px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>
+              <p className="login-subtitle recover">
                 Contact admin if you lost your password
               </p>
             </>
@@ -278,67 +222,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         </div>
 
         {view === 'login' ? (
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <form onSubmit={handleLogin} className="login-form">
             <div>
-              <label className="login-label" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 700, marginBottom: '8px', display: 'block' }}>Email Address</label>
-              <div style={{ position: 'relative' }}>
-                <Mail size={18} color="#94a3b8" className="login-input-icon" />
-                <input 
-                  type="email" 
-                  required 
-                  value={email} 
-                  onChange={e => setEmail(e.target.value)} 
-                  className="login-input"
-                  placeholder="your.email@company.com" 
-                />
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <label className="login-label" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 700 }}>Password</label>
-                <button type="button" className="login-forgot" onClick={goToForgot} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>Forgot it?</button>
-              </div>
-              <div style={{ position: 'relative' }}>
-                <Lock size={18} color="#94a3b8" className="login-input-icon" />
-                <input 
-                  type="password" 
-                  required 
-                  value={password} 
-                  onChange={e => setPassword(e.target.value)} 
-                  className="login-input"
-                  placeholder="••••••••" 
-                />
-              </div>
-            </div>
-
-            <button type="submit" disabled={isLoading} className="login-submit" style={{ cursor: isLoading ? 'wait' : 'pointer' }}>
-              {isLoading ? 'Checking Access...' : 'Sign In'} <ArrowRight size={18} />
-            </button>
-            
-            {/* BOTÓN TEMPORAL ADMIN - Solo para desarrollo */}
-            <button type="button" className="login-bypass" onClick={onLoginSuccess} style={{ marginTop: '8px', width: '100%', backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #ffedd5', padding: '12px', borderRadius: '10px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <ShieldAlert size={16} /> Enter as Super Admin (Bypass)
-            </button>
-          </form>
-        ) : resetSent ? (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '12px', padding: '18px', marginBottom: '16px' }}>
-              <p style={{ margin: 0, color: '#047857', fontWeight: 700, fontSize: '0.95rem' }}>Reset link sent</p>
-              <p className="login-subtitle" style={{ color: '#475569', fontSize: '0.9rem', lineHeight: 1.5, marginTop: '8px' }}>
-                We sent an email to <strong>{email.trim()}</strong> with a link to reset your password. Check your inbox (and spam folder), open the link and choose a new password.
-              </p>
-            </div>
-            <button onClick={goToLogin} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>Return to Login</button>
-          </div>
-        ) : (
-          <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <p className="login-subtitle" style={{ color: '#475569', fontSize: '0.92rem', lineHeight: '1.5', margin: 0 }}>
-              Enter your email and we'll send you a link to reset your password.
-            </p>
-            <div>
-              <label className="login-label" style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 700, marginBottom: '8px', display: 'block' }}>Email Address</label>
-              <div style={{ position: 'relative' }}>
+              <label className="login-label stacked">Email Address</label>
+              <div className="login-input-wrap">
                 <Mail size={18} color="#94a3b8" className="login-input-icon" />
                 <input
                   type="email"
@@ -350,10 +237,67 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 />
               </div>
             </div>
-            <button type="submit" disabled={resetLoading} className="login-submit" style={{ cursor: resetLoading ? 'wait' : 'pointer' }}>
+
+            <div>
+              <div className="login-label-row">
+                <label className="login-label">Password</label>
+                <button type="button" className="login-forgot" onClick={goToForgot}>Forgot it?</button>
+              </div>
+              <div className="login-input-wrap">
+                <Lock size={18} color="#94a3b8" className="login-input-icon" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="login-input"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            <button type="submit" disabled={isLoading} className="login-submit">
+              {isLoading ? 'Checking Access...' : 'Sign In'} <ArrowRight size={18} />
+            </button>
+
+            {/* BOTÓN TEMPORAL ADMIN - Solo para desarrollo */}
+            <button type="button" className="login-bypass" onClick={onLoginSuccess}>
+              <ShieldAlert size={16} /> Enter as Super Admin (Bypass)
+            </button>
+          </form>
+        ) : resetSent ? (
+          <div className="login-reset-sent">
+            <div className="login-success-box">
+              <p className="login-success-title">Reset link sent</p>
+              <p className="login-subtitle reset-sent">
+                We sent an email to <strong>{email.trim()}</strong> with a link to reset your password. Check your inbox (and spam folder), open the link and choose a new password.
+              </p>
+            </div>
+            <button onClick={goToLogin} className="login-link-btn">Return to Login</button>
+          </div>
+        ) : (
+          <form onSubmit={handlePasswordReset} className="login-forgot-form">
+            <p className="login-subtitle forgot-intro">
+              Enter your email and we'll send you a link to reset your password.
+            </p>
+            <div>
+              <label className="login-label stacked">Email Address</label>
+              <div className="login-input-wrap">
+                <Mail size={18} color="#94a3b8" className="login-input-icon" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="login-input"
+                  placeholder="your.email@company.com"
+                />
+              </div>
+            </div>
+            <button type="submit" disabled={resetLoading} className="login-submit">
               {resetLoading ? 'Sending...' : 'Send reset link'} <ArrowRight size={18} />
             </button>
-            <button type="button" onClick={goToLogin} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>Return to Login</button>
+            <button type="button" onClick={goToLogin} className="login-link-btn">Return to Login</button>
           </form>
         )}
       </div>

@@ -1,0 +1,40 @@
+.ps-loading { padding: 40px; text-align: center; color: #64748b; }
+.ps-page { padding: 24px; max-width: 800px; margin: 0 auto; }
+.ps-header { margin-bottom: 32px; }
+.ps-title { font-size: 1.8rem; font-weight: 800; color: #0F172A; margin: 0; display: flex; align-items: center; gap: 12px; }
+.ps-subtitle { margin: 8px 0 0 0; color: #64748b; font-size: 0.95rem; }
+
+.ps-card { background-color: white; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px; }
+.ps-card-title { margin: 0 0 16px 0; font-size: 1.1rem; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+
+.ps-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-radius: 8px; margin-bottom: 12px; transition: all 0.2s; background-color: #f8fafc; border: 1px solid #e2e8f0; }
+.ps-toggle-row.active-blue { background-color: #eff6ff; border-color: #bfdbfe; }
+.ps-toggle-row.active-green { background-color: #ecfdf5; border-color: #a7f3d0; }
+.ps-toggle-row.last { margin-bottom: 0; }
+.ps-toggle-left { display: flex; align-items: center; gap: 12px; }
+.ps-toggle-icon-box { color: white; padding: 10px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background-color: #cbd5e1; }
+.ps-toggle-icon-box.blue { background-color: #3b82f6; }
+.ps-toggle-icon-box.green { background-color: #10b981; }
+.ps-toggle-label { font-weight: 700; color: #1e293b; font-size: 0.95rem; }
+.ps-toggle-desc { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+
+.ps-warning-banner { margin-top: 12px; padding: 12px; background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; }
+
+.ps-field { margin-bottom: 20px; }
+.ps-field-label { display: block; font-size: 0.85rem; font-weight: 600; color: #334155; margin-bottom: 8px; }
+.ps-field-value { color: #3b82f6; }
+.ps-range { width: 100%; accent-color: #3b82f6; }
+.ps-range-legend { display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+.ps-select { width: 100%; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; background-color: white; }
+.ps-tip-banner { margin-top: 16px; padding: 12px; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; font-size: 0.8rem; color: #0369a1; }
+
+.ps-footer-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.ps-saved-message { color: #10b981; font-weight: 600; font-size: 0.9rem; }
+.ps-save-btn { margin-left: auto; padding: 12px 24px; background-color: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.ps-save-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+
+/* ===================== Toggle Switch ===================== */
+.ps-toggle-switch { width: 52px; height: 28px; border-radius: 14px; border: none; position: relative; cursor: pointer; transition: all 0.2s; padding: 0; background-color: #cbd5e1; }
+.ps-toggle-switch.on { background-color: #3b82f6; }
+.ps-toggle-switch-knob { width: 22px; height: 22px; border-radius: 50%; background-color: white; position: absolute; top: 3px; left: 3px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.ps-toggle-switch-knob.on { left: 27px; }

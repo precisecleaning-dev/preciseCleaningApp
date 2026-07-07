@@ -11,7 +11,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMenu }) => {
       
       {/* Contenedor del título y el botón móvil */}
       <div className="header-titles">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="header-title-group">
           {/* BOTÓN MÓVIL (Visible solo en <= 1024px gracias al CSS) */}
           <button className="mobile-menu-btn" onClick={onOpenMenu} aria-label="Abrir menú">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

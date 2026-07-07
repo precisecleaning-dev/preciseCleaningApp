@@ -1,0 +1,107 @@
+.pdm-overlay { position: fixed; inset: 0; background-color: rgba(15,23,42,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; box-sizing: border-box; }
+.pdm-modal { background-color: #fff; width: 100%; max-width: 1100px; border-radius: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column; max-height: 92vh; }
+.pdm-body { padding: 24px 28px; overflow-y: auto; }
+.pdm-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 18px; margin-bottom: 22px; }
+@media (max-width: 640px) { .pdm-body { padding: 16px; } }
+
+/* Header */
+.pdm-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
+.pdm-header-title-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pdm-title { font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pdm-badge-finished { background-color: #d1fae5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pdm-header-actions { display: flex; align-items: center; gap: 10px; }
+.pdm-header-icon { display: inline; vertical-align: text-bottom; margin-right: 6px; }
+
+/* Status selector */
+.pdm-status-wrap { position: relative; }
+.pdm-status-trigger {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 20px;
+  border: 1px solid #e5e7eb; background: #fff; font-size: 0.85rem; font-weight: 600; color: #111827;
+  cursor: default; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.pdm-status-trigger.editable { cursor: pointer; }
+.pdm-status-trigger.saving { cursor: wait; }
+.pdm-chevron { transition: transform 0.2s; }
+.pdm-chevron.open { transform: rotate(180deg); }
+.pdm-status-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.12); z-index: 5; min-width: 200px; overflow: hidden; }
+.pdm-status-option { padding: 11px 14px; font-size: 0.85rem; color: #111827; display: flex; align-items: center; gap: 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; background: transparent; }
+.pdm-status-option.active { background: #f8fafc; }
+.pdm-status-option:hover { background: #f1f5f9; }
+.pdm-dot-8 { width: 8px; height: 8px; border-radius: 50%; background: var(--dot-color); }
+.pdm-dot-10 { width: 10px; height: 10px; border-radius: 50%; background: var(--dot-color); display: inline-block; }
+
+.pdm-btn-edit { display: flex; align-items: center; gap: 6px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+.pdm-close-btn { background: none; border: none; color: #6b7280; cursor: pointer; padding: 4px; display: flex; }
+
+/* Body */
+.pdm-address-row { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 1rem; font-weight: 500; padding-bottom: 16px; }
+
+/* Info cards */
+.pdm-info-card { background-color: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.pdm-info-header { background-color: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #334155; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.pdm-info-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+.pdm-info-row.no-border { border-bottom: none; }
+.pdm-info-label { color: #64748b; font-size: 0.85rem; font-weight: 600; }
+.pdm-info-value { color: #1e293b; font-size: 0.9rem; font-weight: 600; text-align: right; display: flex; align-items: center; gap: 6px; }
+.pdm-invoice-badge { color: #475569; background-color: #f1f5f9; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; }
+
+/* Detail labels / note boxes */
+.pdm-detail-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
+.pdm-detail-label.orange { color: #c2410c; }
+.pdm-note-box { background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; width: 100%; }
+.pdm-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
+.pdm-note-text { font-size: 0.95rem; color: #111827; font-weight: 500; margin-top: 8px; white-space: pre-wrap; }
+.pdm-note-text.orange { color: #9a3412; }
+
+/* Workers */
+.pdm-workers-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.pdm-empty-text { font-size: 0.85rem; color: #94a3b8; font-style: italic; }
+.pdm-worker-chip { background: white; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 6px; }
+
+/* Tables (Work log / Billed services) */
+.pdm-table-card { background: white; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px; overflow: hidden; }
+.pdm-table { width: 100%; border-collapse: collapse; }
+.pdm-th { padding: 10px 16px; text-align: left; font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; background-color: #f8fafc; }
+.pdm-th.center { text-align: center; }
+.pdm-th.right { text-align: right; }
+.pdm-td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; color: #111827; }
+.pdm-td.center { text-align: center; }
+.pdm-td.right { text-align: right; }
+.pdm-td.strong { font-weight: 700; }
+.pdm-td.empty { text-align: center; color: #94a3b8; font-style: italic; }
+.pdm-td.label-start { font-weight: 600; color: #3b82f6; }
+.pdm-td.label-end { font-weight: 600; color: #10b981; }
+.pdm-td.timestamp { color: #64748b; font-size: 0.8rem; text-align: right; }
+
+/* Billing summary */
+.pdm-stat-col { display: flex; flex-direction: column; gap: 12px; }
+.pdm-stat-billed { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px; text-align: center; }
+.pdm-stat-billed-label { font-size: 0.72rem; color: #1e40af; font-weight: 700; text-transform: uppercase; }
+.pdm-stat-billed-value { font-size: 1.3rem; color: #1e3a8a; font-weight: 800; }
+.pdm-stat-row { display: flex; gap: 12px; }
+.pdm-stat-payroll { flex: 1; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; text-align: center; }
+.pdm-stat-payroll-label { font-size: 0.68rem; color: #991b1b; font-weight: 700; text-transform: uppercase; }
+.pdm-stat-payroll-value { font-size: 1.05rem; color: #7f1d1d; font-weight: 800; }
+.pdm-stat-profit { flex: 1; border-radius: 8px; padding: 12px; text-align: center; }
+.pdm-stat-profit.positive { background: #ecfdf5; border: 1px solid #a7f3d0; }
+.pdm-stat-profit.negative { background: #fef2f2; border: 1px solid #fecaca; }
+.pdm-stat-profit-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; }
+.pdm-stat-profit-label.positive { color: #065f46; }
+.pdm-stat-profit-label.negative { color: #991b1b; }
+.pdm-stat-profit-value { font-size: 1.05rem; font-weight: 800; }
+.pdm-stat-profit-value.positive { color: #047857; }
+.pdm-stat-profit-value.negative { color: #7f1d1d; }
+
+/* Payments */
+.pdm-payments-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.pdm-payment-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.pdm-payment-name { font-weight: 600; color: #1e293b; font-size: 0.9rem; }
+.pdm-payment-date { font-size: 0.72rem; color: #64748b; }
+.pdm-payment-amount { font-weight: 800; color: #10b981; }
+
+/* Photos */
+.pdm-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px,1fr)); gap: 8px; margin-top: 10px; }
+.pdm-photo-thumb { display: block; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+.pdm-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.pdm-history-wrap { margin-top: 8px; }

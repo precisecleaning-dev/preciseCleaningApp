@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { 
+import type { CSSProperties } from 'react';
+import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
   Building2, Save, Clock, WifiOff, Route as RouteIcon, ArrowUp, ArrowDown, Plus, StickyNote,
@@ -13,6 +14,7 @@ import { compressImage } from '../utils/imageCompression';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import './QualityCheckView.css';
 
 interface QCRecord {
   id?: string;
@@ -360,42 +362,35 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl]);
 
-  const toolBtn = (active: boolean): React.CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '10px',
-    border: active ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.25)',
-    background: active ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.08)', color: '#fff',
-    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer'
-  });
-
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#0b0f19', zIndex: 1600, display: 'flex', flexDirection: 'column' }}>
+    <div className="qcv-pa-root">
       {/* Barra de herramientas */}
-      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: 'rgba(0,0,0,0.55)' }}>
-        <button style={toolBtn(tool === 'pen')} onClick={() => setTool('pen')}><Pencil size={16} /> Lápiz</button>
-        <button style={toolBtn(tool === 'circle')} onClick={() => setTool('circle')}><CircleShape size={16} /> Círculo</button>
-        <button style={toolBtn(tool === 'arrow')} onClick={() => setTool('arrow')}><MoveUpRight size={16} /> Flecha</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+      <div className="qcv-pa-toolbar">
+        <button className={`qcv-pa-tool-btn${tool === 'pen' ? ' active' : ''}`} onClick={() => setTool('pen')}><Pencil size={16} /> Lápiz</button>
+        <button className={`qcv-pa-tool-btn${tool === 'circle' ? ' active' : ''}`} onClick={() => setTool('circle')}><CircleShape size={16} /> Círculo</button>
+        <button className={`qcv-pa-tool-btn${tool === 'arrow' ? ' active' : ''}`} onClick={() => setTool('arrow')}><MoveUpRight size={16} /> Flecha</button>
+        <div className="qcv-pa-color-group">
           {colors.map(col => (
             <button key={col} onClick={() => setColor(col)} aria-label={col}
-              style={{ width: '26px', height: '26px', borderRadius: '50%', background: col, cursor: 'pointer', border: color === col ? '3px solid #fff' : '2px solid rgba(255,255,255,0.35)' }} />
+              className={`qcv-pa-color-swatch${color === col ? ' selected' : ''}`} style={{ '--swatch-color': col } as CSSProperties} />
           ))}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-          <button style={toolBtn(false)} onClick={undo}><Undo2 size={16} /> Deshacer</button>
-          <button style={toolBtn(false)} onClick={clearAll}><Eraser size={16} /> Limpiar</button>
+        <div className="qcv-pa-toolbar-actions">
+          <button className="qcv-pa-tool-btn" onClick={undo}><Undo2 size={16} /> Deshacer</button>
+          <button className="qcv-pa-tool-btn" onClick={clearAll}><Eraser size={16} /> Limpiar</button>
         </div>
       </div>
 
       {/* Lienzo */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '10px' }}>
+      <div className="qcv-pa-canvas-wrap">
         {loadError ? (
-          <div style={{ color: '#fca5a5', textAlign: 'center', padding: '24px' }}>{loadError}</div>
+          <div className="qcv-pa-error">{loadError}</div>
         ) : !ready ? (
-          <div style={{ color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '10px' }}><Loader2 size={20} className="spin-qc" /> Cargando imagen…</div>
+          <div className="qcv-pa-loading"><Loader2 size={20} className="spin-qc" /> Cargando imagen…</div>
         ) : (
           <canvas
             ref={canvasRef}
-            style={{ maxWidth: '100%', maxHeight: '100%', touchAction: 'none', borderRadius: '10px', boxShadow: '0 6px 30px rgba(0,0,0,0.5)', cursor: 'crosshair' }}
+            className="qcv-pa-canvas"
             onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
           />
@@ -403,9 +398,9 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
       </div>
 
       {/* Acciones */}
-      <div style={{ padding: '14px', display: 'flex', gap: '12px', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))' }}>
-        <button onClick={onCancel} disabled={saving} style={{ padding: '12px 22px', borderRadius: '30px', border: '1px solid rgba(255,255,255,0.3)', background: 'transparent', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-        <button onClick={save} disabled={saving || !ready} style={{ padding: '12px 32px', borderRadius: '30px', border: 'none', background: '#22c55e', color: '#fff', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+      <div className="qcv-pa-actions">
+        <button onClick={onCancel} disabled={saving} className="qcv-pa-cancel-btn">Cancelar</button>
+        <button onClick={save} disabled={saving || !ready} className="qcv-pa-save-btn">
           {saving ? <Loader2 size={18} className="spin-qc" /> : <Check size={18} />} Guardar
         </button>
       </div>
@@ -514,18 +509,23 @@ function QCReportsDashboard({
     return `${names[Number(m) - 1] || m} ${String(y).slice(2)}`;
   };
 
-  // Color del mapa de calor (rojo = más problemas, verde = menos)
-  const heatColor = (val: number, max: number) => {
-    if (max <= 0) return { bg: '#dcfce7', fg: '#166534' };
+  // Banda del mapa de calor (rojo = más problemas, verde = menos) — 4 tramos fijos
+  const heatBand = (val: number, max: number): string => {
+    if (max <= 0) return 'band-4';
     const r = val / max;
-    if (r >= 0.75) return { bg: '#fecaca', fg: '#991b1b' };
-    if (r >= 0.5) return { bg: '#fed7aa', fg: '#9a3412' };
-    if (r >= 0.25) return { bg: '#fef08a', fg: '#854d0e' };
-    return { bg: '#dcfce7', fg: '#166534' };
+    if (r >= 0.75) return 'band-1';
+    if (r >= 0.5) return 'band-2';
+    if (r >= 0.25) return 'band-3';
+    return 'band-4';
   };
-
-  const card: React.CSSProperties = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', padding: '18px', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' };
-  const cardTitle: React.CSSProperties = { margin: '0 0 14px 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' };
+  const heatFg = (val: number, max: number): string => {
+    if (max <= 0) return '#166534';
+    const r = val / max;
+    if (r >= 0.75) return '#991b1b';
+    if (r >= 0.5) return '#9a3412';
+    if (r >= 0.25) return '#854d0e';
+    return '#166534';
+  };
 
   const maxIssue = stats.topIssues.length ? stats.topIssues[0][1] : 0;
   const maxRoom = stats.roomHeat.length ? stats.roomHeat[0][1] : 0;
@@ -542,84 +542,83 @@ function QCReportsDashboard({
 
   if (stats.totalReports === 0) {
     return (
-      <div style={{ ...card, textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '40px' }}>
+      <div className="qcv-rd-card empty">
         Aún no hay Quality Checks registrados. Cuando completes inspecciones, aquí verás los indicadores y reportes.
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div className="qcv-rd-root">
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))', gap: '14px' }}>
+      <div className="qcv-rd-kpi-grid">
         {kpis.map(k => (
-          <div key={k.label} style={{ ...card, padding: '16px 18px' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
-              <span style={{ fontSize: '1.9rem', fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</span>
-              <span style={{ width: '34px', height: '34px', borderRadius: '10px', background: k.bg, marginLeft: 'auto', flexShrink: 0 }} />
+          <div key={k.label} className="qcv-rd-card padded-sm">
+            <div className="qcv-rd-kpi-label">{k.label}</div>
+            <div className="qcv-rd-kpi-value-row">
+              <span className="qcv-rd-kpi-value" style={{ '--kpi-color': k.color } as CSSProperties}>{k.value}</span>
+              <span className="qcv-rd-kpi-dot" style={{ '--kpi-bg': k.bg } as CSSProperties} />
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: '18px', alignItems: 'start' }}>
+      <div className="qcv-rd-cards-grid">
 
         {/* Problemas más comunes */}
-        <div style={card}>
-          <h3 style={cardTitle}>Problemas más comunes (tareas reprobadas)</h3>
+        <div className="qcv-rd-card">
+          <h3 className="qcv-rd-card-title">Problemas más comunes (tareas reprobadas)</h3>
           {stats.topIssues.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin tareas reprobadas todavía.</div>
+            <div className="qcv-rd-empty-note">Sin tareas reprobadas todavía.</div>
           ) : stats.topIssues.map(([name, count]) => (
-            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <span style={{ width: '38%', fontSize: '0.82rem', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-              <div style={{ flex: 1, height: '10px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ width: `${maxIssue ? (count / maxIssue) * 100 : 0}%`, height: '100%', background: 'linear-gradient(90deg,#60a5fa,#2563eb)', borderRadius: '999px' }} />
+            <div key={name} className="qcv-rd-issue-row">
+              <span className="qcv-rd-issue-name">{name}</span>
+              <div className="qcv-rd-issue-track">
+                <div className="qcv-rd-issue-fill" style={{ '--bar-width': `${maxIssue ? (count / maxIssue) * 100 : 0}%` } as CSSProperties} />
               </div>
-              <span style={{ width: '30px', textAlign: 'right', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{count}</span>
+              <span className="qcv-rd-issue-count">{count}</span>
             </div>
           ))}
         </div>
 
         {/* Mapa de calor por área */}
-        <div style={card}>
-          <h3 style={cardTitle}>Mapa de calor por área (por recalls/problemas)</h3>
+        <div className="qcv-rd-card">
+          <h3 className="qcv-rd-card-title">Mapa de calor por área (por recalls/problemas)</h3>
           {stats.roomHeat.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin datos por área todavía.</div>
+            <div className="qcv-rd-empty-note">Sin datos por área todavía.</div>
           ) : stats.roomHeat.map(([name, count]) => {
-            const c = heatColor(count, maxRoom);
             return (
-              <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 12px', borderRadius: '9px', background: c.bg, marginBottom: '7px' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: c.fg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 900, color: c.fg, flexShrink: 0 }}>{count}</span>
+              <div key={name} className={`qcv-rd-heat-row ${heatBand(count, maxRoom)}`} style={{ '--heat-fg': heatFg(count, maxRoom) } as CSSProperties}>
+                <span className="qcv-rd-heat-name">{name}</span>
+                <span className="qcv-rd-heat-count">{count}</span>
               </div>
             );
           })}
         </div>
 
         {/* Desempeño por equipo */}
-        <div style={card}>
-          <h3 style={cardTitle}>Desempeño por equipo</h3>
+        <div className="qcv-rd-card">
+          <h3 className="qcv-rd-card-title">Desempeño por equipo</h3>
           {stats.teamPerf.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin inspecciones finalizadas.</div>
+            <div className="qcv-rd-empty-note">Sin inspecciones finalizadas.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '360px' }}>
+            <div className="qcv-rd-table-scroll">
+              <table className="qcv-rd-table">
                 <thead>
                   <tr>
                     {['Equipo', 'Casas', 'Pass %', 'Recalls'].map((h, i) => (
-                      <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      <th key={h} className={i === 0 ? 'first' : ''}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {stats.teamPerf.map(t => (
-                    <tr key={t.team} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>{t.team}</td>
-                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', color: '#475569', textAlign: 'right' }}>{t.homes}</td>
-                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', fontWeight: 700, textAlign: 'right', color: t.pass == null ? '#94a3b8' : t.pass >= 90 ? '#059669' : t.pass >= 75 ? '#b45309' : '#dc2626' }}>{t.pass == null ? '—' : `${t.pass.toFixed(0)}%`}</td>
-                      <td style={{ padding: '9px 10px', fontSize: '0.85rem', textAlign: 'right', color: t.recalls > 0 ? '#dc2626' : '#94a3b8', fontWeight: t.recalls > 0 ? 700 : 400 }}>{t.recalls}</td>
+                    <tr key={t.team}>
+                      <td className="team-name">{t.team}</td>
+                      <td className="homes">{t.homes}</td>
+                      <td className="pass-rate" style={{ '--tone-color': t.pass == null ? '#94a3b8' : t.pass >= 90 ? '#059669' : t.pass >= 75 ? '#b45309' : '#dc2626' } as CSSProperties}>{t.pass == null ? '—' : `${t.pass.toFixed(0)}%`}</td>
+                      <td className="recalls" style={{ '--tone-color': t.recalls > 0 ? '#dc2626' : '#94a3b8', '--tone-weight': t.recalls > 0 ? 700 : 400 } as CSSProperties}>{t.recalls}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -629,34 +628,34 @@ function QCReportsDashboard({
         </div>
 
         {/* Ranking de inspectores */}
-        <div style={card}>
-          <h3 style={cardTitle}>Ranking de inspectores</h3>
+        <div className="qcv-rd-card">
+          <h3 className="qcv-rd-card-title">Ranking de inspectores</h3>
           {stats.inspectors.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin inspecciones finalizadas.</div>
+            <div className="qcv-rd-empty-note">Sin inspecciones finalizadas.</div>
           ) : stats.inspectors.map((ins, idx) => (
-            <div key={ins.name} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: idx === 0 ? '#fde68a' : idx === 1 ? '#e2e8f0' : idx === 2 ? '#fed7aa' : '#f1f5f9', color: '#334155', fontSize: '0.72rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{idx + 1}</span>
-              <span style={{ flex: 1, fontSize: '0.88rem', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ins.name}</span>
-              {ins.recalls > 0 && <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 700 }}>{ins.recalls} recall(s)</span>}
-              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: ins.pass == null ? '#94a3b8' : ins.pass >= 90 ? '#059669' : '#b45309', flexShrink: 0 }}>{ins.pass == null ? '—' : `${ins.pass.toFixed(1)}%`}</span>
+            <div key={ins.name} className="qcv-rd-inspector-row">
+              <span className={`qcv-rd-inspector-rank${idx <= 2 ? ` rank-${idx}` : ''}`}>{idx + 1}</span>
+              <span className="qcv-rd-inspector-name">{ins.name}</span>
+              {ins.recalls > 0 && <span className="qcv-rd-inspector-recalls">{ins.recalls} recall(s)</span>}
+              <span className="qcv-rd-inspector-pass" style={{ '--tone-color': ins.pass == null ? '#94a3b8' : ins.pass >= 90 ? '#059669' : '#b45309' } as CSSProperties}>{ins.pass == null ? '—' : `${ins.pass.toFixed(1)}%`}</span>
             </div>
           ))}
         </div>
 
         {/* Tendencia de recalls por mes */}
-        <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <h3 style={cardTitle}>Tendencia de recalls (últimos meses)</h3>
+        <div className="qcv-rd-card span-all">
+          <h3 className="qcv-rd-card-title">Tendencia de recalls (últimos meses)</h3>
           {stats.months.length === 0 ? (
-            <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Sin datos por mes todavía.</div>
+            <div className="qcv-rd-empty-note">Sin datos por mes todavía.</div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', height: '160px', padding: '10px 4px 0' }}>
+            <div className="qcv-rd-trend-chart">
               {stats.months.map(m => (
-                <div key={m.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', height: '100%', justifyContent: 'flex-end' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626' }}>{m.recalls}</div>
+                <div key={m.key} className="qcv-rd-trend-col">
+                  <div className="qcv-rd-trend-count">{m.recalls}</div>
                   <div title={`${m.recalls} recalls de ${m.finished} inspecciones · ${m.rate.toFixed(1)}%`}
-                    style={{ width: '100%', maxWidth: '48px', height: `${(m.recalls / maxMonth) * 100}%`, minHeight: '4px', background: 'linear-gradient(180deg,#f87171,#dc2626)', borderRadius: '8px 8px 0 0' }} />
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>{monthLabel(m.key)}</div>
-                  <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{m.rate.toFixed(0)}%</div>
+                    className="qcv-rd-trend-bar" style={{ '--bar-height': `${(m.recalls / maxMonth) * 100}%` } as CSSProperties} />
+                  <div className="qcv-rd-trend-label">{monthLabel(m.key)}</div>
+                  <div className="qcv-rd-trend-pct">{m.rate.toFixed(0)}%</div>
                 </div>
               ))}
             </div>
@@ -2304,25 +2303,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setQcData(prev => ({ ...prev, [placeId]: { ...prev[placeId], [field]: value } }));
   };
 
-  const s = {
-    th: { backgroundColor: '#f9fafb', padding: '12px 16px', color: '#6b7280', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb', textAlign: 'left' as const },
-    td: { padding: '12px 16px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontSize: '0.95rem' },
-    closeBtn: { background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' } as React.CSSProperties,
-    routeIconBtn: { background: '#f1f5f9', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '7px', width: '30px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } as React.CSSProperties,
-    cardTitle: { color: '#3b82f6', fontSize: '1.1rem', borderBottom: '2px solid #3b82f6', paddingBottom: '8px', marginTop: 0, fontWeight: 600 },
-    taskItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid #eee' },
-    // Las funciones de botón solo devuelven color dinámico; el tamaño/padding lo da la clase .qc-toggle
-    btnYes: (active: boolean) => ({ border: active ? '1px solid #22c55e' : '1px solid #e1e4e8', backgroundColor: active ? '#22c55e' : 'white', color: active ? 'white' : '#111827' }),
-    btnNo: (active: boolean) => ({ border: active ? '1px solid #ef4444' : '1px solid #e1e4e8', backgroundColor: active ? '#ef4444' : 'white', color: active ? 'white' : '#111827' }),
-    btnScore: (active: boolean) => ({ border: active ? '1px solid #3b82f6' : '1px solid #e1e4e8', backgroundColor: active ? '#3b82f6' : 'white', color: active ? 'white' : '#111827' }),
-    extraFields: { marginTop: '15px', backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc' },
-    labelQC: { display: 'block', fontWeight: 'bold' as const, fontSize: '11px', margin: '10px 0 5px', color: '#555', textTransform: 'uppercase' as const },
-    textareaQC: { width: '100%', height: '60px', border: '1px solid #e1e4e8', borderRadius: '6px', padding: '10px', boxSizing: 'border-box' as const, outline: 'none', fontFamily: 'inherit', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.9rem', resize: 'vertical' as const },
-    btnSaveQC: { backgroundColor: '#22c55e', color: 'white', padding: '15px 50px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
-    btnFailQC: { backgroundColor: '#ef4444', color: 'white', padding: '15px 40px', border: 'none', borderRadius: '30px', fontWeight: 'bold' as const, cursor: 'pointer', fontSize: '16px', boxShadow: '0 4px 6px rgba(239,68,68,0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1 },
-    pillBtn: (active: boolean) => ({ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', backgroundColor: active ? '#3b82f6' : '#f1f5f9', color: active ? 'white' : '#64748b', transition: 'all 0.2s' })
-  };
-
   // ⭐ Áreas disponibles (activas de la casa con tareas configuradas)
   const activePlaces = activePlacesFor(selectedHouse);
   const placeQuery = placeSearch.trim().toLowerCase();
@@ -2331,198 +2311,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const selectedRenderPlaces = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
 
   return (
-    <div className="fade-in qc-view" style={{ padding: '20px', boxSizing: 'border-box' }}>
-      <style>{`
-        .spin-qc { animation: spin-qc 1s linear infinite; }
-        @keyframes spin-qc { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
-        .qc-cards-wrap { display: none; }
-        .qc-view { overflow-x: hidden; max-width: 100%; }
-
-        /* ===== MODAL RESPONSIVE: 80% en escritorio / pantalla completa nativa en móvil ===== */
-        .qc-overlay {
-          position: fixed; inset: 0;
-          background-color: rgba(15, 23, 42, 0.5);
-          backdrop-filter: blur(3px);
-          display: flex; align-items: center; justify-content: center;
-          z-index: 1000; padding: 24px; box-sizing: border-box; overflow: hidden;
-        }
-        .qc-modal {
-          background-color: #eaeff2;
-          width: 80vw; max-width: 1400px;
-          height: 82vh;
-          border-radius: 16px;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
-          display: flex; flex-direction: column; overflow: hidden;
-        }
-        .qc-header {
-          background-color: #3b82f6; color: #fff;
-          padding: 18px 20px;
-          display: flex; justify-content: space-between; align-items: flex-start;
-          gap: 12px; flex-shrink: 0;
-        }
-        .qc-title { margin: 0; font-size: 1.3rem; display: flex; align-items: center; gap: 8px; }
-        .qc-prop { margin: 8px 0 0; font-size: 0.95rem; opacity: 0.9; }
-        .qc-insp { margin: 4px 0 0; font-size: 0.85rem; opacity: 0.8; display: flex; align-items: center; gap: 4px; }
-
-        /* ===== Buscador de áreas ===== */
-        .qc-search-bar { flex-shrink: 0; padding: 12px 20px; background: #eaeff2; border-bottom: 1px solid #d8dee4; }
-        .qc-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0 12px; height: 44px; }
-        .qc-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.95rem; height: 100%; min-width: 0; }
-        .qc-search button { background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; padding: 4px; }
-
-        .qc-body {
-          padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-          gap: 20px; flex: 1; align-content: start;
-        }
-        .qc-savebar {
-          padding: 14px; display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;
-          border-top: 3px solid #22c55e; background-color: #fff;
-          flex-shrink: 0;
-          padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-        }
-        .qc-savebar button { box-sizing: border-box; }
-
-        .qc-card { background: #fff; border-radius: 10px; border: 1px solid #e1e4e8; padding: 20px; }
-
-        .qc-toggle {
-          padding: 8px 16px; border-radius: 6px; cursor: pointer;
-          font-weight: 700; font-size: 0.9rem; transition: all 0.2s;
-          min-width: 52px; -webkit-tap-highlight-color: transparent;
-        }
-
-        .qc-photo-actions { display: flex; gap: 8px; margin-bottom: 12px; }
-        .qc-photo-btn {
-          flex: 1; min-height: 46px; padding: 10px 12px; border-radius: 8px;
-          font-weight: 600; font-size: 0.85rem; cursor: pointer;
-          display: flex; align-items: center; justify-content: center; gap: 6px;
-          background: #fff; color: #2563eb; border: 1px solid #bfdbfe;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .qc-photo-btn-primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-
-        .qc-photo-grid {
-          display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-          gap: 8px; margin-bottom: 12px;
-        }
-
-        /* ===== Selector de áreas (chips) ===== */
-        .qc-picker { grid-column: 1 / -1; background: #fff; border: 1px solid #e1e4e8; border-radius: 10px; padding: 16px; }
-        .qc-chip {
-          padding: 8px 14px; border-radius: 20px; font-weight: 600; font-size: 0.85rem; cursor: pointer;
-          display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        /* ===== Casas pendientes de Quality Check ===== */
-        .qc-pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
-
-        /* ===== Vista lateral de RUTA de inspección ===== */
-        .qc-route-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 1400; display: flex; justify-content: flex-end; }
-        .qc-route-drawer { width: 480px; max-width: 92vw; height: 100%; background: #fff; box-shadow: -8px 0 30px rgba(0,0,0,0.18); display: flex; flex-direction: column; animation: qc-slide-in 0.22s ease; }
-        @keyframes qc-slide-in { from { transform: translateX(40px); opacity: 0.3; } to { transform: translateX(0); opacity: 1; } }
-        .qc-route-item { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
-        .qc-route-map { width: 100%; height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #eaeff2; }
-        .qc-route-map .leaflet-container { height: 100%; width: 100%; }
-
-        /* ===== Barra de herramientas: buscador + pestañas juntos en una tarjeta ===== */
-        .qc-toolbar {
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 14px; flex-wrap: wrap;
-          background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px;
-          padding: 12px 14px; margin-bottom: 20px;
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
-        }
-
-        /* ===== Buscador de la tabla ===== */
-        .qc-table-search { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; padding: 0 14px; height: 44px; flex: 1; min-width: 240px; transition: border-color 0.15s, box-shadow 0.15s; }
-        .qc-table-search:focus-within { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); background: #ffffff; }
-        .qc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.92rem; min-width: 0; }
-        .qc-table-search button:hover { color: #475569; }
-
-        /* ===== Pestañas de estado (control segmentado) ===== */
-        .qc-status-pills { display: inline-flex; background: #f1f5f9; border: 1px solid #e5e7eb; border-radius: 12px; padding: 4px; gap: 2px; flex-shrink: 0; }
-        .qc-tab {
-          border: none; background: transparent; cursor: pointer;
-          padding: 9px 20px; border-radius: 9px;
-          font-weight: 600; font-size: 0.85rem; color: #64748b;
-          transition: all 0.15s; white-space: nowrap;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .qc-tab:hover { color: #1e3a8a; }
-        .qc-tab.active { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1); }
-        .qc-tab-recall { color: #7c3aed; }
-        .qc-tab-recall:hover { color: #6d28d9; }
-        .qc-tab-recall.active { color: #6d28d9; box-shadow: 0 1px 2px rgba(124, 58, 237, 0.18); }
-
-        /* ===== MÓVIL: tarjetas + modal nativo ===== */
-        @media (max-width: 820px) {
-          html, body { overflow-x: hidden; max-width: 100%; }
-          .qc-view { padding: 14px !important; }
-
-          /* Título más compacto, estilo Pipeline */
-          .qc-view .main-header h1 { font-size: 1.6rem !important; }
-
-          /* Ocultar tabla y mostrar tarjetas */
-          .qc-table-wrap { display: none !important; }
-          .qc-cards-wrap { display: flex !important; }
-
-          .qc-toolbar { flex-direction: column; align-items: stretch; padding: 12px; }
-          .qc-table-search { width: 100%; height: 50px; }
-          .qc-status-pills { width: 100%; }
-          .qc-status-pills button { flex: 1; padding: 11px 12px; }
-        }
-
-        @media (max-width: 768px) {
-          .qc-overlay { padding: 0; }
-          .qc-modal {
-            width: 100vw; max-width: none;
-            height: 100vh; height: 100dvh;
-            border-radius: 0;
-          }
-          .qc-header { padding: 14px 16px; }
-          .qc-title { font-size: 1.05rem; }
-          .qc-prop { font-size: 0.8rem; }
-          .qc-insp { font-size: 0.72rem; }
-          .qc-export-label { display: none; }
-          .qc-search-bar { padding: 10px 12px; }
-          .qc-search { height: 46px; }
-          .qc-body { grid-template-columns: 1fr; padding: 12px; gap: 14px; }
-          .qc-card { padding: 14px; }
-          .qc-toggle { padding: 12px 16px; font-size: 0.95rem; min-width: 60px; }
-          .qc-photo-btn { min-height: 54px; font-size: 0.95rem; }
-          .qc-photo-btn-primary { flex: 1.5; }
-          .qc-photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
-          .qc-savebar button { width: 100%; }
-          .qc-chip { padding: 10px 16px; font-size: 0.95rem; }
-          .qc-route-drawer { width: 100vw; max-width: 100vw; }
-        }
-
-        @media (max-width: 480px) {
-          .qc-view { padding: 10px !important; }
-        }
-      `}</style>
-
-      <header className="main-header" style={{ marginBottom: '18px', paddingRight: '56px' }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{ margin: 0, color: '#111827', fontSize: '2rem' }}>Quality Check Reports</h1>
-          <p style={{ marginTop: '4px', color: '#6b7280' }}>History and status of house inspections</p>
+    <div className="fade-in qc-view qcv-page">
+      <header className="main-header qcv-header">
+        <div className="qcv-header-title-wrap">
+          <h1 className="qcv-header-title">Quality Check Reports</h1>
+          <p className="qcv-header-subtitle">History and status of house inspections</p>
         </div>
       </header>
 
       {/* ⭐ Botón de menú: SIEMPRE fijo en la parte superior derecha */}
-      <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu" style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 60, background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(15,23,42,0.12)' }}>
+      <button className="hamburger-btn qcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       </button>
 
       {/* ⭐ PESTAÑAS PRINCIPALES: Inspecciones | Route | Reportes */}
-      <div style={{ display: 'inline-flex', background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '4px', gap: '2px', marginBottom: '18px' }}>
+      <div className="qcv-main-tabs">
         <button
           type="button"
           onClick={() => setMainTab('inspections')}
-          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: mainTab === 'inspections' ? '#ffffff' : 'transparent', color: mainTab === 'inspections' ? '#1d4ed8' : '#64748b', boxShadow: mainTab === 'inspections' ? '0 1px 2px rgba(15,23,42,0.1)' : 'none' }}
+          className={`qcv-main-tab-btn${mainTab === 'inspections' ? ' active' : ''}`}
         >
           <ClipboardCheck size={16} /> Inspecciones
         </button>
@@ -2530,14 +2337,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           type="button"
           onClick={() => setRouteDrawerOpen(true)}
           title="Abrir la ruta de inspección"
-          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: 'transparent', color: '#4338ca' }}
+          className="qcv-main-tab-btn route"
         >
           <RouteIcon size={16} /> Route{routeItems.length ? ` (${routeItems.length})` : ''}
         </button>
         <button
           type="button"
           onClick={() => setMainTab('reports')}
-          style={{ border: 'none', cursor: 'pointer', padding: '10px 22px', borderRadius: '9px', fontWeight: 700, fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: '7px', transition: 'all 0.15s', background: mainTab === 'reports' ? '#ffffff' : 'transparent', color: mainTab === 'reports' ? '#1d4ed8' : '#64748b', boxShadow: mainTab === 'reports' ? '0 1px 2px rgba(15,23,42,0.1)' : 'none' }}
+          className={`qcv-main-tab-btn${mainTab === 'reports' ? ' active' : ''}`}
         >
           <Activity size={16} /> Reportes
         </button>
@@ -2558,7 +2365,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             placeholder="Buscar por estado, fecha, dirección, cliente, equipo..."
           />
           {tableSearch && (
-            <button type="button" onClick={() => setTableSearch('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+            <button type="button" onClick={() => setTableSearch('')} aria-label="Limpiar búsqueda" className="qcv-clear-search-btn">
               <X size={16} />
             </button>
           )}
@@ -2573,7 +2380,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ⭐ Aviso de conexión / fotos pendientes de subir */}
       {(!isOnline || pendingUploadCount > 0) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', padding: '10px 14px', borderRadius: '12px', background: !isOnline ? '#fffbeb' : '#eff6ff', border: `1px solid ${!isOnline ? '#fcd34d' : '#bfdbfe'}`, color: !isOnline ? '#92400e' : '#1e40af', fontSize: '0.85rem', fontWeight: 600 }}>
+        <div className={`qcv-offline-banner${!isOnline ? ' offline' : ''}`}>
           {!isOnline ? <WifiOff size={16} /> : <Loader2 size={16} className="spin-qc" />}
           <span>
             {!isOnline ? 'Sin conexión. ' : ''}
@@ -2582,21 +2389,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               : 'Reconectando…'}
           </span>
           {pendingUploadCount > 0 && isOnline && (
-            <button onClick={() => processQueue()} style={{ marginLeft: 'auto', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 12px', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}>Reintentar ahora</button>
+            <button onClick={() => processQueue()} className="qcv-retry-btn">Reintentar ahora</button>
           )}
         </div>
       )}
 
       {/* ⭐ CASAS PENDIENTES DE QUALITY CHECK (estado "Quality Check" en el pipeline) */}
       {!isLoadingCatalogs && showPendingBlock && filteredPendingHouses.length > 0 && (
-        <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #eff6ff, #ffffff)', border: '1px solid #bfdbfe', borderRadius: '14px', padding: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="qcv-house-block pending">
+          <div className="qcv-house-block-header">
+            <div className="qcv-house-block-icon pending">
               <ClipboardCheck size={19} color="#2563eb" />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e3a8a' }}>Casas pendientes de Quality Check</div>
-              <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+              <div className="qcv-house-block-title pending">Casas pendientes de Quality Check</div>
+              <div className="qcv-house-block-sub">
                 {filteredPendingHouses.length} casa(s) con estado "Quality Check" — Pending de inspección
               </div>
             </div>
@@ -2606,41 +2413,41 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             {filteredPendingHouses.map(house => {
               const failed = houseFailedQC(house.id);
               return (
-                <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} style={{ background: failed ? '#fff5f5' : '#ffffff', border: `1px solid ${failed ? '#fca5a5' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: failed ? '0 0 0 2px rgba(239,68,68,0.12)' : 'none', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginBottom: '-4px' }} onClick={(e) => e.stopPropagation()}>
-                    <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" style={{ border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#2563eb', display: 'flex' }}><Edit2 size={15} /></button>
-                    <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><Trash2 size={15} /></button>
+                <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className={`qcv-house-card${failed ? ' failed' : ''}`}>
+                  <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
+                    <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
+                  <div className="qcv-house-card-title-row">
+                    <div className="qcv-house-client-name">
                       {getClientName(house.client)}
                     </div>
                     {failed ? (
-                      <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <span className="qcv-house-badge failed">
                         <AlertTriangle size={12} /> Did Not Pass
                       </span>
                     ) : (
-                      <span style={{ flexShrink: 0, backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <span className="qcv-house-badge pending-yellow">
                         Pending
                       </span>
                     )}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                      <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+                  <div className="qcv-house-info-col">
+                    <div className="qcv-house-info-row">
+                      <MapPin size={16} color="#94a3b8" className="qcv-shrink-0" />
+                      <span className="qcv-ellipsis">{house.address || '—'}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                      <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                    <div className="qcv-house-info-row">
+                      <Users size={16} color="#94a3b8" className="qcv-shrink-0" />
                       <span>{getTeamNameForHouse(house)}</span>
                     </div>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
                       title="Cambiar status de la casa"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                      className="qcv-house-status-btn"
                     >
-                      <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: houseStatusInfo(house).color, flexShrink: 0 }} />
+                      <span className="qcv-house-status-dot" style={{ '--dot-color': houseStatusInfo(house).color } as CSSProperties} />
                       {houseStatusInfo(house).name}
                       <Edit2 size={12} color="#94a3b8" />
                     </button>
@@ -2650,14 +2457,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     type="button"
                     onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
                     disabled={isInRoute(house.id)}
-                    style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                    className={`qcv-house-route-btn${isInRoute(house.id) ? ' in-route' : ''}`}
                   >
                     {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                     disabled={isLoadingCatalogs}
-                    style={{ marginTop: '2px', height: '46px', borderRadius: '11px', background: failed ? '#ef4444' : '#3b82f6', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                    className={`qcv-house-inspect-btn${failed ? ' failed' : ''}`}
                   >
                     <ClipboardCheck size={17} /> {failed ? 'Revisar / Corregir QC' : 'Iniciar inspección'}
                   </button>
@@ -2670,21 +2477,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* Mensaje cuando la pestaña Pending no tiene casas pendientes */}
       {!isLoadingCatalogs && statusFilter === 'Pending' && filteredPendingHouses.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#6b7280', fontStyle: 'italic', padding: '30px', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+        <div className="qcv-empty-note-box">
           No hay casas pendientes de Quality Check.
         </div>
       )}
 
       {/* ⭐ CASAS EN RECALL (estado "Recall" en el pipeline) — se muestran en la pestaña Recall/All */}
       {!isLoadingCatalogs && showRecallBlock && filteredRecallHouses.length > 0 && (
-        <div style={{ marginBottom: '20px', background: 'linear-gradient(135deg, #f5f3ff, #ffffff)', border: '1px solid #ddd6fe', borderRadius: '14px', padding: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="qcv-house-block recall">
+          <div className="qcv-house-block-header">
+            <div className="qcv-house-block-icon recall">
               <Repeat size={19} color="#7c3aed" />
             </div>
             <div>
-              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#6d28d9' }}>Casas en Recall</div>
-              <div style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+              <div className="qcv-house-block-title recall">Casas en Recall</div>
+              <div className="qcv-house-block-sub">
                 {filteredRecallHouses.length} casa(s) con estado "Recall" — para re-limpieza y re-inspección
               </div>
             </div>
@@ -2692,35 +2499,35 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
           <div className="qc-pending-grid">
             {filteredRecallHouses.map(house => (
-              <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} style={{ background: '#fdfcff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginBottom: '-4px' }} onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" style={{ border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#2563eb', display: 'flex' }}><Edit2 size={15} /></button>
-                  <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: '7px', padding: '5px', cursor: 'pointer', color: '#dc2626', display: 'flex' }}><Trash2 size={15} /></button>
+              <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className="qcv-house-card recall">
+                <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
+                  <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem', lineHeight: 1.25 }}>
+                <div className="qcv-house-card-title-row">
+                  <div className="qcv-house-client-name">
                     {getClientName(house.client)}
                   </div>
-                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: '#7c3aed', color: '#fff', padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span className="qcv-house-badge recall">
                     <Repeat size={12} /> Recall
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                    <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{house.address || '—'}</span>
+                <div className="qcv-house-info-col">
+                  <div className="qcv-house-info-row">
+                    <MapPin size={16} color="#94a3b8" className="qcv-shrink-0" />
+                    <span className="qcv-ellipsis">{house.address || '—'}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#475569' }}>
-                    <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <div className="qcv-house-info-row">
+                    <Users size={16} color="#94a3b8" className="qcv-shrink-0" />
                     <span>{getTeamNameForHouse(house)}</span>
                   </div>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
                     title="Cambiar status de la casa"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', padding: '5px 12px', borderRadius: '999px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                    className="qcv-house-status-btn"
                   >
-                    <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: houseStatusInfo(house).color, flexShrink: 0 }} />
+                    <span className="qcv-house-status-dot" style={{ '--dot-color': houseStatusInfo(house).color } as CSSProperties} />
                     {houseStatusInfo(house).name}
                     <Edit2 size={12} color="#94a3b8" />
                   </button>
@@ -2730,14 +2537,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   type="button"
                   onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
                   disabled={isInRoute(house.id)}
-                  style={{ height: '40px', borderRadius: '10px', background: isInRoute(house.id) ? '#ecfdf5' : '#eef2ff', border: `1px solid ${isInRoute(house.id) ? '#a7f3d0' : '#c7d2fe'}`, color: isInRoute(house.id) ? '#059669' : '#4338ca', fontWeight: 700, fontSize: '0.85rem', cursor: isInRoute(house.id) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  className={`qcv-house-route-btn${isInRoute(house.id) ? ' in-route' : ''}`}
                 >
                   {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                   disabled={isLoadingCatalogs}
-                  style={{ height: '46px', borderRadius: '11px', background: '#7c3aed', border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  className="qcv-house-inspect-btn recall"
                 >
                   <ClipboardCheck size={17} /> Re-inspeccionar
                 </button>
@@ -2749,25 +2556,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ===== TABLA DE REGISTROS (escritorio) — Finished + Recall ===== */}
       {showRecordsTable && (
-        <div className="qc-table-wrap" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+        <div className="qc-table-wrap qcv-table-wrap">
+          <div className="qcv-table-scroll">
+            <table className="qcv-table">
               <thead>
                 <tr>
-                  <th style={s.th}>Estado</th>
-                  <th style={s.th}>Fecha</th>
-                  <th style={s.th}>Cliente y dirección</th>
-                  <th style={s.th}>Equipo</th>
-                  <th style={s.th}>Inspector</th>
-                  <th style={s.th}>Duración</th>
-                  <th style={s.th}>Notas</th>
-                  <th style={{ ...s.th, textAlign: 'right' as const }}>Acciones</th>
+                  <th className="qcv-th">Estado</th>
+                  <th className="qcv-th">Fecha</th>
+                  <th className="qcv-th">Cliente y dirección</th>
+                  <th className="qcv-th">Equipo</th>
+                  <th className="qcv-th">Inspector</th>
+                  <th className="qcv-th">Duración</th>
+                  <th className="qcv-th">Notas</th>
+                  <th className="qcv-th right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredQcList.length === 0 ? (
                   <tr>
-                    <td style={{ ...s.td, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '30px' }} colSpan={8}>
+                    <td className="qcv-td empty" colSpan={8}>
                       No hay registros de Quality Check para mostrar.
                     </td>
                   </tr>
@@ -2779,52 +2586,52 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   const notes = collectNotesForCard(qc);
                   return (
                     <tr key={qc.id}>
-                      <td style={s.td}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: badge.bg, color: badge.fg, padding: '4px 10px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                      <td className="qcv-td">
+                        <span className="qcv-badge" style={{ '--badge-bg': badge.bg, '--badge-fg': badge.fg } as CSSProperties}>
                           {cat === 'Recall' ? <Repeat size={12} /> : <Check size={12} />} {badge.label}
                         </span>
                       </td>
-                      <td style={s.td}>{formatDate(qc.date)}</td>
-                      <td style={s.td}>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{getClientName(qc.client)}</div>
-                        <div style={{ fontSize: '0.82rem', color: '#64748b' }}>{qc.address || '—'}</div>
+                      <td className="qcv-td">{formatDate(qc.date)}</td>
+                      <td className="qcv-td">
+                        <div className="qcv-client-name">{getClientName(qc.client)}</div>
+                        <div className="qcv-client-address">{qc.address || '—'}</div>
                       </td>
-                      <td style={s.td}>{qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</td>
-                      <td style={s.td}>{qc.inspector || 'Unknown'}</td>
-                      <td style={s.td}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569' }}>
+                      <td className="qcv-td">{qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</td>
+                      <td className="qcv-td">{qc.inspector || 'Unknown'}</td>
+                      <td className="qcv-td">
+                        <div className="qcv-duration-row">
                           <Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{fmtTime(qc.checkInAt)} – {fmtTime(qc.checkOutAt)}</div>
+                        <div className="qcv-duration-time">{fmtTime(qc.checkInAt)} – {fmtTime(qc.checkOutAt)}</div>
                       </td>
-                      <td style={{ ...s.td, maxWidth: '260px' }}>
+                      <td className="qcv-td notes">
                         {notes.length === 0 ? (
-                          <span style={{ color: '#cbd5e1', fontSize: '0.8rem' }}>—</span>
+                          <span className="qcv-notes-empty">—</span>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div className="qcv-notes-col">
                             {notes.slice(0, 3).map((n, i) => (
-                              <div key={i} style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.3 }}>
-                                <span style={{ fontWeight: 700, color: '#334155' }}>{n.area}:</span>{' '}
+                              <div key={i} className="qcv-note-line">
+                                <span className="qcv-note-area">{n.area}:</span>{' '}
                                 {n.notes && <span>{n.notes}</span>}
-                                {n.damage && <span style={{ color: '#b91c1c' }}>{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
+                                {n.damage && <span className="qcv-note-damage">{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
                               </div>
                             ))}
-                            {notes.length > 3 && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>+{notes.length - 3} área(s) más…</div>}
+                            {notes.length > 3 && <div className="qcv-notes-more">+{notes.length - 3} área(s) más…</div>}
                           </div>
                         )}
                       </td>
-                      <td style={{ ...s.td, textAlign: 'right' as const, whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button onClick={() => handleExportFromTable(qc)} title="Exportar PDF" disabled={exportingForQcId === qc.id} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                      <td className="qcv-td actions">
+                        <div className="qcv-row-actions">
+                          <button onClick={() => handleExportFromTable(qc)} title="Exportar PDF" disabled={exportingForQcId === qc.id} className="qcv-row-icon-btn">
                             {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
                           </button>
-                          <button onClick={() => openEmailForQC(qc)} title="Enviar por email" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <button onClick={() => openEmailForQC(qc)} title="Enviar por email" className="qcv-row-icon-btn email">
                             <Mail size={16} />
                           </button>
-                          <button onClick={() => handleEditQC(qc)} title="Editar" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <button onClick={() => handleEditQC(qc)} title="Editar" className="qcv-row-icon-btn edit">
                             <Edit2 size={16} />
                           </button>
-                          <button onClick={() => qc.id && handleDeleteQC(qc.id)} title="Eliminar" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', width: '34px', height: '34px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          <button onClick={() => qc.id && handleDeleteQC(qc.id)} title="Eliminar" className="qcv-row-icon-btn delete">
                             <Trash2 size={16} />
                           </button>
                         </div>
@@ -2840,9 +2647,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ===== TARJETAS DE REGISTROS (móvil) — Finished + Recall ===== */}
       {showRecordsTable && (
-        <div className="qc-cards-wrap" style={{ flexDirection: 'column', gap: '12px' }}>
+        <div className="qc-cards-wrap qcv-record-cards-wrap">
           {filteredQcList.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px' }}>
+            <div className="qcv-record-empty">
               No hay registros de Quality Check para mostrar.
             </div>
           ) : filteredQcList.map(qc => {
@@ -2852,47 +2659,47 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               : { bg: '#dcfce7', fg: '#166534', label: 'Finished' };
             const notes = collectNotesForCard(qc);
             return (
-              <div key={qc.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div key={qc.id} className="qcv-record-card">
+                <div className="qcv-record-card-top">
                   <div>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1rem' }}>{getClientName(qc.client)}</div>
-                    <div style={{ fontSize: '0.82rem', color: '#64748b' }}>{qc.address || '—'}</div>
+                    <div className="qcv-client-name">{getClientName(qc.client)}</div>
+                    <div className="qcv-client-address">{qc.address || '—'}</div>
                   </div>
-                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '5px', background: badge.bg, color: badge.fg, padding: '4px 10px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                  <span className="qcv-badge card" style={{ '--badge-bg': badge.bg, '--badge-fg': badge.fg } as CSSProperties}>
                     {cat === 'Recall' ? <Repeat size={11} /> : <Check size={11} />} {badge.label}
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.82rem', color: '#475569' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><CalendarDays size={14} color="#94a3b8" /> {formatDate(qc.date)}</span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><User size={14} color="#94a3b8" /> {qc.inspector || 'Unknown'}</span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}</span>
+                <div className="qcv-record-meta-row">
+                  <span className="qcv-record-meta-item"><CalendarDays size={14} color="#94a3b8" /> {formatDate(qc.date)}</span>
+                  <span className="qcv-record-meta-item"><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</span>
+                  <span className="qcv-record-meta-item"><User size={14} color="#94a3b8" /> {qc.inspector || 'Unknown'}</span>
+                  <span className="qcv-record-meta-item"><Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}</span>
                 </div>
                 {notes.length > 0 && (
-                  <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: '9px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <div className="qcv-record-notes-box">
+                    <div className="qcv-record-notes-title">
                       <StickyNote size={13} color="#94a3b8" /> Notas
                     </div>
                     {notes.map((n, i) => (
-                      <div key={i} style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.35 }}>
-                        <span style={{ fontWeight: 700, color: '#334155' }}>{n.area}:</span>{' '}
+                      <div key={i} className="qcv-record-note-line">
+                        <span className="qcv-note-area">{n.area}:</span>{' '}
                         {n.notes && <span>{n.notes}</span>}
-                        {n.damage && <span style={{ color: '#b91c1c' }}>{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
+                        {n.damage && <span className="qcv-note-damage">{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
                       </div>
                     ))}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={() => handleExportFromTable(qc)} disabled={exportingForQcId === qc.id} style={{ flex: 1, minHeight: '42px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <div className="qcv-record-actions-row">
+                  <button onClick={() => handleExportFromTable(qc)} disabled={exportingForQcId === qc.id} className="qcv-record-action-btn">
                     {exportingForQcId === qc.id ? <Loader2 size={15} className="spin-qc" /> : <Printer size={15} />} PDF
                   </button>
-                  <button onClick={() => openEmailForQC(qc)} style={{ flex: 1, minHeight: '42px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <button onClick={() => openEmailForQC(qc)} className="qcv-record-action-btn email">
                     <Mail size={15} /> Email
                   </button>
-                  <button onClick={() => handleEditQC(qc)} style={{ flex: 1, minHeight: '42px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '9px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <button onClick={() => handleEditQC(qc)} className="qcv-record-action-btn edit">
                     <Edit2 size={15} /> Editar
                   </button>
-                  <button onClick={() => qc.id && handleDeleteQC(qc.id)} style={{ minHeight: '42px', width: '46px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '9px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button onClick={() => qc.id && handleDeleteQC(qc.id)} className="qcv-record-action-btn delete">
                     <Trash2 size={15} />
                   </button>
                 </div>
@@ -2910,7 +2717,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <div className="qc-overlay" onClick={handleCloseForm}>
           <div className="qc-modal" onClick={e => e.stopPropagation()}>
             <div className="qc-header">
-              <div style={{ minWidth: 0 }}>
+              <div className="qcv-im-header-title-wrap">
                 <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check</h2>
                 <p className="qc-prop">{getClientName(selectedHouse.client)} · {selectedHouse.address || '—'}</p>
                 <p className="qc-insp">
@@ -2918,14 +2725,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   {checkInAt && <> · <Clock size={13} /> Entrada {fmtTime(checkInAt)}</>}
                 </p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                <button onClick={handleExportFromModal} title="Exportar PDF" disabled={isExportingPDF} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', borderRadius: '9px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.82rem' }}>
+              <div className="qcv-im-header-actions">
+                <button onClick={handleExportFromModal} title="Exportar PDF" disabled={isExportingPDF} className="qcv-im-header-btn">
                   {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}<span className="qc-export-label">PDF</span>
                 </button>
-                <button onClick={openEmailForCurrent} title="Enviar por email" style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', color: '#fff', borderRadius: '9px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.82rem' }}>
+                <button onClick={openEmailForCurrent} title="Enviar por email" className="qcv-im-header-btn">
                   <Mail size={16} /><span className="qc-export-label">Email</span>
                 </button>
-                <button onClick={handleCloseForm} style={s.closeBtn} aria-label="Cerrar"><X size={22} /></button>
+                <button onClick={handleCloseForm} className="qcv-im-close-btn" aria-label="Cerrar"><X size={22} /></button>
               </div>
             </div>
 
@@ -2940,18 +2747,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             <div className="qc-body">
               {/* Selector de áreas (chips) */}
               <div className="qc-picker">
-                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
+                <div className="qcv-im-picker-title">
                   Áreas a inspeccionar ({selectedPlaceIds.length} seleccionada(s))
                 </div>
                 {searchablePlaces.length === 0 ? (
-                  <div style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>No hay áreas con tareas configuradas.</div>
+                  <div className="qcv-im-picker-empty">No hay áreas con tareas configuradas.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <div className="qcv-im-chip-list">
                     {searchablePlaces.map(p => {
                       const sel = selectedPlaceIds.includes(p.id);
                       return (
-                        <button key={p.id} className="qc-chip" onClick={() => togglePlaceSelection(p.id)}
-                          style={{ background: sel ? '#3b82f6' : '#fff', color: sel ? '#fff' : '#334155', border: `1px solid ${sel ? '#3b82f6' : '#e1e4e8'}` }}>
+                        <button key={p.id} className={`qc-chip${sel ? ' selected' : ''}`} onClick={() => togglePlaceSelection(p.id)}>
                           {sel ? <Check size={14} /> : <Plus size={14} />} {p.name}
                         </button>
                       );
@@ -2969,38 +2775,38 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 const queued = queuedByPlace[p.id] || [];
                 return (
                   <div key={p.id} className="qc-card">
-                    <h3 style={s.cardTitle}>{p.name}</h3>
+                    <h3 className="qcv-im-card-title">{p.name}</h3>
 
                     {placeTasks.map(t => {
                       const val = data.tasks?.[t.id];
                       return (
-                        <div key={t.id} style={s.taskItem}>
-                          <span style={{ fontSize: '0.92rem', color: '#111827' }}>{t.name}</span>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button className="qc-toggle" style={s.btnYes(val === 'Yes')} onClick={() => setTaskValue(p.id, t.id, 'Yes')}>Yes</button>
-                            <button className="qc-toggle" style={s.btnNo(val === 'No')} onClick={() => setTaskValue(p.id, t.id, 'No')}>No</button>
+                        <div key={t.id} className="qcv-im-task-item">
+                          <span className="qcv-im-task-name">{t.name}</span>
+                          <div className="qcv-im-task-buttons">
+                            <button className={`qc-toggle yes${val === 'Yes' ? ' active' : ''}`} onClick={() => setTaskValue(p.id, t.id, 'Yes')}>Yes</button>
+                            <button className={`qc-toggle no${val === 'No' ? ' active' : ''}`} onClick={() => setTaskValue(p.id, t.id, 'No')}>No</button>
                           </div>
                         </div>
                       );
                     })}
 
-                    <div style={s.extraFields}>
-                      <label style={s.labelQC}>Score (calidad general)</label>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                    <div className="qcv-im-extra-fields">
+                      <label className="qcv-im-label">Score (calidad general)</label>
+                      <div className="qcv-im-score-row">
                         {[1, 2, 3].map(n => (
-                          <button key={n} className="qc-toggle" style={s.btnScore(data.score === n)} onClick={() => setScoreValue(p.id, n)}>{n}</button>
+                          <button key={n} className={`qc-toggle score${data.score === n ? ' active' : ''}`} onClick={() => setScoreValue(p.id, n)}>{n}</button>
                         ))}
                       </div>
 
-                      <label style={s.labelQC}>Notas</label>
-                      <textarea style={s.textareaQC} value={data.notes || ''} onChange={e => handleTextChange(p.id, 'notes', e.target.value)} placeholder="Observaciones del área..." />
+                      <label className="qcv-im-label">Notas</label>
+                      <textarea className="qcv-im-textarea" value={data.notes || ''} onChange={e => handleTextChange(p.id, 'notes', e.target.value)} placeholder="Observaciones del área..." />
 
-                      <label style={s.labelQC}>Daños</label>
-                      <textarea style={s.textareaQC} value={data.damage || ''} onChange={e => handleTextChange(p.id, 'damage', e.target.value)} placeholder="Daños encontrados (si aplica)..." />
+                      <label className="qcv-im-label">Daños</label>
+                      <textarea className="qcv-im-textarea" value={data.damage || ''} onChange={e => handleTextChange(p.id, 'damage', e.target.value)} placeholder="Daños encontrados (si aplica)..." />
                     </div>
 
                     {/* Fotos */}
-                    <div style={{ marginTop: '14px' }}>
+                    <div className="qcv-im-photos-section">
                       <div className="qc-photo-actions">
                         <button className="qc-photo-btn qc-photo-btn-primary" onClick={() => openBurstCamera(p)}>
                           <Camera size={16} /> Cámara
@@ -3012,35 +2818,35 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                           <Upload size={16} /> Galería
                         </button>
                       </div>
-                      <input ref={el => { cameraInputRefs.current[p.id] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
-                      <input ref={el => { fileInputRefs.current[p.id] = el; }} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
+                      <input ref={el => { cameraInputRefs.current[p.id] = el; }} type="file" accept="image/*" capture="environment" className="qcv-im-hidden-input" onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
+                      <input ref={el => { fileInputRefs.current[p.id] = el; }} type="file" accept="image/*" multiple className="qcv-im-hidden-input" onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
 
                       {(savedPhotos.length > 0 || pending.length > 0 || queued.length > 0) && (
                         <div className="qc-photo-grid">
                           {savedPhotos.map((url, idx) => (
-                            <div key={`s-${idx}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e1e4e8' }}>
-                              <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <div key={`s-${idx}`} className="qcv-im-photo-tile">
+                              <img src={url} alt="" className="qcv-im-photo-img" />
                               {/* ⭐ Editar / dibujar sobre la foto (estilo WhatsApp) */}
-                              <button onClick={() => setAnnotate({ placeId: p.id, index: idx, url })} title="Dibujar en la foto" style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(37,99,235,0.92)', color: '#fff', border: 'none', borderRadius: '7px', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <button onClick={() => setAnnotate({ placeId: p.id, index: idx, url })} title="Dibujar en la foto" className="qcv-im-photo-edit-btn">
                                 <Pencil size={13} />
                               </button>
-                              <button onClick={() => handleRemovePhoto(p.id, idx)} style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(220,38,38,0.9)', color: '#fff', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <button onClick={() => handleRemovePhoto(p.id, idx)} className="qcv-im-photo-remove-btn">
                                 <X size={13} />
                               </button>
                             </div>
                           ))}
                           {pending.map(pp => (
-                            <div key={`p-${pp.id}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e1e4e8', opacity: 0.7 }}>
-                              <img src={pp.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
+                            <div key={`p-${pp.id}`} className="qcv-im-photo-tile pending">
+                              <img src={pp.preview} alt="" className="qcv-im-photo-img" />
+                              <div className="qcv-im-photo-pending-overlay">
                                 <Loader2 size={20} color="#fff" className="spin-qc" />
                               </div>
                             </div>
                           ))}
                           {queued.map(qp => (
-                            <div key={`q-${qp.id}`} style={{ position: 'relative', aspectRatio: '1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #fcd34d' }}>
-                              <img src={qp.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(180,83,9,0.9)', color: '#fff', borderRadius: '6px', padding: '2px 6px', fontSize: '0.6rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <div key={`q-${qp.id}`} className="qcv-im-photo-tile queued">
+                              <img src={qp.preview} alt="" className="qcv-im-photo-img" />
+                              <div className="qcv-im-photo-queued-badge">
                                 <WifiOff size={10} /> En cola
                               </div>
                             </div>
@@ -3053,17 +2859,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               })}
 
               {selectedRenderPlaces.length === 0 && (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '30px' }}>
+                <div className="qcv-im-no-places">
                   Selecciona al menos un área arriba para comenzar la inspección.
                 </div>
               )}
             </div>
 
             <div className="qc-savebar">
-              <button style={s.btnSaveQC} disabled={isSaving} onClick={() => handleSaveQC(false)}>
+              <button className="qcv-im-btn-save" disabled={isSaving} onClick={() => handleSaveQC(false)}>
                 {isSaving ? <Loader2 size={18} className="spin-qc" /> : <Save size={18} />} Guardar Todo
               </button>
-              <button style={s.btnFailQC} disabled={isSaving} onClick={() => handleSaveQC(true)}>
+              <button className="qcv-im-btn-fail" disabled={isSaving} onClick={() => handleSaveQC(true)}>
                 <AlertTriangle size={18} /> DID NOT PASS
               </button>
             </div>
@@ -3073,34 +2879,34 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ═══════════ CÁMARA EN RÁFAGA ═══════════ */}
       {cameraOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1200, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
-            <div style={{ fontWeight: 700 }}>{cameraPlace?.name || 'Cámara'}</div>
-            <button onClick={closeBurstCamera} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <div className="qcv-cam-root">
+          <div className="qcv-cam-header">
+            <div className="qcv-cam-title">{cameraPlace?.name || 'Cámara'}</div>
+            <button onClick={closeBurstCamera} className="qcv-cam-close-btn">
               <X size={18} /> Cerrar
             </button>
           </div>
-          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          <div className="qcv-cam-viewport">
             {cameraError ? (
-              <div style={{ color: '#fca5a5', textAlign: 'center', padding: '24px', maxWidth: '440px' }}>{cameraError}</div>
+              <div className="qcv-cam-error">{cameraError}</div>
             ) : (
-              <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <video ref={videoRef} playsInline muted className="qcv-cam-video" />
             )}
             {cameraShots.length > 0 && (
-              <div style={{ position: 'absolute', bottom: '12px', left: '12px', right: '12px', display: 'flex', gap: '8px', overflowX: 'auto' }}>
+              <div className="qcv-cam-shots-strip">
                 {cameraShots.map(sh => (
-                  <img key={sh.id} src={sh.preview} alt="" style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #fff', flexShrink: 0 }} />
+                  <img key={sh.id} src={sh.preview} alt="" className="qcv-cam-shot-thumb" />
                 ))}
               </div>
             )}
           </div>
           {!cameraError && (
-            <div style={{ padding: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', background: 'rgba(0,0,0,0.6)' }}>
-              <span style={{ color: '#fff', fontSize: '0.85rem' }}>{cameraShots.length} foto(s)</span>
-              <button onClick={captureBurst} disabled={capturing} style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#fff', border: '4px solid #3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="qcv-cam-controls">
+              <span className="qcv-cam-count">{cameraShots.length} foto(s)</span>
+              <button onClick={captureBurst} disabled={capturing} className="qcv-cam-shutter-btn">
                 {capturing ? <Loader2 size={26} className="spin-qc" color="#3b82f6" /> : <Camera size={28} color="#3b82f6" />}
               </button>
-              <button onClick={closeBurstCamera} style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px 18px', fontWeight: 700, cursor: 'pointer' }}>Listo</button>
+              <button onClick={closeBurstCamera} className="qcv-cam-done-btn">Listo</button>
             </div>
           )}
         </div>
@@ -3109,25 +2915,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       {/* ═══════════ MODAL: CAMBIAR STATUS DE LA CASA ═══════════ */}
       {statusModalHouse && (
         <div className="qc-overlay" onClick={() => setStatusModalHouse(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(460px, 92vw)', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Cambiar status</h3>
-              <button onClick={() => setStatusModalHouse(null)} style={s.closeBtn}><X size={20} /></button>
+          <div onClick={e => e.stopPropagation()} className="qcv-sm-modal">
+            <div className="qcv-sm-modal-header">
+              <h3 className="qcv-sm-modal-title">Cambiar status</h3>
+              <button onClick={() => setStatusModalHouse(null)} className="qcv-sm-close-btn"><X size={20} /></button>
             </div>
-            <div style={{ padding: '20px' }}>
-              <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{getClientName(statusModalHouse.client)}</div>
-              <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '16px' }}>{statusModalHouse.address || '—'}</div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Nuevo status</label>
-              <select value={statusModalSelected} onChange={e => setStatusModalSelected(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', background: '#fff', color: '#111827' }}>
+            <div className="qcv-sm-modal-body">
+              <div className="qcv-house-name">{getClientName(statusModalHouse.client)}</div>
+              <div className="qcv-house-address">{statusModalHouse.address || '—'}</div>
+              <label className="qcv-sm-field-label">Nuevo status</label>
+              <select value={statusModalSelected} onChange={e => setStatusModalSelected(e.target.value)} className="qcv-sm-select">
                 <option value="">— Selecciona —</option>
                 {statuses.map((st: any) => (
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>
             </div>
-            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setStatusModalHouse(null)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={applyHouseStatusChange} disabled={savingStatus || !statusModalSelected} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+            <div className="qcv-sm-modal-footer">
+              <button onClick={() => setStatusModalHouse(null)} className="qcv-sm-btn-cancel">Cancelar</button>
+              <button onClick={applyHouseStatusChange} disabled={savingStatus || !statusModalSelected} className="qcv-sm-btn-primary">
                 {savingStatus ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
               </button>
             </div>
@@ -3138,21 +2944,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       {/* ═══════════ MODAL: EMAIL ═══════════ */}
       {emailModalOpen && emailCtx && (
         <div className="qc-overlay" onClick={() => setEmailModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(520px, 92vw)', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#16a34a', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={18} /> Enviar reporte</h3>
-              <button onClick={() => setEmailModalOpen(false)} style={s.closeBtn}><X size={20} /></button>
+          <div onClick={e => e.stopPropagation()} className="qcv-sm-modal wide">
+            <div className="qcv-sm-modal-header green">
+              <h3 className="qcv-sm-modal-title with-icon"><Mail size={18} /> Enviar reporte</h3>
+              <button onClick={() => setEmailModalOpen(false)} className="qcv-sm-close-btn"><X size={20} /></button>
             </div>
-            <div style={{ padding: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Para</label>
-              <input type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '14px' }} />
-              <div style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '6px' }}><strong>Asunto:</strong> {emailCtx.subject}</div>
-              <div style={{ background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: '10px', padding: '12px', fontSize: '0.82rem', color: '#475569', whiteSpace: 'pre-wrap', maxHeight: '180px', overflowY: 'auto' }}>{emailCtx.body}</div>
-              <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '10px' }}>Se abrirá el PDF para guardar/adjuntar y luego tu cliente de correo.</p>
+            <div className="qcv-sm-modal-body">
+              <label className="qcv-sm-field-label">Para</label>
+              <input type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)} className="qcv-sm-input mb" />
+              <div className="qcv-email-subject"><strong>Asunto:</strong> {emailCtx.subject}</div>
+              <div className="qcv-email-body-preview">{emailCtx.body}</div>
+              <p className="qcv-email-hint">Se abrirá el PDF para guardar/adjuntar y luego tu cliente de correo.</p>
             </div>
-            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setEmailModalOpen(false)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={sendEmail} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+            <div className="qcv-sm-modal-footer">
+              <button onClick={() => setEmailModalOpen(false)} className="qcv-sm-btn-cancel">Cancelar</button>
+              <button onClick={sendEmail} className="qcv-sm-btn-primary green">
                 <Mail size={16} /> Continuar
               </button>
             </div>
@@ -3163,42 +2969,42 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       {/* ═══════════ MODAL: CONFIGURACIÓN DE EMPRESA (latente, sin botón de acceso) ═══════════ */}
       {companyModalOpen && (
         <div className="qc-overlay" onClick={() => setCompanyModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '16px', width: 'min(520px, 92vw)', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
-            <div style={{ background: '#3b82f6', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={18} /> Empresa</h3>
-              <button onClick={() => setCompanyModalOpen(false)} style={s.closeBtn}><X size={20} /></button>
+          <div onClick={e => e.stopPropagation()} className="qcv-sm-modal wide scrollable">
+            <div className="qcv-sm-modal-header sticky">
+              <h3 className="qcv-sm-modal-title with-icon"><Building2 size={18} /> Empresa</h3>
+              <button onClick={() => setCompanyModalOpen(false)} className="qcv-sm-close-btn"><X size={20} /></button>
             </div>
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="qcv-sm-modal-body col">
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Nombre</label>
-                <input type="text" value={companyDraft.name} onChange={e => setCompanyDraft(prev => ({ ...prev, name: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                <label className="qcv-sm-field-label">Nombre</label>
+                <input type="text" value={companyDraft.name} onChange={e => setCompanyDraft(prev => ({ ...prev, name: e.target.value }))} className="qcv-sm-input" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Dirección</label>
-                <input type="text" value={companyDraft.address} onChange={e => setCompanyDraft(prev => ({ ...prev, address: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                <label className="qcv-sm-field-label">Dirección</label>
+                <input type="text" value={companyDraft.address} onChange={e => setCompanyDraft(prev => ({ ...prev, address: e.target.value }))} className="qcv-sm-input" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Email destino</label>
-                <input type="email" value={companyDraft.email} onChange={e => setCompanyDraft(prev => ({ ...prev, email: e.target.value }))} style={{ width: '100%', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                <label className="qcv-sm-field-label">Email destino</label>
+                <input type="email" value={companyDraft.email} onChange={e => setCompanyDraft(prev => ({ ...prev, email: e.target.value }))} className="qcv-sm-input" />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="qcv-company-field-row">
                 <input id="qc-autosend" type="checkbox" checked={companyDraft.autoSend} onChange={e => setCompanyDraft(prev => ({ ...prev, autoSend: e.target.checked }))} />
-                <label htmlFor="qc-autosend" style={{ fontSize: '0.88rem', color: '#334155' }}>Enviar reporte automáticamente al guardar</label>
+                <label htmlFor="qc-autosend" className="qcv-company-checkbox-label">Enviar reporte automáticamente al guardar</label>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Logo</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {companyDraft.logo && <img src={companyDraft.logo} alt="logo" style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'contain', border: '1px solid #e2e8f0' }} />}
-                  <input ref={companyLogoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleCompanyLogoUpload(e.target.files?.[0])} />
-                  <button onClick={() => companyLogoInputRef.current?.click()} style={{ padding: '9px 14px', borderRadius: '9px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <label className="qcv-sm-field-label">Logo</label>
+                <div className="qcv-company-logo-row">
+                  {companyDraft.logo && <img src={companyDraft.logo} alt="logo" className="qcv-company-logo-preview" />}
+                  <input ref={companyLogoInputRef} type="file" accept="image/*" className="qcv-im-hidden-input" onChange={e => handleCompanyLogoUpload(e.target.files?.[0])} />
+                  <button onClick={() => companyLogoInputRef.current?.click()} className="qcv-company-upload-btn">
                     <Upload size={15} /> Subir logo
                   </button>
                 </div>
               </div>
             </div>
-            <div style={{ padding: '0 20px 20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setCompanyModalOpen(false)} style={{ padding: '10px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={saveCompanySettings} disabled={savingCompany} style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+            <div className="qcv-sm-modal-footer">
+              <button onClick={() => setCompanyModalOpen(false)} className="qcv-sm-btn-cancel">Cancelar</button>
+              <button onClick={saveCompanySettings} disabled={savingCompany} className="qcv-sm-btn-primary">
                 {savingCompany ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
               </button>
             </div>
@@ -3210,15 +3016,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       {routeDrawerOpen && (
         <div className="qc-route-overlay" onClick={closeRouteDrawer}>
           <aside className="qc-route-drawer" onClick={e => e.stopPropagation()}>
-            <div style={{ background: '#4338ca', color: '#fff', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="qcv-route-drawer-header">
+              <h3 className="qcv-route-drawer-title">
                 <RouteIcon size={19} /> Ruta de inspección
-                {routeItems.length > 0 && <span style={{ background: 'rgba(255,255,255,0.22)', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem' }}>{routeItems.length}</span>}
+                {routeItems.length > 0 && <span className="qcv-route-count-badge">{routeItems.length}</span>}
               </h3>
-              <button onClick={closeRouteDrawer} style={s.closeBtn} aria-label="Cerrar"><X size={22} /></button>
+              <button onClick={closeRouteDrawer} className="qcv-sm-close-btn" aria-label="Cerrar"><X size={22} /></button>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="qcv-route-drawer-body">
 
               {/* ⭐ PLANIFICADOR: botón + mapa + resumen de tiempo */}
               {routeItems.length > 0 && (
@@ -3226,76 +3032,76 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   <button
                     onClick={optimizeRoute}
                     disabled={routePlanning}
-                    style={{ height: '46px', borderRadius: '11px', border: 'none', background: '#4338ca', color: '#fff', fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                    className="qcv-route-plan-btn"
                   >
                     {routePlanning ? <><Loader2 size={18} className="spin-qc" /> Calculando ruta…</> : <><Navigation size={18} /> {routePlan ? 'Recalcular ruta' : 'Planificar ruta desde mi ubicación'}</>}
                   </button>
 
                   {routePlanError && (
-                    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: '10px', padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="qcv-route-plan-error">
                       <AlertTriangle size={15} /> {routePlanError}
                     </div>
                   )}
 
                   {/* Mapa (se dibuja al planificar) */}
-                  <div className="qc-route-map" ref={mapElRef} style={{ display: routePlan ? 'block' : 'none' }} />
+                  <div className={`qc-route-map ${routePlan ? 'qcv-route-map-visible' : 'qcv-route-map-hidden'}`} ref={mapElRef} />
 
                   {/* Resumen de tiempo/distancia */}
                   {routePlan && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                      <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>Total</div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#3730a3', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><Timer size={15} /> {fmtMinutes(routePlan.totalMin)}</div>
+                    <div className="qcv-route-summary-grid">
+                      <div className="qcv-route-summary-box total">
+                        <div className="qcv-route-summary-label total">Total</div>
+                        <div className="qcv-route-summary-value total"><Timer size={15} /> {fmtMinutes(routePlan.totalMin)}</div>
                       </div>
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Manejo</div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>{fmtMinutes(routePlan.totalDriveMin)}</div>
-                        <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{routePlan.totalDistanceKm.toFixed(1)} km</div>
+                      <div className="qcv-route-summary-box">
+                        <div className="qcv-route-summary-label">Manejo</div>
+                        <div className="qcv-route-summary-value">{fmtMinutes(routePlan.totalDriveMin)}</div>
+                        <div className="qcv-route-summary-sub">{routePlan.totalDistanceKm.toFixed(1)} km</div>
                       </div>
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inspección</div>
-                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>{fmtMinutes(routePlan.totalStopMin)}</div>
-                        <div style={{ fontSize: '0.66rem', color: '#94a3b8' }}>{INSPECTION_MIN_PER_STOP}m × casa</div>
+                      <div className="qcv-route-summary-box">
+                        <div className="qcv-route-summary-label">Inspección</div>
+                        <div className="qcv-route-summary-value">{fmtMinutes(routePlan.totalStopMin)}</div>
+                        <div className="qcv-route-summary-sub">{INSPECTION_MIN_PER_STOP}m × casa</div>
                       </div>
                     </div>
                   )}
 
-                  <div style={{ height: '1px', background: '#eef2f7', margin: '2px 0' }} />
+                  <div className="qcv-route-divider" />
                 </>
               )}
 
               {/* Lista ordenada de paradas */}
               {routeItems.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 16px' }}>
-                  <RouteIcon size={40} color="#c7d2fe" style={{ marginBottom: '12px' }} />
-                  <div style={{ fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>Ruta vacía</div>
-                  <div style={{ fontSize: '0.85rem' }}>Agrega casas con el botón "Agregar a ruta" en las tarjetas.</div>
+                <div className="qcv-route-empty">
+                  <RouteIcon size={40} color="#c7d2fe" className="qcv-route-empty-icon" />
+                  <div className="qcv-route-empty-title">Ruta vacía</div>
+                  <div className="qcv-route-empty-sub">Agrega casas con el botón "Agregar a ruta" en las tarjetas.</div>
                 </div>
               ) : routeItems.map((item, idx) => (
                 <div key={item.houseId} className="qc-route-item">
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#eef2ff', color: '#4338ca', fontWeight: 800, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{idx + 1}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.92rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.client}</div>
-                    <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <MapPin size={12} color="#94a3b8" /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.address || '—'}</span>
+                  <div className="qcv-route-item-num">{idx + 1}</div>
+                  <div className="qcv-route-item-body">
+                    <div className="qcv-route-item-client">{item.client}</div>
+                    <div className="qcv-route-item-address">
+                      <MapPin size={12} color="#94a3b8" /> <span className="qcv-ellipsis">{item.address || '—'}</span>
                     </div>
-                    {item.team && <div style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}><Users size={11} /> {item.team}</div>}
+                    {item.team && <div className="qcv-route-item-team"><Users size={11} /> {item.team}</div>}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
-                    <button onClick={() => moveRouteItem(idx, -1)} disabled={idx === 0} style={{ ...s.routeIconBtn, opacity: idx === 0 ? 0.4 : 1 }} title="Subir"><ArrowUp size={14} /></button>
-                    <button onClick={() => moveRouteItem(idx, 1)} disabled={idx === routeItems.length - 1} style={{ ...s.routeIconBtn, opacity: idx === routeItems.length - 1 ? 0.4 : 1 }} title="Bajar"><ArrowDown size={14} /></button>
+                  <div className="qcv-route-item-order-col">
+                    <button onClick={() => moveRouteItem(idx, -1)} disabled={idx === 0} className="qcv-route-icon-btn" title="Subir"><ArrowUp size={14} /></button>
+                    <button onClick={() => moveRouteItem(idx, 1)} disabled={idx === routeItems.length - 1} className="qcv-route-icon-btn" title="Bajar"><ArrowDown size={14} /></button>
                   </div>
-                  <button onClick={() => removeFromRoute(item.houseId)} style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }} title="Quitar de la ruta"><Trash2 size={15} /></button>
+                  <button onClick={() => removeFromRoute(item.houseId)} className="qcv-route-remove-btn" title="Quitar de la ruta"><Trash2 size={15} /></button>
                 </div>
               ))}
             </div>
 
             {routeItems.length > 0 && (
-              <div style={{ padding: '14px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '10px', flexShrink: 0 }}>
-                <button onClick={clearRoute} style={{ flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+              <div className="qcv-route-drawer-footer">
+                <button onClick={clearRoute} className="qcv-route-clear-btn">
                   <Trash2 size={16} /> Vaciar ruta
                 </button>
-                <button onClick={closeRouteDrawer} style={{ flex: 1, padding: '11px', borderRadius: '10px', border: 'none', background: '#4338ca', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                <button onClick={closeRouteDrawer} className="qcv-route-close-btn">
                   Cerrar
                 </button>
               </div>

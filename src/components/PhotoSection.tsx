@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Upload, Camera, Printer, Loader2, X, Check, CloudOff } from 'lucide-react';
 import type { PhotoConfig } from '../services/photoConfigService';
+import './PhotoSection.css';
 
 export interface PhotoSectionProps {
   label: string;                       // "BEFORE" / "AFTER"
@@ -22,11 +23,6 @@ export interface PhotoSectionProps {
   onExportPdf?: () => void;
 }
 
-const ACCENTS = {
-  before: { main: '#2563eb', soft: '#eff6ff', border: '#bfdbfe' },
-  after: { main: '#059669', soft: '#ecfdf5', border: '#a7f3d0' },
-};
-
 export default function PhotoSection({
   label, type, urls, excludedUrls = [], pendingCount = 0,
   canEdit = true, isSaving, isCompressing, photoConfig,
@@ -36,74 +32,22 @@ export default function PhotoSection({
 }: PhotoSectionProps) {
   const uploadRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const accent = ACCENTS[type];
   const busy = isSaving || isCompressing;
 
   const inReportCount = urls.filter(u => !excludedUrls.includes(u)).length;
 
   return (
-    <div className="photo-section">
-      <style>{`
-        .photo-section {
-          background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
-          overflow: hidden; display: flex; flex-direction: column;
-        }
-        .ps-head {
-          display: flex; align-items: center; justify-content: space-between;
-          gap: 8px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap;
-        }
-        .ps-title { display: flex; align-items: center; gap: 8px; font-weight: 800;
-          font-size: .8rem; letter-spacing: .04em; color: #0f172a; text-transform: uppercase; }
-        .ps-count { font-size: .72rem; font-weight: 600; color: #64748b; }
-        .ps-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-          gap: 10px; padding: 14px 16px; }
-        .ps-btn {
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          min-height: 48px; border-radius: 12px; font-weight: 700; font-size: .9rem;
-          cursor: pointer; border: 1.5px solid transparent; transition: transform .12s, filter .15s;
-          -webkit-tap-highlight-color: transparent; user-select: none;
-        }
-        .ps-btn:active { transform: scale(.97); }
-        .ps-btn:disabled { opacity: .55; cursor: not-allowed; }
-        .ps-grid {
-          display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-          gap: 10px; padding: 0 16px 16px;
-        }
-        .ps-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
-          border: 1px solid #e2e8f0; background: #f1f5f9; }
-        .ps-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .ps-thumb.excluded img { filter: grayscale(1) brightness(.85); opacity: .6; }
-        .ps-x {
-          position: absolute; top: 5px; right: 5px; width: 24px; height: 24px;
-          border-radius: 50%; border: none; background: rgba(15,23,42,.72); color: #fff;
-          display: flex; align-items: center; justify-content: center; cursor: pointer;
-        }
-        .ps-report {
-          position: absolute; left: 0; right: 0; bottom: 0; border: none; cursor: pointer;
-          display: flex; align-items: center; justify-content: center; gap: 5px;
-          padding: 5px 4px; font-size: .65rem; font-weight: 800; letter-spacing: .02em;
-          text-transform: uppercase;
-        }
-        .ps-empty { text-align: center; color: #94a3b8; font-size: .85rem; padding: 24px 0 18px; }
-        .ps-compress { display: flex; align-items: center; justify-content: center; gap: 8px;
-          color: #2563eb; font-size: .82rem; font-weight: 700; padding: 4px 0 10px; }
-        @media (max-width: 600px) {
-          .ps-actions { grid-template-columns: 1fr 1fr; }
-          .ps-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
-          .ps-btn { min-height: 52px; font-size: .95rem; }
-        }
-      `}</style>
-
+    <div className={`photo-section ${type}`}>
       <div className="ps-head">
         <span className="ps-title">
-          <span style={{ width: 9, height: 9, borderRadius: '50%', background: accent.main }} />
+          <span className="ps-dot" />
           {label} Photos
         </span>
         <span className="ps-count">
           {urls.length} foto{urls.length === 1 ? '' : 's'}
           {reportSelectable && urls.length > 0 ? ` · ${inReportCount} en reporte` : ''}
           {pendingCount > 0 && (
-            <span style={{ marginLeft: 8, color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span className="ps-pending">
               <CloudOff size={12} /> {pendingCount} pend.
             </span>
           )}
@@ -114,31 +58,28 @@ export default function PhotoSection({
         <div className="ps-actions">
           {showUpload && photoConfig.allowUploadFromDevice && (
             <>
-              <button type="button" className="ps-btn" disabled={busy}
-                onClick={() => uploadRef.current?.click()}
-                style={{ background: accent.soft, color: accent.main, borderColor: accent.border }}>
+              <button type="button" className="ps-btn ps-btn-upload" disabled={busy}
+                onClick={() => uploadRef.current?.click()}>
                 <Upload size={18} /> Subir
               </button>
-              <input ref={uploadRef} type="file" multiple accept="image/*" style={{ display: 'none' }}
+              <input ref={uploadRef} type="file" multiple accept="image/*" className="ps-hidden-input"
                 onChange={e => { onAddFiles(e.target.files); e.target.value = ''; }} />
             </>
           )}
           {showCamera && photoConfig.allowTakePhoto && (
             <>
-              <button type="button" className="ps-btn" disabled={busy}
-                onClick={() => cameraRef.current?.click()}
-                style={{ background: accent.main, color: '#fff' }}>
+              <button type="button" className="ps-btn ps-btn-camera" disabled={busy}
+                onClick={() => cameraRef.current?.click()}>
                 <Camera size={18} /> Cámara
               </button>
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" multiple
-                style={{ display: 'none' }}
+                className="ps-hidden-input"
                 onChange={e => { onAddFiles(e.target.files); e.target.value = ''; }} />
             </>
           )}
           {showExportPdf && (
-            <button type="button" className="ps-btn" disabled={urls.length === 0}
-              onClick={onExportPdf}
-              style={{ background: '#fff', color: '#0f172a', borderColor: '#cbd5e1' }}>
+            <button type="button" className="ps-btn ps-btn-pdf" disabled={urls.length === 0}
+              onClick={onExportPdf}>
               <Printer size={18} /> Reporte PDF
             </button>
           )}
@@ -166,13 +107,9 @@ export default function PhotoSection({
                 {reportSelectable && onToggleReport && (
                   <button
                     type="button"
-                    className="ps-report"
+                    className={`ps-report ${excluded ? 'excluded' : 'included'}`}
                     title={excluded ? 'Incluir en el reporte' : 'Quitar del reporte'}
                     onClick={() => onToggleReport(url)}
-                    style={{
-                      background: excluded ? 'rgba(100,116,139,.85)' : 'rgba(5,150,105,.9)',
-                      color: '#fff',
-                    }}
                   >
                     <Check size={12} /> {excluded ? 'Oculta' : 'En reporte'}
                   </button>

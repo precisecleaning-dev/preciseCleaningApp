@@ -1,0 +1,231 @@
+.rcv-page { padding: 20px; box-sizing: border-box; }
+
+.rc-spin { animation: rc-spin 1s linear infinite; }
+@keyframes rc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes rc-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.rc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.rc-highlights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+.rc-cols { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; margin-bottom: 24px; align-items: start; }
+.rc-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.rc-bar-track { flex: 1; height: 10px; background: #f1f5f9; border-radius: 6px; overflow: hidden; }
+.rc-table-search { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 240px; }
+.rc-table-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.9rem; min-width: 0; }
+.rc-select { height: 42px; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 14px; background: #fff; color: #374151; font-size: 0.9rem; cursor: pointer; outline: none; }
+.rc-tab { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: #64748b; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: all .15s; }
+.rc-tab.active { background: #fff; color: #7c3aed; border-color: #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.rc-date { height: 42px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 12px; background: #fff; color: #374151; font-size: 0.9rem; outline: none; }
+.rc-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+.rc-count { font-size: 0.82rem; color: #94a3b8; margin-left: auto; }
+
+/* Por defecto (escritorio): tablas visibles, tarjetas ocultas */
+.rc-cards-wrap { display: none; }
+.recalls-view { overflow-x: hidden; max-width: 100%; }
+
+@media (max-width: 900px) {
+  .rc-kpis { grid-template-columns: repeat(2, 1fr); }
+  .rc-highlights { grid-template-columns: 1fr; }
+  .rc-cols { grid-template-columns: 1fr; }
+}
+
+/* ====== MÓVIL: tarjetas en vez de tablas, sin scroll horizontal ====== */
+@media (max-width: 820px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  .recalls-view { padding: 14px !important; }
+  .rc-table-wrap { display: none !important; }
+  .rc-cards-wrap { display: flex !important; }
+  .rc-toolbar { flex-direction: column; align-items: stretch !important; }
+  .rc-table-search { width: 100%; }
+  .rc-select { width: 100%; }
+  .rc-toolbar .rc-count { margin-left: 0 !important; }
+}
+
+@media (max-width: 560px) {
+  .rc-kpis { grid-template-columns: 1fr; }
+  .recalls-view { padding: 10px !important; }
+}
+
+/* ===================== RowStatusPill ===================== */
+.rcv-pill-wrap { position: relative; display: inline-block; width: auto; }
+.rcv-pill-wrap.full { display: block; width: 100%; }
+.rcv-pill-trigger { background: #fff; color: #111827; padding: 6px 10px 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; width: auto; box-sizing: border-box; cursor: pointer; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05); white-space: nowrap; transition: all .15s; }
+.rcv-pill-trigger.full { border-radius: 12px; display: flex; justify-content: space-between; width: 100%; }
+.rcv-pill-trigger.open { border-color: var(--dot-color); box-shadow: 0 0 0 3px var(--pill-ring); }
+.rcv-pill-trigger.disabled { cursor: not-allowed; }
+.rcv-pill-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.rcv-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot-color); flex-shrink: 0; }
+.rcv-pill-text { overflow: hidden; text-overflow: ellipsis; }
+.rcv-pill-chevron { transition: transform .15s; flex-shrink: 0; }
+.rcv-pill-chevron.open { transform: rotate(180deg); }
+
+.rcv-pill-backdrop { position: fixed; inset: 0; z-index: 1000; }
+.rcv-pill-menu { position: fixed; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.18); z-index: 1001; overflow: hidden; animation: rc-pop .12s ease-out; }
+.rcv-pill-menu-header { padding: 10px 14px; font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid #f1f5f9; background: #fafafa; }
+.rcv-pill-menu-list { max-height: 290px; overflow-y: auto; }
+.rcv-pill-option { padding: 11px 14px; font-size: 0.88rem; color: #111827; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f6f7f9; background: transparent; font-weight: 500; cursor: pointer; }
+.rcv-pill-option.current { background: #f8fafc; font-weight: 700; cursor: default; }
+.rcv-pill-option:hover { background: #f1f5f9; }
+.rcv-pill-option.current:hover { background: #f8fafc; }
+.rcv-pill-option-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dot-color); flex-shrink: 0; box-shadow: 0 0 0 3px var(--dot-ring); }
+.rcv-pill-option-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ===================== FailedQCBadge ===================== */
+.rcv-failed-qc-badge { display: inline-flex; align-items: center; gap: 4px; background-color: #7c3aed; color: #fff; padding: 4px 10px; border-radius: 10px; font-size: 0.7rem; font-weight: 800; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.03em; }
+.rcv-failed-qc-badge.compact { padding: 3px 8px; font-size: 0.66rem; }
+
+/* ===================== Header / tabs ===================== */
+.rcv-header { margin-bottom: 20px; }
+.rcv-header-title-group { display: flex; align-items: center; gap: 16px; }
+.rcv-hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; flex-shrink: 0; }
+.rcv-title { margin: 0; color: #111827; font-size: 2rem; display: flex; align-items: center; gap: 10px; }
+.rcv-subtitle { margin-top: 4px; color: #6b7280; }
+.rcv-tabs-wrap { display: inline-flex; gap: 6px; background: #f1f5f9; padding: 5px; border-radius: 12px; margin-bottom: 20px; }
+.rcv-loading { padding: 60px; text-align: center; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.rcv-clear-search-btn { background: none; border: none; cursor: pointer; color: #94a3b8; display: flex; }
+
+/* ===================== Tabla / tarjetas de recalls ===================== */
+.rcv-th { background-color: #f9fafb; padding: 12px 16px; color: #6b7280; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.rcv-th.w-180 { width: 180px; }
+.rcv-th.w-140 { width: 140px; }
+.rcv-th.w-170 { width: 170px; }
+.rcv-th.w-60-center { width: 60px; text-align: center; }
+.rcv-th-icon { display: inline; margin-right: 6px; vertical-align: middle; }
+.rcv-td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; color: #111827; font-size: 0.92rem; }
+.rcv-td.empty { text-align: center; color: #6b7280; font-style: italic; padding: 30px; }
+.rcv-td.strong { font-weight: 600; }
+.rcv-td.muted { color: #6b7280; }
+.rcv-td.nowrap { white-space: nowrap; }
+.rcv-td.center-tone { text-align: center; font-weight: 700; }
+.rcv-td.center-tone.high { color: #b91c1c; }
+.rcv-td.center-tone.dark { color: #0f172a; }
+.rcv-entered-cell { color: #b45309; }
+.rcv-exited-cell { color: #047857; }
+
+.rcv-table-wrap-inner { overflow: hidden; }
+.rcv-table-scroll { overflow-x: auto; width: 100%; }
+.rcv-table { width: 100%; border-collapse: collapse; text-align: left; }
+.rcv-table.min-760 { min-width: 760px; }
+.rcv-table.min-960 { min-width: 960px; }
+
+.rcv-row { transition: background-color 0.2s; cursor: default; background: transparent; }
+.rcv-row.clickable { cursor: pointer; }
+.rcv-row.from-qc { background: #faf5ff; }
+.rcv-row:hover { background-color: #f8fafc; }
+
+.rcv-recall-row { transition: background-color 0.2s; cursor: default; background: transparent; }
+.rcv-recall-row.clickable { cursor: pointer; }
+.rcv-recall-row.from-qc { background: #faf5ff; }
+.rcv-recall-row.current { background: #fef2f2; }
+.rcv-recall-row:hover { background-color: #f8fafc; }
+.rcv-recall-row.current:hover { background-color: #fee2e2; }
+
+.rcv-client-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rcv-team-chip { background-color: #ede9fe; color: #6d28d9; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.rcv-team-chip.card { padding: 4px 12px; font-size: 0.78rem; font-weight: 700; }
+
+.rcv-date-entered { display: inline-flex; align-items: center; gap: 6px; color: #b45309; font-weight: 600; }
+.rcv-date-exited { display: inline-flex; align-items: center; gap: 6px; color: #047857; font-weight: 600; }
+.rcv-dot-7 { width: 7px; height: 7px; border-radius: 50%; }
+.rcv-dot-7.red { background: #dc2626; }
+.rcv-dot-7.green { background: #16a34a; }
+.rcv-still-badge { background: #fee2e2; color: #b91c1c; padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+.rcv-no-house { color: #94a3b8; font-size: 0.8rem; }
+
+.rcv-recall-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; cursor: default; border: 1px solid #e5e7eb; background: #fff; }
+.rcv-recall-card.clickable { cursor: pointer; }
+.rcv-recall-card.from-qc { border-color: #ddd6fe; background: #faf5ff; }
+.rcv-recall-card.current { border-color: #fecaca; background: #fef2f2; }
+.rcv-recall-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.rcv-recall-client-name { font-weight: 700; color: #0f172a; font-size: 1.1rem; line-height: 1.25; min-width: 0; }
+.rcv-address-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #475569; }
+.rcv-shrink-0 { flex-shrink: 0; }
+.rcv-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.rcv-mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rcv-mini-box { border-radius: 10px; padding: 10px 12px; border: 1px solid transparent; }
+.rcv-mini-box.entered { background: #fff7ed; border-color: #fed7aa; }
+.rcv-mini-box.exited { background: #ecfdf5; border-color: #a7f3d0; }
+.rcv-mini-box.still { background: #fef2f2; border-color: #fecaca; }
+.rcv-mini-label { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.rcv-mini-label.entered { color: #9a3412; }
+.rcv-mini-label.exited { color: #065f46; }
+.rcv-mini-label.still { color: #991b1b; }
+.rcv-mini-value { font-size: 0.82rem; font-weight: 700; margin-top: 3px; }
+.rcv-mini-value.entered { color: #b45309; }
+.rcv-mini-value.exited { color: #047857; }
+.rcv-mini-value.still { color: #b91c1c; }
+
+.rcv-footnote { margin-top: 14px; font-size: 0.78rem; color: #94a3b8; }
+.rcv-footnote.tight { margin-top: 4px; }
+
+/* ===================== Reporte: filtros / highlights / KPIs ===================== */
+.rcv-report-filter-card { padding: 16px 20px; margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.rcv-date-field { display: flex; flex-direction: column; gap: 6px; }
+.rcv-date-label { font-size: 0.72rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.rcv-clear-dates-btn { height: 42px; padding: 0 16px; border-radius: 10px; border: 1px solid #e5e7eb; background: #fff; color: #64748b; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.rcv-filter-status-note { font-size: 0.82rem; color: #94a3b8; margin-left: auto; }
+
+.rcv-highlight-card { padding: 20px; }
+.rcv-highlight-card.best { background: linear-gradient(135deg, #ecfdf5, #ffffff); border-color: #a7f3d0; }
+.rcv-highlight-card.worst { background: linear-gradient(135deg, #fef2f2, #ffffff); border-color: #fecaca; }
+.rcv-highlight-header { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.rcv-highlight-header.best { color: #047857; }
+.rcv-highlight-header.worst { color: #b91c1c; }
+.rcv-highlight-team-name { font-size: 1.5rem; font-weight: 800; margin-top: 8px; }
+.rcv-highlight-team-name.best { color: #065f46; }
+.rcv-highlight-team-name.worst { color: #991b1b; }
+.rcv-highlight-stats-row { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
+.rcv-highlight-stat { font-size: 0.85rem; color: #475569; }
+.rcv-highlight-inline-accent { color: #047857; }
+.rcv-highlight-inline-accent-red { color: #b91c1c; }
+.rcv-highlight-empty { color: #94a3b8; margin-top: 10px; }
+
+.rcv-kpi-card { padding: 18px; }
+.rcv-kpi-top-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.rcv-kpi-label { font-size: 0.72rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.rcv-kpi-value { font-size: 1.9rem; font-weight: 800; color: #0f172a; margin-top: 6px; }
+
+/* ===================== Ranking / bar chart ===================== */
+.rcv-ranking-card { padding: 20px; }
+.rcv-ranking-title { margin: 0 0 4px; font-size: 1.1rem; color: #111827; display: flex; align-items: center; gap: 8px; }
+.rcv-ranking-title.no-hint { margin-bottom: 16px; }
+.rcv-empty-note-20 { text-align: center; color: #6b7280; font-style: italic; padding: 20px; }
+.rcv-empty-note-30 { text-align: center; color: #6b7280; font-style: italic; padding: 30px; }
+.rcv-ranking-hint { margin: 0 0 16px; font-size: 0.8rem; color: #94a3b8; }
+.rcv-ranking-empty { color: #94a3b8; padding: 20px; text-align: center; }
+.rcv-ranking-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+.rcv-ranking-row.last { border-bottom: none; }
+.rcv-ranking-rank { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; background: #f1f5f9; color: #64748b; border: 1px solid #e5e7eb; }
+.rcv-ranking-rank.top { background: #fef9c3; color: #a16207; border-color: #fde68a; }
+.rcv-ranking-body { flex: 1; min-width: 0; }
+.rcv-ranking-top-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rcv-ranking-team-name { font-weight: 700; color: #0f172a; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rcv-ranking-score { font-weight: 800; font-size: 0.95rem; color: var(--score-color); }
+.rcv-ranking-bar-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.rcv-ranking-bar-fill { width: var(--bar-width); height: 100%; background: var(--score-color); border-radius: 6px; }
+.rcv-ranking-meta-row { display: flex; gap: 14px; margin-top: 6px; font-size: 0.74rem; color: #64748b; }
+.rcv-ranking-meta-recalls { color: var(--recalls-color); }
+
+.rcv-recalls-by-team { margin-bottom: 14px; }
+.rcv-recalls-by-team-top { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
+.rcv-recalls-by-team-name { color: #334155; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rcv-recalls-by-team-count { color: #b91c1c; font-weight: 800; }
+.rcv-recalls-bar-fill { width: var(--bar-width); height: 100%; background: linear-gradient(90deg, #f87171, #dc2626); border-radius: 6px; }
+
+/* ===================== Casas en/estuvieron en Recall ===================== */
+.rcv-recall-houses-card { overflow: hidden; margin-bottom: 24px; }
+.rcv-recall-houses-header { padding: 18px 20px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.rcv-recall-houses-title { margin: 0; font-size: 1.1rem; color: #111827; display: flex; align-items: center; gap: 8px; }
+.rcv-recall-houses-stats { display: flex; gap: 14px; font-size: 0.8rem; color: #64748b; }
+.rcv-recall-houses-stats strong.red { color: #b91c1c; }
+.rcv-recall-houses-stats strong.dark { color: #0f172a; }
+
+.rcv-status-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.rcv-status-chip.current { background: #fee2e2; color: #b91c1c; }
+.rcv-status-chip.was { background: #f1f5f9; color: #64748b; font-weight: 700; }
+.rcv-status-chip.card { font-size: 0.72rem; }
+
+.rcv-recall-houses-cards { flex-direction: column; gap: 14px; padding: 14px; }
+.rcv-recall-card-team-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rcv-count-text { font-size: 0.8rem; color: #64748b; }
+.rcv-count-text strong { color: #0f172a; }
+.rcv-count-text strong.high { color: #b91c1c; }

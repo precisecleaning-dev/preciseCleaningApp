@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import {
   BarChart3, ShieldCheck, Home as HomeIcon, AlertTriangle, Repeat, Wrench,
   TrendingUp, Users, Award, Activity, Filter, RefreshCw, MapPin, Layers,
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import './QCDashboardView.css';
 
 // ============================================================================
 //  Dashboard de Gestión — Quality Check & Recall
@@ -320,15 +322,15 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
 
   // ====================== UI HELPERS ======================
   const KPICard = ({ icon: Icon, label, value, sub, color, tone }: any) => (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-        <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: `${color}1a`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <div className="qcd-kpi-card">
+      <div className="qcd-kpi-top-row">
+        <span className="qcd-kpi-label">{label}</span>
+        <div className="qcd-kpi-icon-box" style={{ '--kpi-icon-bg': `${color}1a` } as CSSProperties}>
           <Icon size={17} color={color} />
         </div>
       </div>
-      <div style={{ fontSize: '1.9rem', fontWeight: 800, color: tone || '#0f172a', lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 500 }}>{sub}</div>}
+      <div className="qcd-kpi-value" style={tone ? ({ '--kpi-tone': tone } as CSSProperties) : undefined}>{value}</div>
+      {sub && <div className="qcd-kpi-sub">{sub}</div>}
     </div>
   );
 
@@ -336,14 +338,14 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
     const max = Math.max(1, ...data.map(d => d.count));
     if (data.length === 0) return <Empty text="Sin datos en este periodo." />;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="qcd-barlist">
         {data.map((d, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 44px', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.name}>{d.name}</span>
-            <div style={{ background: '#f1f5f9', borderRadius: '8px', height: '14px', overflow: 'hidden' }}>
-              <div style={{ width: `${(d.count / max) * 100}%`, height: '100%', background: color, borderRadius: '8px', transition: 'width 0.4s' }} />
+          <div key={i} className="qcd-barlist-row">
+            <span className="qcd-barlist-name" title={d.name}>{d.name}</span>
+            <div className="qcd-barlist-track">
+              <div className="qcd-barlist-fill" style={{ '--bar-width': `${(d.count / max) * 100}%`, '--bar-color': color } as CSSProperties} />
             </div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>{d.count}{unit}</span>
+            <span className="qcd-barlist-count">{d.count}{unit}</span>
           </div>
         ))}
       </div>
@@ -353,20 +355,20 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
   const HeatList = ({ data }: { data: { name: string; count: number }[] }) => {
     const max = Math.max(1, ...data.map(d => d.count));
     if (data.length === 0) return <Empty text="Sin fallos registrados." />;
-    const colorFor = (ratio: number) => {
-      if (ratio > 0.66) return { bg: '#fee2e2', bar: '#ef4444', txt: '#991b1b' };
-      if (ratio > 0.33) return { bg: '#fef3c7', bar: '#f59e0b', txt: '#92400e' };
-      return { bg: '#dcfce7', bar: '#16a34a', txt: '#166534' };
+    const bandFor = (ratio: number) => {
+      if (ratio > 0.66) return { cls: 'high', txt: '#991b1b' };
+      if (ratio > 0.33) return { cls: 'mid', txt: '#92400e' };
+      return { cls: 'low', txt: '#166534' };
     };
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div className="qcd-heatlist">
         {data.map((d, i) => {
           const ratio = d.count / max;
-          const c = colorFor(ratio);
+          const band = bandFor(ratio);
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: c.bg, borderRadius: '8px', padding: '8px 12px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: c.txt, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={d.name}>{d.name}</span>
-              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: c.txt, flexShrink: 0, marginLeft: '8px' }}>{d.count}</span>
+            <div key={i} className={`qcd-heat-row ${band.cls}`} style={{ '--heat-text': band.txt } as CSSProperties}>
+              <span className="qcd-heat-name" title={d.name}>{d.name}</span>
+              <span className="qcd-heat-count">{d.count}</span>
             </div>
           );
         })}
@@ -384,8 +386,8 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
     const pts = data.map((d, i) => `${x(i)},${y(d.rate)}`).join(' ');
     const area = `${padX},${H - padY} ${pts} ${x(data.length - 1)},${H - padY}`;
     return (
-      <div style={{ overflowX: 'auto' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: '480px', height: 'auto' }}>
+      <div className="qcd-trend-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} className="qcd-trend-svg">
           {[0, 0.5, 1].map((g, i) => (
             <line key={i} x1={padX} x2={W - padX} y1={y(max * g)} y2={y(max * g)} stroke="#eef2f7" strokeWidth={1} />
           ))}
@@ -405,54 +407,39 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
   };
 
   const Card = ({ title, icon: Icon, color, children, hint }: any) => (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '14px', padding: '18px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: hint ? '4px' : '16px' }}>
+    <div className="qcd-card">
+      <div className={`qcd-card-header${hint ? ' has-hint' : ''}`}>
         {Icon && <Icon size={18} color={color || PALETTE.blue} />}
-        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{title}</h3>
+        <h3 className="qcd-card-title">{title}</h3>
       </div>
-      {hint && <p style={{ margin: '0 0 14px 0', fontSize: '0.8rem', color: '#94a3b8' }}>{hint}</p>}
+      {hint && <p className="qcd-card-hint">{hint}</p>}
       {children}
     </div>
   );
 
   const Empty = ({ text }: { text: string }) => (
-    <div style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', padding: '24px', fontSize: '0.88rem' }}>{text}</div>
+    <div className="qcd-empty">{text}</div>
   );
 
   const num = (n: number, dec = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
   // ====================== RENDER ======================
   return (
-    <div className="fade-in" style={{ padding: '20px', boxSizing: 'border-box' }}>
-      <style>{`
-        .qcd-grid-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
-        .qcd-grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
-        .qcd-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-        @media (max-width: 980px) { .qcd-grid-2, .qcd-grid-3 { grid-template-columns: 1fr; } }
-        .qcd-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-        .qcd-tabs { display: inline-flex; background: #f1f5f9; border: 1px solid #e5e7eb; border-radius: 12px; padding: 4px; gap: 2px; }
-        .qcd-tab { border: none; background: transparent; cursor: pointer; padding: 9px 20px; border-radius: 9px; font-weight: 700; font-size: 0.88rem; color: #64748b; transition: all 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
-        .qcd-tab.active { background: #fff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15,23,42,0.1); }
-        .qcd-tab.active.recall { color: #6d28d9; }
-        .qcd-sel { height: 40px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 12px; background: #fff; color: #334155; font-weight: 600; font-size: 0.85rem; cursor: pointer; outline: none; }
-        .qcd-table { width: 100%; border-collapse: collapse; }
-        .qcd-table th { background: #f8fafc; padding: 10px 14px; text-align: left; font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #e5e7eb; }
-        .qcd-table td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; font-size: 0.88rem; color: #1e293b; }
-      `}</style>
+    <div className="fade-in qcd-page">
 
       {/* HEADER */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
-        <button onClick={onOpenMenu} aria-label="Open menu" style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+      <header className="qcd-header">
+        <button onClick={onOpenMenu} aria-label="Open menu" className="qcd-hamburger-btn">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="qcd-header-title-wrap">
+          <h1 className="qcd-title">
             <BarChart3 size={24} color={PALETTE.indigo} /> Quality Control Dashboard
           </h1>
-          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '0.92rem' }}>Indicadores de gestión · {RANGE_LABEL[range]}{teamFilter !== 'All' ? ` · ${teamFilter}` : ''}</p>
+          <p className="qcd-subtitle">Indicadores de gestión · {RANGE_LABEL[range]}{teamFilter !== 'All' ? ` · ${teamFilter}` : ''}</p>
         </div>
-        <button onClick={loadData} title="Actualizar" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.85rem' }}>
-          <RefreshCw size={15} className={loading ? 'spin' : ''} /> <span style={{ }}>Actualizar</span>
+        <button onClick={loadData} title="Actualizar" className="qcd-refresh-btn">
+          <RefreshCw size={15} className={loading ? 'spin' : ''} /> <span>Actualizar</span>
         </button>
       </header>
 
@@ -462,8 +449,8 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
           <button className={`qcd-tab ${tab === 'qc' ? 'active' : ''}`} onClick={() => setTab('qc')}><ShieldCheck size={16} /> Quality Check</button>
           <button className={`qcd-tab recall ${tab === 'recall' ? 'active' : ''}`} onClick={() => setTab('recall')}><Repeat size={16} /> Recall</button>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <div className="qcd-toolbar-filters">
+          <div className="qcd-filter-group">
             <Calendar size={15} color="#94a3b8" />
             <select className="qcd-sel" value={range} onChange={e => setRange(e.target.value as RangeKey)}>
               <option value="30">Últimos 30 días</option>
@@ -473,7 +460,7 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
               <option value="all">Todo el historial</option>
             </select>
           </div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <div className="qcd-filter-group">
             <Filter size={15} color="#94a3b8" />
             <select className="qcd-sel" value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
               <option value="All">Todos los equipos</option>
@@ -484,12 +471,12 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '60px', color: '#6b7280' }}>Cargando indicadores…</div>
+        <div className="qcd-loading">Cargando indicadores…</div>
       ) : records.length === 0 ? (
         <Empty text="No hay Quality Checks en este periodo. Cambia el rango de fechas o el equipo." />
       ) : tab === 'qc' ? (
         // ======================= TAB QUALITY CHECK =======================
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <div className="qcd-tab-content">
           <div className="qcd-grid-kpi">
             <KPICard icon={ShieldCheck} label="Quality Score" value={`${num(kpis.qualityScore, 1)}%`} sub="Tareas aprobadas (Yes)" color={PALETTE.green} tone={kpis.qualityScore >= 90 ? '#16a34a' : kpis.qualityScore >= 75 ? '#b45309' : '#b91c1c'} />
             <KPICard icon={HomeIcon} label="Pasaron 1ª vez" value={num(kpis.passedFirstTime)} sub="Casas sin recall" color={PALETTE.blue} />
@@ -516,12 +503,12 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
             </Card>
             <Card title="Inspectores" icon={Award} color={PALETTE.purple} hint="Inspecciones realizadas.">
               {inspectorBoard.length === 0 ? <Empty text="Sin inspectores." /> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="qcd-inspector-list">
                   {inspectorBoard.map((ins, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 10px', background: i === 0 ? '#faf5ff' : '#f8fafc', borderRadius: '10px' }}>
-                      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: i === 0 ? '#7c3aed' : '#e2e8f0', color: i === 0 ? '#fff' : '#475569', fontSize: '0.78rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{i + 1}</span>
-                      <span style={{ flex: 1, fontWeight: 600, color: '#1e293b', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ins.name}</span>
-                      <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 700 }}>{ins.count} insp.</span>
+                    <div key={i} className={`qcd-inspector-row${i === 0 ? ' first' : ''}`}>
+                      <span className={`qcd-inspector-rank${i === 0 ? ' first' : ''}`}>{i + 1}</span>
+                      <span className="qcd-inspector-name">{ins.name}</span>
+                      <span className="qcd-inspector-count">{ins.count} insp.</span>
                     </div>
                   ))}
                 </div>
@@ -531,14 +518,14 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
 
           {/* Rendimiento por equipo */}
           <Card title="Rendimiento por equipo" icon={Users} color={PALETTE.blue} hint="Ordenado por más recalls / menor tasa de aprobación.">
-            <div style={{ overflowX: 'auto' }}>
-              <table className="qcd-table" style={{ minWidth: '560px' }}>
+            <div className="qcd-table-scroll">
+              <table className="qcd-table qcd-table-team">
                 <thead>
                   <tr>
-                    <th>Equipo</th><th style={{ textAlign: 'center' }}>Casas</th>
-                    <th style={{ textAlign: 'center' }}>% Aprob.</th>
-                    <th style={{ textAlign: 'center' }}>Recalls</th>
-                    <th style={{ textAlign: 'center' }}>Score prom.</th>
+                    <th>Equipo</th><th className="center">Casas</th>
+                    <th className="center">% Aprob.</th>
+                    <th className="center">Recalls</th>
+                    <th className="center">Score prom.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -546,15 +533,15 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
                     const passColor = t.passRate >= 90 ? '#16a34a' : t.passRate >= 75 ? '#b45309' : '#b91c1c';
                     return (
                       <tr key={i}>
-                        <td style={{ fontWeight: 700 }}>{t.name}</td>
-                        <td style={{ textAlign: 'center' }}>{t.homes}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{ fontWeight: 800, color: passColor }}>{t.passRate}%</span>
+                        <td className="qcd-td-strong">{t.name}</td>
+                        <td className="center">{t.homes}</td>
+                        <td className="center">
+                          <span className="qcd-td-tone" style={{ '--tone-color': passColor } as CSSProperties}>{t.passRate}%</span>
                         </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{ fontWeight: 800, color: t.recalls > 0 ? '#b91c1c' : '#16a34a' }}>{t.recalls}</span>
+                        <td className="center">
+                          <span className="qcd-td-tone" style={{ '--tone-color': t.recalls > 0 ? '#b91c1c' : '#16a34a' } as CSSProperties}>{t.recalls}</span>
                         </td>
-                        <td style={{ textAlign: 'center' }}>{t.avgScore ? t.avgScore.toFixed(1) : '—'}</td>
+                        <td className="center">{t.avgScore ? t.avgScore.toFixed(1) : '—'}</td>
                       </tr>
                     );
                   })}
@@ -565,7 +552,7 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
         </div>
       ) : (
         // ======================= TAB RECALL =======================
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <div className="qcd-tab-content">
           <div className="qcd-grid-kpi">
             <KPICard icon={Repeat} label="Total recalls" value={num(recall.total)} sub="Casas que no pasaron" color={PALETTE.purple} tone="#6d28d9" />
             <KPICard icon={TrendingUp} label="Tasa de recall" value={`${num(kpis.recallRate, 1)}%`} sub="Sobre inspecciones" color={PALETTE.red} tone={kpis.recallRate <= 5 ? '#16a34a' : '#b91c1c'} />
@@ -595,24 +582,24 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
 
           <Card title="Detalle de recalls" icon={Repeat} color={PALETTE.purple} hint="Casas que no pasaron, más recientes primero.">
             {recall.list.length === 0 ? <Empty text="Sin recalls en este periodo. ¡Bien!" /> : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="qcd-table" style={{ minWidth: '700px' }}>
+              <div className="qcd-table-scroll">
+                <table className="qcd-table qcd-table-recall">
                   <thead>
                     <tr>
                       <th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Equipo</th>
-                      <th>Inspector</th><th style={{ textAlign: 'center' }}>Ítems fallados</th>
+                      <th>Inspector</th><th className="center">Ítems fallados</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recall.list.map((r, i) => (
                       <tr key={r.id || i}>
-                        <td style={{ color: '#64748b' }}>{fmtDate(r.date)}</td>
-                        <td style={{ fontWeight: 700 }}>{r.client}</td>
-                        <td style={{ color: '#475569' }}>{r.address}</td>
+                        <td className="qcd-td-muted">{fmtDate(r.date)}</td>
+                        <td className="qcd-td-strong">{r.client}</td>
+                        <td className="qcd-td-address">{r.address}</td>
                         <td>{r.team}</td>
-                        <td style={{ color: '#64748b' }}>{r.inspector}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef2f2', color: '#b91c1c', padding: '3px 10px', borderRadius: '12px', fontWeight: 800, fontSize: '0.8rem' }}>
+                        <td className="qcd-td-muted">{r.inspector}</td>
+                        <td className="center">
+                          <span className="qcd-items-badge">
                             <AlertTriangle size={12} /> {r.items}
                           </span>
                         </td>
@@ -626,7 +613,7 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
         </div>
       )}
 
-      <div style={{ textAlign: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9', fontSize: '0.78rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+      <div className="qcd-footer-note">
         <Activity size={13} /> {kpis.totalInspections} inspecciones analizadas · {RANGE_LABEL[range]}
       </div>
     </div>

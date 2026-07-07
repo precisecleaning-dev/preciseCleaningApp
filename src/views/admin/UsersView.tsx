@@ -6,6 +6,7 @@ import { db } from '../../config/firebase';
 import { collection, getDocs, setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import type { SystemUser, Role } from '../../types/index';
 import { createUserWithResetEmail, resendPasswordReset } from '../../services/userAuthService';
+import './UsersView.css';
 
 interface UsersViewProps {
   onOpenMenu: () => void;
@@ -303,119 +304,85 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
     alert(resultMsg);
   };
 
-  const s = {
-    th: { padding: '12px 20px', textAlign: 'left' as const, fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' as const },
-    td: { padding: '16px 20px', borderBottom: '1px solid #f1f5f9', fontSize: '0.95rem', color: '#111827', verticalAlign: 'middle' as const },
-    label: { fontSize: '0.85rem', color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: '6px', display: 'block' },
-    input: { backgroundColor: '#ffffff', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#111827', width: '100%', boxSizing: 'border-box' as const, outline: 'none' },
-    inputDisabled: { backgroundColor: '#f1f5f9', padding: '10px 14px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '0.95rem', color: '#64748b', width: '100%', boxSizing: 'border-box' as const, outline: 'none', cursor: 'not-allowed' },
-  };
-
   return (
-    <div className="fade-in" style={{ padding: '20px' }}>
-      <style>{`
-        .spin-users { animation: spin-users 1s linear infinite; }
-        @keyframes spin-users { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-        .modal-50 { background-color: #ffffff; width: 100%; max-width: 600px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; }
-        .modal-80 { background-color: #ffffff; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; }
-        
-        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .hamburger-btn:hover { background-color: #f8fafc; }
-
-        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
-        .fade-in *::-webkit-scrollbar-track { background: transparent; }
-        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; }
-        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
-        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-
-        @media (max-width: 768px) {
-          .view-header-title-group { flex-direction: row-reverse; justify-content: space-between; width: 100%; }
-          .responsive-table thead { display: none; }
-          .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-          .responsive-table td { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; }
-          .responsive-table td:last-child { border-bottom: none; padding-bottom: 0; }
-          .responsive-table td::before { content: attr(data-label); font-weight: 700; color: #6b7280; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; padding-right: 15px; white-space: nowrap; }
-        }
-      `}</style>
-
+    <div className="fade-in uv-page">
       {/* HEADER */}
-      <header className="main-header dashboard-header-container" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-        <div className="view-header-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <header className="main-header dashboard-header-container uv-header">
+        <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#111827', fontWeight: 700 }}>System Users</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.95rem' }}>Whitelist of authorized users</p>
+            <h1 className="uv-title">System Users</h1>
+            <p className="uv-subtitle">Whitelist of authorized users</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div className="uv-header-actions">
           {/* ⭐ Botón Bulk Import */}
-          <button onClick={() => setIsBulkOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'white', color: '#111827', border: '1px solid #e5e7eb', padding: '0 20px', height: '42px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+          <button onClick={() => setIsBulkOpen(true)} className="uv-btn-outline-pill">
             <Upload size={16} /> Bulk Import
           </button>
-          <button onClick={() => handleOpenForm()} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#111827', color: 'white', border: 'none', padding: '0 20px', height: '42px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+          <button onClick={() => handleOpenForm()} className="uv-btn-dark-pill">
             <Plus size={16} /> Add User
           </button>
         </div>
       </header>
 
       {/* TABLE */}
-      <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflowX: 'auto' }}>
-        <table className="responsive-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+      <div className="uv-table-card">
+        <table className="responsive-table uv-table">
           <thead>
             <tr>
-              <th style={s.th}>Name</th>
-              <th style={s.th}>Email</th>
-              <th style={s.th}>Role</th>
-              <th style={s.th}>Status</th>
-              <th style={{...s.th, textAlign: 'right'}}>Actions</th>
+              <th className="uv-th">Name</th>
+              <th className="uv-th">Email</th>
+              <th className="uv-th">Role</th>
+              <th className="uv-th">Status</th>
+              <th className="uv-th right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading users...</td></tr>
+              <tr><td colSpan={5} className="uv-empty-row">Loading users...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No users found. Click "Add User" or "Bulk Import" to start.</td></tr>
+              <tr><td colSpan={5} className="uv-empty-row">No users found. Click "Add User" or "Bulk Import" to start.</td></tr>
             ) : (
               users.map(u => {
                 const roleName = roles.find(r => r.id === u.roleId)?.name || 'Unknown';
                 const isPending = u.status === 'Pending Invite';
                 const isResending = resendingForUserId === u.id;
                 const wasInvited = !!(u as any).inviteSent;
-                
+                const statusVariant = isPending ? (wasInvited ? 'invited-pending' : 'not-invited') : 'active';
+
                 return (
-                  <tr key={u.id} style={{ transition: 'background-color 0.2s' }} onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                    <td data-label="Name" style={{...s.td, fontWeight: 600}}>{u.firstName} {u.lastName}</td>
-                    <td data-label="Email" style={{...s.td, color: '#64748b'}}>{u.email}</td>
-                    <td data-label="Role" style={s.td}>
-                      <span style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600 }}>{roleName}</span>
+                  <tr key={u.id}>
+                    <td data-label="Name" className="uv-td strong">{u.firstName} {u.lastName}</td>
+                    <td data-label="Email" className="uv-td muted">{u.email}</td>
+                    <td data-label="Role" className="uv-td">
+                      <span className="uv-role-badge">{roleName}</span>
                     </td>
-                    <td data-label="Status" style={s.td}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isPending ? (wasInvited ? '#f59e0b' : '#94a3b8') : '#10b981', flexShrink: 0 }}></span>
-                        <span style={{ color: isPending ? (wasInvited ? '#f59e0b' : '#64748b') : '#10b981', fontWeight: 600, fontSize: '0.9rem' }}>
+                    <td data-label="Status" className="uv-td">
+                      <div className="uv-status-row">
+                        <span className={`uv-status-dot ${statusVariant}`}></span>
+                        <span className={`uv-status-text ${statusVariant}`}>
                           {isPending ? (wasInvited ? 'Invited (Pending)' : 'Not Invited') : (u.status || 'Active')}
                         </span>
                       </div>
                     </td>
-                    <td data-label="Actions" style={{...s.td, textAlign: 'right'}}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                        <button 
-                          onClick={() => handleSendInvite(u)} 
+                    <td data-label="Actions" className="uv-td right">
+                      <div className="uv-actions-cell">
+                        <button
+                          onClick={() => handleSendInvite(u)}
                           disabled={isResending || isSaving}
                           title={wasInvited ? "Resend password setup email" : "Send invitation email (creates Auth account)"}
-                          style={{ background: 'none', border: 'none', color: wasInvited ? '#8b5cf6' : '#0ea5e9', cursor: isResending ? 'wait' : 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          className={`uv-btn-send${wasInvited ? ' resent' : ''}${isResending ? ' busy' : ''}`}
                         >
                           {isResending ? <Loader2 size={18} className="spin-users" /> : <Send size={18} />}
                         </button>
-                        <button onClick={() => handleOpenForm(u)} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '4px' }}>
+                        <button onClick={() => handleOpenForm(u)} className="uv-btn-edit">
                           <Edit2 size={18} />
                         </button>
-                        <button onClick={() => handleDelete(u.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}>
+                        <button onClick={() => handleDelete(u.id as string)} className="uv-btn-delete">
                           <Trash2 size={18} />
                         </button>
                       </div>
@@ -432,72 +399,72 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       {isModalOpen && (
         <div className="modal-overlay-centered" onClick={handleCloseForm}>
           <div className="modal-50" onClick={e => e.stopPropagation()}>
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{formData.id ? 'Edit User' : 'Add User'}</h3>
-              <button onClick={handleCloseForm} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={24} /></button>
+            <header className="uv-modal-header">
+              <h3 className="uv-modal-title">{formData.id ? 'Edit User' : 'Add User'}</h3>
+              <button onClick={handleCloseForm} className="uv-modal-close"><X size={24} /></button>
             </header>
-            
-            <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
+
+            <div className="uv-modal-body">
+
               {!formData.id && (
-                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <AlertCircle size={18} color="#a16207" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div style={{ fontSize: '0.85rem', color: '#78350f', lineHeight: 1.5 }}>
+                <div className="uv-banner warning">
+                  <AlertCircle size={18} color="#a16207" className="uv-banner-icon" />
+                  <div className="uv-banner-text warning">
                     The user will be <strong>saved to the system but no email will be sent</strong>. When you're ready to invite them, click the <strong>✈️ Send</strong> icon next to their name.
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="uv-form-row">
                 <div>
-                  <label style={s.label}>First Name <span style={{color: '#3b82f6'}}>*</span></label>
-                  <div style={{ position: 'relative' }}>
-                    <User size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                    <input type="text" style={{...s.input, paddingLeft: '36px'}} value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} placeholder="John" />
+                  <label className="uv-label">First Name <span className="uv-required">*</span></label>
+                  <div className="uv-input-wrap">
+                    <User size={16} color="#9ca3af" className="uv-input-icon" />
+                    <input type="text" className="uv-input with-icon" value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} placeholder="John" />
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Last Name</label>
-                  <input type="text" style={s.input} value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Doe" />
+                  <label className="uv-label">Last Name</label>
+                  <input type="text" className="uv-input" value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Doe" />
                 </div>
               </div>
 
               <div>
-                <label style={s.label}>
-                  Email Address <span style={{color: '#3b82f6'}}>*</span>
-                  {formData.id && <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(cannot be changed)</span>}
+                <label className="uv-label">
+                  Email Address <span className="uv-required">*</span>
+                  {formData.id && <span className="uv-label-hint">(cannot be changed)</span>}
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <Mail size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                  <input 
-                    type="email" 
-                    style={{...(formData.id ? s.inputDisabled : s.input), paddingLeft: '36px'}} 
-                    value={formData.email || ''} 
-                    onChange={e => setFormData({...formData, email: e.target.value})} 
+                <div className="uv-input-wrap">
+                  <Mail size={16} color="#9ca3af" className="uv-input-icon" />
+                  <input
+                    type="email"
+                    className="uv-input with-icon"
+                    value={formData.email || ''}
+                    onChange={e => setFormData({...formData, email: e.target.value})}
                     placeholder="john@example.com"
                     disabled={!!formData.id}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="uv-form-row">
                 <div>
-                  <label style={s.label}>Role <span style={{color: '#3b82f6'}}>*</span></label>
-                  <div style={{ position: 'relative' }}>
-                    <ShieldCheck size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                    <select style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} value={formData.roleId || ''} onChange={e => setFormData({...formData, roleId: e.target.value})}>
+                  <label className="uv-label">Role <span className="uv-required">*</span></label>
+                  <div className="uv-input-wrap">
+                    <ShieldCheck size={16} color="#9ca3af" className="uv-input-icon" />
+                    <select className="uv-input with-icon selectable" value={formData.roleId || ''} onChange={e => setFormData({...formData, roleId: e.target.value})}>
                       <option value="" disabled>Select Role...</option>
                       {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label style={s.label}>Status</label>
-                  <div style={{ position: 'relative' }}>
-                    <Activity size={16} color="#9ca3af" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-                    <select 
-                      style={{...s.input, paddingLeft: '36px', cursor: 'pointer'}} 
-                      value={formData.status || 'Pending Invite'} 
+                  <label className="uv-label">Status</label>
+                  <div className="uv-input-wrap">
+                    <Activity size={16} color="#9ca3af" className="uv-input-icon" />
+                    <select
+                      className="uv-input with-icon selectable"
+                      value={formData.status || 'Pending Invite'}
                       onChange={e => setFormData({...formData, status: e.target.value as any})}
                     >
                       <option value="Pending Invite">Pending Invite</option>
@@ -509,16 +476,12 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
               </div>
             </div>
 
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px' }}>
-              <button onClick={handleCloseForm} disabled={isSaving} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-              <button 
-                onClick={handleSave} 
-                disabled={isSaving} 
-                style={{ 
-                  backgroundColor: '#111827', color: 'white', border: 'none', padding: '8px 20px', 
-                  borderRadius: '6px', fontWeight: 600, cursor: isSaving ? 'wait' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '8px', opacity: isSaving ? 0.7 : 1
-                }}
+            <footer className="uv-modal-footer">
+              <button onClick={handleCloseForm} disabled={isSaving} className="uv-btn-cancel">Cancel</button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="uv-btn-primary-modal save"
               >
                 {isSaving && <Loader2 size={14} className="spin-users" />}
                 {isSaving ? 'Saving...' : (formData.id ? 'Save Changes' : 'Save User')}
@@ -532,79 +495,60 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       {isBulkOpen && (
         <div className="modal-overlay-centered" onClick={() => !isBulkImporting && setIsBulkOpen(false)}>
           <div className="modal-80" onClick={e => e.stopPropagation()}>
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Bulk Import Users</h3>
-              <button onClick={() => !isBulkImporting && setIsBulkOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={24} /></button>
+            <header className="uv-modal-header">
+              <h3 className="uv-modal-title">Bulk Import Users</h3>
+              <button onClick={() => !isBulkImporting && setIsBulkOpen(false)} className="uv-modal-close"><X size={24} /></button>
             </header>
 
-            <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-              <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '14px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                <Upload size={18} color="#1e40af" style={{ flexShrink: 0, marginTop: '2px' }} />
-                <div style={{ fontSize: '0.85rem', color: '#1e3a8a', lineHeight: 1.5 }}>
+            <div className="uv-modal-body">
+
+              <div className="uv-banner info">
+                <Upload size={18} color="#1e40af" className="uv-banner-icon" />
+                <div className="uv-banner-text info">
                   Pega una lista de usuarios, <strong>uno por línea</strong>, en formato:<br/>
-                  <code style={{ backgroundColor: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '0.85rem', display: 'inline-block', marginTop: '4px' }}>firstName,lastName,email,roleName</code><br/>
+                  <code className="uv-code">firstName,lastName,email,roleName</code><br/>
                   También acepta <strong>tabs</strong> (pegado directo de Google Sheets / Excel).<br/>
                   <strong>No se enviarán correos.</strong> Quedan en "Not Invited" hasta que hagas click manual en ✈️.
                 </div>
               </div>
 
               <div>
-                <label style={s.label}>Paste users here</label>
+                <label className="uv-label">Paste users here</label>
                 <textarea
                   value={bulkText}
                   onChange={e => setBulkText(e.target.value)}
                   disabled={isBulkImporting}
                   placeholder={"John,Doe,john@example.com,Employee\nJane,Smith,jane@example.com,Admin\nCarlos,Perez,carlos@example.com,Employee"}
-                  style={{
-                    width: '100%',
-                    minHeight: '240px',
-                    padding: '12px 14px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    fontSize: '0.9rem',
-                    fontFamily: 'ui-monospace, "SF Mono", Monaco, Consolas, monospace',
-                    color: '#111827',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    resize: 'vertical',
-                    backgroundColor: isBulkImporting ? '#f8fafc' : 'white'
-                  }}
+                  className="uv-textarea"
                 />
-                <div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#64748b' }}>
-                  {bulkText.split('\n').filter(l => l.trim().length > 0).length} líneas detectadas. 
+                <div className="uv-helper-text">
+                  {bulkText.split('\n').filter(l => l.trim().length > 0).length} líneas detectadas.
                   Roles disponibles: {roles.map(r => r.name).join(', ') || '(ningún rol configurado todavía)'}
                 </div>
               </div>
 
               {roles.length === 0 && (
-                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <AlertCircle size={18} color="#b91c1c" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div style={{ fontSize: '0.85rem', color: '#7f1d1d', lineHeight: 1.5 }}>
+                <div className="uv-banner danger">
+                  <AlertCircle size={18} color="#b91c1c" className="uv-banner-icon" />
+                  <div className="uv-banner-text danger">
                     No hay roles configurados. Ve a <strong>Roles & Permissions</strong> y crea al menos uno antes de importar.
                   </div>
                 </div>
               )}
             </div>
 
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px' }}>
-              <button 
-                onClick={() => setIsBulkOpen(false)} 
+            <footer className="uv-modal-footer">
+              <button
+                onClick={() => setIsBulkOpen(false)}
                 disabled={isBulkImporting}
-                style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
+                className="uv-btn-cancel"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleBulkImport} 
+              <button
+                onClick={handleBulkImport}
                 disabled={isBulkImporting || bulkText.trim().length === 0 || roles.length === 0}
-                style={{ 
-                  backgroundColor: '#111827', color: 'white', border: 'none', padding: '8px 20px', 
-                  borderRadius: '6px', fontWeight: 600, 
-                  cursor: (isBulkImporting || bulkText.trim().length === 0 || roles.length === 0) ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  opacity: (isBulkImporting || bulkText.trim().length === 0 || roles.length === 0) ? 0.6 : 1
-                }}
+                className="uv-btn-primary-modal import"
               >
                 {isBulkImporting && <Loader2 size={14} className="spin-users" />}
                 {isBulkImporting ? 'Importing...' : 'Import Users'}

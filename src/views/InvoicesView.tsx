@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { 
+import type { CSSProperties } from 'react';
+import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
   X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User
 } from 'lucide-react';
@@ -8,6 +9,7 @@ import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Serv
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
+import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
   { id: 'Pre-Paid', name: 'Pre-Paid', color: '#8b5cf6' },
@@ -24,8 +26,8 @@ const INVOICE_STATUSES = [
 const getRelationName = (list: any[], idOrName?: string | null, fallback = '-') => {
   if (!idOrName) return fallback;
   const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item => 
-    String(item.id).toLowerCase().trim() === safeVal || 
+  const found = list.find(item =>
+    String(item.id).toLowerCase().trim() === safeVal ||
     String(item.name).toLowerCase().trim() === safeVal
   );
   return found ? found.name : fallback;
@@ -69,54 +71,41 @@ const parseDateForSort = (dateStr?: string | null): number => {
 // ───────────────────────────────────────────────────────────────
 const InvoiceStatusPill = ({ currentStatus, onChange, disabled, fullWidth = false }: { currentStatus: string, onChange: (s: string) => void, disabled: boolean, fullWidth?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const statusObj = INVOICE_STATUSES.find(s => s.id === currentStatus || s.name === currentStatus) 
+  const statusObj = INVOICE_STATUSES.find(s => s.id === currentStatus || s.name === currentStatus)
     || { id: currentStatus, name: currentStatus || 'Pending', color: '#64748b' };
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
-      <div 
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`inv-pill-wrap${fullWidth ? ' full' : ''}`}>
+      <div
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
-        style={{ 
-          color: '#111827', padding: fullWidth ? '11px 14px' : '6px 14px', borderRadius: fullWidth ? '12px' : '20px', 
-          fontSize: '0.8rem', fontWeight: 700, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px',
-          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
-          cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${statusObj.color}40`, transition: 'all 0.2s',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)', backgroundColor: `${statusObj.color}10`
-        }}
-        onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = `${statusObj.color}20`; }}
-        onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = `${statusObj.color}10`; }}
+        className={`inv-status-pill dynamic${fullWidth ? ' full' : ''}${disabled ? ' disabled' : ''}`}
+        style={{
+          '--pill-border': `${statusObj.color}40`,
+          '--pill-bg': `${statusObj.color}10`,
+          '--pill-bg-hover': `${statusObj.color}20`,
+          '--dot-color': statusObj.color,
+        } as CSSProperties}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusObj.color, flexShrink: 0 }}></span>
-          <span style={{ color: statusObj.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusObj.name}</span>
+        <span className="inv-pill-label-wrap">
+          <span className="inv-pill-dot"></span>
+          <span className="inv-pill-text colored">{statusObj.name}</span>
         </span>
-        <ChevronDown size={14} color={statusObj.color} style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={14} color={statusObj.color} className={`inv-pill-chevron${isOpen ? ' open' : ''}`} />
       </div>
 
       {isOpen && (
-        <div style={{ 
-          position: 'absolute', top: '100%', left: 0, right: fullWidth ? 0 : 'auto', marginTop: '4px', backgroundColor: 'white', 
-          border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: fullWidth ? '100%' : '160px', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
-        }}>
+        <div className={`inv-pill-dropdown${fullWidth ? ' full' : ''}`}>
           {INVOICE_STATUSES.map((s) => (
-            <div 
+            <div
               key={s.id}
-              onClick={(e) => { 
+              onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
-                if(s.id !== currentStatus) onChange(s.id); 
-                setIsOpen(false); 
+                if(s.id !== currentStatus) onChange(s.id);
+                setIsOpen(false);
               }}
-              style={{ 
-                padding: '12px 14px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', 
-                display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                backgroundColor: currentStatus === s.id ? '#f8fafc' : 'transparent',
-                borderBottom: '1px solid #f1f5f9'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = currentStatus === s.id ? '#f8fafc' : 'transparent'}
+              className={`inv-pill-option${currentStatus === s.id ? ' current' : ''}`}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color, flexShrink: 0 }}></span>
+              <span className="inv-pill-dot" style={{ '--dot-color': s.color } as CSSProperties}></span>
               {s.name}
             </div>
           ))}
@@ -138,50 +127,31 @@ const JobStatusPill = ({ currentStatusId, statuses, onChange, disabled, fullWidt
   const text = status ? status.name : 'Unassigned';
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} style={{ position: 'relative', display: fullWidth ? 'block' : 'inline-block', width: fullWidth ? '100%' : 'auto', outline: 'none' }}>
-      <div 
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`inv-pill-wrap${fullWidth ? ' full' : ''}`}>
+      <div
         onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
-        style={{ 
-          backgroundColor: 'white', color: '#111827', padding: fullWidth ? '11px 14px' : '6px 12px', borderRadius: fullWidth ? '12px' : '20px', 
-          fontSize: '0.8rem', fontWeight: 600, display: fullWidth ? 'flex' : 'inline-flex', alignItems: 'center', justifyContent: fullWidth ? 'space-between' : 'flex-start', gap: '8px',
-          width: fullWidth ? '100%' : 'auto', boxSizing: 'border-box',
-          cursor: disabled ? 'not-allowed' : 'pointer', border: '1px solid #e5e7eb', transition: 'all 0.2s',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-        }}
-        onMouseEnter={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-        onMouseLeave={(e) => { if(!disabled) e.currentTarget.style.backgroundColor = 'white'; }}
+        className={`inv-status-pill static${fullWidth ? ' full' : ''}${disabled ? ' disabled' : ''}`}
       >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: pointColor, flexShrink: 0 }}></span>
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+        <span className="inv-pill-label-wrap">
+          <span className="inv-pill-dot" style={{ '--dot-color': pointColor } as CSSProperties}></span>
+          <span className="inv-pill-text">{text}</span>
         </span>
-        <ChevronDown size={14} color="#9ca3af" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+        <ChevronDown size={14} color="#9ca3af" className={`inv-pill-chevron${isOpen ? ' open' : ''}`} />
       </div>
 
       {isOpen && (
-        <div style={{ 
-          position: 'absolute', top: '100%', left: 0, right: fullWidth ? 0 : 'auto', marginTop: '4px', backgroundColor: 'white', 
-          border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-          zIndex: 9999, minWidth: fullWidth ? '100%' : '180px', boxSizing: 'border-box', overflow: 'hidden', textAlign: 'left'
-        }}>
+        <div className={`inv-pill-dropdown${fullWidth ? ' full' : ''}`}>
           {statuses.map((s) => (
-            <div 
+            <div
               key={s.id}
-              onClick={(e) => { 
+              onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
-                if(s.id !== currentStatusId && s.name !== currentStatusId) onChange(s.id); 
-                setIsOpen(false); 
+                if(s.id !== currentStatusId && s.name !== currentStatusId) onChange(s.id);
+                setIsOpen(false);
               }}
-              style={{ 
-                padding: '12px 14px', fontSize: '0.85rem', fontWeight: 500, color: '#111827', 
-                display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                backgroundColor: (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent',
-                borderBottom: '1px solid #f1f5f9'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = (currentStatusId === s.id || currentStatusId === s.name) ? '#f8fafc' : 'transparent'}
+              className={`inv-pill-option job${(currentStatusId === s.id || currentStatusId === s.name) ? ' current' : ''}`}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: s.color, flexShrink: 0 }}></span>
+              <span className="inv-pill-dot" style={{ '--dot-color': s.color } as CSSProperties}></span>
               {s.name}
             </div>
           ))}
@@ -411,56 +381,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
   });
 
-  // Estilos compartidos
-  const s = {
-    label: { fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: '6px', display: 'block', letterSpacing: '0.05em' },
-    inputWrapper: { position: 'relative' as const, display: 'flex', alignItems: 'center', width: '100%' },
-    icon: { position: 'absolute' as const, left: '12px', color: '#94a3b8', pointerEvents: 'none' as const },
-    input: { backgroundColor: '#ffffff', padding: '10px 14px 10px 36px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.9rem', color: '#1e293b', width: '100%', boxSizing: 'border-box' as const, outline: 'none', transition: 'border-color 0.2s' },
-    th: { padding: '14px 18px', textAlign: 'left' as const, fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' as const, backgroundColor: '#fafbfc' },
-    td: { padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontSize: '0.92rem', color: '#1e293b', verticalAlign: 'middle' as const },
-
-    // Estilos del modal de detalle (igual que Payroll/House overview)
-    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0 } as React.CSSProperties,
-    title: { fontSize: '1.25rem', fontWeight: 700, color: '#111827', margin: 0 } as React.CSSProperties,
-    body: { padding: '30px', overflowY: 'auto', paddingBottom: '30px' } as React.CSSProperties,
-    closeBtn: { background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex', borderRadius: '4px' } as React.CSSProperties,
-    detailBanner: { border: '1px solid #bfdbfe', borderRadius: '8px', padding: '24px', backgroundColor: '#eff6ff', display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '24px' } as React.CSSProperties,
-    detailItem: { display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' } as React.CSSProperties,
-    detailLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#6b7280', fontWeight: 600 } as React.CSSProperties,
-    detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' } as React.CSSProperties,
-    noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' } as React.CSSProperties,
-    noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' } as React.CSSProperties,
-  };
-
-  // ⭐ Estilos de los pill buttons del filtro de Invoice Status
-  const pillFilterBtn = (active: boolean, color: string): React.CSSProperties => ({
-    padding: '8px 14px',
-    borderRadius: '20px',
-    fontSize: '0.85rem',
-    fontWeight: 700,
-    border: `1px solid ${active ? color : '#e5e7eb'}`,
-    backgroundColor: active ? `${color}15` : 'white',
-    color: active ? color : '#475569',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '8px',
-    whiteSpace: 'nowrap',
-    boxShadow: active ? `0 0 0 2px ${color}20` : '0 1px 2px rgba(0,0,0,0.03)'
-  });
-  const countBadge = (active: boolean, color: string): React.CSSProperties => ({
-    backgroundColor: active ? color : '#f1f5f9',
-    color: active ? 'white' : '#64748b',
-    borderRadius: '10px',
-    padding: '1px 8px',
-    fontSize: '0.7rem',
-    fontWeight: 800,
-    minWidth: '22px',
-    textAlign: 'center'
-  });
-
   // ⭐ Helper para los cálculos financieros de una propiedad (reutilizado en tabla y tarjetas)
   const calcFinancials = (prop: Property) => {
     const propServices = billedServices.filter(srv => srv.propertyId === prop.id);
@@ -472,174 +392,126 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   };
 
   return (
-    <div className="fade-in invoices-view" style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box' }}>
-      
-      {/* Scrollbars elegantes + estilos de modal + RESPONSIVE */}
-      <style>{`
-        .fade-in *::-webkit-scrollbar { width: 6px; height: 6px; }
-        .fade-in *::-webkit-scrollbar-track { background: transparent; }
-        .fade-in *::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; transition: background 0.2s ease; }
-        .fade-in *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
-        .fade-in * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-
-        .modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-        .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
-        @media (min-width: 769px) { .modal-70 { width: 70%; } }
-        .grid-3-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
-        .col-span-full { grid-column: 1 / -1; }
-
-        /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
-        .inv-cards-wrap { display: none; }
-
-        /* ====== RESPONSIVE PRO · SIN SCROLL HORIZONTAL ====== */
-        .invoices-view { overflow-x: hidden; max-width: 100%; }
-
-        @media (max-width: 820px) {
-          html, body { overflow-x: hidden; max-width: 100%; }
-          .invoices-view { padding: 14px !important; }
-
-          /* Ocultar la tabla y mostrar las tarjetas */
-          .inv-table-wrap { display: none !important; }
-          .inv-cards-wrap { display: flex !important; }
-
-          /* Filtros secundarios apilados */
-          .inv-secondary-filters { grid-template-columns: 1fr !important; }
-          .inv-secondary-filters .inv-search-cell { grid-column: auto !important; }
-
-          /* Detalle: el grid de 3 columnas pasa a 1 */
-          .grid-3-cols { grid-template-columns: 1fr !important; gap: 16px; }
-
-          /* Modal a pantalla completa */
-          .modal-overlay-centered { padding: 0 !important; }
-          .modal-70 { width: 100vw !important; max-width: 100vw !important; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
-          .modal-70 > div { padding: 18px 16px !important; }
-          .modal-70 > header { padding: 16px !important; }
-          .modal-70 > footer { padding: 14px 16px !important; }
-          .modal-70 > footer button { min-height: 46px; padding: 12px 18px !important; border-radius: 10px !important; }
-        }
-
-        @media (max-width: 480px) {
-          .invoices-view { padding: 10px !important; }
-        }
-      `}</style>
+    <div className="fade-in invoices-view inv-page">
 
       {/* HEADER */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button onClick={onOpenMenu} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', color: '#111827', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+      <header className="inv-header">
+        <button onClick={onOpenMenu} className="inv-hamburger-btn">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         <div>
-          <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.8rem', fontWeight: 800 }}>Invoices</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>Financial tracking and billing status</p>
+          <h1 className="inv-title">Invoices</h1>
+          <p className="inv-subtitle">Financial tracking and billing status</p>
         </div>
       </header>
 
       {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-        <button onClick={() => setFilterStatus('All')} style={pillFilterBtn(filterStatus === 'All', '#64748b')}>
-          All <span style={countBadge(filterStatus === 'All', '#64748b')}>{totalScopedCount}</span>
+      <div className="inv-status-filters-row">
+        <button
+          onClick={() => setFilterStatus('All')}
+          className={`inv-filter-pill${filterStatus === 'All' ? ' active' : ''}`}
+          style={{ '--pill-color': '#64748b', '--pill-color-15': '#64748b15', '--pill-color-20': '#64748b20' } as CSSProperties}
+        >
+          All <span className={`inv-filter-count-badge${filterStatus === 'All' ? ' active' : ''}`}>{totalScopedCount}</span>
         </button>
         {INVOICE_STATUSES.map(st => (
-          <button key={st.id} onClick={() => setFilterStatus(st.id)} style={pillFilterBtn(filterStatus === st.id, st.color)}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: st.color }}></span>
-            {st.name} <span style={countBadge(filterStatus === st.id, st.color)}>{invoiceCounts[st.id] || 0}</span>
+          <button
+            key={st.id}
+            onClick={() => setFilterStatus(st.id)}
+            className={`inv-filter-pill${filterStatus === st.id ? ' active' : ''}`}
+            style={{ '--pill-color': st.color, '--pill-color-15': `${st.color}15`, '--pill-color-20': `${st.color}20`, '--dot-color': st.color } as CSSProperties}
+          >
+            <span className="inv-filter-dot"></span>
+            {st.name} <span className={`inv-filter-count-badge${filterStatus === st.id ? ' active' : ''}`}>{invoiceCounts[st.id] || 0}</span>
           </button>
         ))}
       </div>
 
       {/* Filtros secundarios */}
-      <div className="inv-secondary-filters" style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '16px' }}>
+      <div className="inv-secondary-filters">
         <div>
-          <label style={s.label}>Start Date</label>
-          <div style={s.inputWrapper}>
-            <CalendarDays style={s.icon} size={16} />
-            <input type="date" style={s.input} value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <label className="inv-label">Start Date</label>
+          <div className="inv-input-wrap">
+            <CalendarDays className="inv-input-icon" size={16} />
+            <input type="date" className="inv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
           </div>
         </div>
         <div>
-          <label style={s.label}>End Date</label>
-          <div style={s.inputWrapper}>
-            <CalendarDays style={s.icon} size={16} />
-            <input type="date" style={s.input} value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <label className="inv-label">End Date</label>
+          <div className="inv-input-wrap">
+            <CalendarDays className="inv-input-icon" size={16} />
+            <input type="date" className="inv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
         </div>
-        <div className="inv-search-cell" style={{ gridColumn: 'span 2' }}>
-          <label style={s.label}>Search (client or address)</label>
-          <div style={s.inputWrapper}>
-            <Search style={s.icon} size={16} />
-            <input type="text" style={s.input} placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
+        <div className="inv-search-cell">
+          <label className="inv-label">Search (client or address)</label>
+          <div className="inv-input-wrap">
+            <Search className="inv-input-icon" size={16} />
+            <input type="text" className="inv-input" placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
           </div>
         </div>
       </div>
 
       {/* TABLA PRINCIPAL (escritorio) */}
-      <div className="inv-table-wrap" style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflowX: 'auto', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+      <div className="inv-table-wrap">
+        <table className="inv-table">
           <thead>
             <tr>
               {/* ⭐ Actions movido a la primera columna */}
-              <th style={{...s.th, textAlign: 'center'}}>Actions</th>
-              <th style={s.th}>Invoice Status</th>
-              <th style={s.th}>Job Status</th>
-              <th style={s.th}>Client / Address</th>
-              <th style={s.th}>Schedule Date</th>
-              <th style={s.th}>Team</th>
-              <th style={{...s.th, textAlign: 'right'}}>Total Cost</th>
-              <th style={{...s.th, textAlign: 'right'}}>Payroll Total</th>
-              <th style={{...s.th, textAlign: 'right'}}>Profit</th>
+              <th className="inv-th center">Actions</th>
+              <th className="inv-th">Invoice Status</th>
+              <th className="inv-th">Job Status</th>
+              <th className="inv-th">Client / Address</th>
+              <th className="inv-th">Schedule Date</th>
+              <th className="inv-th">Team</th>
+              <th className="inv-th right">Total Cost</th>
+              <th className="inv-th right">Payroll Total</th>
+              <th className="inv-th right">Profit</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>Loading financial data...</td></tr>
+              <tr><td colSpan={9} className="inv-empty-row">Loading financial data...</td></tr>
             ) : properties.length === 0 ? (
-              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties in database. Add one from the Houses view.</td></tr>
+              <tr><td colSpan={9} className="inv-empty-row">No properties in database. Add one from the Houses view.</td></tr>
             ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={9} style={{textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic'}}>No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
+              <tr><td colSpan={9} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
             ) : filteredProperties.map(prop => {
 
               const { totalCost, payrollTotal, profit } = calcFinancials(prop);
               const clientName = getClientName(prop.client);
 
               return (
-                <tr 
-                  key={prop.id} 
+                <tr
+                  key={prop.id}
                   onClick={() => openDetail(prop)}
-                  style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} 
-                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'} 
-                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  className="inv-row"
                 >
 
                   {/* ⭐ ACTIONS — ahora en la primera columna */}
-                  <td style={{ ...s.td, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', alignItems: 'center' }}>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); openDetail(prop); }} 
+                  <td className="inv-td center" onClick={(e) => e.stopPropagation()}>
+                    <div className="inv-actions-cell">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDetail(prop); }}
                         title="View Details"
-                        style={{ background: 'transparent', border: 'none', color: '#0ea5e9', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '4px' }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f0f9ff'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        className="inv-icon-btn view"
                       >
                         <Eye size={16} />
                       </button>
                       {canEdit && onEditProperty && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }} 
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }}
                           title="Edit Job"
-                          style={{ background: 'transparent', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '4px' }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#eff6ff'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                          className="inv-icon-btn edit"
                         >
                           <Edit2 size={16} />
                         </button>
                       )}
                       {canDelete && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }} 
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
                           title="Delete Job"
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px', display: 'flex', borderRadius: '4px' }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                          className="inv-icon-btn delete"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -647,50 +519,50 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                     </div>
                   </td>
 
-                  <td style={s.td} onClick={(e) => e.stopPropagation()}>
-                    <InvoiceStatusPill 
-                      currentStatus={prop.invoiceStatus || 'Pending'} 
-                      onChange={(newSt: string) => handleStatusChange(prop.id, newSt)} 
-                      disabled={isSaving || (!isSuperAdmin && !canEdit)} 
-                    />
-                  </td>
-
-                  {/* JOB STATUS editable inline */}
-                  <td style={s.td} onClick={(e) => e.stopPropagation()}>
-                    <JobStatusPill 
-                      currentStatusId={prop.statusId} 
-                      statuses={statuses}
-                      onChange={(newId: string) => handleJobStatusChange(prop.id, newId)} 
+                  <td className="inv-td" onClick={(e) => e.stopPropagation()}>
+                    <InvoiceStatusPill
+                      currentStatus={prop.invoiceStatus || 'Pending'}
+                      onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
                       disabled={isSaving || (!isSuperAdmin && !canEdit)}
                     />
                   </td>
 
-                  <td style={s.td}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{clientName}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {/* JOB STATUS editable inline */}
+                  <td className="inv-td" onClick={(e) => e.stopPropagation()}>
+                    <JobStatusPill
+                      currentStatusId={prop.statusId}
+                      statuses={statuses}
+                      onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
+                      disabled={isSaving || (!isSuperAdmin && !canEdit)}
+                    />
+                  </td>
+
+                  <td className="inv-td">
+                    <div className="inv-client-name">{clientName}</div>
+                    <div className="inv-client-address">
                       <MapPin size={12} /> {prop.address || '-'}
                     </div>
                   </td>
 
-                  <td style={{ ...s.td, color: '#475569', fontWeight: 500 }}>
+                  <td className="inv-td strong">
                     {prop.scheduleDate || '-'}
                   </td>
 
-                  <td style={{ ...s.td, color: '#64748b' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <td className="inv-td muted">
+                    <div className="inv-team-cell">
                       <Users size={14} /> {getTeamName(prop.teamId)}
                     </div>
                   </td>
 
-                  <td style={{ ...s.td, textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>
+                  <td className="inv-td right cost">
                     ${totalCost.toFixed(2)}
                   </td>
 
-                  <td style={{ ...s.td, textAlign: 'right', fontWeight: 600, color: '#b91c1c' }}>
+                  <td className="inv-td right payroll">
                     ${payrollTotal.toFixed(2)}
                   </td>
 
-                  <td style={{ ...s.td, textAlign: 'right', fontWeight: 800, color: profit >= 0 ? '#047857' : '#e11d48', fontSize: '1.02rem' }}>
+                  <td className={`inv-td right profit ${profit >= 0 ? 'positive' : 'negative'}`}>
                     ${profit.toFixed(2)}
                   </td>
                 </tr>
@@ -701,13 +573,13 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       </div>
 
       {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
-      <div className="inv-cards-wrap" style={{ flexDirection: 'column', gap: '14px' }}>
+      <div className="inv-cards-wrap">
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>Loading financial data...</div>
+          <div className="inv-empty-row">Loading financial data...</div>
         ) : properties.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>No properties in database. Add one from the Houses view.</div>
+          <div className="inv-empty-row">No properties in database. Add one from the Houses view.</div>
         ) : filteredProperties.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontStyle: 'italic', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>No properties match your filters. Try clicking "All" above or clearing the search.</div>
+          <div className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</div>
         ) : filteredProperties.map(prop => {
 
           const { totalCost, payrollTotal, profit } = calcFinancials(prop);
@@ -717,85 +589,81 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             <div
               key={prop.id}
               onClick={() => openDetail(prop)}
-              style={{
-                background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px',
-                cursor: 'pointer', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-                display: 'flex', flexDirection: 'column', gap: '14px',
-              }}
+              className="inv-job-card"
             >
               {/* Título + profit */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.15rem', lineHeight: 1.25, minWidth: 0 }}>
+              <div className="inv-card-top-row">
+                <span className="inv-card-client-name">
                   {clientName}
                 </span>
-                <span style={{ flexShrink: 0, fontWeight: 800, fontSize: '1.05rem', color: profit >= 0 ? '#047857' : '#e11d48' }}>
+                <span className={`inv-card-profit ${profit >= 0 ? 'positive' : 'negative'}`}>
                   ${profit.toFixed(2)}
                 </span>
               </div>
 
               {/* Info con iconos */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                  <MapPin size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prop.address || '—'}</span>
+              <div className="inv-card-info-col">
+                <div className="inv-card-info-row">
+                  <MapPin size={16} color="#94a3b8" className="inv-shrink-0" />
+                  <span className="inv-card-info-text">{prop.address || '—'}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                  <CalendarDays size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                <div className="inv-card-info-row">
+                  <CalendarDays size={16} color="#94a3b8" className="inv-shrink-0" />
                   <span>{prop.scheduleDate || 'Sin fecha'}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#475569' }}>
-                  <Users size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+                <div className="inv-card-info-row">
+                  <Users size={16} color="#94a3b8" className="inv-shrink-0" />
                   <span>{getTeamName(prop.teamId)}</span>
                 </div>
               </div>
 
               {/* Pills de estado (ancho completo) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
-                <InvoiceStatusPill 
+              <div className="inv-card-pills-col" onClick={(e) => e.stopPropagation()}>
+                <InvoiceStatusPill
                   fullWidth
-                  currentStatus={prop.invoiceStatus || 'Pending'} 
-                  onChange={(newSt: string) => handleStatusChange(prop.id, newSt)} 
-                  disabled={isSaving || (!isSuperAdmin && !canEdit)} 
+                  currentStatus={prop.invoiceStatus || 'Pending'}
+                  onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
+                  disabled={isSaving || (!isSuperAdmin && !canEdit)}
                 />
-                <JobStatusPill 
+                <JobStatusPill
                   fullWidth
-                  currentStatusId={prop.statusId} 
+                  currentStatusId={prop.statusId}
                   statuses={statuses}
-                  onChange={(newId: string) => handleJobStatusChange(prop.id, newId)} 
+                  onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
                   disabled={isSaving || (!isSuperAdmin && !canEdit)}
                 />
               </div>
 
               {/* Mini resumen financiero */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div style={{ backgroundColor: '#eff6ff', padding: '10px 12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Cost</div>
-                  <div style={{ fontSize: '1.05rem', color: '#1e3a8a', fontWeight: 800, marginTop: '2px' }}>${totalCost.toFixed(2)}</div>
+              <div className="inv-card-mini-summary">
+                <div className="inv-card-mini-box cost">
+                  <div className="inv-card-mini-label cost">Total Cost</div>
+                  <div className="inv-card-mini-value cost">${totalCost.toFixed(2)}</div>
                 </div>
-                <div style={{ backgroundColor: '#fef2f2', padding: '10px 12px', borderRadius: '10px', border: '1px solid #fecaca' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Payroll</div>
-                  <div style={{ fontSize: '1.05rem', color: '#7f1d1d', fontWeight: 800, marginTop: '2px' }}>${payrollTotal.toFixed(2)}</div>
+                <div className="inv-card-mini-box payroll">
+                  <div className="inv-card-mini-label payroll">Payroll</div>
+                  <div className="inv-card-mini-value payroll">${payrollTotal.toFixed(2)}</div>
                 </div>
               </div>
 
               {/* Acciones */}
-              <div style={{ display: 'flex', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '14px' }} onClick={(e) => e.stopPropagation()}>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDetail(prop); }} 
-                  style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+              <div className="inv-card-actions-row" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); openDetail(prop); }}
+                  className="inv-card-btn view">
                   <Eye size={16} /> Ver
                 </button>
                 {canEdit && onEditProperty && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }} 
-                    style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }}
+                    className="inv-card-btn edit">
                     <Edit2 size={16} /> Editar
                   </button>
                 )}
                 {canDelete && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }} 
-                    style={{ flex: 1, height: '44px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+                    className="inv-card-btn delete">
                     <Trash2 size={16} /> Borrar
                   </button>
                 )}
@@ -809,118 +677,118 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       {detailHouse && (
         <div className="modal-overlay-centered" onClick={() => setDetailHouse(null)}>
           <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header style={s.header}>
-              <h3 style={s.title}>Property Overview</h3>
-              <button style={s.closeBtn} onClick={() => setDetailHouse(null)}><X size={24} /></button>
+            <header className="inv-modal-header">
+              <h3 className="inv-modal-title">Property Overview</h3>
+              <button className="inv-modal-close" onClick={() => setDetailHouse(null)}><X size={24} /></button>
             </header>
 
-            <div style={s.body}>
-              <div style={s.detailBanner}>
-                <div style={s.detailItem}>
-                  <span style={{ ...s.detailLabel, color: '#1e40af' }}><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span style={{ fontSize: '1.25rem', color: '#1e3a8a', fontWeight: 600, marginTop: '4px' }}>{detailHouse.address || '-'}</span>
+            <div className="inv-modal-body">
+              <div className="inv-detail-banner">
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
+                  <span className="inv-address-value">{detailHouse.address || '-'}</span>
                 </div>
               </div>
 
               <div className="grid-3-cols">
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Activity size={14} /> STATUS</span>
-                  <div style={{ marginTop: '4px' }}>
-                    <span style={{ backgroundColor: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Activity size={14} /> STATUS</span>
+                  <div className="inv-mt-4">
+                    <span className="inv-status-chip">
                       {getRelationName(statuses, detailHouse.statusId, detailHouse.statusId)}
                     </span>
                   </div>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><FileText size={14} /> INVOICE STATUS</span>
-                  <span style={s.detailValue}>{detailHouse.invoiceStatus || '-'}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
+                  <span className="inv-detail-value">{detailHouse.invoiceStatus || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><User size={14} /> CLIENT</span>
-                  <span style={s.detailValue}>{getClientName(detailHouse.client)}</span>
-                </div>
-
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span style={s.detailValue}>{detailHouse.receiveDate || '-'}</span>
-                </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span style={s.detailValue}>{detailHouse.scheduleDate || '-'}</span>
-                </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Wrench size={14} /> SERVICE</span>
-                  <span style={s.detailValue}>{getRelationName(services, detailHouse.serviceId)}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><User size={14} /> CLIENT</span>
+                  <span className="inv-detail-value">{getClientName(detailHouse.client)}</span>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME IN</span>
-                  <span style={s.detailValue}>{detailHouse.timeIn || '-'}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
+                  <span className="inv-detail-value">{detailHouse.receiveDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Clock size={14} /> TIME OUT</span>
-                  <span style={s.detailValue}>{detailHouse.timeOut || '-'}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
+                  <span className="inv-detail-value">{detailHouse.scheduleDate || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Flag size={14} /> PRIORITY</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(priorities, detailHouse.priorityId) && <span style={{ backgroundColor: getRelationColor(priorities, detailHouse.priorityId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(priorities, detailHouse.priorityId)}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Wrench size={14} /> SERVICE</span>
+                  <span className="inv-detail-value">{getRelationName(services, detailHouse.serviceId)}</span>
+                </div>
+
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Clock size={14} /> TIME IN</span>
+                  <span className="inv-detail-value">{detailHouse.timeIn || '-'}</span>
+                </div>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Clock size={14} /> TIME OUT</span>
+                  <span className="inv-detail-value">{detailHouse.timeOut || '-'}</span>
+                </div>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Flag size={14} /> PRIORITY</span>
+                  <div className="inv-dot-row">
+                    {getRelationColor(priorities, detailHouse.priorityId) && <span className="inv-dot-12" style={{ '--dot-color': getRelationColor(priorities, detailHouse.priorityId) } as CSSProperties}></span>}
+                    <span className="inv-detail-value">{getRelationName(priorities, detailHouse.priorityId)}</span>
                   </div>
                 </div>
 
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> ROOMS</span>
-                  <span style={s.detailValue}>{detailHouse.rooms || '-'}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Hash size={14} /> ROOMS</span>
+                  <span className="inv-detail-value">{detailHouse.rooms || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Hash size={14} /> BATHROOMS</span>
-                  <span style={s.detailValue}>{detailHouse.bathrooms || '-'}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Hash size={14} /> BATHROOMS</span>
+                  <span className="inv-detail-value">{detailHouse.bathrooms || '-'}</span>
                 </div>
-                <div style={s.detailItem}>
-                  <span style={s.detailLabel}><Users size={14} /> TEAM</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                    {getRelationColor(teams, detailHouse.teamId) && <span style={{ backgroundColor: getRelationColor(teams, detailHouse.teamId), width: '12px', height: '12px', borderRadius: '50%', display: 'inline-block' }}></span>}
-                    <span style={s.detailValue}>{getRelationName(teams, detailHouse.teamId, 'Unassigned')}</span>
+                <div className="inv-detail-item">
+                  <span className="inv-detail-label"><Users size={14} /> TEAM</span>
+                  <div className="inv-dot-row">
+                    {getRelationColor(teams, detailHouse.teamId) && <span className="inv-dot-12" style={{ '--dot-color': getRelationColor(teams, detailHouse.teamId) } as CSSProperties}></span>}
+                    <span className="inv-detail-value">{getRelationName(teams, detailHouse.teamId, 'Unassigned')}</span>
                   </div>
                 </div>
 
                 {/* Resumen financiero del job dentro del detalle */}
-                <div className="col-span-full" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '16px', marginTop: '8px' }}>
+                <div className="col-span-full inv-fin-summary-grid">
                   {(() => {
                     const { totalCost, payrollTotal, profit } = calcFinancials(detailHouse);
                     return (
                       <>
-                        <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #bfdbfe', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Total Cost</div>
-                          <div style={{ fontSize: '1.3rem', color: '#1e3a8a', fontWeight: 800, marginTop: '4px' }}>${totalCost.toFixed(2)}</div>
+                        <div className="inv-fin-summary-box cost">
+                          <div className="inv-fin-summary-label cost">Total Cost</div>
+                          <div className="inv-fin-summary-value cost">${totalCost.toFixed(2)}</div>
                         </div>
-                        <div style={{ backgroundColor: '#fef2f2', padding: '16px', borderRadius: '8px', border: '1px solid #fecaca', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase' }}>Payroll Total</div>
-                          <div style={{ fontSize: '1.3rem', color: '#7f1d1d', fontWeight: 800, marginTop: '4px' }}>${payrollTotal.toFixed(2)}</div>
+                        <div className="inv-fin-summary-box payroll">
+                          <div className="inv-fin-summary-label payroll">Payroll Total</div>
+                          <div className="inv-fin-summary-value payroll">${payrollTotal.toFixed(2)}</div>
                         </div>
-                        <div style={{ backgroundColor: profit >= 0 ? '#ecfdf5' : '#fef2f2', padding: '16px', borderRadius: '8px', border: `1px solid ${profit >= 0 ? '#a7f3d0' : '#fecaca'}`, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.75rem', color: profit >= 0 ? '#065f46' : '#991b1b', fontWeight: 700, textTransform: 'uppercase' }}>Net Profit</div>
-                          <div style={{ fontSize: '1.3rem', color: profit >= 0 ? '#047857' : '#7f1d1d', fontWeight: 800, marginTop: '4px' }}>${profit.toFixed(2)}</div>
+                        <div className={`inv-fin-summary-box profit ${profit >= 0 ? 'positive' : 'negative'}`}>
+                          <div className={`inv-fin-summary-label profit ${profit >= 0 ? 'positive' : 'negative'}`}>Net Profit</div>
+                          <div className={`inv-fin-summary-value profit ${profit >= 0 ? 'positive' : 'negative'}`}>${profit.toFixed(2)}</div>
                         </div>
                       </>
                     );
                   })()}
                 </div>
 
-                <div className="col-span-full" style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={s.detailLabel}><User size={14} style={{display: 'inline', verticalAlign: 'middle', marginRight: '4px'}}/> ASSIGNED WORKERS</span>
+                <div className="col-span-full inv-workers-box">
+                  <div className="inv-workers-header">
+                    <span className="inv-detail-label"><User size={14} className="inv-label-icon-inline"/> ASSIGNED WORKERS</span>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <div className="inv-worker-chips">
                     {!(detailHouse.assignedWorkers && detailHouse.assignedWorkers.length > 0) ? (
-                      <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned.</span>
+                      <span className="inv-workers-none-text">No workers assigned.</span>
                     ) : (
                       detailHouse.assignedWorkers.map(workerId => {
                         const emp = employees.find(e => e.id === workerId);
                         if (!emp) return null;
                         return (
-                          <div key={workerId} style={{ backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div key={workerId} className="inv-worker-chip">
                             <User size={12} color="#64748b" />
                             {emp.firstName} {emp.lastName}
                           </div>
@@ -930,22 +798,22 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   </div>
                 </div>
 
-                <div className="col-span-full"><div style={s.noteBoxGray}><span style={{ ...s.detailLabel, marginBottom: '8px' }}><StickyNote size={14} /> GENERAL NOTE</span><span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{detailHouse.note || 'No notes.'}</span></div></div>
-                <div className="col-span-full"><div style={s.noteBoxOrange}><span style={{ ...s.detailLabel, marginBottom: '8px', color: '#c2410c' }}><PenTool size={14} /> EMPLOYEE'S NOTE</span><span style={{ ...s.detailValue, fontSize: '0.95rem' }}>{detailHouse.employeeNote || 'No employee notes.'}</span></div></div>
+                <div className="col-span-full"><div className="inv-note-box"><span className="inv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span><span className="inv-detail-value small">{detailHouse.note || 'No notes.'}</span></div></div>
+                <div className="col-span-full"><div className="inv-note-box orange"><span className="inv-detail-label orange spaced"><PenTool size={14} /> EMPLOYEE'S NOTE</span><span className="inv-detail-value small">{detailHouse.employeeNote || 'No employee notes.'}</span></div></div>
 
               </div>
             </div>
 
-            <footer style={{ padding: '16px 24px', backgroundColor: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderRadius: '0 0 12px 12px', flexWrap: 'wrap' }}>
+            <footer className="inv-modal-footer">
               {canEdit && onEditProperty && (
-                <button 
-                  onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) onEditProperty(p); }} 
-                  style={{ backgroundColor: '#3b82f6', border: 'none', color: 'white', padding: '10px 20px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                <button
+                  onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) onEditProperty(p); }}
+                  className="inv-btn-primary-modal"
                 >
                   <Edit2 size={16} /> Edit Details
                 </button>
               )}
-              <button style={{ backgroundColor: 'white', border: '1px solid #e5e7eb', color: '#111827', padding: '10px 20px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => setDetailHouse(null)}>Close</button>
+              <button className="inv-btn-outline-modal" onClick={() => setDetailHouse(null)}>Close</button>
             </footer>
           </div>
         </div>

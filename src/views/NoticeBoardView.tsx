@@ -6,6 +6,7 @@ import {
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import type { SystemUser, Role } from '../types/index';
+import './NoticeBoardView.css';
 
 // --- INTERFACES LOCALES ---
 interface Announcement {
@@ -222,37 +223,24 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
   };
 
   return (
-    <div className="fade-in" style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <style>{`
-        .post-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); overflow: hidden; }
-        .post-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px; border-bottom: 1px solid #f1f5f9; }
-        .post-avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #e0f2fe; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
-        .post-body { padding: 20px; color: #334155; font-size: 0.95rem; line-height: 1.6; white-space: pre-wrap; }
-        .post-actions { display: flex; gap: 16px; padding: 12px 20px; border-top: 1px solid #f1f5f9; background-color: #f8fafc; align-items: center; }
-        .action-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; padding: 6px 10px; border-radius: 6px; }
-        .action-btn:hover { background-color: #e2e8f0; }
-        .comments-section { padding: 20px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; }
-        .comment-bubble { background: white; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 16px; border-top-left-radius: 4px; margin-bottom: 12px; display: inline-block; max-width: 90%; }
-        
-        .hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; color: #111827; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      `}</style>
+    <div className="fade-in nb-page">
 
       {/* HEADER */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <header className="nb-header">
+        <div className="nb-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#111827', fontWeight: 800 }}>Notice Board</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.95rem' }}>Company announcements and news</p>
+            <h1 className="nb-title">Notice Board</h1>
+            <p className="nb-subtitle">Company announcements and news</p>
           </div>
         </div>
-        
+
         {isSuperAdmin && !isCreatingPost && (
-          <button 
+          <button
             onClick={() => setIsCreatingPost(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '20px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(59,130,246,0.3)' }}
+            className="nb-new-btn"
           >
             <Megaphone size={16} /> New Announcement
           </button>
@@ -261,39 +249,31 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
 
       {/* CREATE POST BOX */}
       {isCreatingPost && (
-        <div style={{ backgroundColor: 'white', border: '2px solid #3b82f6', borderRadius: '12px', padding: '24px', marginBottom: '30px', boxShadow: '0 10px 25px -5px rgba(59,130,246,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}><Megaphone size={18} /> Create Announcement</h3>
-            <button onClick={() => setIsCreatingPost(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20}/></button>
+        <div className="nb-create-box">
+          <div className="nb-create-header">
+            <h3 className="nb-create-title"><Megaphone size={18} /> Create Announcement</h3>
+            <button onClick={() => setIsCreatingPost(false)} className="nb-create-close"><X size={20}/></button>
           </div>
-          
-          <input 
-            type="text" 
-            placeholder="Important: Write a catchy title here..." 
+
+          <input
+            type="text"
+            placeholder="Important: Write a catchy title here..."
             value={newPostTitle}
             onChange={(e) => setNewPostTitle(e.target.value)}
-            style={{ 
-              width: '100%', padding: '12px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', 
-              marginBottom: '12px', fontSize: '1rem', fontWeight: 600, outline: 'none', 
-              boxSizing: 'border-box', backgroundColor: '#ffffff', color: '#111827'
-            }}
+            className="nb-title-input"
           />
-          <textarea 
+          <textarea
             placeholder="What do you want to communicate to the team?"
             value={newPostContent}
             onChange={(e) => setNewPostContent(e.target.value)}
-            style={{ 
-              width: '100%', padding: '16px', border: '1px solid #cbd5e1', borderRadius: '8px', 
-              minHeight: '120px', fontSize: '0.95rem', resize: 'vertical', outline: 'none', 
-              boxSizing: 'border-box', fontFamily: 'inherit', backgroundColor: '#ffffff', color: '#111827'
-            }}
+            className="nb-content-textarea"
           ></textarea>
-          
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-            <button 
-              onClick={handleCreatePost} 
+
+          <div className="nb-create-footer">
+            <button
+              onClick={handleCreatePost}
               disabled={isSaving || !newPostTitle.trim() || !newPostContent.trim()}
-              style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '10px 24px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', opacity: (isSaving || !newPostTitle.trim() || !newPostContent.trim()) ? 0.5 : 1 }}
+              className="nb-publish-btn"
             >
               {isSaving ? 'Publishing...' : 'Publish Announcement'}
             </button>
@@ -303,10 +283,10 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
 
       {/* FEED */}
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Loading board...</div>
+        <div className="nb-loading">Loading board...</div>
       ) : announcements.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px', backgroundColor: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1', color: '#94a3b8' }}>
-          <Megaphone size={48} style={{ margin: '0 auto 16px auto', opacity: 0.3 }} />
+        <div className="nb-empty">
+          <Megaphone size={48} className="nb-empty-icon" />
           <h3>No announcements yet.</h3>
           <p>When administrators post news, they will appear here.</p>
         </div>
@@ -323,54 +303,54 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
             <div key={post.id} className="post-card">
               {/* Post Header */}
               <div className="post-header">
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <div className="nb-post-author-row">
                   <div className="post-avatar">
                     {post.authorName.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1.05rem' }}>{post.authorName}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.8rem', marginTop: '2px' }}>
+                    <div className="nb-author-name">{post.authorName}</div>
+                    <div className="nb-post-meta">
                       <Clock size={12} /> {formatDateTime(post.createdAt)}
-                      {(post.authorName === 'System' || post.authorName === 'Administrator') && <span style={{backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 700}}>ADMIN</span>}
+                      {(post.authorName === 'System' || post.authorName === 'Administrator') && <span className="nb-admin-badge">ADMIN</span>}
                     </div>
                   </div>
                 </div>
                 {isSuperAdmin && (
-                  <button onClick={() => handleDeletePost(post.id as string)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '8px', opacity: 0.5 }} title="Delete Post"><Trash2 size={16} /></button>
+                  <button onClick={() => handleDeletePost(post.id as string)} className="nb-delete-post-btn" title="Delete Post"><Trash2 size={16} /></button>
                 )}
               </div>
 
               {/* Post Body */}
               <div className="post-body">
-                <h3 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1.25rem' }}>{post.title}</h3>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{post.content}</div>
+                <h3 className="nb-post-title">{post.title}</h3>
+                <div className="nb-post-content">{post.content}</div>
               </div>
 
               {/* Information Stats & Viewer Lists */}
-              <div style={{ padding: '0 20px 12px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
-                  <div style={{ display: 'flex', gap: '16px' }}>
+              <div className="nb-stats-wrap">
+                <div className="nb-stats-row">
+                  <div className="nb-stats-left">
                     <span>{post.likes.length} Likes</span>
                     <span>{postComments.length} Comments</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div className="nb-stats-seen">
                     <CheckCheck size={14} color="#10b981" /> {post.seenBy.length} Seen
                   </div>
                 </div>
 
                 {/* Listas Detalladas explícitas de quién vio y dio like */}
                 {(post.likes.length > 0 || post.seenBy.length > 0) && (
-                  <div style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '0.8rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div className="nb-viewer-lists">
                     {post.seenBy.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                        <Users size={14} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} /> 
-                        <span><strong style={{color: '#475569'}}>Seen by:</strong> {getUserNamesList(post.seenBy)}</span>
+                      <div className="nb-viewer-row">
+                        <Users size={14} color="#10b981" className="nb-viewer-icon" />
+                        <span><strong className="nb-viewer-strong">Seen by:</strong> {getUserNamesList(post.seenBy)}</span>
                       </div>
                     )}
                     {post.likes.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                        <ThumbsUp size={14} color="#3b82f6" style={{ flexShrink: 0, marginTop: '2px' }} /> 
-                        <span><strong style={{color: '#475569'}}>Liked by:</strong> {getUserNamesList(post.likes)}</span>
+                      <div className="nb-viewer-row">
+                        <ThumbsUp size={14} color="#3b82f6" className="nb-viewer-icon" />
+                        <span><strong className="nb-viewer-strong">Liked by:</strong> {getUserNamesList(post.likes)}</span>
                       </div>
                     )}
                   </div>
@@ -379,32 +359,29 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
 
               {/* Interaction Bar */}
               <div className="post-actions">
-                <button 
-                  className="action-btn" 
+                <button
+                  className={`action-btn nb-action-btn-flex ${hasLiked ? 'liked' : 'default'}`}
                   onClick={() => handleToggleLike(post)}
-                  style={{ color: hasLiked ? '#3b82f6' : '#64748b', flex: 1, justifyContent: 'center' }}
                 >
                   <ThumbsUp size={18} fill={hasLiked ? '#3b82f6' : 'none'} /> {hasLiked ? 'Liked' : 'Like'}
                 </button>
 
-                <button 
-                  className="action-btn" 
+                <button
+                  className="action-btn nb-action-btn-flex default"
                   onClick={() => toggleComments(post.id as string)}
-                  style={{ color: '#64748b', flex: 1, justifyContent: 'center' }}
                 >
                   <MessageSquare size={18} /> Comment
                 </button>
 
                 {!hasSeen ? (
-                  <button 
-                    className="action-btn" 
+                  <button
+                    className="action-btn nb-action-btn-flex seen-btn"
                     onClick={() => handleMarkAsSeen(post)}
-                    style={{ color: '#10b981', flex: 1, justifyContent: 'center', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }}
                   >
                     <CheckCheck size={18} /> Mark as Seen
                   </button>
                 ) : (
-                  <div style={{ color: '#10b981', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600 }}>
+                  <div className="nb-seen-indicator">
                     <CheckCheck size={18} /> Seen by you
                   </div>
                 )}
@@ -414,18 +391,18 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
               {isExpanded && (
                 <div className="comments-section">
                   {postComments.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+                    <div className="nb-comments-list">
                       {postComments.map(comment => (
-                        <div key={comment.id} style={{ display: 'flex', gap: '12px' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
+                        <div key={comment.id} className="nb-comment-row">
+                          <div className="nb-comment-avatar">
                             {comment.authorName.charAt(0).toUpperCase()}
                           </div>
                           <div>
                             <div className="comment-bubble">
-                              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b', marginBottom: '4px' }}>{comment.authorName}</div>
-                              <div style={{ fontSize: '0.9rem', color: '#334155' }}>{comment.content}</div>
+                              <div className="nb-comment-author">{comment.authorName}</div>
+                              <div className="nb-comment-content">{comment.content}</div>
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: '8px' }}>{formatDateTime(comment.createdAt)}</div>
+                            <div className="nb-comment-time">{formatDateTime(comment.createdAt)}</div>
                           </div>
                         </div>
                       ))}
@@ -433,21 +410,16 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
                   )}
 
                   {/* Add Comment Input */}
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e0f2fe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
+                  <div className="nb-add-comment-row">
+                    <div className="nb-add-comment-avatar">
                       {currentUser?.firstName?.charAt(0).toUpperCase() || 'A'}
                     </div>
-                    <div style={{ position: 'relative', flex: 1 }}>
+                    <div className="nb-comment-input-wrap">
                       <textarea
                         value={newComments[post.id as string] || ''}
                         onChange={(e) => setNewComments({...newComments, [post.id as string]: e.target.value})}
                         placeholder="Write a comment..."
-                        style={{ 
-                          width: '100%', padding: '12px 45px 12px 16px', border: '1px solid #cbd5e1', 
-                          borderRadius: '16px', outline: 'none', fontSize: '0.9rem', resize: 'none', 
-                          minHeight: '45px', boxSizing: 'border-box', fontFamily: 'inherit',
-                          backgroundColor: '#ffffff', color: '#111827'
-                        }}
+                        className="nb-comment-textarea"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -455,10 +427,10 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
                           }
                         }}
                       />
-                      <button 
+                      <button
                         onClick={() => handleAddComment(post.id as string)}
                         disabled={isSaving || !(newComments[post.id as string] || '').trim()}
-                        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: (newComments[post.id as string] || '').trim() ? '#3b82f6' : '#cbd5e1', cursor: 'pointer', padding: '4px' }}
+                        className={`nb-send-comment-btn${(newComments[post.id as string] || '').trim() ? ' active' : ''}`}
                       >
                         <Send size={18} />
                       </button>

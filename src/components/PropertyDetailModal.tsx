@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { CSSProperties } from 'react';
 import {
   X, MapPin, CalendarDays, Clock, Wrench, Hash, Users, User, Activity,
   FileText, StickyNote, PenTool, ChevronDown, CheckCircle, Edit2, Image as ImageIcon
@@ -9,6 +10,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
 import StatusHistoryPanel from './StatusHistoryPanel';
+import './PropertyDetailModal.css';
 
 interface PropertyDetailModalProps {
   property: Property | null;
@@ -119,155 +121,132 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
     finally { setSaving(false); }
   };
 
-  const st = {
-    infoCard: { backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column' as const },
-    infoHeader: { backgroundColor: '#f8fafc', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 700, color: '#334155', fontSize: '0.8rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' },
-    infoRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #f1f5f9' },
-    infoLabel: { color: '#64748b', fontSize: '0.85rem', fontWeight: 600 },
-    infoValue: { color: '#1e293b', fontSize: '0.9rem', fontWeight: 600, textAlign: 'right' as const, display: 'flex', alignItems: 'center', gap: '6px' },
-    detailLabel: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', textTransform: 'uppercase' as const, letterSpacing: '0.5px', color: '#6b7280', fontWeight: 600 },
-    detailValue: { fontSize: '1.05rem', color: '#111827', fontWeight: 500, marginTop: '4px', whiteSpace: 'pre-wrap' as const },
-    noteBoxGray: { backgroundColor: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', width: '100%' },
-    noteBoxOrange: { backgroundColor: '#fff7ed', padding: '16px', borderRadius: '8px', border: '1px solid #ffedd5', width: '100%' },
-    th: { padding: '10px 16px', textAlign: 'left' as const, fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' as const, letterSpacing: '0.05em', borderBottom: '1px solid #f1f5f9', backgroundColor: '#f8fafc' },
-    td: { padding: '12px 16px', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem', color: '#111827' },
-  };
-
   const beforePhotos: string[] = (house as any).beforePhotos || [];
   const afterPhotos: string[] = (house as any).afterPhotos || [];
 
   return (
     <div className="pdm-overlay" onClick={onClose}>
-      <style>{`
-        .pdm-overlay { position: fixed; inset: 0; background-color: rgba(15,23,42,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; box-sizing: border-box; }
-        .pdm-modal { background-color: #fff; width: 100%; max-width: 1100px; border-radius: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); display: flex; flex-direction: column; max-height: 92vh; }
-        .pdm-body { padding: 24px 28px; overflow-y: auto; }
-        .pdm-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 18px; margin-bottom: 22px; }
-        @media (max-width: 640px) { .pdm-body { padding: 16px; } }
-      `}</style>
       <div className="pdm-modal" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #e5e7eb', flexShrink: 0, gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{clientName}</h3>
+        <header className="pdm-header">
+          <div className="pdm-header-title-group">
+            <h3 className="pdm-title">{clientName}</h3>
             {(house as any).employeeFinishedBy && (
-              <span style={{ backgroundColor: '#d1fae5', color: '#047857', padding: '4px 12px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+              <span className="pdm-badge-finished">
                 <CheckCircle size={14} /> Finished
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="pdm-header-actions">
             {/* Status selector (cambia + registra en historial) */}
-            <div style={{ position: 'relative' }}>
+            <div className="pdm-status-wrap">
               <div
                 onClick={() => { if (canEdit && !saving) setStatusOpen(o => !o); }}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '7px 14px', borderRadius: '20px', border: '1px solid #e5e7eb', background: '#fff', fontSize: '0.85rem', fontWeight: 600, color: '#111827', cursor: canEdit ? (saving ? 'wait' : 'pointer') : 'default', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+                className={`pdm-status-trigger${canEdit ? (saving ? ' saving' : ' editable') : ''}`}
               >
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusObj?.color || '#64748b' }} />
+                <span className="pdm-dot-8" style={{ '--dot-color': statusObj?.color || '#64748b' } as CSSProperties} />
                 {statusObj?.name || 'Unassigned'}
-                {canEdit && <ChevronDown size={14} color="#9ca3af" style={{ transform: statusOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />}
+                {canEdit && <ChevronDown size={14} color="#9ca3af" className={`pdm-chevron${statusOpen ? ' open' : ''}`} />}
               </div>
               {statusOpen && (
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.12)', zIndex: 5, minWidth: '200px', overflow: 'hidden' }}>
+                <div className="pdm-status-dropdown">
                   {statuses.map(s => (
                     <div key={s.id} onClick={() => changeStatus(s.id)}
-                      style={{ padding: '11px 14px', fontSize: '0.85rem', color: '#111827', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: (house.statusId === s.id || house.statusId === s.name) ? '#f8fafc' : 'transparent' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
-                      onMouseLeave={e => e.currentTarget.style.background = (house.statusId === s.id || house.statusId === s.name) ? '#f8fafc' : 'transparent'}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} /> {s.name}
+                      className={`pdm-status-option${(house.statusId === s.id || house.statusId === s.name) ? ' active' : ''}`}>
+                      <span className="pdm-dot-8" style={{ '--dot-color': s.color } as CSSProperties} /> {s.name}
                     </div>
                   ))}
                 </div>
               )}
             </div>
             {onEdit && canEdit && (
-              <button onClick={() => { const p = house; onClose(); if (p) onEdit(p as Property); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '7px 14px', borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
+              <button onClick={() => { const p = house; onClose(); if (p) onEdit(p as Property); }} className="pdm-btn-edit">
                 <Edit2 size={15} /> Edit
               </button>
             )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', display: 'flex' }}><X size={24} /></button>
+            <button onClick={onClose} className="pdm-close-btn"><X size={24} /></button>
           </div>
         </header>
 
         <div className="pdm-body">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '1rem', fontWeight: 500, paddingBottom: '16px' }}>
+          <div className="pdm-address-row">
             <MapPin size={18} color="#3b82f6" /> {house.address || '-'}
           </div>
 
           {/* Info cards */}
           <div className="pdm-grid3">
-            <div style={st.infoCard}>
-              <div style={st.infoHeader}><CalendarDays size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '6px' }} /> Schedule & Timing</div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Receive Date</span><span style={st.infoValue}>{house.receiveDate || '-'}</span></div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Schedule Date</span><span style={st.infoValue}>{house.scheduleDate || '-'}</span></div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Time In</span><span style={st.infoValue}><Clock size={12} color="#94a3b8" /> {house.timeIn || '-'}</span></div>
-              <div style={{ ...st.infoRow, borderBottom: 'none' }}><span style={st.infoLabel}>Time Out</span><span style={st.infoValue}><Clock size={12} color="#94a3b8" /> {house.timeOut || '-'}</span></div>
+            <div className="pdm-info-card">
+              <div className="pdm-info-header"><CalendarDays size={14} className="pdm-header-icon" /> Schedule & Timing</div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Receive Date</span><span className="pdm-info-value">{house.receiveDate || '-'}</span></div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Schedule Date</span><span className="pdm-info-value">{house.scheduleDate || '-'}</span></div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Time In</span><span className="pdm-info-value"><Clock size={12} color="#94a3b8" /> {house.timeIn || '-'}</span></div>
+              <div className="pdm-info-row no-border"><span className="pdm-info-label">Time Out</span><span className="pdm-info-value"><Clock size={12} color="#94a3b8" /> {house.timeOut || '-'}</span></div>
             </div>
 
-            <div style={st.infoCard}>
-              <div style={st.infoHeader}><Wrench size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '6px' }} /> Job Specifications</div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Service</span><span style={st.infoValue}>{rel(services, house.serviceId)}</span></div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Priority</span><span style={st.infoValue}>{relColor(priorities, house.priorityId) && <span style={{ background: relColor(priorities, house.priorityId), width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />}{rel(priorities, house.priorityId)}</span></div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Rooms</span><span style={st.infoValue}><Hash size={12} color="#94a3b8" /> {house.rooms || '-'}</span></div>
-              <div style={{ ...st.infoRow, borderBottom: 'none' }}><span style={st.infoLabel}>Bathrooms</span><span style={st.infoValue}><Hash size={12} color="#94a3b8" /> {house.bathrooms || '-'}</span></div>
+            <div className="pdm-info-card">
+              <div className="pdm-info-header"><Wrench size={14} className="pdm-header-icon" /> Job Specifications</div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Service</span><span className="pdm-info-value">{rel(services, house.serviceId)}</span></div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Priority</span><span className="pdm-info-value">{relColor(priorities, house.priorityId) && <span className="pdm-dot-10" style={{ '--dot-color': relColor(priorities, house.priorityId) } as CSSProperties} />}{rel(priorities, house.priorityId)}</span></div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Rooms</span><span className="pdm-info-value"><Hash size={12} color="#94a3b8" /> {house.rooms || '-'}</span></div>
+              <div className="pdm-info-row no-border"><span className="pdm-info-label">Bathrooms</span><span className="pdm-info-value"><Hash size={12} color="#94a3b8" /> {house.bathrooms || '-'}</span></div>
             </div>
 
-            <div style={st.infoCard}>
-              <div style={st.infoHeader}><Activity size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '6px' }} /> Status & Assignment</div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Job Status</span><span style={st.infoValue}><span style={{ width: '10px', height: '10px', borderRadius: '50%', background: statusObj?.color || '#64748b', display: 'inline-block' }} />{statusObj?.name || '-'}</span></div>
-              <div style={st.infoRow}><span style={st.infoLabel}>Invoice Status</span><span style={{ ...st.infoValue, color: '#475569', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>{house.invoiceStatus || '-'}</span></div>
-              <div style={{ ...st.infoRow, borderBottom: 'none' }}><span style={st.infoLabel}>Team</span><span style={st.infoValue}>{relColor(teams, house.teamId) && <span style={{ background: relColor(teams, house.teamId), width: '10px', height: '10px', borderRadius: '50%', display: 'inline-block' }} />}{rel(teams, house.teamId, 'Unassigned')}</span></div>
+            <div className="pdm-info-card">
+              <div className="pdm-info-header"><Activity size={14} className="pdm-header-icon" /> Status & Assignment</div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Job Status</span><span className="pdm-info-value"><span className="pdm-dot-10" style={{ '--dot-color': statusObj?.color || '#64748b' } as CSSProperties} />{statusObj?.name || '-'}</span></div>
+              <div className="pdm-info-row"><span className="pdm-info-label">Invoice Status</span><span className="pdm-info-value pdm-invoice-badge">{house.invoiceStatus || '-'}</span></div>
+              <div className="pdm-info-row no-border"><span className="pdm-info-label">Team</span><span className="pdm-info-value">{relColor(teams, house.teamId) && <span className="pdm-dot-10" style={{ '--dot-color': relColor(teams, house.teamId) } as CSSProperties} />}{rel(teams, house.teamId, 'Unassigned')}</span></div>
             </div>
           </div>
 
           {/* Workers + Work log */}
           <div className="pdm-grid3">
-            <div style={{ ...st.noteBoxGray }}>
-              <span style={st.detailLabel}><User size={14} /> ASSIGNED WORKERS</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+            <div className="pdm-note-box">
+              <span className="pdm-detail-label"><User size={14} /> ASSIGNED WORKERS</span>
+              <div className="pdm-workers-wrap">
                 {!(house.assignedWorkers && house.assignedWorkers.length > 0) ? (
-                  <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No workers assigned.</span>
+                  <span className="pdm-empty-text">No workers assigned.</span>
                 ) : house.assignedWorkers.map(wid => {
                   const emp = employees.find(e => e.id === wid);
                   if (!emp) return null;
-                  return <div key={wid} style={{ background: 'white', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}><User size={12} color="#64748b" /> {emp.firstName} {emp.lastName}</div>;
+                  return <div key={wid} className="pdm-worker-chip"><User size={12} color="#64748b" /> {emp.firstName} {emp.lastName}</div>;
                 })}
               </div>
             </div>
 
             <div>
-              <span style={st.detailLabel}><Activity size={14} /> WORK LOG</span>
-              <div style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '10px', overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr><th style={st.th}>Event</th><th style={st.th}>Employee</th><th style={{ ...st.th, textAlign: 'right' }}>Time</th></tr></thead>
+              <span className="pdm-detail-label"><Activity size={14} /> WORK LOG</span>
+              <div className="pdm-table-card">
+                <table className="pdm-table">
+                  <thead><tr><th className="pdm-th">Event</th><th className="pdm-th">Employee</th><th className="pdm-th right">Time</th></tr></thead>
                   <tbody>
                     {(!(house as any).employeeStartedBy && !(house as any).employeeFinishedBy) && (
-                      <tr><td colSpan={3} style={{ ...st.td, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>No activity logged yet.</td></tr>
+                      <tr><td colSpan={3} className="pdm-td empty">No activity logged yet.</td></tr>
                     )}
                     {(house as any).employeeStartedBy && (
-                      <tr><td style={{ ...st.td, fontWeight: 600, color: '#3b82f6' }}>Job Started</td><td style={st.td}>{String((house as any).employeeStartedBy).split(' ')[0]}</td><td style={{ ...st.td, color: '#64748b', fontSize: '0.8rem', textAlign: 'right' }}>{fmtDT((house as any).employeeStartedAt)}</td></tr>
+                      <tr><td className="pdm-td label-start">Job Started</td><td className="pdm-td">{String((house as any).employeeStartedBy).split(' ')[0]}</td><td className="pdm-td timestamp">{fmtDT((house as any).employeeStartedAt)}</td></tr>
                     )}
                     {(house as any).employeeFinishedBy && (
-                      <tr><td style={{ ...st.td, fontWeight: 600, color: '#10b981' }}>Job Finished</td><td style={st.td}>{String((house as any).employeeFinishedBy).split(' ')[0]}</td><td style={{ ...st.td, color: '#64748b', fontSize: '0.8rem', textAlign: 'right' }}>{fmtDT((house as any).employeeFinishedAt)}</td></tr>
+                      <tr><td className="pdm-td label-end">Job Finished</td><td className="pdm-td">{String((house as any).employeeFinishedBy).split(' ')[0]}</td><td className="pdm-td timestamp">{fmtDT((house as any).employeeFinishedAt)}</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '14px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Total Billed</div>
-                <div style={{ fontSize: '1.3rem', color: '#1e3a8a', fontWeight: 800 }}>${totalBilled.toFixed(2)}</div>
+            <div className="pdm-stat-col">
+              <div className="pdm-stat-billed">
+                <div className="pdm-stat-billed-label">Total Billed</div>
+                <div className="pdm-stat-billed-value">${totalBilled.toFixed(2)}</div>
               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase' }}>Payroll</div>
-                  <div style={{ fontSize: '1.05rem', color: '#7f1d1d', fontWeight: 800 }}>${totalPayroll.toFixed(2)}</div>
+              <div className="pdm-stat-row">
+                <div className="pdm-stat-payroll">
+                  <div className="pdm-stat-payroll-label">Payroll</div>
+                  <div className="pdm-stat-payroll-value">${totalPayroll.toFixed(2)}</div>
                 </div>
-                <div style={{ flex: 1, background: profit >= 0 ? '#ecfdf5' : '#fef2f2', border: `1px solid ${profit >= 0 ? '#a7f3d0' : '#fecaca'}`, borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.68rem', color: profit >= 0 ? '#065f46' : '#991b1b', fontWeight: 700, textTransform: 'uppercase' }}>Profit</div>
-                  <div style={{ fontSize: '1.05rem', color: profit >= 0 ? '#047857' : '#7f1d1d', fontWeight: 800 }}>${profit.toFixed(2)}</div>
+                <div className={`pdm-stat-profit ${profit >= 0 ? 'positive' : 'negative'}`}>
+                  <div className={`pdm-stat-profit-label ${profit >= 0 ? 'positive' : 'negative'}`}>Profit</div>
+                  <div className={`pdm-stat-profit-value ${profit >= 0 ? 'positive' : 'negative'}`}>${profit.toFixed(2)}</div>
                 </div>
               </div>
             </div>
@@ -278,13 +257,13 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
             <div className="pdm-grid3">
               {billed.length > 0 && (
                 <div>
-                  <span style={st.detailLabel}><FileText size={14} /> BILLED SERVICES</span>
-                  <div style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '10px', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead><tr><th style={st.th}>Service</th><th style={{ ...st.th, textAlign: 'center' }}>Qty</th><th style={{ ...st.th, textAlign: 'right' }}>Total</th></tr></thead>
+                  <span className="pdm-detail-label"><FileText size={14} /> BILLED SERVICES</span>
+                  <div className="pdm-table-card">
+                    <table className="pdm-table">
+                      <thead><tr><th className="pdm-th">Service</th><th className="pdm-th center">Qty</th><th className="pdm-th right">Total</th></tr></thead>
                       <tbody>
                         {billed.map(r => (
-                          <tr key={r.id}><td style={{ ...st.td, fontWeight: 600 }}>{rel(services, r.serviceId, 'Unknown')}</td><td style={{ ...st.td, textAlign: 'center' }}>{r.quantity}</td><td style={{ ...st.td, textAlign: 'right', fontWeight: 700 }}>${Number(r.total || 0).toFixed(2)}</td></tr>
+                          <tr key={r.id}><td className="pdm-td strong">{rel(services, r.serviceId, 'Unknown')}</td><td className="pdm-td center">{r.quantity}</td><td className="pdm-td right strong">${Number(r.total || 0).toFixed(2)}</td></tr>
                         ))}
                       </tbody>
                     </table>
@@ -293,14 +272,14 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
               )}
               {payrolls.length > 0 && (
                 <div>
-                  <span style={st.detailLabel}><Users size={14} /> PAYMENTS</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                  <span className="pdm-detail-label"><Users size={14} /> PAYMENTS</span>
+                  <div className="pdm-payments-list">
                     {payrolls.map(r => {
                       const emp = employees.find(e => e.id === r.employeeId);
                       return (
-                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                          <div><div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</div><div style={{ fontSize: '0.72rem', color: '#64748b' }}>{r.date}</div></div>
-                          <div style={{ fontWeight: 800, color: '#10b981' }}>${getPayrollTotal(r).toFixed(2)}</div>
+                        <div key={r.id} className="pdm-payment-row">
+                          <div><div className="pdm-payment-name">{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</div><div className="pdm-payment-date">{r.date}</div></div>
+                          <div className="pdm-payment-amount">${getPayrollTotal(r).toFixed(2)}</div>
                         </div>
                       );
                     })}
@@ -312,8 +291,8 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
 
           {/* Notes */}
           <div className="pdm-grid3">
-            <div style={st.noteBoxGray}><span style={st.detailLabel}><StickyNote size={14} /> GENERAL NOTE</span><p style={{ ...st.detailValue, fontSize: '0.95rem', marginTop: '8px' }}>{house.note || 'No notes.'}</p></div>
-            <div style={st.noteBoxOrange}><span style={{ ...st.detailLabel, color: '#c2410c' }}><PenTool size={14} /> EMPLOYEE'S NOTE</span><p style={{ ...st.detailValue, color: '#9a3412', fontSize: '0.95rem', marginTop: '8px' }}>{house.employeeNote || 'No employee notes.'}</p></div>
+            <div className="pdm-note-box"><span className="pdm-detail-label"><StickyNote size={14} /> GENERAL NOTE</span><p className="pdm-note-text">{house.note || 'No notes.'}</p></div>
+            <div className="pdm-note-box orange"><span className="pdm-detail-label orange"><PenTool size={14} /> EMPLOYEE'S NOTE</span><p className="pdm-note-text orange">{house.employeeNote || 'No employee notes.'}</p></div>
           </div>
 
           {/* Photos (solo lectura) */}
@@ -321,11 +300,11 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
             <div className="pdm-grid3">
               {[{ label: 'Before', list: beforePhotos }, { label: 'After', list: afterPhotos }].filter(b => b.list.length > 0).map(block => (
                 <div key={block.label}>
-                  <span style={st.detailLabel}><ImageIcon size={14} /> {block.label.toUpperCase()} PHOTOS ({block.list.length})</span>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px,1fr))', gap: '8px', marginTop: '10px' }}>
+                  <span className="pdm-detail-label"><ImageIcon size={14} /> {block.label.toUpperCase()} PHOTOS ({block.list.length})</span>
+                  <div className="pdm-photo-grid">
                     {block.list.map((u, i) => (
-                      <a key={i} href={u} target="_blank" rel="noreferrer" style={{ display: 'block', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                        <img src={u} alt={`${block.label} ${i + 1}`} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <a key={i} href={u} target="_blank" rel="noreferrer" className="pdm-photo-thumb">
+                        <img src={u} alt={`${block.label} ${i + 1}`} loading="lazy" />
                       </a>
                     ))}
                   </div>
@@ -335,7 +314,7 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
           )}
 
           {/* Historial de status (lo mismo que aparece en Status History) */}
-          <div style={{ marginTop: '8px' }}>
+          <div className="pdm-history-wrap">
             <StatusHistoryPanel propertyId={house.id} statuses={statuses as any} refreshKey={historyKey} />
           </div>
         </div>
