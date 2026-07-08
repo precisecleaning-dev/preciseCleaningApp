@@ -161,50 +161,6 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
   );
 };
 
-const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const safeValue = String(value || '').toLowerCase().trim();
-  const selected = options.find((o: any) => 
-    String(o.id).toLowerCase().trim() === safeValue || 
-    String(o.name).toLowerCase().trim() === safeValue
-  );
-
-  return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="hv-searchsel-trigger hv-cursor-pointer"
-      >
-        <Icon size={16} className="hv-searchsel-icon" />
-        <div className="hv-customsel-selected-wrap">
-          {selected?.color && <span className="hv-customsel-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
-          <span className={`hv-customsel-label${selected ? ' selected' : ''}`}>
-            {selected ? selected.name : placeholder}
-          </span>
-        </div>
-        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron${isOpen ? ' open' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="hv-searchsel-dropdown">
-          <div className="hv-customsel-none-option" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
-            None / Unassigned
-          </div>
-          {options.map((o: any) => (
-            <div
-              key={o.id}
-              className={`hv-customsel-option${value === o.id ? ' selected' : ''}`}
-              onClick={() => { onChange(o[returnKey] || o.id); setIsOpen(false); }}
-            >
-              {o.color && <span className="hv-customsel-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
-              <span className="hv-customsel-option-label">{o.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // StatusPillSelector: muestra el estado actual como "badge" con el color del estado.
 // Al tocarlo YA NO abre una lista desplegable: solicita abrir el modal central de
@@ -367,7 +323,10 @@ const getRelationColor = (list: any[], idOrName: string) => {
 const formatDateTime = (isoString?: string | null) => {
   if (!isoString) return '';
   const d = new Date(isoString);
-  return d.toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // ⭐ Unificado a MM/DD/YYYY, h:mm AM/PM
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}, ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
 };
 
 interface HousesViewProps {
@@ -380,11 +339,20 @@ interface HousesViewProps {
   isSuperAdmin?: boolean;
   roles?: Role[];
   viewMode?: 'table' | 'board';
+  // ⭐ Apertura externa (p. ej. desde Quality Check):
+  houseToOpenDetail?: Property | null;   // abre el modal de DETALLE de esta casa
+  clearHouseToOpenDetail?: () => void;
+  houseToOpenEdit?: Property | null;     // abre el FORMULARIO de edición de esta casa
+  clearHouseToOpenEdit?: () => void;
+  // ⭐ 'modals-only': no dibuja la página (header/tabla/tablero), solo los modales.
+  //    Permite abrir el detalle/edición encima de OTRA vista (p. ej. Quality Check)
+  //    sin sacar al usuario de donde está.
+  renderMode?: 'full' | 'modals-only';
 }
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse: _onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
+export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse: _onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table', houseToOpenDetail, clearHouseToOpenDetail, houseToOpenEdit, clearHouseToOpenEdit, renderMode = 'full' }: HousesViewProps) { 
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -451,6 +419,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     dateOfIssue: '', dueDate: '',
     beforePhotos: [], afterPhotos: [], assignedWorkers: [] 
   });
+  // ⭐ Mapa de la dirección: se actualiza con debounce mientras escribes.
+  const [mapAddress, setMapAddress] = useState('');
+  useEffect(() => {
+    const addr = (formData.address || '').trim();
+    if (addr.length < 6) { setMapAddress(''); return; }
+    const t = setTimeout(() => setMapAddress(addr), 900);
+    return () => clearTimeout(t);
+  }, [formData.address]);
+
 
   const [beforePhotoURLs, setBeforePhotoURLs] = useState<string[]>([]);
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
@@ -559,11 +536,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return inServices ? inServices.name : 'Unknown';
   };
 
-  // Estados que NO se muestran en el Pipeline (se gestionan en otras vistas)
-  const isHiddenPipelineStatus = (p: any) => {
+  // Estados que NO se muestran en las listas. `allowQC=true` (tablero Pipeline)
+  // solo oculta Invoice, para que Quality Check SÍ aparezca en el tablero.
+  const isHiddenPipelineStatus = (p: any, allowQC = false) => {
     const st = statuses.find(s => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId));
     const name = String(st?.name || p.statusId || '').toLowerCase().trim();
-    return name === 'invoice' || name === 'qc' || name.includes('quality check') || name.includes('quality-check');
+    if (name === 'invoice') return true;
+    if (allowQC) return false;
+    return name === 'qc' || name.includes('quality check') || name.includes('quality-check');
   };
 
   const refreshPendingCounts = async () => {
@@ -926,9 +906,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return { client, address };
   }).sort((a, b) => a.client.localeCompare(b.client));
 
-  const filteredProperties = propertiesWithScope.filter(p => {
+  // ⭐ Filtros compartidos (status, casa, invoice, prioridad, búsqueda) para
+  //    la tabla y el tablero.
+  const passesListFilters = (p: Property) => {
     const st = statuses.find(s => s.id === p.statusId || s.name === p.statusId);
-    if (isHiddenPipelineStatus(p)) return false;
 
     let passStatus = true;
     if (activeFilter !== 'All') passStatus = st?.name === activeFilter;
@@ -961,11 +942,21 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
     
     return passStatus && passHouse && passInvoice && passStatusFilter && passPriority && passSearch;
-  }).sort((a, b) => {
-    // ⭐ Orden por fecha (scheduleDate) descendente: de la más reciente a la más antigua.
-    //    Sin fecha => al final. Tolerante a formatos mixtos (ISO y DD/MM).
-    return dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
-  });
+  };
+
+  // ⭐ Orden por fecha (scheduleDate) DESCENDENTE: de la más reciente a la más antigua.
+  //    Sin fecha => al final. Tolerante a formatos mixtos (ISO y DD/MM).
+  const byDateDesc = (a: Property, b: Property) => dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
+
+  // Tabla / Daily Jobs: sin Invoice ni Quality Check (QC se gestiona en su vista)
+  const filteredProperties = propertiesWithScope
+    .filter(p => !isHiddenPipelineStatus(p) && passesListFilters(p))
+    .sort(byDateDesc);
+
+  // ⭐ TABLERO (Pipeline): incluye Quality Check; solo oculta Invoice.
+  const boardProperties = propertiesWithScope
+    .filter(p => !isHiddenPipelineStatus(p, true) && passesListFilters(p))
+    .sort(byDateDesc);
 
   const dashboardTabs = statuses
     .filter(st => (st as any).showInDashboard)
@@ -1543,6 +1534,27 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
+  // ⭐ Apertura EXTERNA (desde Quality Check u otras vistas):
+  //    - houseToOpenDetail: abre el modal de detalle de esa casa.
+  //    - houseToOpenEdit: abre el formulario de edición con sus campos guardados.
+  //    Se usa siempre la versión más fresca de la casa (por si cambió en Firestore).
+  useEffect(() => {
+    if (!houseToOpenDetail) return;
+    const fresh = properties.find(p => p.id === houseToOpenDetail.id) || houseToOpenDetail;
+    handleOpenDetail(fresh);
+    clearHouseToOpenDetail?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseToOpenDetail]);
+
+  useEffect(() => {
+    if (!houseToOpenEdit) return;
+    const fresh = properties.find(p => p.id === houseToOpenEdit.id) || houseToOpenEdit;
+    handleOpenForm(fresh);
+    clearHouseToOpenEdit?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseToOpenEdit]);
+
+
   const handleRemovePhoto = (index: number, type: 'before' | 'after') => {
     const removedUrl = (type === 'before' ? beforePhotoURLs : afterPhotoURLs)[index];
     const isFormOpen = isFormModalOpen;
@@ -1728,7 +1740,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               </div>
 
               <div class="footer">
-                ${clientLabel} • Generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                ${clientLabel} • Generated on ${formatDate(new Date())}
               </div>
             </div>
             <script>
@@ -1777,7 +1789,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const roomOptions = [1, 2, 3, 4, 5].map(n => ({ id: String(n), name: String(n) }));
   const kpiIcons = [Briefcase, Clock, ShieldCheck, AlertTriangle];
 
-  const dateFormatted = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const dateFormatted = formatDate(new Date()); // ⭐ MM/DD/YYYY unificado
   const dateCapitalized = dateFormatted.charAt(0).toUpperCase() + dateFormatted.slice(1);
 
   const totalBilled = houseServices.reduce((sum, r) => sum + r.total, 0);
@@ -1787,7 +1799,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const formTotalBilled = formServices.reduce((sum, r) => sum + r.total, 0);
 
   return (
-    <div className="fade-in houses-view">
+    <div className={renderMode === 'modals-only' ? 'hv-modals-only' : 'fade-in houses-view'}>
+      {renderMode === 'full' && (<>
       {/* DASHBOARD HEADER */}
       <header className="main-header dashboard-header-container hv-header">
         <div className="view-header-title-group">
@@ -1857,7 +1870,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       {viewMode === 'board' ? (
         <PipelineBoardView
-          properties={filteredProperties}
+          properties={boardProperties}
           statuses={statuses}
           teams={teams}
           priorities={priorities}
@@ -2218,6 +2231,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         </div>
       )}
 
+      </>)}
+
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
         <div className="modal-overlay-centered" onClick={handleCloseForm}>
@@ -2274,6 +2289,17 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           <MapPin className="hv-input-icon" size={16} />
                           <input type="text" className="hv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                         </div>
+                        {/* ⭐ Mapa de la dirección (aparece al escribirla; sin API key) */}
+                        {mapAddress && (
+                          <div className="hv-map-wrap">
+                            <iframe
+                              className="hv-map-iframe"
+                              title="Mapa de la dirección"
+                              src={`https://maps.google.com/maps?q=${encodeURIComponent(mapAddress)}&z=15&output=embed`}
+                              loading="lazy"
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2287,34 +2313,34 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <div className="hv-form-grid cols-200">
                     <div>
                       <label className="hv-label">Status <span className="hv-required">*</span></label>
-                      <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
+                      <SearchableSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
                     </div>
                     <div>
                       <label className="hv-label">Invoice Status</label>
-                      <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                      <SearchableSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                     </div>
                     {isElementVisible('serviceId') && (
                       <div>
                         <label className="hv-label">Services</label>
-                        <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
+                        <SearchableSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
                       </div>
                     )}
                     {isElementVisible('priorityId') && (
                       <div>
                         <label className="hv-label">Priority</label>
-                        <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
+                        <SearchableSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
                       </div>
                     )}
                     {isElementVisible('rooms') && (
                       <div>
                         <label className="hv-label">Rooms</label>
-                        <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
+                        <SearchableSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
                       </div>
                     )}
                     {isElementVisible('bathrooms') && (
                       <div>
                         <label className="hv-label">Bathrooms</label>
-                        <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                        <SearchableSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
                       </div>
                     )}
                   </div>
@@ -3144,7 +3170,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
                 <div>
                   <label className="hv-label">Type</label>
-                  <CustomSelect
+                  <SearchableSelect
                     options={[{ id: 'Private customer', name: 'Private customer' }, { id: 'Residential', name: 'Residential' }, { id: 'Commercial', name: 'Commercial' }]}
                     value={customerForm.type}
                     onChange={(val: string) => setCustomerForm({ ...customerForm, type: val })}
@@ -3237,7 +3263,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
               <div className="hv-form-grid cols-240">
                 <div className="hv-full-col">
                   <label className="hv-label">Product / Service <span className="hv-required">*</span></label>
-                  <CustomSelect options={products.length ? products : services} value={serviceForm.serviceId} onChange={(val: string) => {
+                  <SearchableSelect options={products.length ? products : services} value={serviceForm.serviceId} onChange={(val: string) => {
                     const list = products.length ? products : services;
                     const srv = list.find((c: any) => c.id === val);
                     setServiceForm(prev => ({ ...prev, serviceId: val, price: srv ? Number((srv as any).price || prev.price) : prev.price }));
@@ -3261,7 +3287,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <label className="hv-label">Tax %</label>
                   {taxes.length > 0 && (
                     <div className="hv-tax-select-wrap">
-                      <CustomSelect
+                      <SearchableSelect
                         options={taxes.map((t: any) => ({ id: String(Number(t.percentage)), name: `${t.name} (${Number(t.percentage)}%)` }))}
                         value={String(Number(serviceForm.taxPercentage))}
                         onChange={(val: string) => setServiceForm(prev => ({ ...prev, taxPercentage: Number(val) }))}

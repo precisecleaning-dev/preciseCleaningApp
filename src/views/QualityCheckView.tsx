@@ -113,6 +113,7 @@ interface QualityCheckViewProps {
   clearHouseToInspect: () => void;
   currentUser?: SystemUser | null;
   onOpenHouseDetail?: (house: Property) => void; // ⭐ abre el detalle en HousesView
+  onOpenHouseEdit?: (house: Property) => void;   // ⭐ abre el FORMULARIO de edición en HousesView
 }
 
 // Genera un id único para previews locales (con fallback si crypto.randomUUID no existe)
@@ -667,7 +668,7 @@ function QCReportsDashboard({
   );
 }
 
-export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, onOpenHouseDetail }: QualityCheckViewProps) {
+export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, onOpenHouseDetail, onOpenHouseEdit }: QualityCheckViewProps) {
   const [qcList, setQcList] = useState<QCRecord[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
@@ -2415,7 +2416,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               return (
                 <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className={`qcv-house-card${failed ? ' failed' : ''}`}>
                   <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
+                    <button type="button" onClick={() => onOpenHouseEdit?.(house)} title="Editar (formulario)" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
                     <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
                   </div>
                   <div className="qcv-house-card-title-row">
@@ -2501,7 +2502,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             {filteredRecallHouses.map(house => (
               <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className="qcv-house-card recall">
                 <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => onOpenHouseDetail?.(house)} title="Editar / ver detalle" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
+                  <button type="button" onClick={() => onOpenHouseEdit?.(house)} title="Editar (formulario)" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
                   <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
                 </div>
                 <div className="qcv-house-card-title-row">

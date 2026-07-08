@@ -67,6 +67,9 @@ export default function App() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [currentSettingView, setCurrentSettingView] = useState<string>('menu');
   const [houseToInspect, setHouseToInspect] = useState<Property | null>(null);
+  // ⭐ Apertura externa en HousesView (desde Quality Check): detalle o formulario de edición
+  const [houseToOpenDetail, setHouseToOpenDetail] = useState<Property | null>(null);
+  const [houseToOpenEdit, setHouseToOpenEdit] = useState<Property | null>(null);
 
   const [roles, setRoles] = useState<Role[]>([]);
 
@@ -320,6 +323,10 @@ export default function App() {
             currentUser={currentUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
+            houseToOpenDetail={houseToOpenDetail as any}
+            clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+            houseToOpenEdit={houseToOpenEdit as any}
+            clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
           />
         )}
 
@@ -361,13 +368,33 @@ export default function App() {
         {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} />}
 
         {activeTab === 'qc_report' && (
-          <QualityCheckView 
-            onOpenMenu={toggleMenu} 
-            properties={visibleProperties as any}
-            houseToInspect={houseToInspect as any}
-            clearHouseToInspect={() => setHouseToInspect(null)}
-            currentUser={currentUser}
-          />
+          <>
+            <QualityCheckView 
+              onOpenMenu={toggleMenu} 
+              properties={visibleProperties as any}
+              houseToInspect={houseToInspect as any}
+              clearHouseToInspect={() => setHouseToInspect(null)}
+              currentUser={currentUser}
+              onOpenHouseDetail={(house) => setHouseToOpenDetail(house as any)}
+              onOpenHouseEdit={(house) => setHouseToOpenEdit(house as any)}
+            />
+            {/* ⭐ Modales de HousesView montados ENCIMA de QC: el detalle y el
+                formulario se abren aquí mismo, sin sacar al usuario de la vista. */}
+            <HousesView
+              renderMode="modals-only"
+              properties={visibleProperties as any}
+              setProperties={setProperties as any}
+              onOpenMenu={toggleMenu}
+              onCheckHouse={handleCheckHouse}
+              currentUser={currentUser}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
+              houseToOpenDetail={houseToOpenDetail as any}
+              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+              houseToOpenEdit={houseToOpenEdit as any}
+              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
+            />
+          </>
         )}
 
         {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}

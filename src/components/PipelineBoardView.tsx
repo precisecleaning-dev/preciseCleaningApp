@@ -14,10 +14,8 @@ import './PipelineBoardView.css';
    Usa tu misma paleta (#3b82f6, #111827, etc.) y el color de cada
    status para diferenciar columnas.
 
-   NUEVO: filtro de rango de fechas (Desde / Hasta) arriba del tablero.
-   Las columnas Quality Check y Recall SIEMPRE muestran todo su trabajo,
-   sin importar el filtro (son buckets de pendientes que no se deben
-   perder de vista). El filtro usa scheduleDate y, si no hay, receiveDate.
+   Sin filtro de fechas: el tablero muestra todos los trabajos de cada
+   columna, ordenados por fecha descendente (más reciente primero).
    ------------------------------------------------------------------ */
 
 type Property = BaseProperty & {
@@ -52,7 +50,6 @@ const getRelColor = (list: any[], idOrName?: string | null) => {
   return list.find(i => String(i.id).toLowerCase().trim() === v || String(i.name).toLowerCase().trim() === v)?.color;
 };
 
-/* Normaliza una fecha a 'YYYY-MM-DD' para comparar como string (ISO) */
 
 // Configuración que la tarjeta envía al modal central de cambio de estado.
 type StatusModalConfig = {
