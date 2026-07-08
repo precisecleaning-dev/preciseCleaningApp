@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
-  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User
+  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User, CheckCircle
 } from 'lucide-react';
 
 import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Service } from '../types/index';
@@ -118,49 +119,119 @@ const InvoiceStatusPill = ({ currentStatus, onChange, disabled, fullWidth = fals
 // ───────────────────────────────────────────────────────────────
 // ⭐ Job Status Pill — cambia el status de la CASA (no el del invoice)
 // ───────────────────────────────────────────────────────────────
-const JobStatusPill = ({ currentStatusId, statuses, onChange, disabled, fullWidth = false }: { currentStatusId: string, statuses: Status[], onChange: (id: string) => void, disabled: boolean, fullWidth?: boolean }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const JobStatusPill = ({ currentStatusId, statuses, onRequestOpen, disabled, fullWidth = false, modalTitle, modalSubtitle, onChange }: { currentStatusId: string, statuses: Status[], onRequestOpen: (cfg: StatusModalConfig) => void, disabled: boolean, fullWidth?: boolean, modalTitle?: string, modalSubtitle?: string, onChange: (id: string) => void }) => {
   const safeValue = String(currentStatusId || '').toLowerCase().trim();
   const status = statuses.find(s => String(s.id).toLowerCase().trim() === safeValue || String(s.name).toLowerCase().trim() === safeValue);
 
   const pointColor = status ? status.color : '#64748b';
   const text = status ? status.name : 'Unassigned';
 
+  // ⭐ Al tocar el pill NO se abre un dropdown propio: se solicita el modal central
+  //    de cambio de estado (el mismo de HousesView y QC).
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`inv-pill-wrap${fullWidth ? ' full' : ''}`}>
+    <div className={`inv-pill-wrap${fullWidth ? ' full' : ''}`}>
       <div
-        onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
+        onClick={(e) => { e.stopPropagation(); if (!disabled) onRequestOpen({ currentId: currentStatusId, onSelect: onChange, title: modalTitle, subtitle: modalSubtitle }); }}
         className={`inv-status-pill static${fullWidth ? ' full' : ''}${disabled ? ' disabled' : ''}`}
       >
         <span className="inv-pill-label-wrap">
           <span className="inv-pill-dot" style={{ '--dot-color': pointColor } as CSSProperties}></span>
           <span className="inv-pill-text">{text}</span>
         </span>
-        <ChevronDown size={14} color="#9ca3af" className={`inv-pill-chevron${isOpen ? ' open' : ''}`} />
+        <ChevronDown size={14} color="#9ca3af" className="inv-pill-chevron" />
       </div>
-
-      {isOpen && (
-        <div className={`inv-pill-dropdown${fullWidth ? ' full' : ''}`}>
-          {statuses.map((s) => (
-            <div
-              key={s.id}
-              onClick={(e) => {
-                e.preventDefault(); e.stopPropagation();
-                if(s.id !== currentStatusId && s.name !== currentStatusId) onChange(s.id);
-                setIsOpen(false);
-              }}
-              className={`inv-pill-option job${(currentStatusId === s.id || currentStatusId === s.name) ? ' current' : ''}`}
-            >
-              <span className="inv-pill-dot" style={{ '--dot-color': s.color } as CSSProperties}></span>
-              {s.name}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
 
+
+
+// ⭐ Modal central de cambio de estado — MISMO componente/UX que HousesView y QC.
+//    Reusa las clases globales ya existentes (modal-overlay-centered, status-modal*,
+//    hv-statuschange-*) definidas en HousesView.css/App.css (CSS global del bundle).
+type StatusModalConfig = {
+  currentId: string;
+  onSelect: (id: string) => void;
+  title?: string;
+  subtitle?: string;
+};
+
+const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
+  const cur = String(config.currentId || '').toLowerCase().trim();
+
+  const resolveCurrentId = () => {
+    const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
+    return match ? match.id : (config.currentId || '');
+  };
+  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
+  useEffect(() => { setSelectedId(resolveCurrentId()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config]);
+
+  const selectedIsCurrent = (() => {
+    const selStatus = statuses.find(st => st.id === selectedId);
+    const selName = String(selStatus?.name || '').toLowerCase().trim();
+    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
+  })();
+
+  const handleAccept = () => {
+    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
+      <div className="status-modal" onClick={e => e.stopPropagation()}>
+        <header className="status-modal-head">
+          <div className="hv-statuschange-head-info">
+            <div className="hv-statuschange-icon">
+              <Activity size={20} color="#2563eb" />
+            </div>
+            <div className="hv-min-w-0">
+              <h3 className="hv-statuschange-title">Cambiar estado</h3>
+              {config.title && (
+                <p className="hv-statuschange-subtitle">
+                  {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" className="hv-statuschange-close">
+            <X size={22} />
+          </button>
+        </header>
+
+        <div className="status-modal-grid">
+          {statuses.length === 0 ? (
+            <div className="hv-statuschange-empty">No hay estados configurados.</div>
+          ) : statuses.map(st => {
+            const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
+            const isSelected = st.id === selectedId;
+            return (
+              <button
+                key={st.id}
+                className={`status-option${isSelected ? ' selected' : ''}`}
+                onClick={() => setSelectedId(st.id)}
+              >
+                <span className="hv-statuschange-dot" style={{ '--dot-color': st.color, '--dot-ring': `${st.color}1f` } as CSSProperties}></span>
+                <span className="hv-statuschange-name">{st.name}</span>
+                {isCurrent && !isSelected && (
+                  <span className="hv-statuschange-current-badge">Actual</span>
+                )}
+                {isSelected && <CheckCircle size={18} color="#2563eb" className="hv-shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <footer className="status-modal-foot">
+          <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
+          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept">
+            <CheckCircle size={16} /> Aceptar
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+};
 
 interface InvoicesViewProps {
   onOpenMenu: () => void;
@@ -197,6 +268,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [searchClient, setSearchClient] = useState('');
   // ⭐ Default 'All' para que TODAS las casas se vean al entrar (antes 'Pending' las ocultaba)
   const [filterStatus, setFilterStatus] = useState<string>('All');
+  // ⭐ Copia LOCAL de properties (cargada por esta vista). Renderizamos desde aquí
+  //    para no depender de cómo el padre derive/filtre su lista.
+  const [allProps, setAllProps] = useState<Property[]>([]);
+  // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
+  const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
@@ -226,7 +302,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       collection(db, 'properties'),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
-        setProperties(data);
+        setAllProps(data);      // fuente de esta vista
+        setProperties(data);    // mantener al padre sincronizado
         tick();
       },
       (err) => { console.error("Error properties:", err); tick(); }
@@ -296,6 +373,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { invoiceStatus: newStatus } as any);
+      setAllProps(prev => prev.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
       setProperties(properties.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
     } catch (error) {
       console.error("Error updating invoice status:", error);
@@ -310,6 +388,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { statusId: newStatusId } as any);
+      setAllProps(prev => prev.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
       setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
     } catch (error) {
       console.error("Error updating job status:", error);
@@ -324,6 +403,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.delete(propertyId);
+      setAllProps(prev => prev.filter(p => p.id !== propertyId));
       setProperties(properties.filter(p => p.id !== propertyId));
     } catch (error) {
       console.error("Error deleting property:", error);
@@ -336,33 +416,38 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const getTeamName = (teamId?: string) => getRelationName(teams, teamId || '', 'Unassigned');
 
   // Filtro de scope (sólo lo que el usuario tiene permitido ver)
-  const inScope = (prop: Property) => {
-    // ⭐ SuperAdmin o modo Bypass (sin usuario): se ven TODOS los registros.
-    if (isSuperAdmin || !currentUser) return true;
-    const isAssigned = prop.assignedWorkers?.includes(currentUser.id || '');
-    const isSameTeam = currentUser.teamId && (prop.teamId === currentUser.teamId);
-    return isAssigned || isSameTeam;
+
+  // ⭐ Esta vista muestra las casas cuyo STATUS DE TRABAJO es "Invoice".
+  //    MISMA mecánica que StatusHistoryView (que sí encuentra los 3,616):
+  //    fuente = prop `properties` de App (con respaldo en la carga local), y
+  //    resolución del status por id/nombre en minúsculas contra settings_statuses.
+  const isInvoiceJobStatus = (p: Property) => {
+    const raw = String(p.statusId || '').toLowerCase().trim();
+    if (raw === '748aad00') return true; // ID de AppSheet para INVOICE (datos importados)
+    const st = statuses.find(x => String(x.id).toLowerCase().trim() === raw || String(x.name).toLowerCase().trim() === raw);
+    return String(st?.name || raw).toLowerCase().trim() === 'invoice';
   };
+  const baseProps = (properties && properties.length > 0) ? properties : allProps;
+  const invoiceProps = (baseProps || []).filter(isInvoiceJobStatus);
 
   // Conteos por status (para mostrar como badge en cada pill button)
   const invoiceCounts = INVOICE_STATUSES.reduce((acc, st) => {
-    acc[st.id] = properties.filter(p => inScope(p) && p.invoiceStatus === st.id).length;
+    acc[st.id] = invoiceProps.filter(p => String(p.invoiceStatus || '').toLowerCase().trim() === st.id.toLowerCase()).length;
     return acc;
   }, {} as Record<string, number>);
-  const totalScopedCount = properties.filter(inScope).length;
+  const totalScopedCount = invoiceProps.length;
 
   // Filtrado completo + ordenado por Schedule Date DESCENDENTE (más reciente primero)
-  const filteredProperties = properties.filter(prop => {
-    if (!inScope(prop)) return false;
-    if (filterStatus !== 'All' && prop.invoiceStatus !== filterStatus) return false;
+  // ⭐ Filtrado: pastilla de invoice status (case-insensitive), búsqueda por
+  //    cliente/dirección y rango de fechas por timestamp. Orden descendente.
+  const filteredProperties = invoiceProps.filter(prop => {
+    if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
     if (searchClient) {
       const q = searchClient.toLowerCase();
       const clientName = getClientName(prop.client).toLowerCase();
       const address = (prop.address || '').toLowerCase();
       if (!clientName.includes(q) && !address.includes(q)) return false;
     }
-    // ⭐ Filtro de fechas por TIMESTAMP (antes comparaba strings y fallaba con
-    //    formatos mixtos). Si hay filtro activo, las casas sin fecha quedan fuera.
     if (startDate || endDate) {
       if (!prop.scheduleDate) return false;
       const recT = parseDateForSort(prop.scheduleDate);
@@ -371,13 +456,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     }
     return true;
   }).sort((a, b) => {
-    // Sin fecha => siempre al final, sin importar la dirección del orden
     const hasA = !!a.scheduleDate;
     const hasB = !!b.scheduleDate;
     if (!hasA && !hasB) return 0;
     if (!hasA) return 1;
     if (!hasB) return -1;
-    // Ambas con fecha: descendente (más reciente primero)
     return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
   });
 
@@ -404,6 +487,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <p className="inv-subtitle">Financial tracking and billing status</p>
         </div>
       </header>
+
 
       {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
       <div className="inv-status-filters-row">
@@ -472,8 +556,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <tbody>
             {isLoading ? (
               <tr><td colSpan={9} className="inv-empty-row">Loading financial data...</td></tr>
-            ) : properties.length === 0 ? (
-              <tr><td colSpan={9} className="inv-empty-row">No properties in database. Add one from the Houses view.</td></tr>
+            ) : invoiceProps.length === 0 ? (
+              <tr><td colSpan={9} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
             ) : filteredProperties.length === 0 ? (
               <tr><td colSpan={9} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
             ) : filteredProperties.map(prop => {
@@ -533,6 +617,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                       currentStatusId={prop.statusId}
                       statuses={statuses}
                       onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
+                      onRequestOpen={setStatusModal}
+                      modalTitle={getClientName(prop.client)}
+                      modalSubtitle={prop.address}
                       disabled={isSaving || (!isSuperAdmin && !canEdit)}
                     />
                   </td>
@@ -545,7 +632,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   </td>
 
                   <td className="inv-td strong">
-                    {prop.scheduleDate || '-'}
+                    {prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}
                   </td>
 
                   <td className="inv-td muted">
@@ -576,8 +663,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       <div className="inv-cards-wrap">
         {isLoading ? (
           <div className="inv-empty-row">Loading financial data...</div>
-        ) : properties.length === 0 ? (
-          <div className="inv-empty-row">No properties in database. Add one from the Houses view.</div>
+        ) : invoiceProps.length === 0 ? (
+          <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
         ) : filteredProperties.length === 0 ? (
           <div className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</div>
         ) : filteredProperties.map(prop => {
@@ -609,7 +696,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 </div>
                 <div className="inv-card-info-row">
                   <CalendarDays size={16} color="#94a3b8" className="inv-shrink-0" />
-                  <span>{prop.scheduleDate || 'Sin fecha'}</span>
+                  <span>{prop.scheduleDate ? formatDate(prop.scheduleDate) : 'Sin fecha'}</span>
                 </div>
                 <div className="inv-card-info-row">
                   <Users size={16} color="#94a3b8" className="inv-shrink-0" />
@@ -630,6 +717,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   currentStatusId={prop.statusId}
                   statuses={statuses}
                   onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
+                  onRequestOpen={setStatusModal}
+                  modalTitle={getClientName(prop.client)}
+                  modalSubtitle={prop.address}
                   disabled={isSaving || (!isSuperAdmin && !canEdit)}
                 />
               </div>
@@ -714,7 +804,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 </div>
                 <div className="inv-detail-item">
                   <span className="inv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span className="inv-detail-value">{detailHouse.scheduleDate || '-'}</span>
+                  <span className="inv-detail-value">{detailHouse.scheduleDate ? formatDate(detailHouse.scheduleDate) : '-'}</span>
                 </div>
                 <div className="inv-detail-item">
                   <span className="inv-detail-label"><Wrench size={14} /> SERVICE</span>
@@ -817,6 +907,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             </footer>
           </div>
         </div>
+      )}
+
+      {/* ⭐ MODAL CENTRAL DE CAMBIO DE ESTADO (mismo que Houses/QC) */}
+      {statusModal && (
+        <StatusChangeModal
+          config={statusModal}
+          statuses={statuses}
+          onClose={() => setStatusModal(null)}
+        />
       )}
 
     </div>
