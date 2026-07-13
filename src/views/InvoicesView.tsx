@@ -245,7 +245,7 @@ interface InvoicesViewProps {
   onViewProperty?: (property: Property) => void;
 }
 
-export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
+export default function InvoicesView({ onOpenMenu, properties, setProperties, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
