@@ -51,21 +51,6 @@
   }
 }
 
-/* --- CustomSelect --- */
-.cs-wrap { position: relative; width: 100%; outline: none; }
-.cs-trigger { background-color: #ffffff; padding: 12px 14px 12px 40px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.95rem; color: #111827; display: flex; align-items: center; justify-content: space-between; cursor: pointer; position: relative; }
-.cs-trigger-icon { position: absolute; left: 14px; color: #6b7280; }
-.cs-selected-wrap { display: flex; align-items: center; gap: 8px; }
-.cs-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex-shrink: 0; background-color: var(--dot-color); }
-.cs-label { color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
-.cs-label.selected { color: #111827; }
-.cs-chevron { transition: transform 0.2s; flex-shrink: 0; }
-.cs-chevron.open { transform: rotate(180deg); }
-.cs-dropdown { position: absolute; top: 100%; left: 0; width: 100%; background-color: white; border: 1px solid #e5e7eb; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 1000; max-height: 220px; overflow-y: auto; margin-top: 4px; }
-.cs-option-none { padding: 12px 14px; cursor: pointer; color: #9ca3af; border-bottom: 1px solid #f3f4f6; }
-.cs-option { padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; border-bottom: 1px solid #f9fafb; }
-.cs-option:hover { background-color: #f3f4f6; }
-.cs-option-label { color: #111827; font-weight: 500; }
 
 /* --- Header --- */
 .cv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
@@ -119,16 +104,19 @@
 .cv-btn-qc { display: flex; align-items: center; gap: 6px; background-color: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
 .cv-icon-mr { margin-right: 6px; }
 
-.cv-detail-banner { border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; background-color: #eff6ff; display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+/* .grid-3-cols es una clase global (App.css); acá se usa sobre un <dl>, así que se
+   resetea el margin-top/inline que el navegador le da por defecto a <dl>. */
+dl.grid-3-cols { margin-top: 0; margin-left: 0; margin-right: 0; }
+.cv-detail-banner { margin: 0 0 24px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; background-color: #eff6ff; display: flex; gap: 20px; flex-wrap: wrap; }
 .cv-detail-item { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .cv-detail-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
 .cv-detail-label.blue { color: #1e40af; }
 .cv-detail-label.spaced { margin-bottom: 8px; }
 .cv-detail-label.orange { color: #c2410c; }
-.cv-address-value { font-size: 1.25rem; color: #1e3a8a; font-weight: 600; margin-top: 4px; }
-.cv-detail-value { font-size: 1.05rem; color: #111827; font-weight: 500; margin-top: 4px; white-space: pre-wrap; }
+.cv-address-value { margin: 4px 0 0; font-size: 1.25rem; color: #1e3a8a; font-weight: 600; }
+.cv-detail-value { margin: 4px 0 0; font-size: 1.05rem; color: #111827; font-weight: 500; white-space: pre-wrap; }
 .cv-detail-value.small { font-size: 0.95rem; }
-.cv-dot-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.cv-dot-row { margin: 4px 0 0; display: flex; align-items: center; gap: 8px; }
 .cv-dot-12 { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background-color: var(--dot-color); }
 .cv-note-box { background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; width: 100%; }
 .cv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }

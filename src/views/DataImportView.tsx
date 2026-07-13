@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Upload, ArrowRight, AlertCircle, CheckCircle,
-  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download
+  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download, Menu
 } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -11,6 +11,11 @@ import { collection, doc, writeBatch } from 'firebase/firestore';
 import './DataImportView.css';
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
+
+// PapaParse con header:true entrega cada fila como un objeto keyed por nombre de columna,
+// todos los valores como texto crudo (sin dynamicTyping) — de ahí el conversión manual
+// en transformValue según el FieldType elegido por el usuario en el mapeo.
+type CsvRow = Record<string, string>;
 
 type CollectionDef = {
   id: string;
@@ -230,7 +235,7 @@ interface DataImportViewProps {
 export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   const [step, setStep] = useState<Step>('upload');
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvData, setCsvData] = useState<any[]>([]);
+  const [csvData, setCsvData] = useState<CsvRow[]>([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string>('');
   const [fieldMappings, setFieldMappings] = useState<Record<string, FieldMapping>>({});
@@ -372,7 +377,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       .replace(/^[A-Z]/, (m) => m.toLowerCase());
   };
 
-  const detectType = (data: any[], column: string): FieldType => {
+  const detectType = (data: CsvRow[], column: string): FieldType => {
     const samples = data.slice(0, 5).map(r => r[column]).filter(v => v !== null && v !== '' && v !== undefined);
     if (samples.length === 0) return 'string';
 
@@ -388,7 +393,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     return 'string';
   };
 
-  const transformValue = (value: any, type: FieldType): any => {
+  const transformValue = (value: unknown, type: FieldType): unknown => {
     if (value === null || value === undefined || value === '') {
       if (type === 'number') return 0;
       if (type === 'boolean') return false;
@@ -399,15 +404,17 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     const str = String(value).trim();
 
     switch (type) {
-      case 'number':
+      case 'number': {
         const num = Number(str.replace(/,/g, ''));
         return isNaN(num) ? 0 : num;
+      }
       case 'boolean':
         return ['true', 'yes', '1', 'sí', 'si'].includes(str.toLowerCase());
-      case 'date':
+      case 'date': {
         const date = new Date(str);
         if (isNaN(date.getTime())) return str;
         return date.toISOString().split('T')[0];
+      }
       case 'array':
         return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
       default:
@@ -415,8 +422,8 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     }
   };
 
-  const transformRow = (row: any): any => {
-    const transformed: any = {};
+  const transformRow = (row: CsvRow): Record<string, unknown> => {
+    const transformed: Record<string, unknown> = {};
     Object.entries(fieldMappings).forEach(([csvHeader, mapping]) => {
       if (mapping.type === 'skip' || !mapping.firestoreField) return;
       transformed[mapping.firestoreField] = transformValue(row[csvHeader], mapping.type);
@@ -436,7 +443,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
     setCsvFile(file);
 
-    Papa.parse(file, {
+    Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (h) => h.trim(),
@@ -444,7 +451,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
         if (results.errors.length > 0) {
           console.warn('CSV parsing warnings:', results.errors);
         }
-        const data = results.data as any[];
+        const data = results.data;
         const headers = (results.meta.fields || []).filter(h => h.trim() !== '');
 
         if (data.length === 0) {
@@ -468,7 +475,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
         setStep('mapping');
       },
-      error: (err: any) => {
+      error: (err: Error) => {
         alert(`Error parseando CSV: ${err.message}`);
       }
     });
@@ -535,8 +542,8 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
               batch.set(docRef, transformedData);
             }
             successCount++;
-          } catch (err: any) {
-            errors.push({ row: rowNumber, message: err.message || 'Error desconocido' });
+          } catch (err) {
+            errors.push({ row: rowNumber, message: err instanceof Error ? err.message : 'Error desconocido' });
           }
         });
 
@@ -551,9 +558,10 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       }
 
       setStep('done');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error durante la importación:', error);
-      alert(`Error al importar: ${error.message}\n\nRevisa la consola para más detalles.`);
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`Error al importar: ${message}\n\nRevisa la consola para más detalles.`);
       setStep('preview');
     }
   };
@@ -578,7 +586,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
   // ⭐ Conteos por estado + columnas visibles (según búsqueda y filtro activo)
   const counts = csvHeaders.reduce(
-    (acc, h) => { const c = classifyHeader(h); (acc as any)[c]++; acc.all++; return acc; },
+    (acc, h) => { const c = classifyHeader(h); acc[c]++; acc.all++; return acc; },
     { all: 0, matched: 0, custom: 0, skipped: 0 }
   );
   const visibleHeaders = csvHeaders.filter(h => {
@@ -614,8 +622,8 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     <div className="fade-in di-page">
       {/* HEADER */}
       <header className="di-header">
-        <button className="hamburger-btn-compact" onClick={onOpenMenu}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        <button className="hamburger-btn-compact" onClick={onOpenMenu} aria-label="Open menu">
+          <Menu size={18} />
         </button>
         <div>
           <h1 className="di-title">Data Import</h1>

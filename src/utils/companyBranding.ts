@@ -1,4 +1,5 @@
 import { getCompanySettings, getCachedCompanySettings, type CompanyConfig } from '../services/companyService';
+import { escapeHtml } from './escapeHtml';
 
 /* =========================================================================
    BRANDING PARA DOCUMENTOS
@@ -41,8 +42,8 @@ export const getCachedBranding = (): Branding => toBranding(getCachedCompanySett
 /** Etiqueta del logo: <img> si hay logo, o recuadro con iniciales si no. */
 export const brandLogoTag = (b: Branding, size = 46): string =>
   b.logo
-    ? `<img src="${b.logo}" alt="${b.name}" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;" />`
-    : `<div style="width:${size}px;height:${size}px;border-radius:12px;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-weight:800;font-size:${Math.round(size / 2.8)}px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;">${b.initials}</div>`;
+    ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;" />`
+    : `<div style="width:${size}px;height:${size}px;border-radius:12px;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-weight:800;font-size:${Math.round(size / 2.8)}px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;">${escapeHtml(b.initials)}</div>`;
 
 /** Encabezado estándar para documentos (logo + nombre + datos de contacto). */
 export const brandingHeaderHTML = (b: Branding, docTag = ''): string => `
@@ -50,16 +51,16 @@ export const brandingHeaderHTML = (b: Branding, docTag = ''): string => `
     <div style="display:flex;align-items:center;gap:14px;">
       ${brandLogoTag(b)}
       <div>
-        <div style="font-size:20px;font-weight:800;color:#1e3a8a;letter-spacing:1px;line-height:1.1;">${b.name}</div>
+        <div style="font-size:20px;font-weight:800;color:#1e3a8a;letter-spacing:1px;line-height:1.1;">${escapeHtml(b.name)}</div>
         ${[b.address, b.phone, b.email].filter(Boolean).length
-    ? `<div style="font-size:11px;font-weight:600;color:#64748b;margin-top:5px;">${[b.address, b.phone, b.email].filter(Boolean).join(' • ')}</div>`
+    ? `<div style="font-size:11px;font-weight:600;color:#64748b;margin-top:5px;">${[b.address, b.phone, b.email].filter(Boolean).map(escapeHtml).join(' • ')}</div>`
     : ''}
       </div>
     </div>
-    ${docTag ? `<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px 14px;border-radius:20px;white-space:nowrap;">${docTag}</div>` : ''}
+    ${docTag ? `<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px 14px;border-radius:20px;white-space:nowrap;">${escapeHtml(docTag)}</div>` : ''}
   </div>
 `;
 
 /** Texto de pie de página estándar para documentos. */
 export const brandingFooterHTML = (b: Branding, extra = ''): string =>
-  `${b.name}${b.address ? ' • ' + b.address : ''}${b.email ? ' • ' + b.email : ''}${extra ? ' • ' + extra : ''}`;
+  `${escapeHtml(b.name)}${b.address ? ' • ' + escapeHtml(b.address) : ''}${b.email ? ' • ' + escapeHtml(b.email) : ''}${extra ? ' • ' + escapeHtml(extra) : ''}`;

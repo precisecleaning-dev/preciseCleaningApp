@@ -162,13 +162,13 @@
 .inv-btn-primary-modal { background-color: #3b82f6; border: none; color: white; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .inv-btn-outline-modal { background-color: white; border: 1px solid #e5e7eb; color: #111827; padding: 10px 20px; border-radius: 6px; font-weight: 500; cursor: pointer; }
 
-.inv-detail-banner { border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; background-color: #eff6ff; display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+.inv-detail-banner { margin: 0 0 24px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; background-color: #eff6ff; display: flex; gap: 20px; flex-wrap: wrap; }
 .inv-detail-item { display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .inv-detail-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
 .inv-detail-label.blue { color: #1e40af; }
 .inv-detail-label.orange { color: #c2410c; }
 .inv-detail-label.spaced { margin-bottom: 8px; }
-.inv-address-value { font-size: 1.25rem; color: #1e3a8a; font-weight: 600; margin-top: 4px; }
+.inv-address-value { margin: 4px 0 0; font-size: 1.25rem; color: #1e3a8a; font-weight: 600; }
 .inv-detail-value { font-size: 1.05rem; color: #111827; font-weight: 500; margin-top: 4px; white-space: pre-wrap; }
 .inv-detail-value.small { font-size: 0.95rem; }
 .inv-status-chip { background-color: #f1f5f9; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; color: #475569; }

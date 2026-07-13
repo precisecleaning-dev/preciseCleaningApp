@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { 
-  ChevronLeft, ChevronRight, X, Edit2, Trash2, 
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ChevronDown, ClipboardCheck, MapPin, Filter, RotateCcw
+import {
+  ChevronLeft, ChevronRight, X, Edit2, Trash2,
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Filter, RotateCcw, Menu
 } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
+import { getRelationName, getRelationColor } from '../utils/relations';
+import CustomSelect from '../components/CustomSelect';
 import './CalendarView.css';
 
 // --- FIREBASE SERVICES ---
@@ -18,74 +20,6 @@ const collectionMap: Record<string, string> = {
   priority: 'settings_priorities',
   status: 'settings_statuses',
   service: 'settings_services',
-};
-
-// --- CUSTOM COMPONENTS & HELPERS (A Prueba de Balas) ---
-const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  // Búsqueda inteligente: ignora mayúsculas y espacios para compatibilidad con registros viejos
-  const safeValue = String(value || '').toLowerCase().trim();
-  const selected = options.find((o: any) => 
-    String(o.id).toLowerCase().trim() === safeValue || 
-    String(o.name).toLowerCase().trim() === safeValue
-  );
-
-  return (
-    <div tabIndex={0} onBlur={() => setIsOpen(false)} className="cs-wrap">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="cs-trigger"
-      >
-        <Icon size={16} className="cs-trigger-icon" />
-        <div className="cs-selected-wrap">
-          {selected?.color && <span className="cs-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
-          <span className={`cs-label${selected ? ' selected' : ''}`}>
-            {selected ? selected.name : placeholder}
-          </span>
-        </div>
-        <ChevronDown size={16} color="#9ca3af" className={`cs-chevron${isOpen ? ' open' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="cs-dropdown">
-          <div className="cs-option-none" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
-            None / Unassigned
-          </div>
-          {options.map((o: any) => (
-            <div
-              key={o.id}
-              className="cs-option"
-              onMouseDown={(e) => { e.preventDefault(); onChange(o[returnKey] || o.id); setIsOpen(false); }}
-            >
-              {o.color && <span className="cs-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
-              <span className="cs-option-label">{o.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Funciones de mapeo seguras
-const getRelationName = (list: any[], idOrName: string, fallback = '-') => {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item => 
-    String(item.id).toLowerCase().trim() === safeVal || 
-    String(item.name).toLowerCase().trim() === safeVal
-  );
-  return found ? found.name : fallback;
-};
-
-const getRelationColor = (list: any[], idOrName: string) => {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(item => 
-    String(item.id).toLowerCase().trim() === safeVal || 
-    String(item.name).toLowerCase().trim() === safeVal
-  )?.color;
 };
 
 // Statuses que NUNCA se ocultan con el filtro de fechas (Quality Check / Recall)
@@ -108,13 +42,15 @@ const parseTimeToMinutes = (timeStr: string) => {
 interface CalendarViewProps {
   onOpenMenu: () => void;
   onCheckHouse?: (house: Property) => void;
-  properties?: Property[]; 
+  properties: Property[];
+  setProperties: Dispatch<SetStateAction<Property[]>>;
 }
 
-export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewProps) {
-  
+export default function CalendarView({ onOpenMenu, onCheckHouse, properties, setProperties }: CalendarViewProps) {
+
   // --- FIREBASE STATES ---
-  const [propertiesList, setPropertiesList] = useState<Property[]>([]);
+  // `properties` viene de App.tsx (lista en tiempo real vía onSnapshot, compartida con
+  // el resto de las vistas) — antes este componente hacía su propio fetch desconectado.
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -147,16 +83,14 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     const fetchAllData = async () => {
       setIsLoading(true);
       try {
-        const [ propsData, statusData, teamData, prioData, servData, custData ] = await Promise.all([
-          propertiesService.getAll(),
+        const [ statusData, teamData, prioData, servData, custData ] = await Promise.all([
           settingsService.getAll(collectionMap.status),
           settingsService.getAll(collectionMap.team),
           settingsService.getAll(collectionMap.priority),
           settingsService.getAll(collectionMap.service),
-          customersService.getAll() 
+          customersService.getAll()
         ]);
 
-        if (propsData) setPropertiesList(propsData);
         if (statusData) setStatuses((statusData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
         if (teamData) setTeams(teamData as Team[]);
         if (prioData) setPriorities(prioData as Priority[]);
@@ -269,18 +203,18 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     setIsSaving(true);
     try {
       if (selectedHouse && selectedHouse.id) {
-        const { id, ...dataToUpdate } = formData; 
-        await propertiesService.update(selectedHouse.id, dataToUpdate as any);
-        setPropertiesList(propertiesList.map(p => p.id === selectedHouse.id ? { ...formData } : p));
+        const { id, ...dataToUpdate } = formData;
+        await propertiesService.update(selectedHouse.id, dataToUpdate);
+        setProperties(properties.map(p => p.id === selectedHouse.id ? { ...formData } : p));
       } else {
-        const { id, ...dataToAdd } = formData; 
+        const { id, ...dataToAdd } = formData;
         const completeData = {
           ...dataToAdd,
           description: `${formData.client} - ${formData.rooms} rooms`,
           city: 'TBD', size: 'TBD'
         };
-        const newId = await propertiesService.create(completeData as any);
-        setPropertiesList([...propertiesList, { ...formData, id: newId, description: completeData.description, city: completeData.city, size: completeData.size }]);
+        const newId = await propertiesService.create(completeData);
+        setProperties([...properties, { ...formData, id: newId, description: completeData.description, city: completeData.city, size: completeData.size }]);
       }
       handleCloseForm();
     } catch (error) {
@@ -299,7 +233,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     setIsSaving(true);
     try {
       await propertiesService.delete(selectedHouse.id);
-      setPropertiesList(propertiesList.filter(p => p.id !== selectedHouse.id));
+      setProperties(properties.filter(p => p.id !== selectedHouse.id));
       setIsDetailModalOpen(false);
     } catch (error) {
       console.error("Error deleting:", error);
@@ -328,7 +262,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
     // Trabajos del día. Aplica el filtro de rango EXCEPTO en Quality Check / Recall,
     // que siempre se siguen viendo aunque la fecha quede fuera del rango.
-    const dailyJobs = propertiesList.filter(p => {
+    const dailyJobs = properties.filter(p => {
       const raw = (p.scheduleDate || p.receiveDate);
       if (raw !== dateString) return false; // pertenece a este día
       const stName = getRelationName(statuses, p.statusId, '');
@@ -395,7 +329,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
       <header className="cv-header">
         <div className="view-header-title-group">
           <button onClick={onOpenMenu} className="hamburger-btn" aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="cv-title">Calendar</h1>
@@ -564,7 +498,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
                 <div>
                   <label className="cv-label">Invoice Status</label>
-                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                 </div>
                 <div>
                   <label className="cv-label">Services</label>
@@ -657,91 +591,91 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
             </header>
 
             <div className="cv-modal-body">
-              <div className="cv-detail-banner">
+              <dl className="cv-detail-banner">
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span className="cv-address-value">{selectedHouse.address}</span>
+                  <dt className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
+                  <dd className="cv-address-value">{selectedHouse.address}</dd>
                 </div>
-              </div>
+              </dl>
 
-              <div className="grid-3-cols">
+              <dl className="grid-3-cols">
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Activity size={14} /> STATUS</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Activity size={14} /> STATUS</dt>
+                  <dd className="cv-dot-row">
                     <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(statuses, selectedHouse.statusId) || '#ccc' } as CSSProperties}></span>
                     <span className="cv-detail-value">{getRelationName(statuses, selectedHouse.statusId, 'UNASSIGNED')}</span>
-                  </div>
+                  </dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
-                  <span className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</span>
+                  <dt className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><User size={14} /> CLIENT</span>
-                  <span className="cv-detail-value">{getClientName(selectedHouse.client)}</span>
-                </div>
-
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span className="cv-detail-value">{selectedHouse.receiveDate || '-'}</span>
-                </div>
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</span>
-                </div>
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Wrench size={14} /> SERVICE</span>
-                  <span className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</span>
+                  <dt className="cv-detail-label"><User size={14} /> CLIENT</dt>
+                  <dd className="cv-detail-value">{getClientName(selectedHouse.client)}</dd>
                 </div>
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Clock size={14} /> TIME IN</span>
-                  <span className="cv-detail-value">{selectedHouse.timeIn || '-'}</span>
+                  <dt className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</dt>
+                  <dd className="cv-detail-value">{selectedHouse.receiveDate || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Clock size={14} /> TIME OUT</span>
-                  <span className="cv-detail-value">{selectedHouse.timeOut || '-'}</span>
+                  <dt className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</dt>
+                  <dd className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Flag size={14} /> PRIORITY</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Wrench size={14} /> SERVICE</dt>
+                  <dd className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</dd>
+                </div>
+
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Clock size={14} /> TIME IN</dt>
+                  <dd className="cv-detail-value">{selectedHouse.timeIn || '-'}</dd>
+                </div>
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Clock size={14} /> TIME OUT</dt>
+                  <dd className="cv-detail-value">{selectedHouse.timeOut || '-'}</dd>
+                </div>
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Flag size={14} /> PRIORITY</dt>
+                  <dd className="cv-dot-row">
                     {getRelationColor(priorities, selectedHouse.priorityId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
                     <span className="cv-detail-value">{getRelationName(priorities, selectedHouse.priorityId)}</span>
-                  </div>
+                  </dd>
                 </div>
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Hash size={14} /> ROOMS</span>
-                  <span className="cv-detail-value">{selectedHouse.rooms || '-'}</span>
+                  <dt className="cv-detail-label"><Hash size={14} /> ROOMS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.rooms || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Hash size={14} /> BATHROOMS</span>
-                  <span className="cv-detail-value">{selectedHouse.bathrooms || '-'}</span>
+                  <dt className="cv-detail-label"><Hash size={14} /> BATHROOMS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.bathrooms || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Users size={14} /> TEAM</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Users size={14} /> TEAM</dt>
+                  <dd className="cv-dot-row">
                     {getRelationColor(teams, selectedHouse.teamId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
                     <span className="cv-detail-value">{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
-                  </div>
+                  </dd>
                 </div>
 
                 <div className="col-span-full">
                   <div className="cv-note-box">
-                    <span className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span>
-                    <span className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</span>
+                    <dt className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</dt>
+                    <dd className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</dd>
                   </div>
                 </div>
 
                 <div className="col-span-full">
                   <div className="cv-note-box orange">
-                    <span className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</span>
-                    <span className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</span>
+                    <dt className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</dt>
+                    <dd className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</dd>
                   </div>
                 </div>
 
-              </div>
+              </dl>
             </div>
 
             <footer className="cv-modal-footer between">

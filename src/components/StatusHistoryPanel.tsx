@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { History, ArrowRight, Loader2 } from 'lucide-react';
 import { statusHistoryService, type StatusHistoryEntry } from '../services/statusHistoryService';
 import type { Status } from '../types/index';
+import { getRelationName, getRelationColor } from '../utils/relations';
 import './StatusHistoryPanel.css';
 
 interface StatusHistoryPanelProps {
@@ -25,13 +26,11 @@ export default function StatusHistoryPanel({ propertyId, statuses, refreshKey = 
     return () => { active = false; };
   }, [propertyId, refreshKey]);
 
-  const findStatus = (idOrName?: string | null) => {
-    if (!idOrName) return undefined;
-    const safe = String(idOrName).toLowerCase().trim();
-    return statuses.find(s => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
-  };
-  const colorFor = (idOrName?: string | null) => findStatus(idOrName)?.color || '#64748b';
-  const nameFor = (idOrName?: string | null) => idOrName ? (findStatus(idOrName)?.name || String(idOrName)) : '—';
+  const colorFor = (idOrName?: string | null) => getRelationColor(statuses, idOrName) || '#64748b';
+  // A diferencia de getRelationName, si el status ya no existe en el catálogo (fue borrado)
+  // cae al valor crudo guardado en el historial en vez de un fallback genérico — así el
+  // historial sigue siendo legible aunque el status ya no exista.
+  const nameFor = (idOrName?: string | null) => idOrName ? getRelationName(statuses, idOrName, String(idOrName)) : '—';
 
   const fmt = (iso?: string) => {
     if (!iso) return '';
@@ -65,23 +64,23 @@ export default function StatusHistoryPanel({ propertyId, statuses, refreshKey = 
       ) : (
         <>
           {/* Conteos por status */}
-          <div className="shp-counts">
+          <ul className="shp-counts">
             {countList.map(([name, n]) => {
               const color = colorFor(name);
               return (
-                <span key={name} className="shp-pill" style={{ '--pill-bg': `${color}12`, '--pill-border': `${color}40` } as CSSProperties}>
+                <li key={name} className="shp-pill" style={{ '--pill-bg': `${color}12`, '--pill-border': `${color}40` } as CSSProperties}>
                   <span className="shp-dot-8" style={{ '--dot-color': color } as CSSProperties} />
                   {name}
                   <span className="shp-count-badge" style={{ '--dot-color': color } as CSSProperties}>{n}</span>
-                </span>
+                </li>
               );
             })}
-          </div>
+          </ul>
 
           {/* Línea de tiempo */}
-          <div className="shp-timeline">
+          <ul className="shp-timeline">
             {entries.map((e, i) => (
-              <div key={e.id || i} className="shp-timeline-row">
+              <li key={e.id || i} className="shp-timeline-row">
                 <span className="shp-dot-10" style={{ '--dot-color': colorFor(e.toStatusName || e.toStatusId) } as CSSProperties} />
                 <div className="shp-timeline-content">
                   <div className="shp-status-row">
@@ -97,9 +96,9 @@ export default function StatusHistoryPanel({ propertyId, statuses, refreshKey = 
                     {fmt(e.changedAt)}{e.changedBy ? ` · ${e.changedBy}` : ''}
                   </div>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </>
       )}
     </div>

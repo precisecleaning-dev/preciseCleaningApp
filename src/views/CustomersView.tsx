@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Search, Plus, X, Edit2, Trash2, Filter
+  Search, Plus, X, Edit2, Trash2, Menu
 } from 'lucide-react';
 import { customersService } from '../services/customersService';
 import type { Customer } from '../types/index';
@@ -18,8 +18,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Unificamos city, state y zip en cityStateZip para coincidir con tu Type
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<Customer>({
     id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6'
   });
 
@@ -61,12 +60,12 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     setIsSaving(true);
     try {
       if (formData.id) {
-        await customersService.update(formData.id, formData as any);
-        setCustomers(customers.map(c => c.id === formData.id ? (formData as Customer) : c));
+        await customersService.update(formData.id, formData);
+        setCustomers(customers.map(c => c.id === formData.id ? formData : c));
       } else {
         const { id, ...dataToAdd } = formData;
-        const newId = await customersService.create(dataToAdd as any);
-        setCustomers([...customers, { ...formData, id: newId } as Customer]);
+        const newId = await customersService.create(dataToAdd);
+        setCustomers([...customers, { ...formData, id: newId }]);
       }
       setIsFormModalOpen(false);
     } catch (error) {
@@ -97,7 +96,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       <header className="main-header dashboard-header-container cx-header">
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="cx-title">Customers</h1>
@@ -110,10 +109,6 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
             <Search size={16} color="#9ca3af" />
             <input type="text" placeholder="Search customers..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="cx-search-input" />
           </div>
-
-          <button className="cx-btn-filters">
-            <Filter size={16} /> Filters
-          </button>
 
           <button className="add-btn-mobile cx-btn-add" onClick={() => handleOpenForm()}>
             <Plus size={16} /> Add Customer
@@ -156,14 +151,13 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                   <td data-label="Note" className="cx-td muted-small"><div className="td-content">{c.note || '-'}</div></td>
                   <td data-label="Address" className="cx-td"><div className="td-content">{c.address || '-'}</div></td>
 
-                  {/* Corregido: Ahora lee c.cityStateZip en lugar de intentar separar [c.city, c.state, c.zip] */}
                   <td data-label="City/State/Zip" className="cx-td"><div className="td-content">{c.cityStateZip || '-'}</div></td>
 
                   <td data-label="Email" className="cx-td"><div className="td-content">{c.email || '-'}</div></td>
                   <td data-label="Actions" className="cx-td right">
                     <div className="td-content actions-cell cx-actions-cell">
                       <button onClick={() => handleOpenForm(c)} className="cx-btn-edit"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(c.id as string)} className="cx-btn-delete"><Trash2 size={16} /></button>
+                      <button onClick={() => handleDelete(c.id)} className="cx-btn-delete"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -216,7 +210,6 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                   <input type="text" className="cx-input" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
                 </div>
 
-                {/* Corregido: Unificado en un solo campo según tu interfaz */}
                 <div className="col-span-full">
                   <label className="cx-label">City / State / Zip</label>
                   <input

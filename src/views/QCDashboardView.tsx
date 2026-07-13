@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import {
   BarChart3, ShieldCheck, Home as HomeIcon, AlertTriangle, Repeat, Wrench,
   TrendingUp, Users, Award, Activity, Filter, RefreshCw, MapPin, Layers,
-  XCircle, Flame, Calendar
+  XCircle, Flame, Calendar, Menu
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import './QCDashboardView.css';
@@ -36,7 +37,6 @@ interface NamedDoc { id: string; name?: string }
 
 interface Props {
   onOpenMenu: () => void;
-  currentUser?: any;
 }
 
 type RangeKey = '30' | '90' | '180' | '365' | 'all';
@@ -64,7 +64,118 @@ const fmtDate = (s?: string) => {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser }: Props) {
+// ====================== UI HELPERS (presentacionales, sin dependencia del estado
+// del componente — a nivel de módulo para no recrearlos en cada render) ======================
+
+function KPICard({ icon: Icon, label, value, sub, color, tone }: {
+  icon: LucideIcon; label: string; value: string | number; sub?: string; color: string; tone?: string;
+}) {
+  return (
+    <div className="qcd-kpi-card">
+      <div className="qcd-kpi-top-row">
+        <span className="qcd-kpi-label">{label}</span>
+        <div className="qcd-kpi-icon-box" style={{ '--kpi-icon-bg': `${color}1a` } as CSSProperties}>
+          <Icon size={17} color={color} />
+        </div>
+      </div>
+      <div className="qcd-kpi-value" style={tone ? ({ '--kpi-tone': tone } as CSSProperties) : undefined}>{value}</div>
+      {sub && <div className="qcd-kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <div className="qcd-empty">{text}</div>;
+}
+
+function BarList({ data, color, unit = '' }: { data: { name: string; count: number }[]; color: string; unit?: string }) {
+  const max = Math.max(1, ...data.map(d => d.count));
+  if (data.length === 0) return <Empty text="Sin datos en este periodo." />;
+  return (
+    <div className="qcd-barlist">
+      {data.map((d, i) => (
+        <div key={i} className="qcd-barlist-row">
+          <span className="qcd-barlist-name" title={d.name}>{d.name}</span>
+          <div className="qcd-barlist-track">
+            <div className="qcd-barlist-fill" style={{ '--bar-width': `${(d.count / max) * 100}%`, '--bar-color': color } as CSSProperties} />
+          </div>
+          <span className="qcd-barlist-count">{d.count}{unit}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HeatList({ data }: { data: { name: string; count: number }[] }) {
+  const max = Math.max(1, ...data.map(d => d.count));
+  if (data.length === 0) return <Empty text="Sin fallos registrados." />;
+  const bandFor = (ratio: number) => {
+    if (ratio > 0.66) return { cls: 'high', txt: '#991b1b' };
+    if (ratio > 0.33) return { cls: 'mid', txt: '#92400e' };
+    return { cls: 'low', txt: '#166534' };
+  };
+  return (
+    <div className="qcd-heatlist">
+      {data.map((d, i) => {
+        const ratio = d.count / max;
+        const band = bandFor(ratio);
+        return (
+          <div key={i} className={`qcd-heat-row ${band.cls}`} style={{ '--heat-text': band.txt } as CSSProperties}>
+            <span className="qcd-heat-name" title={d.name}>{d.name}</span>
+            <span className="qcd-heat-count">{d.count}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrendChart({ data }: { data: { label: string; rate: number; failed: number }[] }) {
+  if (data.length === 0) return <Empty text="Sin datos suficientes para la tendencia." />;
+  const W = 640, H = 180, padX = 36, padY = 24;
+  const max = Math.max(10, ...data.map(d => d.rate));
+  const stepX = data.length > 1 ? (W - padX * 2) / (data.length - 1) : 0;
+  const x = (i: number) => padX + i * stepX;
+  const y = (v: number) => H - padY - (v / max) * (H - padY * 2);
+  const pts = data.map((d, i) => `${x(i)},${y(d.rate)}`).join(' ');
+  const area = `${padX},${H - padY} ${pts} ${x(data.length - 1)},${H - padY}`;
+  return (
+    <div className="qcd-trend-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} className="qcd-trend-svg">
+        {[0, 0.5, 1].map((g, i) => (
+          <line key={i} x1={padX} x2={W - padX} y1={y(max * g)} y2={y(max * g)} stroke="#eef2f7" strokeWidth={1} />
+        ))}
+        <polygon points={area} fill="#3b82f615" />
+        <polyline points={pts} fill="none" stroke={PALETTE.blue} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        {data.map((d, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(d.rate)} r={3.5} fill="#fff" stroke={PALETTE.blue} strokeWidth={2} />
+            <text x={x(i)} y={H - 6} fontSize={9} fill="#94a3b8" textAnchor="middle">{d.label}</text>
+          </g>
+        ))}
+        <text x={padX - 6} y={y(max)} fontSize={9} fill="#cbd5e1" textAnchor="end">{Math.round(max)}%</text>
+        <text x={padX - 6} y={y(0)} fontSize={9} fill="#cbd5e1" textAnchor="end">0%</text>
+      </svg>
+    </div>
+  );
+}
+
+function Card({ title, icon: Icon, color, children, hint }: {
+  title: string; icon?: LucideIcon; color?: string; children: ReactNode; hint?: string;
+}) {
+  return (
+    <div className="qcd-card">
+      <div className={`qcd-card-header${hint ? ' has-hint' : ''}`}>
+        {Icon && <Icon size={18} color={color || PALETTE.blue} />}
+        <h3 className="qcd-card-title">{title}</h3>
+      </div>
+      {hint && <p className="qcd-card-hint">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
+export default function QCDashboardView({ onOpenMenu }: Props) {
   const [tab, setTab] = useState<TabKey>('qc');
   const [range, setRange] = useState<RangeKey>('90');
   const [teamFilter, setTeamFilter] = useState<string>('All');
@@ -80,17 +191,17 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
     setLoading(true);
     try {
       const [qcSnap, placesSnap, tasksSnap, teamsSnap, custSnap] = await Promise.all([
-        getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] as any[] })),
-        getDocs(collection(db, 'settings_places')).catch(() => ({ docs: [] as any[] })),
-        getDocs(collection(db, 'settings_tasks')).catch(() => ({ docs: [] as any[] })),
-        getDocs(collection(db, 'settings_teams')).catch(() => ({ docs: [] as any[] })),
-        getDocs(collection(db, 'customers')).catch(() => ({ docs: [] as any[] })),
+        getDocs(collection(db, 'quality_checks')).catch(() => null),
+        getDocs(collection(db, 'settings_places')).catch(() => null),
+        getDocs(collection(db, 'settings_tasks')).catch(() => null),
+        getDocs(collection(db, 'settings_teams')).catch(() => null),
+        getDocs(collection(db, 'customers')).catch(() => null),
       ]);
-      setQcList(((qcSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as QCRecord[]);
-      setPlaces(((placesSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as Place[]);
-      setTasks(((tasksSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as Task[]);
-      setTeams(((teamsSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as NamedDoc[]);
-      setCustomers(((custSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as NamedDoc[]);
+      setQcList((qcSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as QCRecord)));
+      setPlaces((placesSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as Place)));
+      setTasks((tasksSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as Task)));
+      setTeams((teamsSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as NamedDoc)));
+      setCustomers((custSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as NamedDoc)));
     } catch (e) {
       console.error('Error cargando dashboard QC:', e);
     } finally {
@@ -321,106 +432,6 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
   }, [parsed, teams, customers]);
 
   // ====================== UI HELPERS ======================
-  const KPICard = ({ icon: Icon, label, value, sub, color, tone }: any) => (
-    <div className="qcd-kpi-card">
-      <div className="qcd-kpi-top-row">
-        <span className="qcd-kpi-label">{label}</span>
-        <div className="qcd-kpi-icon-box" style={{ '--kpi-icon-bg': `${color}1a` } as CSSProperties}>
-          <Icon size={17} color={color} />
-        </div>
-      </div>
-      <div className="qcd-kpi-value" style={tone ? ({ '--kpi-tone': tone } as CSSProperties) : undefined}>{value}</div>
-      {sub && <div className="qcd-kpi-sub">{sub}</div>}
-    </div>
-  );
-
-  const BarList = ({ data, color, unit = '' }: { data: { name: string; count: number }[]; color: string; unit?: string }) => {
-    const max = Math.max(1, ...data.map(d => d.count));
-    if (data.length === 0) return <Empty text="Sin datos en este periodo." />;
-    return (
-      <div className="qcd-barlist">
-        {data.map((d, i) => (
-          <div key={i} className="qcd-barlist-row">
-            <span className="qcd-barlist-name" title={d.name}>{d.name}</span>
-            <div className="qcd-barlist-track">
-              <div className="qcd-barlist-fill" style={{ '--bar-width': `${(d.count / max) * 100}%`, '--bar-color': color } as CSSProperties} />
-            </div>
-            <span className="qcd-barlist-count">{d.count}{unit}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const HeatList = ({ data }: { data: { name: string; count: number }[] }) => {
-    const max = Math.max(1, ...data.map(d => d.count));
-    if (data.length === 0) return <Empty text="Sin fallos registrados." />;
-    const bandFor = (ratio: number) => {
-      if (ratio > 0.66) return { cls: 'high', txt: '#991b1b' };
-      if (ratio > 0.33) return { cls: 'mid', txt: '#92400e' };
-      return { cls: 'low', txt: '#166534' };
-    };
-    return (
-      <div className="qcd-heatlist">
-        {data.map((d, i) => {
-          const ratio = d.count / max;
-          const band = bandFor(ratio);
-          return (
-            <div key={i} className={`qcd-heat-row ${band.cls}`} style={{ '--heat-text': band.txt } as CSSProperties}>
-              <span className="qcd-heat-name" title={d.name}>{d.name}</span>
-              <span className="qcd-heat-count">{d.count}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const TrendChart = ({ data }: { data: { label: string; rate: number; failed: number }[] }) => {
-    if (data.length === 0) return <Empty text="Sin datos suficientes para la tendencia." />;
-    const W = 640, H = 180, padX = 36, padY = 24;
-    const max = Math.max(10, ...data.map(d => d.rate));
-    const stepX = data.length > 1 ? (W - padX * 2) / (data.length - 1) : 0;
-    const x = (i: number) => padX + i * stepX;
-    const y = (v: number) => H - padY - (v / max) * (H - padY * 2);
-    const pts = data.map((d, i) => `${x(i)},${y(d.rate)}`).join(' ');
-    const area = `${padX},${H - padY} ${pts} ${x(data.length - 1)},${H - padY}`;
-    return (
-      <div className="qcd-trend-wrap">
-        <svg viewBox={`0 0 ${W} ${H}`} className="qcd-trend-svg">
-          {[0, 0.5, 1].map((g, i) => (
-            <line key={i} x1={padX} x2={W - padX} y1={y(max * g)} y2={y(max * g)} stroke="#eef2f7" strokeWidth={1} />
-          ))}
-          <polygon points={area} fill="#3b82f615" />
-          <polyline points={pts} fill="none" stroke={PALETTE.blue} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-          {data.map((d, i) => (
-            <g key={i}>
-              <circle cx={x(i)} cy={y(d.rate)} r={3.5} fill="#fff" stroke={PALETTE.blue} strokeWidth={2} />
-              <text x={x(i)} y={H - 6} fontSize={9} fill="#94a3b8" textAnchor="middle">{d.label}</text>
-            </g>
-          ))}
-          <text x={padX - 6} y={y(max)} fontSize={9} fill="#cbd5e1" textAnchor="end">{Math.round(max)}%</text>
-          <text x={padX - 6} y={y(0)} fontSize={9} fill="#cbd5e1" textAnchor="end">0%</text>
-        </svg>
-      </div>
-    );
-  };
-
-  const Card = ({ title, icon: Icon, color, children, hint }: any) => (
-    <div className="qcd-card">
-      <div className={`qcd-card-header${hint ? ' has-hint' : ''}`}>
-        {Icon && <Icon size={18} color={color || PALETTE.blue} />}
-        <h3 className="qcd-card-title">{title}</h3>
-      </div>
-      {hint && <p className="qcd-card-hint">{hint}</p>}
-      {children}
-    </div>
-  );
-
-  const Empty = ({ text }: { text: string }) => (
-    <div className="qcd-empty">{text}</div>
-  );
-
   const num = (n: number, dec = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
   // ====================== RENDER ======================
@@ -430,7 +441,7 @@ export default function QCDashboardView({ onOpenMenu, currentUser: _currentUser 
       {/* HEADER */}
       <header className="qcd-header">
         <button onClick={onOpenMenu} aria-label="Open menu" className="qcd-hamburger-btn">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <Menu size={22} />
         </button>
         <div className="qcd-header-title-wrap">
           <h1 className="qcd-title">

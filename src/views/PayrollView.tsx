@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Calendar, User, DollarSign, CheckCircle, Activity, MapPin, 
-  X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save
+  Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
+  X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, Menu
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
 import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
+import { getRelationName, getRelationColor } from '../utils/relations';
 import './PayrollView.css';
 
 interface PayrollViewProps {
@@ -21,25 +22,61 @@ const collectionMap: Record<string, string> = {
   service: 'settings_services',
 };
 
-// Helper Functions
-const getRelationName = (list: any[], idOrName?: string | null, fallback = '-') => {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal);
-  return found ? found.name : fallback;
+// paidAt/paidBy no están en el PayrollRecord de types/index.ts, pero handleMarkAsPaid los
+// escribe en el documento y el resto del archivo los lee — de ahí salían los `as any`.
+type PayrollRecordExt = PayrollRecord & {
+  paidAt?: string | null;
+  paidBy?: string | null;
 };
 
-const getRelationColor = (list: any[], idOrName?: string | null) => {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal)?.color;
+// Tiempo real robusto: soporta ISO 'YYYY-MM-DD', MM/DD/YYYY, DD/MM/YYYY, Timestamps de
+// Firestore y Date. Antes había una segunda versión más simple duplicada dentro del
+// useEffect de carga, que no soportaba todos estos formatos — unificadas en esta sola.
+const toTime = (val: unknown): number => {
+  if (val === null || val === undefined || val === '') return NaN;
+  if (typeof val === 'object' && typeof (val as { toDate?: () => Date }).toDate === 'function') {
+    const d = (val as { toDate: () => Date }).toDate();
+    return isNaN(d.getTime()) ? NaN : d.getTime();
+  }
+  if (val instanceof Date) return isNaN(val.getTime()) ? NaN : val.getTime();
+  const str = String(val).trim();
+  const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
+  const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (slash) {
+    const a = +slash[1], b = +slash[2], y = +slash[3];
+    let day: number, mon: number;
+    if (a > 12 && b <= 12) { day = a; mon = b; } else { mon = a; day = b; }
+    return new Date(y, mon - 1, day).getTime();
+  }
+  const t = new Date(str).getTime();
+  return isNaN(t) ? NaN : t;
+};
+
+// Nombre del empleado sin "undefined" cuando falta el apellido.
+const empName = (e?: SystemUser | null) => e ? [e.firstName, e.lastName].filter(Boolean).join(' ').trim() : '';
+
+// Formateo de fecha a MM/DD/YYYY (autocontenido).
+const fmtDate = (val: unknown): string => {
+  if (val === null || val === undefined || val === '') return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (typeof val === 'object' && typeof (val as { toDate?: () => Date }).toDate === 'function') {
+    const d = (val as { toDate: () => Date }).toDate();
+    return isNaN(d.getTime()) ? '' : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+  }
+  const str = String(val).trim();
+  const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${pad(+iso[2])}/${pad(+iso[3])}/${iso[1]}`;
+  const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (slash) { const a = +slash[1], b = +slash[2]; if (a > 12 && b <= 12) return `${pad(b)}/${pad(a)}/${slash[3]}`; return `${pad(a)}/${pad(b)}/${slash[3]}`; }
+  const d = new Date(str); return isNaN(d.getTime()) ? str : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 };
 
 export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
-  const [records, setRecords] = useState<PayrollRecord[]>([]);
+  const [records, setRecords] = useState<PayrollRecordExt[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [employees, setEmployees] = useState<SystemUser[]>([]);
-  
+
   // Catálogos para el detalle de la casa
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -50,14 +87,14 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Estados de Modales
-  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecord | null>(null);
+  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecordExt | null>(null);
   const [isEditingPayroll, setIsEditingPayroll] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
 
   // Formulario temporal de edición
-  const [editForm, setEditForm] = useState<PayrollRecord | null>(null);
+  const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
 
   // ⭐ FIX: default a '' (All Statuses) en vez de 'Pending', para que se vean los registros
   //         existentes que aún no tienen el campo `status` o lo tienen como 'Paid'.
@@ -100,17 +137,12 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     unsubscribes.push(onSnapshot(
       query(collection(db, 'payroll'), limit(100)),
       (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as PayrollRecord[];
-        // ⭐ Orden de más reciente a más antigua. Convertimos la fecha a un valor de
-        //    tiempo real para que funcione tanto con strings 'YYYY-MM-DD' como con
-        //    Timestamps de Firestore u otros formatos parseables. Sin fecha => al final.
-        const toTime = (val: any): number => {
-          if (!val) return 0;
-          if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().getTime();
-          const t = new Date(val).getTime();
-          return isNaN(t) ? 0 : t;
-        };
-        data.sort((a, b) => toTime((b as any).date) - toTime((a as any).date));
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollRecordExt));
+        // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
+        data.sort((a, b) => {
+          const ta = toTime(a.date), tb = toTime(b.date);
+          return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+        });
         console.log(`[PayrollView] Loaded ${data.length} payroll records (max 100)`, data);
         setRecords(data);
         tick();
@@ -134,7 +166,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       collection(db, collectionMap.status),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-        setStatuses(data.sort((a, b) => Number((a as any).order || 0) - Number((b as any).order || 0)));
+        setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
         tick();
       },
       (err) => { console.error("Error statuses:", err); tick(); }
@@ -168,45 +200,8 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     return () => unsubscribes.forEach(u => u());
   }, []);
 
-  // ⭐ Nombre del empleado sin "undefined" cuando falta el apellido.
-  const empName = (e: any) => e ? [e.firstName, e.lastName].filter(Boolean).join(' ').trim() : '';
-
-  // ⭐ Formateo de fecha a MM/DD/YYYY (autocontenido).
-  const fmtDate = (val: any): string => {
-    if (val === null || val === undefined || val === '') return '';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    if (typeof val === 'object' && typeof (val as any).toDate === 'function') {
-      const d = (val as any).toDate(); return isNaN(d.getTime()) ? '' : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
-    }
-    const str = String(val).trim();
-    const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (iso) return `${pad(+iso[2])}/${pad(+iso[3])}/${iso[1]}`;
-    const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (slash) { const a = +slash[1], b = +slash[2]; if (a > 12 && b <= 12) return `${pad(b)}/${pad(a)}/${slash[3]}`; return `${pad(a)}/${pad(b)}/${slash[3]}`; }
-    const d = new Date(str); return isNaN(d.getTime()) ? str : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
-  };
-
   // Lógica de Filtros
   const filteredRecords = useMemo(() => {
-    // Tiempo real robusto: soporta ISO 'YYYY-MM-DD', MM/DD/YYYY, DD/MM/YYYY,
-    // Timestamps de Firestore y Date. Sin fecha válida => NaN.
-    const toTime = (val: any): number => {
-      if (val === null || val === undefined || val === '') return NaN;
-      if (typeof val === 'object' && typeof val.toDate === 'function') { const d = val.toDate(); return isNaN(d.getTime()) ? NaN : d.getTime(); }
-      if (val instanceof Date) return isNaN(val.getTime()) ? NaN : val.getTime();
-      const str = String(val).trim();
-      const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-      if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
-      const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-      if (slash) {
-        const a = +slash[1], b = +slash[2], y = +slash[3];
-        let day: number, mon: number;
-        if (a > 12 && b <= 12) { day = a; mon = b; } else { mon = a; day = b; }
-        return new Date(y, mon - 1, day).getTime();
-      }
-      const t = new Date(str).getTime();
-      return isNaN(t) ? NaN : t;
-    };
     // ⭐ Filtro de fechas por TIMESTAMP (antes comparaba strings y fallaba con formatos mixtos).
     //    endDate es inclusivo (hasta el final de ese día).
     const startT = startDate ? toTime(startDate) : null;
@@ -216,14 +211,14 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
       if (selectedStatus && (record.status || 'Pending') !== selectedStatus) return false;
       if (startT !== null || endT !== null) {
-        const recT = toTime((record as any).date);
+        const recT = toTime(record.date);
         if (isNaN(recT)) return false; // sin fecha válida: fuera del rango
         if (startT !== null && recT < startT) return false;
         if (endT !== null && recT > endT) return false;
       }
       return true;
     }).sort((a, b) => {
-      const ta = toTime((a as any).date), tb = toTime((b as any).date);
+      const ta = toTime(a.date), tb = toTime(b.date);
       return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
     });
   }, [records, startDate, endDate, selectedEmployee, selectedStatus]);
@@ -232,25 +227,29 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   const totalPaid = filteredRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
   const totalPending = filteredRecords.filter(r => r.status !== 'Paid').reduce((sum, r) => sum + getTotal(r), 0);
 
-  const handleMarkAsPaid = async (record: any) => {
+  const handleMarkAsPaid = async (record: PayrollRecordExt) => {
+    if (!record.id) return;
     if (!window.confirm("Mark this record as Paid?")) return;
     const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
     const paidAt = new Date().toISOString().split('T')[0]; // fecha en que se pagó (YYYY-MM-DD)
     try {
       const { id, ...rest } = record;
       // Esparcimos el registro completo para no perder campos aunque el service sobrescriba.
-      await payrollService.update(id, { ...rest, status: 'Paid', paidAt, paidBy });
+      // payrollService.update solo tipa Partial<PayrollRecord> (sin paidAt/paidBy, ver
+      // PayrollRecordExt arriba) — cast puntual acá en vez de tocar el tipo compartido.
+      await payrollService.update(id, { ...rest, status: 'Paid', paidAt, paidBy } as Partial<PayrollRecord>);
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
     }
   };
 
-  const handleMarkAsPending = async (record: any) => {
+  const handleMarkAsPending = async (record: PayrollRecordExt) => {
+    if (!record.id) return;
     if (!window.confirm("Change status back to Pending?")) return;
     try {
       const { id, ...rest } = record;
-      await payrollService.update(id, { ...rest, status: 'Pending', paidAt: '', paidBy: '' });
+      await payrollService.update(id, { ...rest, status: 'Pending', paidAt: '', paidBy: '' } as Partial<PayrollRecord>);
     } catch (error) {
       console.error("Error updating status", error);
       alert("Failed to update status.");
@@ -313,7 +312,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       <header className="main-header dashboard-header-container pv-header">
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="pv-title">Payroll & Payments</h1>
@@ -440,9 +439,9 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                           <button onClick={(e) => { e.stopPropagation(); handleMarkAsPending(record); }} className="pv-paid-btn">
                             <CheckCircle size={14}/> Paid
                           </button>
-                          {((record as any).paidAt || (record as any).paidBy) && (
+                          {(record.paidAt || record.paidBy) && (
                             <span className="pv-paid-meta">
-                              {(record as any).paidAt ? fmtDate((record as any).paidAt) : ''}{(record as any).paidBy ? ` · ${(record as any).paidBy}` : ''}
+                              {record.paidAt ? fmtDate(record.paidAt) : ''}{record.paidBy ? ` · ${record.paidBy}` : ''}
                             </span>
                           )}
                         </div>
@@ -485,7 +484,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                           <User size={22} color="#3b82f6" /> {empName(emp) || 'Unknown Employee'}
                         </h4>
                         <div className="pv-payment-paid-on">
-                          <CalendarDays size={16} /> Paid on: {fmtDate((selectedPayroll as any).paidAt || selectedPayroll.date)}{(selectedPayroll as any).paidBy ? ` · by ${(selectedPayroll as any).paidBy}` : ''}
+                          <CalendarDays size={16} /> Paid on: {fmtDate(selectedPayroll.paidAt || selectedPayroll.date)}{selectedPayroll.paidBy ? ` · by ${selectedPayroll.paidBy}` : ''}
                         </div>
                       </div>
                       <span className={`pv-payment-status-chip ${isPaid ? 'paid' : 'pending'}`}>
@@ -615,12 +614,12 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
             </header>
 
             <div className="pv-modal-body">
-              <div className="pv-detail-banner">
+              <dl className="pv-detail-banner">
                 <div className="pv-detail-item">
-                  <span className="pv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span className="pv-property-banner-client-static">{selectedHouse.address}</span>
+                  <dt className="pv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
+                  <dd className="pv-property-banner-client-static">{selectedHouse.address}</dd>
                 </div>
-              </div>
+              </dl>
 
               <div className="grid-3-cols">
                 <div className="pv-detail-item">

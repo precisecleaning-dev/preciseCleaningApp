@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
-  Search, MapPin, Plus, X, Edit2, Trash2, 
+  Search, MapPin, Plus, X, Edit2, Trash2,
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Percent, PlayCircle, BarChart3, FileImage,
-  Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff, Camera
+  Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff, Camera, Menu
 } from 'lucide-react';
 
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
@@ -18,18 +19,17 @@ import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, query, where, onSnapshot, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
+import { escapeHtml } from '../utils/escapeHtml';
+import { getRelationName, getRelationColor } from '../utils/relations';
+import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
+import CustomSelect from '../components/CustomSelect';
 
-// Importación corregida a ../components/PhotoSection
 import PhotoSection from '../components/PhotoSection';
 import PipelineBoardView from '../components/PipelineBoardView';
 import { enqueuePhotos, getAllPending, getPendingByProperty, removePending, countPending, makePendingId, type PendingPhoto } from '../utils/offlinePhotoQueue';
 import './HousesView.css';
 
 type Property = BaseProperty & {
-  employeeStartedBy?: string | null;
-  employeeStartedAt?: string | null;
-  employeeFinishedBy?: string | null;
-  employeeFinishedAt?: string | null;
   beforePhotosExcluded?: string[]; // URLs que NO van al PDF
   afterPhotosExcluded?: string[];
   dateOfIssue?: string;   // ⭐ Fecha de emisión
@@ -37,7 +37,7 @@ type Property = BaseProperty & {
 };
 
 interface ServiceRecord {
-  id?: string; 
+  id?: string;
   propertyId: string;
   serviceId: string;
   quantity: number;
@@ -51,6 +51,14 @@ interface ServiceRecord {
   totalMinusTax: number;   // ⭐ AppSheet "Total Minus Tax"
   notes: string;
   createdAt?: string;
+}
+
+// settings_products no tiene un tipo compartido en types/index.ts todavía.
+interface ProductRecord {
+  id: string;
+  name: string;
+  price?: number;
+  color?: string;
 }
 
 const collectionMap: Record<string, string> = {
@@ -105,22 +113,22 @@ type FormVisibilityConfig = {
 
 const DEFAULT_FORM_CONFIG: FormVisibilityConfig = { visibility: {} };
 
-// Configuración que el chip de estado envía al modal central de selección.
-type StatusModalConfig = {
-  currentId: string;
-  onSelect: (id: string) => void;
-  title?: string;
-  subtitle?: string;
-};
+interface SelectOption {
+  id: string;
+  name: string;
+  color?: string;
+}
 
-const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
+function SearchableSelect<T extends SelectOption>({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' as keyof T }: {
+  options: T[]; value?: string; onChange: (value: string) => void; placeholder: string; icon: LucideIcon; returnKey?: keyof T;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const selected = options.find((o: any) => String(o[returnKey]) === String(value));
+  const selected = options.find(o => String(o[returnKey]) === String(value));
   const displayValue = isOpen ? search : (selected ? selected.name : value || '');
 
-  const filteredOptions = options.filter((o: any) => o.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredOptions = options.filter(o => o.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
@@ -141,13 +149,13 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
       {isOpen && (
         <div className="hv-searchsel-dropdown">
           {filteredOptions.length === 0 ? <div className="hv-searchsel-empty">No results found</div> : null}
-          {filteredOptions.map((o: any) => (
+          {filteredOptions.map(o => (
             <div
               key={o.id}
               className="hv-searchsel-option"
               onMouseDown={(e) => {
                 e.preventDefault();
-                onChange(o[returnKey] || o.id);
+                onChange(String(o[returnKey] ?? o.id));
                 setIsOpen(false);
                 setSearch('');
               }}
@@ -159,52 +167,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, icon: Icon, r
       )}
     </div>
   );
-};
-
-const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const safeValue = String(value || '').toLowerCase().trim();
-  const selected = options.find((o: any) => 
-    String(o.id).toLowerCase().trim() === safeValue || 
-    String(o.name).toLowerCase().trim() === safeValue
-  );
-
-  return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="hv-searchsel-trigger hv-cursor-pointer"
-      >
-        <Icon size={16} className="hv-searchsel-icon" />
-        <div className="hv-customsel-selected-wrap">
-          {selected?.color && <span className="hv-customsel-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
-          <span className={`hv-customsel-label${selected ? ' selected' : ''}`}>
-            {selected ? selected.name : placeholder}
-          </span>
-        </div>
-        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron${isOpen ? ' open' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="hv-searchsel-dropdown">
-          <div className="hv-customsel-none-option" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
-            None / Unassigned
-          </div>
-          {options.map((o: any) => (
-            <div
-              key={o.id}
-              className={`hv-customsel-option${value === o.id ? ' selected' : ''}`}
-              onClick={() => { onChange(o[returnKey] || o.id); setIsOpen(false); }}
-            >
-              {o.color && <span className="hv-customsel-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
-              <span className="hv-customsel-option-label">{o.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+}
 
 // StatusPillSelector: muestra el estado actual como "badge" con el color del estado.
 // Al tocarlo YA NO abre una lista desplegable: solicita abrir el modal central de
@@ -269,101 +232,6 @@ const StatusPillSelector = ({
   );
 };
 
-// Modal central de selección de estado: reemplaza la antigua lista desplegable.
-// Una sola instancia en HousesView atiende a todos los chips (tabla, tarjetas y detalle).
-const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
-  const cur = String(config.currentId || '').toLowerCase().trim();
-
-  // Se elige un estado (queda resaltado) y se confirma con "Aceptar".
-  const resolveCurrentId = () => {
-    const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
-    return match ? match.id : (config.currentId || '');
-  };
-  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
-
-  // Reinicia la selección al estado actual cada vez que se abre para otra casa.
-  useEffect(() => { setSelectedId(resolveCurrentId()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config]);
-
-  const selectedIsCurrent = (() => {
-    const selStatus = statuses.find(st => st.id === selectedId);
-    const selName = String(selStatus?.name || '').toLowerCase().trim();
-    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
-  })();
-
-  const handleAccept = () => {
-    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
-    onClose();
-  };
-
-  return (
-    <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
-      <div className="status-modal" onClick={e => e.stopPropagation()}>
-        <header className="status-modal-head">
-          <div className="hv-statuschange-head-info">
-            <div className="hv-statuschange-icon">
-              <Activity size={20} color="#2563eb" />
-            </div>
-            <div className="hv-min-w-0">
-              <h3 className="hv-statuschange-title">Cambiar estado</h3>
-              {config.title && (
-                <p className="hv-statuschange-subtitle">
-                  {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
-                </p>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Cerrar" className="hv-statuschange-close">
-            <X size={22} />
-          </button>
-        </header>
-
-        <div className="status-modal-grid">
-          {statuses.length === 0 ? (
-            <div className="hv-statuschange-empty">No hay estados configurados.</div>
-          ) : statuses.map(st => {
-            const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
-            const isSelected = st.id === selectedId;
-            return (
-              <button
-                key={st.id}
-                className={`status-option${isSelected ? ' selected' : ''}`}
-                onClick={() => setSelectedId(st.id)}
-              >
-                <span className="hv-statuschange-dot" style={{ '--dot-color': st.color, '--dot-ring': `${st.color}1f` } as CSSProperties}></span>
-                <span className="hv-statuschange-name">{st.name}</span>
-                {isCurrent && !isSelected && (
-                  <span className="hv-statuschange-current-badge">Actual</span>
-                )}
-                {isSelected && <CheckCircle size={18} color="#2563eb" className="hv-shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-
-        <footer className="status-modal-foot">
-          <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
-          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept">
-            <CheckCircle size={16} /> Aceptar
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
-};
-
-const getRelationName = (list: any[], idOrName: string, fallback = '-') => {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal);
-  return found ? found.name : fallback;
-};
-
-const getRelationColor = (list: any[], idOrName: string) => {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal)?.color;
-};
-
 const formatDateTime = (isoString?: string | null) => {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -374,7 +242,6 @@ interface HousesViewProps {
   onOpenMenu: () => void;
   properties: Property[];
   setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
-  onCheckHouse: (house: Property) => void;
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
@@ -384,7 +251,7 @@ interface HousesViewProps {
 
 type DetailTab = 'overview' | 'financials' | 'media';
 
-export default function HousesView({ onOpenMenu, properties, setProperties, onCheckHouse: _onCheckHouse, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) { 
+export default function HousesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, roles = [], viewMode = 'table' }: HousesViewProps) {
   
   const [activeFilter, setActiveFilter] = useState('All');
   const [houseFilter, setHouseFilter] = useState('All'); 
@@ -407,10 +274,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const [teams, setTeams] = useState<Team[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<any[]>([]); // ⭐ settings_products (fuente de serviceId)
+  const [products, setProducts] = useState<ProductRecord[]>([]); // ⭐ settings_products (fuente de serviceId)
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [customersList, setCustomersList] = useState<Customer[]>([]); 
-  const [employees, setEmployees] = useState<any[]>([]); 
+  const [employees, setEmployees] = useState<SystemUser[]>([]);
 
   const [rolesList, setRolesList] = useState<Role[]>(roles);
 
@@ -527,7 +394,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (!blob) return;
     const file = new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' });
     // Reutiliza el mismo flujo (compresión + preview + cola offline al guardar)
-    await addPhotoFiles([file] as any, cameraOpen);
+    await addPhotoFiles([file], cameraOpen);
     setBurstCount(c => c + 1);
   };
 
@@ -535,7 +402,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
 
   // ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
-  const recordTotalMinusTax = (r: any): number => {
+  const recordTotalMinusTax = (r: ServiceRecord): number => {
     if (typeof r?.totalMinusTax === 'number') return r.totalMinusTax;
     const subtotal = Number(r?.subtotal) || 0;
     const taxAmount = Number(r?.taxAmount) || 0;
@@ -553,14 +420,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   const getServiceName = (serviceId?: string | null): string => {
     if (!serviceId) return 'Unknown';
     const safe = String(serviceId).toLowerCase().trim();
-    const inProducts = products.find((p: any) => String(p.id).toLowerCase().trim() === safe || String(p.name).toLowerCase().trim() === safe);
+    const inProducts = products.find(p => String(p.id).toLowerCase().trim() === safe || String(p.name).toLowerCase().trim() === safe);
     if (inProducts) return inProducts.name;
-    const inServices = services.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
+    const inServices = services.find(c => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
     return inServices ? inServices.name : 'Unknown';
   };
 
   // Estados que NO se muestran en el Pipeline (se gestionan en otras vistas)
-  const isHiddenPipelineStatus = (p: any) => {
+  const isHiddenPipelineStatus = (p: Property) => {
     const st = statuses.find(s => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId));
     const name = String(st?.name || p.statusId || '').toLowerCase().trim();
     return name === 'invoice' || name === 'qc' || name.includes('quality check') || name.includes('quality-check');
@@ -598,10 +465,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         const files = items.map(it => new File([it.blob], it.fileName, { type: it.blob.type || 'image/jpeg' }));
         const urls = await storageService.uploadMultiplePropertyPhotos(files, clientName, address, type);
         const snap = await getDoc(doc(db, 'properties', propertyId));
-        const data: any = snap.exists() ? snap.data() : {};
+        const data = (snap.exists() ? snap.data() : {}) as { beforePhotos?: string[]; afterPhotos?: string[] };
         const field = type === 'before' ? 'beforePhotos' : 'afterPhotos';
         const merged = [...(data[field] || []), ...urls];
-        await updateDoc(doc(db, 'properties', propertyId), { [field]: merged } as any);
+        await updateDoc(doc(db, 'properties', propertyId), { [field]: merged });
         for (const it of items) await removePending(it.id);
       } catch (err) {
         console.error('Error sincronizando fotos pendientes:', err);
@@ -630,7 +497,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     return { urls: [], queued: entries.length };
   };
 
-  const addPhotoFiles = async (files: FileList | null, type: 'before' | 'after') => {
+  const addPhotoFiles = async (files: FileList | File[] | null, type: 'before' | 'after') => {
     if (!files || files.length === 0) return;
     const arr = Array.from(files);
     setIsCompressing(true);
@@ -734,8 +601,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     unsubscribes.push(onSnapshot(
       collection(db, 'settings_products'),
       (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setProducts(data as any);
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as ProductRecord));
+        setProducts(data);
         markLoaded('products');
       },
       (err) => { console.error("Error Products:", err); markLoaded('products'); }
@@ -754,8 +621,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     unsubscribes.push(onSnapshot(
       collection(db, 'customers'),
       (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setCustomersList(data as any);
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
+        setCustomersList(data);
         markLoaded('customers');
       },
       (err) => { console.error("Error Customers:", err); markLoaded('customers'); }
@@ -764,8 +631,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     unsubscribes.push(onSnapshot(
       collection(db, 'system_users'),
       (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setEmployees(data as any);
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as SystemUser));
+        setEmployees(data);
         markLoaded('users');
       },
       (err) => { console.error("Error Users:", err); markLoaded('users'); }
@@ -855,7 +722,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const isElementVisible = (elementId: string): boolean => {
     if (isSuperAdmin) return true;
-    const userRoleId = (currentUser as any)?.roleId;
+    const userRoleId = currentUser?.roleId;
     if (!userRoleId) return true;
     const hiddenForRoles = formConfig?.visibility?.[elementId] || [];
     return !hiddenForRoles.includes(userRoleId);
@@ -968,13 +835,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
   });
 
   const dashboardTabs = statuses
-    .filter(st => (st as any).showInDashboard)
-    .sort((a, b) => Number((a as any).dashboardOrder || 0) - Number((b as any).dashboardOrder || 0));
+    .filter(st => st.showInDashboard)
+    .sort((a, b) => Number(a.dashboardOrder || 0) - Number(b.dashboardOrder || 0));
 
   const handleQuickStatusChange = async (propertyId: string, newStatusId: string) => {
     setIsSaving(true);
     try {
-      await propertiesService.update(propertyId, { statusId: newStatusId } as any);
+      await propertiesService.update(propertyId, { statusId: newStatusId });
       setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
       if (selectedHouse && selectedHouse.id === propertyId) {
         setSelectedHouse({ ...selectedHouse, statusId: newStatusId });
@@ -993,7 +860,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       const startedAt = new Date().toISOString();
       const startedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      await propertiesService.update(selectedHouse.id, { employeeStartedAt: startedAt, employeeStartedBy: startedBy } as any);
+      await propertiesService.update(selectedHouse.id, { employeeStartedAt: startedAt, employeeStartedBy: startedBy });
       const updatedHouse = { ...selectedHouse, employeeStartedAt: startedAt, employeeStartedBy: startedBy };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -1010,7 +877,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (!window.confirm("Undo start job?")) return;
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { employeeStartedAt: null, employeeStartedBy: null } as any);
+      await propertiesService.update(selectedHouse.id, { employeeStartedAt: null, employeeStartedBy: null });
       const updatedHouse = { ...selectedHouse, employeeStartedAt: undefined, employeeStartedBy: undefined };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -1024,7 +891,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
   const handleMarkAsFinished = async () => {
     if (!selectedHouse) return;
-    if (!(selectedHouse as any).employeeStartedBy) {
+    if (!selectedHouse.employeeStartedBy) {
       alert("Error: You must Start the job before marking it as Finished.");
       return;
     }
@@ -1034,7 +901,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     try {
       const finishedAt = new Date().toISOString();
       const finishedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy } as any);
+      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy });
       const updatedHouse = { ...selectedHouse, employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -1051,7 +918,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (!window.confirm("Undo finished status?")) return;
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: null, employeeFinishedBy: null } as any);
+      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: null, employeeFinishedBy: null });
       const updatedHouse = { ...selectedHouse, employeeFinishedAt: undefined, employeeFinishedBy: undefined };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -1114,7 +981,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       const currentWorkers = selectedHouse.assignedWorkers || [];
       const isAssigned = currentWorkers.includes(workerId);
       let newWorkersList = isAssigned ? currentWorkers.filter(id => id !== workerId) : [...currentWorkers, workerId];
-      await propertiesService.update(selectedHouse.id, { assignedWorkers: newWorkersList } as any);
+      await propertiesService.update(selectedHouse.id, { assignedWorkers: newWorkersList });
       const updatedHouse = { ...selectedHouse, assignedWorkers: newWorkersList };
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
@@ -1201,7 +1068,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     setIsSaving(true);
     try {
       if (serviceForm.id) {
-        await updateDoc(doc(db, 'billing_services', serviceForm.id), dataToSave as any);
+        await updateDoc(doc(db, 'billing_services', serviceForm.id), dataToSave);
         setHouseServices(houseServices.map(r => r.id === serviceForm.id ? dataToSave : r));
       } else {
         const docRef = await addDoc(collection(db, 'billing_services'), dataToSave);
@@ -1296,8 +1163,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     if (selectedCust) {
       // ⭐ Regla AppSheet: if([Type]="Private customer", lookup(client, Address), "")
       //    Si el cliente es "Private customer", trae su dirección (queda editable); si no, vacío.
-      const isPrivate = String((selectedCust as any).type || '').toLowerCase().trim() === 'private customer';
-      setFormData({ ...formData, client: customerId, address: isPrivate ? String((selectedCust as any).address || '') : '' });
+      const isPrivate = String(selectedCust.type || '').toLowerCase().trim() === 'private customer';
+      setFormData({ ...formData, client: customerId, address: isPrivate ? String(selectedCust.address || '') : '' });
     } else {
       setFormData({ ...formData, client: customerId });
     }
@@ -1361,7 +1228,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
           beforePhotos: [],
           afterPhotos: []
         };
-        const docRef = await propertiesService.create(dataToCreate as any);
+        const docRef = await propertiesService.create(dataToCreate);
         workingId = docRef;
         isNew = true;
         console.log('✅ New property created with ID:', workingId);
@@ -1382,6 +1249,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
+      // as any: beforePhotosExcluded/afterPhotosExcluded son campos propios de este
+      // archivo (URLs que no van al PDF), no forman parte de Property en types/index.ts.
       await propertiesService.update(workingId, dataForFirestore as any);
       console.log('✅ Property updated in Firestore with photo URLs');
 
@@ -1393,7 +1262,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
         const srvData = { ...srv, propertyId: workingId };
         if (srv.id && !srv.id.startsWith('temp-')) {
           const { id, ...updateData } = srvData;
-          await updateDoc(doc(db, 'billing_services', id as string), updateData as any).catch(e => console.error(e));
+          await updateDoc(doc(db, 'billing_services', id as string), updateData).catch(e => console.error(e));
         } else {
           const { id, ...createData } = srvData;
           await addDoc(collection(db, 'billing_services'), createData).catch(e => console.error(e));
@@ -1488,21 +1357,32 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
     }
   };
 
-  const handleDelete = async () => {
-    if(!selectedHouse) return;
+  // Recibe la propiedad explícita (fila/tarjeta clickeada) en vez de depender solo de
+  // `selectedHouse`: ese estado no se actualiza sincrónicamente, así que un
+  // `setSelectedHouse(prop); handleDelete();` en el mismo handler borraba la casa
+  // seleccionada anteriormente (ej. la última abierta en el modal de detalle), no la fila
+  // en la que se acababa de hacer clic. `house` cubre ese caso; sin argumento (botón
+  // "Delete Property" dentro del propio modal de detalle) sigue usando `selectedHouse`.
+  const handleDelete = async (house?: Property) => {
+    const target = house || selectedHouse;
+    if (!target) return;
     if (!window.confirm("Are you sure you want to completely delete this job and all its related records?")) return;
 
     setIsSaving(true);
     try {
-      const relatedPayrolls = await payrollService.getByPropertyId(selectedHouse.id);
+      const relatedPayrolls = await payrollService.getByPropertyId(target.id);
       if (relatedPayrolls.length > 0) {
         await Promise.all(relatedPayrolls.map(record => payrollService.delete(record.id as string)));
       }
-      if (houseServices.length > 0) {
-        await Promise.all(houseServices.map(record => deleteDoc(doc(db, 'billing_services', record.id as string))));
+      // Se consulta directo a Firestore (en vez de usar `houseServices` del estado) porque
+      // ese estado solo se llena al abrir el modal de detalle — al borrar directo desde la
+      // tabla/tarjeta sin abrirlo, estaría vacío o correspondería a otra propiedad.
+      const relatedServicesSnap = await getDocs(query(collection(db, 'billing_services'), where('propertyId', '==', target.id)));
+      if (!relatedServicesSnap.empty) {
+        await Promise.all(relatedServicesSnap.docs.map(d => deleteDoc(d.ref)));
       }
-      await propertiesService.delete(selectedHouse.id);
-      setProperties(properties.filter(p => p.id !== selectedHouse.id));
+      await propertiesService.delete(target.id);
+      setProperties(properties.filter(p => p.id !== target.id));
       setIsDetailModalOpen(false);
     } catch (error) {
       console.error("Error deleting from Firebase:", error);
@@ -1624,7 +1504,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       );
       console.log(`✅ All images ready for PDF`);
 
-      const printWindow = window.open('', '_blank');
+      // 'noopener': corta el acceso de la ventana nueva a window.opener, para que un script
+      // inyectado vía nombre de cliente/dirección (ver escapeHtml abajo) no pueda alcanzar
+      // la pestaña principal de la app aunque algo se cuele.
+      const printWindow = window.open('', '_blank', 'noopener');
       if (!printWindow) {
         alert("Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
         setIsSaving(false);
@@ -1633,7 +1516,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
 
       const title = type === 'before' ? 'Before Photos' : 'After Photos';
       const accentColor = type === 'before' ? '#1e3a8a' : '#047857';
-      const clientLabel = selectedHouse?.client ? getClientName(selectedHouse.client) : 'Propiedad';
+      const clientLabel = escapeHtml(selectedHouse?.client ? getClientName(selectedHouse.client) : 'Propiedad');
+      const addressLabel = escapeHtml(selectedHouse?.address || 'N/A');
 
       const html = `
         <!DOCTYPE html>
@@ -1713,7 +1597,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 </div>
                 <div class="address-section">
                   <div class="address-label">Address:</div>
-                  <div>${selectedHouse?.address || 'N/A'}</div>
+                  <div>${addressLabel}</div>
                 </div>
               </div>
 
@@ -1792,7 +1676,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
       <header className="main-header dashboard-header-container hv-header">
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="hv-title">Overview</h1>
@@ -2003,7 +1887,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                   </span>
                                 )}
                                 {getClientName(prop.client)}
-                                {(prop as any).employeeFinishedBy && <span title="Finished" className="hv-finished-icon"><CheckCircle size={14} color="#10b981" /></span>}
+                                {prop.employeeFinishedBy && <span title="Finished" className="hv-finished-icon"><CheckCircle size={14} color="#10b981" /></span>}
                               </div>
                               <div className="hv-client-address"><MapPin size={12} /> {prop.address}</div>
                             </div>
@@ -2022,7 +1906,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                                 </button>
                               )}
                               {canDelete && isVisible('admin') && (
-                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}>
+                                <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); handleDelete(prop); }}>
                                   <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
                                 </button>
                               )}
@@ -2059,7 +1943,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                           {getClientName(prop.client)}
                         </span>
                         <div className="hv-card-flags">
-                          {(prop as any).employeeFinishedBy && <CheckCircle size={18} color="#10b981" />}
+                          {prop.employeeFinishedBy && <CheckCircle size={18} color="#10b981" />}
                           {isHighPriority && <AlertTriangle size={18} color="#dc2626" />}
                         </div>
                       </div>
@@ -2103,7 +1987,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                             </button>
                           )}
                           {canDelete && (
-                            <button onClick={(e) => { e.stopPropagation(); setSelectedHouse(prop); handleDelete(); }}
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(prop); }}
                               className="hv-card-btn-delete">
                               <Trash2 size={17} /> Eliminar
                             </button>
@@ -2291,7 +2175,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                     </div>
                     <div>
                       <label className="hv-label">Invoice Status</label>
-                      <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                      <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                     </div>
                     {isElementVisible('serviceId') && (
                       <div>
@@ -2666,10 +2550,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             <header className="hv-modal-header">
               <div className="hv-detail-title-group">
                 <h3 className="hv-modal-title">{getClientName(selectedHouse.client)}</h3>
-                {(selectedHouse as any).employeeFinishedBy && (
+                {selectedHouse.employeeFinishedBy && (
                   <span className="hv-finished-badge">
                     <CheckCircle size={14} />
-                    Finished by {(selectedHouse as any).employeeFinishedBy.split(' ')[0]} ({formatDateTime((selectedHouse as any).employeeFinishedAt)})
+                    Finished by {selectedHouse.employeeFinishedBy.split(' ')[0]} ({formatDateTime(selectedHouse.employeeFinishedAt)})
                   </span>
                 )}
               </div>
@@ -2684,24 +2568,24 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                 )}
                 {isVisible('workflow') && isElementVisible('btn_startJob') && (
                   <button
-                    onClick={(selectedHouse as any).employeeStartedBy ? handleUndoStart : handleStartJob}
-                    disabled={isSaving || !!(selectedHouse as any).employeeFinishedBy}
-                    className={`hv-action-btn start${(selectedHouse as any).employeeStartedBy ? ' done' : ''}`}
+                    onClick={selectedHouse.employeeStartedBy ? handleUndoStart : handleStartJob}
+                    disabled={isSaving || !!selectedHouse.employeeFinishedBy}
+                    className={`hv-action-btn start${selectedHouse.employeeStartedBy ? ' done' : ''}`}
                   >
-                    <PlayCircle size={16} color={(selectedHouse as any).employeeStartedBy ? "#64748b" : "currentColor"} />
-                    {(selectedHouse as any).employeeStartedBy ? 'Undo Start' : 'Start Job'}
+                    <PlayCircle size={16} color={selectedHouse.employeeStartedBy ? "#64748b" : "currentColor"} />
+                    {selectedHouse.employeeStartedBy ? 'Undo Start' : 'Start Job'}
                   </button>
                 )}
                 {isVisible('workflow') && isElementVisible('btn_markFinished') && (
                   <button
-                    onClick={(selectedHouse as any).employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished}
+                    onClick={selectedHouse.employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished}
                     disabled={isSaving}
-                    className={`hv-action-btn finish${(selectedHouse as any).employeeFinishedBy ? ' done' : ''}`}
+                    className={`hv-action-btn finish${selectedHouse.employeeFinishedBy ? ' done' : ''}`}
                   >
-                    <span title={(selectedHouse as any).employeeFinishedBy ? `Finished at ${formatDateTime((selectedHouse as any).employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
-                      <CheckCircle size={16} color={(selectedHouse as any).employeeFinishedBy ? "#10b981" : "currentColor"} />
+                    <span title={selectedHouse.employeeFinishedBy ? `Finished at ${formatDateTime(selectedHouse.employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
+                      <CheckCircle size={16} color={selectedHouse.employeeFinishedBy ? "#10b981" : "currentColor"} />
                     </span>
-                    {(selectedHouse as any).employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
+                    {selectedHouse.employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
                   </button>
                 )}
                 {canEdit && isVisible('financial') && isElementVisible('btn_pay') && (
@@ -2897,13 +2781,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                         <div className="hv-worklog-row">
                           <span className="hv-worklog-label"><PlayCircle size={14} color="#3b82f6"/> Started By</span>
                           <span className="hv-worklog-value">
-                            {(selectedHouse as any).employeeStartedBy ? `${(selectedHouse as any).employeeStartedBy} (${formatDateTime((selectedHouse as any).employeeStartedAt)})` : 'Not started'}
+                            {selectedHouse.employeeStartedBy ? `${selectedHouse.employeeStartedBy} (${formatDateTime(selectedHouse.employeeStartedAt)})` : 'Not started'}
                           </span>
                         </div>
                         <div className="hv-worklog-row">
                           <span className="hv-worklog-label"><CheckCircle size={14} color="#10b981"/> Finished By</span>
                           <span className="hv-worklog-value">
-                            {(selectedHouse as any).employeeFinishedBy ? `${(selectedHouse as any).employeeFinishedBy} (${formatDateTime((selectedHouse as any).employeeFinishedAt)})` : 'Not finished'}
+                            {selectedHouse.employeeFinishedBy ? `${selectedHouse.employeeFinishedBy} (${formatDateTime(selectedHouse.employeeFinishedAt)})` : 'Not finished'}
                           </span>
                         </div>
                       </div>
@@ -3112,7 +2996,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
             <footer className="hv-modal-footer-between">
               <div>
                 {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && (
-                  <button onClick={handleDelete} disabled={isSaving} className="hv-btn-danger-light-modal">
+                  <button onClick={() => handleDelete()} disabled={isSaving} className="hv-btn-danger-light-modal">
                     <Trash2 size={16} /> Delete Property
                   </button>
                 )}
@@ -3239,8 +3123,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   <label className="hv-label">Product / Service <span className="hv-required">*</span></label>
                   <CustomSelect options={products.length ? products : services} value={serviceForm.serviceId} onChange={(val: string) => {
                     const list = products.length ? products : services;
-                    const srv = list.find((c: any) => c.id === val);
-                    setServiceForm(prev => ({ ...prev, serviceId: val, price: srv ? Number((srv as any).price || prev.price) : prev.price }));
+                    const srv = list.find(c => c.id === val);
+                    const price = srv && 'price' in srv ? srv.price : undefined;
+                    setServiceForm(prev => ({ ...prev, serviceId: val, price: Number(price || prev.price) }));
                   }} placeholder="Select Product/Service..." icon={Wrench} />
                 </div>
                 <div>
@@ -3262,7 +3147,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, onCh
                   {taxes.length > 0 && (
                     <div className="hv-tax-select-wrap">
                       <CustomSelect
-                        options={taxes.map((t: any) => ({ id: String(Number(t.percentage)), name: `${t.name} (${Number(t.percentage)}%)` }))}
+                        options={taxes.map(t => ({ id: String(Number(t.percentage)), name: `${t.name} (${Number(t.percentage)}%)` }))}
                         value={String(Number(serviceForm.taxPercentage))}
                         onChange={(val: string) => setServiceForm(prev => ({ ...prev, taxPercentage: Number(val) }))}
                         placeholder="Select tax rate..."

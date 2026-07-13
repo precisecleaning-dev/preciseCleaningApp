@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ClipboardCheck, BarChart3 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
 import QualityCheckView from './QualityCheckView';
 import QCDashboardView from './QCDashboardView';
@@ -26,7 +27,7 @@ type HubTab = 'inspections' | 'dashboard';
 export default function QualityCheckHub(props: Props) {
   const [tab, setTab] = useState<HubTab>('inspections');
 
-  const tabBtn = (key: HubTab, label: string, Icon: any, activeColor: string) => {
+  const tabBtn = (key: HubTab, label: string, Icon: LucideIcon, activeColor: string) => {
     const active = tab === key;
     return (
       <button
@@ -59,7 +60,7 @@ export default function QualityCheckHub(props: Props) {
           currentUser={props.currentUser}
         />
       ) : (
-        <QCDashboardView onOpenMenu={props.onOpenMenu} currentUser={props.currentUser} />
+        <QCDashboardView onOpenMenu={props.onOpenMenu} />
       )}
     </div>
   );

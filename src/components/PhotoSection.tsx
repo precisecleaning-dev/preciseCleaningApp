@@ -37,7 +37,7 @@ export default function PhotoSection({
   const inReportCount = urls.filter(u => !excludedUrls.includes(u)).length;
 
   return (
-    <div className={`photo-section ${type}`}>
+    <section className={`photo-section ${type}`} aria-label={`${label} Photos`}>
       <div className="ps-head">
         <span className="ps-title">
           <span className="ps-dot" />
@@ -93,11 +93,11 @@ export default function PhotoSection({
       {urls.length === 0 ? (
         <div className="ps-empty">Sin fotos todavía.</div>
       ) : (
-        <div className="ps-grid">
+        <ul className="ps-grid">
           {urls.map((url, i) => {
             const excluded = excludedUrls.includes(url);
             return (
-              <div key={`${url}-${i}`} className={`ps-thumb${excluded ? ' excluded' : ''}`}>
+              <li key={url} className={`ps-thumb${excluded ? ' excluded' : ''}`}>
                 <img src={url} alt={`${type} ${i + 1}`} loading="lazy" />
                 {canEdit && (
                   <button type="button" className="ps-x" title="Eliminar" onClick={() => onRemove(i)}>
@@ -114,11 +114,11 @@ export default function PhotoSection({
                     <Check size={12} /> {excluded ? 'Oculta' : 'En reporte'}
                   </button>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

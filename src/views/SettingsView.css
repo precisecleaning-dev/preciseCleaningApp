@@ -33,20 +33,6 @@
   }
 }
 
-/* ===================== CustomSelect ===================== */
-.stv-cs-wrap { position: relative; width: 100%; outline: none; }
-.stv-cs-trigger { background-color: #ffffff; padding: 12px 14px 12px 40px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.95rem; color: #111827; display: flex; align-items: center; justify-content: space-between; cursor: pointer; position: relative; }
-.stv-cs-icon { position: absolute; left: 14px; color: #6b7280; }
-.stv-cs-selected { display: flex; align-items: center; gap: 8px; }
-.stv-cs-selected-text { color: #9ca3af; }
-.stv-cs-selected-text.has-value { color: #111827; }
-.stv-cs-chevron { transition: transform 0.2s; }
-.stv-cs-chevron.open { transform: rotate(180deg); }
-.stv-cs-dropdown { position: absolute; top: 100%; left: 0; width: 100%; background-color: white; border: 1px solid #e5e7eb; border-radius: 6px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 1000; max-height: 220px; overflow-y: auto; margin-top: 4px; }
-.stv-cs-none-option { padding: 12px 14px; cursor: pointer; color: #9ca3af; border-bottom: 1px solid #f3f4f6; }
-.stv-cs-option { padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; border-bottom: 1px solid #f9fafb; background-color: transparent; }
-.stv-cs-option:hover { background-color: #f3f4f6; }
-.stv-cs-option-name { color: #111827; font-weight: 500; }
 
 /* ===================== Color dot genérico ===================== */
 .stv-color-dot { background-color: var(--dot-color); display: inline-block; border-radius: 50%; flex-shrink: 0; }
@@ -138,7 +124,9 @@
 .stv-btn-outline.borderless { border: none; }
 .stv-btn-danger-light { background-color: #fef2f2; color: #ef4444; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 
+.stv-detail-list { margin: 0; display: flex; flex-direction: column; gap: 16px; }
 .stv-detail-item { display: flex; flex-direction: column; gap: 4px; padding: 16px; background-color: #f8fafc; border-radius: 8px; border: 1px solid #f1f5f9; }
+.stv-detail-item dt, .stv-detail-item dd { margin: 0; }
 .stv-detail-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
 .stv-detail-value { font-size: 1.05rem; color: #111827; font-weight: 500; }
 .stv-detail-value.large { font-size: 1.5rem; color: #3b82f6; font-weight: 700; }

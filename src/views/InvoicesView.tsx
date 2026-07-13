@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
-  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User
+  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User, Menu
 } from 'lucide-react';
 
-import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Service } from '../types/index';
+import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Service, PayrollRecord } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
+import { getRelationName, getRelationColor } from '../utils/relations';
 import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
@@ -18,32 +19,17 @@ const INVOICE_STATUSES = [
   { id: 'Paid', name: 'Paid', color: '#10b981' }
 ];
 
-// ───────────────────────────────────────────────────────────────
-// Helpers
-// ───────────────────────────────────────────────────────────────
-
-// Resolver id ó nombre contra una colección (retrocompatible con datos legacy)
-const getRelationName = (list: any[], idOrName?: string | null, fallback = '-') => {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item =>
-    String(item.id).toLowerCase().trim() === safeVal ||
-    String(item.name).toLowerCase().trim() === safeVal
-  );
-  return found ? found.name : fallback;
-};
-
-// Resolver color de una relación (priority / team)
-const getRelationColor = (list: any[], idOrName?: string | null) => {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal)?.color;
-};
+// billing_services no tiene un tipo compartido en types/index.ts todavía.
+interface BilledServiceRecord {
+  id: string;
+  propertyId: string;
+  total: number;
+}
 
 // ⭐ FIX (payroll): los documentos de `payroll` NO guardan `totalAmount`, solo
 //    baseAmount / extraAmount / discountAmount. Calculamos el total al vuelo.
 //    Si existiera totalAmount guardado y distinto de 0, se respeta.
-const getPayrollTotal = (pay: any): number => {
+const getPayrollTotal = (pay: PayrollRecord): number => {
   if (!pay) return 0;
   if (pay.totalAmount != null && Number(pay.totalAmount) !== 0) return Number(pay.totalAmount);
   return Number(pay.baseAmount || 0) + Number(pay.extraAmount || 0) - Number(pay.discountAmount || 0);
@@ -170,8 +156,6 @@ interface InvoicesViewProps {
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   onEditProperty?: (property: Property) => void;
-  // ⭐ Opcional: si el padre lo pasa, se usa; si no, abrimos el modal interno.
-  onViewProperty?: (property: Property) => void;
 }
 
 export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
@@ -181,8 +165,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [teams, setTeams] = useState<Team[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);       // ⭐ Job statuses
   const [customers, setCustomers] = useState<Customer[]>([]);   // ⭐ Para resolver nombre del cliente
-  const [payrolls, setPayrolls] = useState<any[]>([]);
-  const [billedServices, setBilledServices] = useState<any[]>([]);
+  const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
+  const [billedServices, setBilledServices] = useState<BilledServiceRecord[]>([]);
   // ⭐ NUEVO: catálogos necesarios para el modal de detalle (igual que House view)
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -208,8 +192,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
-  // ⭐ Abrir detalle: SIEMPRE usamos el modal interno propio para no depender de que
-  //    el padre conecte onViewProperty (esa dependencia era la que dejaba el detalle vacío).
+  // Siempre usamos el modal interno propio, no delegamos al padre.
   const openDetail = (prop: Property) => {
     setDetailHouse(prop);
   };
@@ -242,7 +225,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       collection(db, 'settings_statuses'),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-        setStatuses(data.sort((a, b) => Number((a as any).order || 0) - Number((b as any).order || 0)));
+        setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
         tick();
       },
       (err) => { console.error("Error statuses:", err); tick(); }
@@ -256,13 +239,13 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
     unsubscribes.push(onSnapshot(
       collection(db, 'payroll'),
-      (snap) => { setPayrolls(snap.docs.map(d => ({ id: d.id, ...d.data() }))); tick(); },
+      (snap) => { setPayrolls(snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollRecord))); tick(); },
       (err) => { console.error("Error payroll:", err); tick(); }
     ));
 
     unsubscribes.push(onSnapshot(
       collection(db, 'billing_services'),
-      (snap) => { setBilledServices(snap.docs.map(d => ({ id: d.id, ...d.data() }))); tick(); },
+      (snap) => { setBilledServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as BilledServiceRecord))); tick(); },
       (err) => { console.error("Error services:", err); tick(); }
     ));
 
@@ -295,7 +278,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const handleStatusChange = async (propertyId: string, newStatus: string) => {
     setIsSaving(true);
     try {
-      await propertiesService.update(propertyId, { invoiceStatus: newStatus } as any);
+      await propertiesService.update(propertyId, { invoiceStatus: newStatus });
       setProperties(properties.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
     } catch (error) {
       console.error("Error updating invoice status:", error);
@@ -309,7 +292,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const handleJobStatusChange = async (propertyId: string, newStatusId: string) => {
     setIsSaving(true);
     try {
-      await propertiesService.update(propertyId, { statusId: newStatusId } as any);
+      await propertiesService.update(propertyId, { statusId: newStatusId });
       setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
     } catch (error) {
       console.error("Error updating job status:", error);
@@ -396,8 +379,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
       {/* HEADER */}
       <header className="inv-header">
-        <button onClick={onOpenMenu} className="inv-hamburger-btn">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        <button onClick={onOpenMenu} className="inv-hamburger-btn" aria-label="Open menu">
+          <Menu size={24} />
         </button>
         <div>
           <h1 className="inv-title">Invoices</h1>
@@ -683,12 +666,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             </header>
 
             <div className="inv-modal-body">
-              <div className="inv-detail-banner">
+              <dl className="inv-detail-banner">
                 <div className="inv-detail-item">
-                  <span className="inv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span className="inv-address-value">{detailHouse.address || '-'}</span>
+                  <dt className="inv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
+                  <dd className="inv-address-value">{detailHouse.address || '-'}</dd>
                 </div>
-              </div>
+              </dl>
 
               <div className="grid-3-cols">
                 <div className="inv-detail-item">

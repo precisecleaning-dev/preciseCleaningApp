@@ -41,14 +41,4 @@ export const statusHistoryService = {
       return [];
     }
   },
-
-  countsFrom(entries: StatusHistoryEntry[]): Record<string, number> {
-    const counts: Record<string, number> = {};
-    entries.forEach(e => {
-      const key = e.toStatusName || e.toStatusId;
-      if (!key) return;
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return counts;
-  },
 };

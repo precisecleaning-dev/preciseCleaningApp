@@ -1,19 +1,23 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  ClipboardCheck, X, Camera, MapPin, CalendarDays, Activity, User, Users, Edit2, Trash2,
+  ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
-  Building2, Save, Clock, WifiOff, Route as RouteIcon, ArrowUp, ArrowDown, Plus, StickyNote,
-  Navigation, Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Timer
+  Save, Clock, WifiOff, Plus, StickyNote,
+  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu
 } from 'lucide-react';
-import type { Property, SystemUser, Place, Task } from '../types/index';
+import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '../types/index';
+import { getRelationName } from '../utils/relations';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { propertiesService } from '../services/propertiesService';
 import { compressImage } from '../utils/imageCompression';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
+import { isRecallText } from '../utils/recallStatus';
+import { escapeHtml } from '../utils/escapeHtml';
 import './QualityCheckView.css';
 
 interface QCRecord {
@@ -32,16 +36,6 @@ interface QCRecord {
   durationMinutes?: number | null; // minutos totales (salida - entrada)
   selectedPlaces?: string[];
   qcData?: any;
-}
-
-// ⭐ Elemento de la RUTA de inspección (una parada por casa, en orden)
-interface RouteItem {
-  houseId: string;
-  client: string;
-  address: string;
-  team?: string;
-  lat?: number;
-  lng?: number;
 }
 
 // ⭐ Nombre de la base de datos local (IndexedDB) para la cola de fotos offline
@@ -120,132 +114,6 @@ const uid = () =>
   (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
     ? (crypto as any).randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-// ─────────────────────────────────────────────────────────────
-// ⭐ PLANIFICADOR DE RUTAS: helpers de mapa (Leaflet + OpenStreetMap),
-//    geocodificación (Nominatim) y ruteo real de manejo (OSRM). Todo es
-//    gratuito y sin API key; se carga bajo demanda desde CDN.
-// ─────────────────────────────────────────────────────────────
-
-// Minutos estimados de inspección por casa (para el tiempo total de la ruta)
-const INSPECTION_MIN_PER_STOP = 20;
-
-// Carga Leaflet (mapa) desde CDN una sola vez y devuelve window.L
-let leafletPromise: Promise<any> | null = null;
-function ensureLeaflet(): Promise<any> {
-  if (typeof window !== 'undefined' && (window as any).L) return Promise.resolve((window as any).L);
-  if (leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
-    try {
-      const cssId = 'leaflet-css';
-      if (!document.getElementById(cssId)) {
-        const link = document.createElement('link');
-        link.id = cssId;
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-      const scriptId = 'leaflet-js';
-      const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
-      if (existing) {
-        existing.addEventListener('load', () => resolve((window as any).L));
-        return;
-      }
-      const s = document.createElement('script');
-      s.id = scriptId;
-      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.async = true;
-      s.onload = () => resolve((window as any).L);
-      s.onerror = () => reject(new Error('No se pudo cargar el mapa (Leaflet).'));
-      document.body.appendChild(s);
-    } catch (e) { reject(e); }
-  });
-  return leafletPromise;
-}
-
-// Distancia en km entre dos coordenadas (fórmula de Haversine)
-function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-// Geocodifica una dirección con Nominatim (OpenStreetMap). Cachea en localStorage.
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const clean = (address || '').trim();
-  if (!clean) return null;
-  const key = 'geo_v1__' + clean.toLowerCase();
-  try {
-    const cached = localStorage.getItem(key);
-    if (cached) { const j = JSON.parse(cached); if (j && typeof j.lat === 'number') return j; }
-  } catch {}
-  try {
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(clean);
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) return null;
-    const arr = await res.json();
-    if (Array.isArray(arr) && arr.length > 0) {
-      const p = { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
-      try { localStorage.setItem(key, JSON.stringify(p)); } catch {}
-      return p;
-    }
-  } catch (e) { console.warn('Geocode falló:', clean, e); }
-  return null;
-}
-
-// Pide a OSRM (servidor demo) la ruta de manejo por los puntos en orden.
-// Devuelve distancia (km), duración (min) y geometría (GeoJSON LineString).
-async function fetchOSRMRoute(points: { lat: number; lng: number }[]): Promise<{ distanceKm: number; durationMin: number; geometry: any } | null> {
-  if (points.length < 2) return null;
-  const coords = points.map(p => `${p.lng},${p.lat}`).join(';');
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const r = data && data.routes && data.routes[0];
-    if (!r) return null;
-    return { distanceKm: r.distance / 1000, durationMin: r.duration / 60, geometry: r.geometry };
-  } catch (e) { console.warn('OSRM falló:', e); return null; }
-}
-
-// Ordena por "vecino más cercano" empezando desde 'start' (heurística de ruta)
-function nearestNeighborOrder(start: { lat: number; lng: number }, items: any[]): any[] {
-  const remaining = items.slice();
-  const ordered: any[] = [];
-  let cur = start;
-  while (remaining.length) {
-    let bestIdx = 0, bestD = Infinity;
-    remaining.forEach((it, i) => { const d = haversineKm(cur, it); if (d < bestD) { bestD = d; bestIdx = i; } });
-    const next = remaining.splice(bestIdx, 1)[0];
-    ordered.push(next);
-    cur = next;
-  }
-  return ordered;
-}
-
-// Obtiene la ubicación actual del dispositivo (GPS del navegador)
-function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) { reject(new Error('Geolocalización no disponible en este dispositivo.')); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      err => reject(err),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
-    );
-  });
-}
-
-// Formatea minutos a "Xh Ym"
-function fmtMinutes(mins: number): string {
-  const m = Math.max(0, Math.round(mins));
-  const h = Math.floor(m / 60);
-  const r = m % 60;
-  return h ? `${h}h ${r}m` : `${r}m`;
-}
 
 // ─────────────────────────────────────────────────────────────
 // ⭐ EDITOR DE FOTO (estilo WhatsApp): dibujar lápiz / círculo / flecha
@@ -408,265 +276,6 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// ⭐ DASHBOARD DE REPORTES (pestaña "Reportes"): KPIs y analítica
-//    calculada a partir de los Quality Checks reales (qcList).
-// ─────────────────────────────────────────────────────────────
-function QCReportsDashboard({
-  qcList, tasks, places,
-}: {
-  qcList: any[]; tasks: any[]; places: any[];
-}) {
-  const stats = useMemo(() => {
-    const taskName = (id: string) => tasks.find((t: any) => String(t.id) === String(id))?.name || 'Tarea';
-    const placeName = (id: string) => places.find((p: any) => String(p.id) === String(id))?.name || 'Área';
-
-    const finished = qcList.filter(q => q.status === 'Finished');
-    const recalls = qcList.filter(q => q.result === 'failed');
-    const totalReports = qcList.length;
-    const finishedCount = finished.length;
-    const passedFirst = finished.filter(q => q.result !== 'failed').length;
-    const recallCount = recalls.length;
-    const recallRate = finishedCount ? (recallCount / finishedCount) * 100 : 0;
-
-    const qcPass = (q: any) => {
-      let yes = 0, no = 0;
-      const data = q.qcData || {};
-      Object.keys(data).forEach(pid => {
-        const t = (data[pid] && data[pid].tasks) || {};
-        Object.values(t).forEach((v: any) => { if (v === 'Yes') yes++; else if (v === 'No') no++; });
-      });
-      const total = yes + no;
-      return { yes, no, rate: total ? (yes / total) * 100 : null };
-    };
-
-    const rates: number[] = [];
-    finished.forEach(q => { const r = qcPass(q).rate; if (r != null) rates.push(r); });
-    const qualityScore = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
-
-    const issuesByTask: Record<string, number> = {};
-    const issuesByRoom: Record<string, number> = {};
-    qcList.forEach(q => {
-      const data = q.qcData || {};
-      Object.keys(data).forEach(pid => {
-        const t = (data[pid] && data[pid].tasks) || {};
-        Object.keys(t).forEach(tid => {
-          if (t[tid] === 'No') {
-            const tn = taskName(tid);
-            issuesByTask[tn] = (issuesByTask[tn] || 0) + 1;
-            const pn = placeName(pid);
-            issuesByRoom[pn] = (issuesByRoom[pn] || 0) + 1;
-          }
-        });
-      });
-    });
-    const topIssues = Object.entries(issuesByTask).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    const roomHeat = Object.entries(issuesByRoom).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-    const teamMap: Record<string, { homes: number; passSum: number; passN: number; recalls: number }> = {};
-    finished.forEach(q => {
-      const tn = q.team || '—';
-      const m = teamMap[tn] = teamMap[tn] || { homes: 0, passSum: 0, passN: 0, recalls: 0 };
-      m.homes++;
-      const r = qcPass(q).rate; if (r != null) { m.passSum += r; m.passN++; }
-      if (q.result === 'failed') m.recalls++;
-    });
-    const teamPerf = Object.entries(teamMap)
-      .map(([team, m]) => ({ team, homes: m.homes, pass: m.passN ? m.passSum / m.passN : null, recalls: m.recalls }))
-      .sort((a, b) => (b.pass ?? 0) - (a.pass ?? 0));
-
-    const inspMap: Record<string, { n: number; passSum: number; passN: number; recalls: number }> = {};
-    finished.forEach(q => {
-      const name = q.inspector || 'Unknown';
-      const m = inspMap[name] = inspMap[name] || { n: 0, passSum: 0, passN: 0, recalls: 0 };
-      m.n++;
-      const r = qcPass(q).rate; if (r != null) { m.passSum += r; m.passN++; }
-      if (q.result === 'failed') m.recalls++;
-    });
-    const inspectors = Object.entries(inspMap)
-      .map(([name, m]) => ({ name, n: m.n, pass: m.passN ? m.passSum / m.passN : null, recalls: m.recalls }))
-      .sort((a, b) => (b.pass ?? 0) - (a.pass ?? 0)).slice(0, 8);
-
-    const byMonth: Record<string, { finished: number; recalls: number }> = {};
-    qcList.forEach(q => {
-      const k = (q.date || '').slice(0, 7); // YYYY-MM
-      if (!k) return;
-      const m = byMonth[k] = byMonth[k] || { finished: 0, recalls: 0 };
-      if (q.status === 'Finished') m.finished++;
-      if (q.result === 'failed') m.recalls++;
-    });
-    const months = Object.keys(byMonth).sort().slice(-6).map(k => ({
-      key: k, finished: byMonth[k].finished, recalls: byMonth[k].recalls,
-      rate: byMonth[k].finished ? (byMonth[k].recalls / byMonth[k].finished) * 100 : 0,
-    }));
-
-    return { totalReports, finishedCount, passedFirst, recallCount, recallRate, qualityScore, topIssues, roomHeat, teamPerf, inspectors, months };
-  }, [qcList, tasks, places]);
-
-  const monthLabel = (k: string) => {
-    const [y, m] = k.split('-');
-    const names = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return `${names[Number(m) - 1] || m} ${String(y).slice(2)}`;
-  };
-
-  // Banda del mapa de calor (rojo = más problemas, verde = menos) — 4 tramos fijos
-  const heatBand = (val: number, max: number): string => {
-    if (max <= 0) return 'band-4';
-    const r = val / max;
-    if (r >= 0.75) return 'band-1';
-    if (r >= 0.5) return 'band-2';
-    if (r >= 0.25) return 'band-3';
-    return 'band-4';
-  };
-  const heatFg = (val: number, max: number): string => {
-    if (max <= 0) return '#166534';
-    const r = val / max;
-    if (r >= 0.75) return '#991b1b';
-    if (r >= 0.5) return '#9a3412';
-    if (r >= 0.25) return '#854d0e';
-    return '#166534';
-  };
-
-  const maxIssue = stats.topIssues.length ? stats.topIssues[0][1] : 0;
-  const maxRoom = stats.roomHeat.length ? stats.roomHeat[0][1] : 0;
-  const maxMonth = Math.max(1, ...stats.months.map(m => m.recalls));
-
-  const kpis = [
-    { label: 'Quality Score', value: `${stats.qualityScore.toFixed(1)}%`, color: '#059669', bg: '#ecfdf5' },
-    { label: 'Pasaron a la 1ª', value: String(stats.passedFirst), color: '#2563eb', bg: '#eff6ff' },
-    { label: 'Recalls', value: String(stats.recallCount), color: '#dc2626', bg: '#fef2f2' },
-    { label: 'Tasa de Recall', value: `${stats.recallRate.toFixed(1)}%`, color: '#b45309', bg: '#fffbeb' },
-    { label: 'Inspecciones (Finished)', value: String(stats.finishedCount), color: '#4338ca', bg: '#eef2ff' },
-    { label: 'Reportes totales', value: String(stats.totalReports), color: '#0f172a', bg: '#f1f5f9' },
-  ];
-
-  if (stats.totalReports === 0) {
-    return (
-      <div className="qcv-rd-card empty">
-        Aún no hay Quality Checks registrados. Cuando completes inspecciones, aquí verás los indicadores y reportes.
-      </div>
-    );
-  }
-
-  return (
-    <div className="qcv-rd-root">
-
-      {/* KPIs */}
-      <div className="qcv-rd-kpi-grid">
-        {kpis.map(k => (
-          <div key={k.label} className="qcv-rd-card padded-sm">
-            <div className="qcv-rd-kpi-label">{k.label}</div>
-            <div className="qcv-rd-kpi-value-row">
-              <span className="qcv-rd-kpi-value" style={{ '--kpi-color': k.color } as CSSProperties}>{k.value}</span>
-              <span className="qcv-rd-kpi-dot" style={{ '--kpi-bg': k.bg } as CSSProperties} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="qcv-rd-cards-grid">
-
-        {/* Problemas más comunes */}
-        <div className="qcv-rd-card">
-          <h3 className="qcv-rd-card-title">Problemas más comunes (tareas reprobadas)</h3>
-          {stats.topIssues.length === 0 ? (
-            <div className="qcv-rd-empty-note">Sin tareas reprobadas todavía.</div>
-          ) : stats.topIssues.map(([name, count]) => (
-            <div key={name} className="qcv-rd-issue-row">
-              <span className="qcv-rd-issue-name">{name}</span>
-              <div className="qcv-rd-issue-track">
-                <div className="qcv-rd-issue-fill" style={{ '--bar-width': `${maxIssue ? (count / maxIssue) * 100 : 0}%` } as CSSProperties} />
-              </div>
-              <span className="qcv-rd-issue-count">{count}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Mapa de calor por área */}
-        <div className="qcv-rd-card">
-          <h3 className="qcv-rd-card-title">Mapa de calor por área (por recalls/problemas)</h3>
-          {stats.roomHeat.length === 0 ? (
-            <div className="qcv-rd-empty-note">Sin datos por área todavía.</div>
-          ) : stats.roomHeat.map(([name, count]) => {
-            return (
-              <div key={name} className={`qcv-rd-heat-row ${heatBand(count, maxRoom)}`} style={{ '--heat-fg': heatFg(count, maxRoom) } as CSSProperties}>
-                <span className="qcv-rd-heat-name">{name}</span>
-                <span className="qcv-rd-heat-count">{count}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Desempeño por equipo */}
-        <div className="qcv-rd-card">
-          <h3 className="qcv-rd-card-title">Desempeño por equipo</h3>
-          {stats.teamPerf.length === 0 ? (
-            <div className="qcv-rd-empty-note">Sin inspecciones finalizadas.</div>
-          ) : (
-            <div className="qcv-rd-table-scroll">
-              <table className="qcv-rd-table">
-                <thead>
-                  <tr>
-                    {['Equipo', 'Casas', 'Pass %', 'Recalls'].map((h, i) => (
-                      <th key={h} className={i === 0 ? 'first' : ''}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.teamPerf.map(t => (
-                    <tr key={t.team}>
-                      <td className="team-name">{t.team}</td>
-                      <td className="homes">{t.homes}</td>
-                      <td className="pass-rate" style={{ '--tone-color': t.pass == null ? '#94a3b8' : t.pass >= 90 ? '#059669' : t.pass >= 75 ? '#b45309' : '#dc2626' } as CSSProperties}>{t.pass == null ? '—' : `${t.pass.toFixed(0)}%`}</td>
-                      <td className="recalls" style={{ '--tone-color': t.recalls > 0 ? '#dc2626' : '#94a3b8', '--tone-weight': t.recalls > 0 ? 700 : 400 } as CSSProperties}>{t.recalls}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Ranking de inspectores */}
-        <div className="qcv-rd-card">
-          <h3 className="qcv-rd-card-title">Ranking de inspectores</h3>
-          {stats.inspectors.length === 0 ? (
-            <div className="qcv-rd-empty-note">Sin inspecciones finalizadas.</div>
-          ) : stats.inspectors.map((ins, idx) => (
-            <div key={ins.name} className="qcv-rd-inspector-row">
-              <span className={`qcv-rd-inspector-rank${idx <= 2 ? ` rank-${idx}` : ''}`}>{idx + 1}</span>
-              <span className="qcv-rd-inspector-name">{ins.name}</span>
-              {ins.recalls > 0 && <span className="qcv-rd-inspector-recalls">{ins.recalls} recall(s)</span>}
-              <span className="qcv-rd-inspector-pass" style={{ '--tone-color': ins.pass == null ? '#94a3b8' : ins.pass >= 90 ? '#059669' : '#b45309' } as CSSProperties}>{ins.pass == null ? '—' : `${ins.pass.toFixed(1)}%`}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Tendencia de recalls por mes */}
-        <div className="qcv-rd-card span-all">
-          <h3 className="qcv-rd-card-title">Tendencia de recalls (últimos meses)</h3>
-          {stats.months.length === 0 ? (
-            <div className="qcv-rd-empty-note">Sin datos por mes todavía.</div>
-          ) : (
-            <div className="qcv-rd-trend-chart">
-              {stats.months.map(m => (
-                <div key={m.key} className="qcv-rd-trend-col">
-                  <div className="qcv-rd-trend-count">{m.recalls}</div>
-                  <div title={`${m.recalls} recalls de ${m.finished} inspecciones · ${m.rate.toFixed(1)}%`}
-                    className="qcv-rd-trend-bar" style={{ '--bar-height': `${(m.recalls / maxMonth) * 100}%` } as CSSProperties} />
-                  <div className="qcv-rd-trend-label">{monthLabel(m.key)}</div>
-                  <div className="qcv-rd-trend-pct">{m.rate.toFixed(0)}%</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
 export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, onOpenHouseDetail }: QualityCheckViewProps) {
   const [qcList, setQcList] = useState<QCRecord[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -674,22 +283,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
-  // ⭐ Pestaña principal: Inspecciones (lista/pendientes) vs Reportes (dashboard)
-  const [mainTab, setMainTab] = useState<'inspections' | 'reports'>('inspections');
-
-  // ⭐ RUTA de inspección: lista ordenada de casas + estado del panel lateral
-  const [routeItems, setRouteItems] = useState<RouteItem[]>([]);
-  const [routeDrawerOpen, setRouteDrawerOpen] = useState(false);
-
-  // ⭐ PLANIFICADOR de ruta: ubicación actual, plan calculado, mapa
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [routePlanning, setRoutePlanning] = useState(false);
-  const [routePlanError, setRoutePlanError] = useState('');
-  const [routePlan, setRoutePlan] = useState<null | { totalDistanceKm: number; totalDriveMin: number; totalStopMin: number; totalMin: number; ordered: RouteItem[] }>(null);
-  const mapRef = useRef<any>(null);
-  const mapElRef = useRef<HTMLDivElement | null>(null);
-  const mapLayerRef = useRef<any>(null);
-  const routeGeometryRef = useRef<any>(null);
 
   // ⭐ EDITOR de foto (anotación estilo WhatsApp)
   const [annotate, setAnnotate] = useState<null | { placeId: string; index: number; url: string }>(null);
@@ -697,10 +290,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [teams, setTeams] = useState<any[]>([]);
-  const [customersList, setCustomersList] = useState<any[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [customersList, setCustomersList] = useState<Customer[]>([]);
   // ⭐ Catálogo de estados para detectar las casas en "Quality Check"
-  const [statuses, setStatuses] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<Status[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -751,10 +344,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    El email destino recibe automáticamente el reporte al guardar un QC.
   type CompanyConfig = { name: string; address: string; logo: string; email: string; autoSend: boolean };
   const [companySettings, setCompanySettings] = useState<CompanyConfig>({ name: '', address: '', logo: '', email: '', autoSend: true });
-  const [companyModalOpen, setCompanyModalOpen] = useState(false);
-  const [companyDraft, setCompanyDraft] = useState<CompanyConfig>({ name: '', address: '', logo: '', email: '', autoSend: true });
-  const [savingCompany, setSavingCompany] = useState(false);
-  const companyLogoInputRef = useRef<HTMLInputElement | null>(null);
 
   // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -766,7 +355,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const fetchAllData = async () => {
       setIsLoadingCatalogs(true);
       try {
-        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap, companySnap, routeSnap] = await Promise.all([
+        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap, companySnap] = await Promise.all([
           settingsService.getAll('settings_places').catch(() => []),
           settingsService.getAll('settings_tasks').catch(() => []),
           settingsService.getAll('settings_teams').catch(() => []),
@@ -774,7 +363,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
           getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] })),
           getDoc(doc(db, 'settings_company', 'main')).catch(() => null),
-          getDoc(doc(db, 'settings_qc_route', 'current')).catch(() => null)
         ]);
 
         // ⭐ Cargar configuración de empresa (si existe)
@@ -789,20 +377,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           });
         }
 
-        // ⭐ Cargar la RUTA de inspección guardada (si existe)
-        const rData = (routeSnap && (routeSnap as any).exists && (routeSnap as any).exists()) ? (routeSnap as any).data() : null;
-        if (rData && Array.isArray(rData.items)) {
-          setRouteItems(rData.items as RouteItem[]);
-        }
-
         const sortedPlaces = (placesData as Place[]).sort((a, b) => a.name.localeCompare(b.name));
         const sortedTasks = (tasksData as Task[]).sort((a, b) => a.name.localeCompare(b.name));
 
         setPlaces(sortedPlaces);
         setTasks(sortedTasks);
-        setTeams(teamsData as any[]);
-        setStatuses(statusesData as any[]);
-        setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
+        setTeams(teamsData as Team[]);
+        setStatuses(statusesData as Status[]);
+        setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() } as Customer)));
 
         const docsArray = (qcSnap as any).docs || [];
         const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({ 
@@ -932,27 +514,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Resuelve el nombre del equipo asociado a una casa (teamId puede ser id o nombre)
   const getTeamNameForHouse = (house?: Property | null): string => {
     if (!house) return '—';
-    const tid = (house as any).teamId;
-    if (!tid) return 'Unassigned';
-    const found = teams.find((t: any) => String(t.id) === String(tid) || String(t.name) === String(tid));
-    return found ? found.name : 'Unassigned';
+    return getRelationName(teams, house.teamId, 'Unassigned');
   };
 
   // ⭐ Resuelve el nombre del cliente desde la colección customers (id o nombre)
-  const getClientName = (clientIdOrName?: string | null): string => {
-    if (!clientIdOrName) return 'Unknown';
-    const safe = String(clientIdOrName).toLowerCase().trim();
-    const found = customersList.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
-    return found ? found.name : String(clientIdOrName);
-  };
-
-  // ⭐ Determina si una casa tiene estado "Quality Check" (resuelve id o nombre del status)
-  const isQualityCheckStatus = (house: Property): boolean => {
-    const sid = (house as any).statusId;
-    const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    const name = String(st?.name || sid || '').toLowerCase().trim();
-    return name === 'qc' || name.includes('quality check') || name.includes('quality-check');
-  };
+  const getClientName = (clientIdOrName?: string | null): string =>
+    getRelationName(customersList, clientIdOrName, String(clientIdOrName || 'Unknown'));
 
   // ⭐ Id del estado "Quality Check" (para regresar una casa cuando NO pasó)
   const getQualityCheckStatusId = (): string | null => {
@@ -963,15 +530,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return st ? st.id : null;
   };
 
-  // ⭐ Pistas de texto para reconocer un estado de "Recall"
-  const RECALL_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
-
   // ⭐ Id del estado "Recall" (cuando un QC NO pasa, la casa pasa a Recall)
   const getRecallStatusId = (): string | null => {
-    const st = statuses.find((s: any) => {
-      const n = String(s.name || '').toLowerCase().trim();
-      return RECALL_HINTS.some(h => n.includes(h));
-    });
+    const st = statuses.find((s: any) => isRecallText(s.name));
     return st ? st.id : null;
   };
 
@@ -979,16 +540,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const isRecallStatus = (house: Property): boolean => {
     const sid = (house as any).statusId;
     const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    const name = String(st?.name || sid || '').toLowerCase().trim();
-    return RECALL_HINTS.some(h => name.includes(h));
+    return isRecallText(st?.name || sid);
   };
 
   // ⭐ Resuelve el nombre de un status a partir de id o nombre
   const resolveStatusName = (idOrName?: string | null): string => {
     if (!idOrName) return '';
-    const safe = String(idOrName).toLowerCase().trim();
-    const f = statuses.find((s: any) => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(idOrName);
+    return getRelationName(statuses, idOrName, String(idOrName));
   };
 
   // ⭐ Info del status actual de una casa (para el chip): nombre + color
@@ -1035,162 +593,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       setSavingStatus(false);
     }
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // ⭐ RUTA DE INSPECCIÓN: agregar / quitar / reordenar paradas.
-  //    Se guarda en Firestore (settings_qc_route/current) para que
-  //    persista entre sesiones y dispositivos.
-  // ─────────────────────────────────────────────────────────────
-  const persistRoute = async (items: RouteItem[]) => {
-    setRouteItems(items);
-    try {
-      await setDoc(doc(db, 'settings_qc_route', 'current'), { items, updatedAt: new Date().toISOString() }, { merge: true });
-    } catch (e) { console.error('No se pudo guardar la ruta:', e); }
-  };
-  const isInRoute = (houseId: string) => routeItems.some(r => r.houseId === houseId);
-  const addToRoute = (house: Property) => {
-    if (isInRoute(house.id)) return;
-    const item: RouteItem = { houseId: house.id, client: getClientName(house.client), address: house.address || '', team: getTeamNameForHouse(house) };
-    persistRoute([...routeItems, item]);
-  };
-  const removeFromRoute = (houseId: string) => persistRoute(routeItems.filter(r => r.houseId !== houseId));
-  const moveRouteItem = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= routeItems.length) return;
-    const copy = routeItems.slice();
-    const [m] = copy.splice(index, 1);
-    copy.splice(target, 0, m);
-    persistRoute(copy);
-  };
-  const clearRoute = () => { if (window.confirm('¿Vaciar toda la ruta?')) { persistRoute([]); setRoutePlan(null); routeGeometryRef.current = null; } };
-
-  // ─────────────────────────────────────────────────────────────
-  // ⭐ PLANIFICADOR: toma la ubicación actual, ubica cada casa, ordena
-  //    por cercanía, pide la ruta real de manejo (OSRM), calcula el
-  //    tiempo estimado y la dibuja en el mapa.
-  // ─────────────────────────────────────────────────────────────
-  const renderRouteMap = async (loc: { lat: number; lng: number }, ordered: any[], geometry: any) => {
-    try {
-      const L = await ensureLeaflet();
-      if (!mapElRef.current) return;
-      if (!mapRef.current) {
-        mapRef.current = L.map(mapElRef.current, { zoomControl: true });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapRef.current);
-      }
-      const map = mapRef.current;
-      if (mapLayerRef.current) { try { map.removeLayer(mapLayerRef.current); } catch {} }
-      const group = L.layerGroup().addTo(map);
-      mapLayerRef.current = group;
-
-      // Marcador de la ubicación actual
-      L.circleMarker([loc.lat, loc.lng], { radius: 8, color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1, weight: 3 }).bindPopup('Tu ubicación').addTo(group);
-
-      // Marcadores numerados de las casas (en el orden de la ruta)
-      const bounds: any[] = [[loc.lat, loc.lng]];
-      ordered.forEach((o: any, i: number) => {
-        const icon = L.divIcon({
-          className: '',
-          html: `<div style="background:#4338ca;color:#fff;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)">${i + 1}</div>`,
-          iconSize: [26, 26], iconAnchor: [13, 13],
-        });
-        L.marker([o.lat, o.lng], { icon }).bindPopup(`<b>${i + 1}. ${o.client || ''}</b><br/>${o.address || ''}`).addTo(group);
-        bounds.push([o.lat, o.lng]);
-      });
-
-      // Línea de la ruta (real si hay OSRM; si no, línea recta punteada)
-      if (geometry && geometry.coordinates) {
-        const latlngs = geometry.coordinates.map((c: number[]) => [c[1], c[0]]);
-        L.polyline(latlngs, { color: '#4338ca', weight: 4, opacity: 0.85 }).addTo(group);
-      } else {
-        const latlngs = [[loc.lat, loc.lng], ...ordered.map((o: any) => [o.lat, o.lng])];
-        L.polyline(latlngs, { color: '#4338ca', weight: 4, opacity: 0.6, dashArray: '6 8' }).addTo(group);
-      }
-
-      try { map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 }); } catch {}
-      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 200);
-    } catch (e) { console.error('No se pudo dibujar el mapa:', e); }
-  };
-
-  const optimizeRoute = async () => {
-    if (routeItems.length === 0) { setRoutePlanError('Agrega casas a la ruta primero.'); return; }
-    setRoutePlanning(true);
-    setRoutePlanError('');
-    try {
-      // 1) Ubicación actual (GPS)
-      let loc = userLocation;
-      if (!loc) { loc = await getCurrentPosition(); setUserLocation(loc); }
-
-      // 2) Coordenadas de cada casa (usa guardadas o geocodifica la dirección)
-      const withCoords: any[] = [];
-      const missing: string[] = [];
-      for (const it of routeItems) {
-        let lat = it.lat, lng = it.lng;
-        if (lat == null || lng == null) {
-          const g = it.address ? await geocodeAddress(it.address) : null;
-          if (g) { lat = g.lat; lng = g.lng; }
-        }
-        if (lat != null && lng != null) withCoords.push({ ...it, lat, lng });
-        else missing.push(it.client || it.address || 'casa');
-      }
-      if (withCoords.length === 0) {
-        setRoutePlanError('No se pudieron ubicar las direcciones en el mapa. Revisa que estén completas.');
-        setRoutePlanning(false);
-        return;
-      }
-
-      // 3) Orden por vecino más cercano desde tu ubicación
-      const ordered = nearestNeighborOrder(loc, withCoords);
-
-      // 4) Ruta real de manejo por [ubicación, ...casas]
-      const waypoints = [loc, ...ordered.map((o: any) => ({ lat: o.lat, lng: o.lng }))];
-      const osrm = await fetchOSRMRoute(waypoints);
-
-      let totalDistanceKm = 0, totalDriveMin = 0;
-      routeGeometryRef.current = null;
-      if (osrm) {
-        totalDistanceKm = osrm.distanceKm; totalDriveMin = osrm.durationMin; routeGeometryRef.current = osrm.geometry;
-      } else {
-        // Respaldo: estimar por línea recta (~40 km/h promedio urbano)
-        let prev = loc;
-        for (const o of ordered) { totalDistanceKm += haversineKm(prev, o); prev = o; }
-        totalDriveMin = (totalDistanceKm / 40) * 60;
-      }
-
-      const totalStopMin = ordered.length * INSPECTION_MIN_PER_STOP;
-      const totalMin = totalDriveMin + totalStopMin;
-
-      // 5) Guardar el nuevo orden (con coordenadas) en la ruta
-      const newItems: RouteItem[] = ordered.map((o: any) => ({ houseId: o.houseId, client: o.client, address: o.address, team: o.team, lat: o.lat, lng: o.lng }));
-      persistRoute(newItems);
-
-      setRoutePlan({ totalDistanceKm, totalDriveMin, totalStopMin, totalMin, ordered: newItems });
-      setRoutePlanError(missing.length ? `No se ubicaron en el mapa: ${missing.join(', ')}.` : '');
-
-      // 6) Dibujar en el mapa
-      await renderRouteMap(loc, ordered, routeGeometryRef.current);
-    } catch (e: any) {
-      console.error('Error planificando ruta:', e);
-      const denied = e && (e.code === 1 || String(e.message || '').toLowerCase().includes('denied'));
-      setRoutePlanError(denied ? 'Permiso de ubicación denegado. Actívalo en el navegador para planificar la ruta.' : (e?.message || 'No se pudo planificar la ruta.'));
-    } finally {
-      setRoutePlanning(false);
-    }
-  };
-
-  // Cierra el panel lateral y libera el mapa (evita fugas al desmontar el contenedor)
-  const closeRouteDrawer = () => {
-    try { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; mapLayerRef.current = null; } } catch {}
-    setRouteDrawerOpen(false);
-  };
-
-  // Al abrir el panel: si ya hay un plan calculado, re-dibuja el mapa
-  useEffect(() => {
-    if (routeDrawerOpen && routePlan && userLocation) {
-      const ordered = (routePlan.ordered || []).filter((o: any) => o.lat != null && o.lng != null);
-      if (ordered.length) setTimeout(() => renderRouteMap(userLocation, ordered, routeGeometryRef.current), 80);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeDrawerOpen]);
 
   // ⭐ Guarda la foto anotada: sube la nueva versión, reemplaza la URL en el
   //    reporte y borra la anterior de Storage.
@@ -1267,25 +669,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return out;
   };
 
-  // ⭐ Último reporte de QC registrado para una casa
-  const latestQCForHouse = (houseId: string): QCRecord | undefined => {
-    const recs = qcList.filter(q => q.houseId === houseId);
-    if (recs.length === 0) return undefined;
-    return recs.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-  };
-
-  // ⭐ ¿El último QC de la casa NO pasó?
-  const houseFailedQC = (houseId: string): boolean => {
-    const r = latestQCForHouse(houseId);
-    return !!r && r.result === 'failed';
-  };
-
-  // ⭐ ¿El último QC de la casa ya pasó (Finished y no fallido)? -> sale de pendientes
-  const housePassedQC = (houseId: string): boolean => {
-    const r = latestQCForHouse(houseId);
-    return !!r && r.status === 'Finished' && r.result !== 'failed';
-  };
-
   // ⭐ Fecha en formato mm/dd/YYYY
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
@@ -1324,7 +707,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ PENDING = casas en estado "Quality Check" que aún esperan inspección
   //    (sin QC aprobado y sin QC reprobado: las reprobadas viven en Recall).
-  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id) && !houseFailedQC(h.id));
+  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h.statusId, statuses) && !housePassedQC(h.id, qcList) && !houseFailedQC(h.id, qcList));
 
   // ⭐ RECALL = casas en estado "Recall" en el pipeline (aunque no tengan un QC
   //    "DID NOT PASS" registrado: muchas llegan a Recall por cambio de status).
@@ -1404,7 +787,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Abrir QC para una casa pendiente: si ya existe un reporte abierto (Pending o
   //    que NO pasó), se edita ese; de lo contrario se crea uno nuevo. Evita duplicados.
   const handleStartOrContinueQC = (house: Property) => {
-    const existing = latestQCForHouse(house.id);
+    const existing = latestQCForHouse(house.id, qcList);
     if (existing && (existing.status === 'Pending' || existing.result === 'failed')) {
       handleEditQC(existing);
     } else {
@@ -1765,55 +1148,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // ⭐ Datos de marca para el PDF y el correo (con respaldo a valores por defecto)
+  // ⭐ Datos de marca para el PDF y el correo (con respaldo a valores por defecto).
+  //    name/address/logo se escapan acá porque terminan en HTML crudo (ventana de
+  //    impresión y/o email); `email` se deja tal cual, se usa como dirección de envío,
+  //    no se interpola en el HTML.
   const branding = {
-    name: (companySettings.name || '').trim() || 'PRECISE CLEANING',
-    address: (companySettings.address || '').trim(),
-    logo: (companySettings.logo || '').trim(),
+    name: escapeHtml((companySettings.name || '').trim() || 'PRECISE CLEANING'),
+    address: escapeHtml((companySettings.address || '').trim()),
+    logo: escapeHtml((companySettings.logo || '').trim()),
     email: (companySettings.email || '').trim(),
   };
   const brandInitials = (branding.name || 'PC').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'PC';
-
-  // ⭐ Subir/optimizar el logo de la empresa y guardarlo como base64 (autocontenido)
-  const handleCompanyLogoUpload = async (file?: File | null) => {
-    if (!file) return;
-    const toDataUrl = (blob: Blob) => new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(blob);
-    });
-    try {
-      const compressed = await compressImage(file, { quality: 0.85, maxWidth: 400, maxSizeMB: 0.2 });
-      const dataUrl = await toDataUrl(compressed);
-      setCompanyDraft(prev => ({ ...prev, logo: dataUrl }));
-    } catch {
-      const dataUrl = await toDataUrl(file);
-      setCompanyDraft(prev => ({ ...prev, logo: dataUrl }));
-    }
-  };
-
-  // ⭐ Guardar la configuración de empresa en Firestore (settings_company/main)
-  const saveCompanySettings = async () => {
-    setSavingCompany(true);
-    try {
-      const clean: CompanyConfig = {
-        name: (companyDraft.name || '').trim(),
-        address: (companyDraft.address || '').trim(),
-        logo: companyDraft.logo || '',
-        email: (companyDraft.email || '').trim(),
-        autoSend: companyDraft.autoSend !== false,
-      };
-      await setDoc(doc(db, 'settings_company', 'main'), clean, { merge: true });
-      setCompanySettings(clean);
-      setCompanyModalOpen(false);
-    } catch (e) {
-      console.error('Error guardando configuración de empresa:', e);
-      alert('No se pudo guardar la configuración de la empresa.');
-    } finally {
-      setSavingCompany(false);
-    }
-  };
 
   // ⭐ Reúne las áreas que tienen datos (tareas, notas o fotos) para el reporte
   const collectPlacesWithData = (qcDataObj: Record<string, any>) => {
@@ -1903,13 +1248,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           }))
         );
 
-      const inspector = inspectorName || 'Unknown';
-      const displayDate = recordDate 
+      // Estos valores terminan en HTML crudo (ventana de impresión y/o email) — se
+      // escapan porque incluyen texto libre (notas de inspector) y catálogos.
+      const inspector = escapeHtml(inspectorName || 'Unknown');
+      const displayDate = recordDate
         ? new Date(recordDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
         : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       const date = displayDate;
-      const clientName = getClientName(house.client);
-      const teamName = teamNameOverride || getTeamNameForHouse(house);
+      const clientName = escapeHtml(getClientName(house.client));
+      const teamName = escapeHtml(teamNameOverride || getTeamNameForHouse(house));
 
       // Resumen general del reporte
       const scoredVals = placesWithData.map(p => p.score).filter((v): v is number => typeof v === 'number' && v > 0);
@@ -1942,7 +1289,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 const cls = val === 'Yes' ? 'yes' : val === 'No' ? 'no' : 'na';
                 return `
                   <tr>
-                    <td>${t.name}</td>
+                    <td>${escapeHtml(t.name)}</td>
                     <td style="text-align:right;"><span class="result-pill ${cls}">${val || 'N/A'}</span></td>
                   </tr>
                 `;
@@ -1957,20 +1304,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           </div>
         ` : '';
 
+        // pd.notes/pd.damage son texto libre que escribe el inspector — el punto de
+        // mayor riesgo de todo este generador, se escapan sin excepción.
         const notesHtml = (pd.notes || pd.damage) ? `
           <div class="notes-block">
-            ${pd.notes ? `<div><strong>Notes:</strong> ${pd.notes}</div>` : ''}
-            ${pd.damage ? `<div style="margin-top: 8px; color: #b91c1c;"><strong>Damage:</strong> ${pd.damage}</div>` : ''}
+            ${pd.notes ? `<div><strong>Notes:</strong> ${escapeHtml(pd.notes)}</div>` : ''}
+            ${pd.damage ? `<div style="margin-top: 8px; color: #b91c1c;"><strong>Damage:</strong> ${escapeHtml(pd.damage)}</div>` : ''}
           </div>
         ` : '';
 
+        const placeName = escapeHtml(pd.place.name);
         const photosHtml = pd.photosBase64.length > 0 ? `
           <div class="photos-label">Photographic Evidence (${pd.photosBase64.length})</div>
           <div class="photo-grid">
             ${pd.photosBase64.map((src, idx) => `
               <figure class="photo-item">
                 <div class="photo-frame"><img src="${src}" alt="QC photo ${idx + 1}" /></div>
-                <figcaption class="photo-cap">${pd.place.name} — Photo ${String(idx + 1).padStart(2, '0')}</figcaption>
+                <figcaption class="photo-cap">${placeName} — Photo ${String(idx + 1).padStart(2, '0')}</figcaption>
               </figure>
             `).join('')}
           </div>
@@ -1979,7 +1329,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         return `
           <section class="place-section">
             <div class="place-header">
-              <h2>${pd.place.name}</h2>
+              <h2>${placeName}</h2>
               ${scoreHtml}
             </div>
             <div class="place-body">
@@ -2132,7 +1482,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
               <div class="info-grid">
                 <div class="info-item"><span class="info-k">Client</span><span class="info-v">${clientName}</span></div>
-                <div class="info-item"><span class="info-k">Address</span><span class="info-v">${house.address || '—'}</span></div>
+                <div class="info-item"><span class="info-k">Address</span><span class="info-v">${escapeHtml(house.address || '—')}</span></div>
                 <div class="info-item"><span class="info-k">Team</span><span class="info-v">${teamName}</span></div>
                 <div class="info-item"><span class="info-k">Inspector</span><span class="info-v">${inspector}</span></div>
                 <div class="info-item"><span class="info-k">Date</span><span class="info-v">${date}</span></div>
@@ -2180,7 +1530,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       // Para el correo: devolvemos el HTML en lugar de abrir la ventana de impresión.
       if (returnHtml) return html;
 
-      const printWindow = window.open('', '_blank');
+      // 'noopener': corta el acceso de la ventana nueva a window.opener (defensa
+      // adicional si algo lograra colarse pese al escapeHtml de arriba).
+      const printWindow = window.open('', '_blank', 'noopener');
       if (!printWindow) {
         alert('Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.');
         return;
@@ -2321,39 +1673,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ⭐ Botón de menú: SIEMPRE fijo en la parte superior derecha */}
       <button className="hamburger-btn qcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        <Menu size={24} />
       </button>
 
-      {/* ⭐ PESTAÑAS PRINCIPALES: Inspecciones | Route | Reportes */}
-      <div className="qcv-main-tabs">
-        <button
-          type="button"
-          onClick={() => setMainTab('inspections')}
-          className={`qcv-main-tab-btn${mainTab === 'inspections' ? ' active' : ''}`}
-        >
-          <ClipboardCheck size={16} /> Inspecciones
-        </button>
-        <button
-          type="button"
-          onClick={() => setRouteDrawerOpen(true)}
-          title="Abrir la ruta de inspección"
-          className="qcv-main-tab-btn route"
-        >
-          <RouteIcon size={16} /> Route{routeItems.length ? ` (${routeItems.length})` : ''}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainTab('reports')}
-          className={`qcv-main-tab-btn${mainTab === 'reports' ? ' active' : ''}`}
-        >
-          <Activity size={16} /> Reportes
-        </button>
-      </div>
-
-      {mainTab === 'reports' ? (
-        <QCReportsDashboard qcList={qcList} tasks={tasks} places={places} />
-      ) : (
-      <>
       {/* ⭐ Buscador global + pestañas de estado (juntos, ARRIBA del todo) */}
       <div className="qc-toolbar">
         <div className="qc-table-search">
@@ -2411,7 +1733,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
           <div className="qc-pending-grid">
             {filteredPendingHouses.map(house => {
-              const failed = houseFailedQC(house.id);
+              const failed = houseFailedQC(house.id, qcList);
               return (
                 <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className={`qcv-house-card${failed ? ' failed' : ''}`}>
                   <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
@@ -2452,15 +1774,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <Edit2 size={12} color="#94a3b8" />
                     </button>
                   </div>
-                  {/* ⭐ Agregar esta casa a la RUTA de inspección */}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
-                    disabled={isInRoute(house.id)}
-                    className={`qcv-house-route-btn${isInRoute(house.id) ? ' in-route' : ''}`}
-                  >
-                    {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
-                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                     disabled={isLoadingCatalogs}
@@ -2532,15 +1845,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     <Edit2 size={12} color="#94a3b8" />
                   </button>
                 </div>
-                {/* ⭐ Agregar esta casa a la RUTA */}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); addToRoute(house); }}
-                  disabled={isInRoute(house.id)}
-                  className={`qcv-house-route-btn${isInRoute(house.id) ? ' in-route' : ''}`}
-                >
-                  {isInRoute(house.id) ? <><Check size={15} /> En ruta</> : <><Plus size={15} /> Agregar a ruta</>}
-                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                   disabled={isLoadingCatalogs}
@@ -2707,9 +2011,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             );
           })}
         </div>
-      )}
-
-      </>
       )}
 
       {/* ═══════════ MODAL DE INSPECCIÓN (Quality Check) ═══════════ */}
@@ -2926,7 +2227,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <label className="qcv-sm-field-label">Nuevo status</label>
               <select value={statusModalSelected} onChange={e => setStatusModalSelected(e.target.value)} className="qcv-sm-select">
                 <option value="">— Selecciona —</option>
-                {statuses.map((st: any) => (
+                {statuses.map(st => (
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>
@@ -2963,150 +2264,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ═══════════ MODAL: CONFIGURACIÓN DE EMPRESA (latente, sin botón de acceso) ═══════════ */}
-      {companyModalOpen && (
-        <div className="qc-overlay" onClick={() => setCompanyModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="qcv-sm-modal wide scrollable">
-            <div className="qcv-sm-modal-header sticky">
-              <h3 className="qcv-sm-modal-title with-icon"><Building2 size={18} /> Empresa</h3>
-              <button onClick={() => setCompanyModalOpen(false)} className="qcv-sm-close-btn"><X size={20} /></button>
-            </div>
-            <div className="qcv-sm-modal-body col">
-              <div>
-                <label className="qcv-sm-field-label">Nombre</label>
-                <input type="text" value={companyDraft.name} onChange={e => setCompanyDraft(prev => ({ ...prev, name: e.target.value }))} className="qcv-sm-input" />
-              </div>
-              <div>
-                <label className="qcv-sm-field-label">Dirección</label>
-                <input type="text" value={companyDraft.address} onChange={e => setCompanyDraft(prev => ({ ...prev, address: e.target.value }))} className="qcv-sm-input" />
-              </div>
-              <div>
-                <label className="qcv-sm-field-label">Email destino</label>
-                <input type="email" value={companyDraft.email} onChange={e => setCompanyDraft(prev => ({ ...prev, email: e.target.value }))} className="qcv-sm-input" />
-              </div>
-              <div className="qcv-company-field-row">
-                <input id="qc-autosend" type="checkbox" checked={companyDraft.autoSend} onChange={e => setCompanyDraft(prev => ({ ...prev, autoSend: e.target.checked }))} />
-                <label htmlFor="qc-autosend" className="qcv-company-checkbox-label">Enviar reporte automáticamente al guardar</label>
-              </div>
-              <div>
-                <label className="qcv-sm-field-label">Logo</label>
-                <div className="qcv-company-logo-row">
-                  {companyDraft.logo && <img src={companyDraft.logo} alt="logo" className="qcv-company-logo-preview" />}
-                  <input ref={companyLogoInputRef} type="file" accept="image/*" className="qcv-im-hidden-input" onChange={e => handleCompanyLogoUpload(e.target.files?.[0])} />
-                  <button onClick={() => companyLogoInputRef.current?.click()} className="qcv-company-upload-btn">
-                    <Upload size={15} /> Subir logo
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="qcv-sm-modal-footer">
-              <button onClick={() => setCompanyModalOpen(false)} className="qcv-sm-btn-cancel">Cancelar</button>
-              <button onClick={saveCompanySettings} disabled={savingCompany} className="qcv-sm-btn-primary">
-                {savingCompany ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════ VISTA LATERAL: RUTA DE INSPECCIÓN + PLANIFICADOR + MAPA ═══════════ */}
-      {routeDrawerOpen && (
-        <div className="qc-route-overlay" onClick={closeRouteDrawer}>
-          <aside className="qc-route-drawer" onClick={e => e.stopPropagation()}>
-            <div className="qcv-route-drawer-header">
-              <h3 className="qcv-route-drawer-title">
-                <RouteIcon size={19} /> Ruta de inspección
-                {routeItems.length > 0 && <span className="qcv-route-count-badge">{routeItems.length}</span>}
-              </h3>
-              <button onClick={closeRouteDrawer} className="qcv-sm-close-btn" aria-label="Cerrar"><X size={22} /></button>
-            </div>
-
-            <div className="qcv-route-drawer-body">
-
-              {/* ⭐ PLANIFICADOR: botón + mapa + resumen de tiempo */}
-              {routeItems.length > 0 && (
-                <>
-                  <button
-                    onClick={optimizeRoute}
-                    disabled={routePlanning}
-                    className="qcv-route-plan-btn"
-                  >
-                    {routePlanning ? <><Loader2 size={18} className="spin-qc" /> Calculando ruta…</> : <><Navigation size={18} /> {routePlan ? 'Recalcular ruta' : 'Planificar ruta desde mi ubicación'}</>}
-                  </button>
-
-                  {routePlanError && (
-                    <div className="qcv-route-plan-error">
-                      <AlertTriangle size={15} /> {routePlanError}
-                    </div>
-                  )}
-
-                  {/* Mapa (se dibuja al planificar) */}
-                  <div className={`qc-route-map ${routePlan ? 'qcv-route-map-visible' : 'qcv-route-map-hidden'}`} ref={mapElRef} />
-
-                  {/* Resumen de tiempo/distancia */}
-                  {routePlan && (
-                    <div className="qcv-route-summary-grid">
-                      <div className="qcv-route-summary-box total">
-                        <div className="qcv-route-summary-label total">Total</div>
-                        <div className="qcv-route-summary-value total"><Timer size={15} /> {fmtMinutes(routePlan.totalMin)}</div>
-                      </div>
-                      <div className="qcv-route-summary-box">
-                        <div className="qcv-route-summary-label">Manejo</div>
-                        <div className="qcv-route-summary-value">{fmtMinutes(routePlan.totalDriveMin)}</div>
-                        <div className="qcv-route-summary-sub">{routePlan.totalDistanceKm.toFixed(1)} km</div>
-                      </div>
-                      <div className="qcv-route-summary-box">
-                        <div className="qcv-route-summary-label">Inspección</div>
-                        <div className="qcv-route-summary-value">{fmtMinutes(routePlan.totalStopMin)}</div>
-                        <div className="qcv-route-summary-sub">{INSPECTION_MIN_PER_STOP}m × casa</div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="qcv-route-divider" />
-                </>
-              )}
-
-              {/* Lista ordenada de paradas */}
-              {routeItems.length === 0 ? (
-                <div className="qcv-route-empty">
-                  <RouteIcon size={40} color="#c7d2fe" className="qcv-route-empty-icon" />
-                  <div className="qcv-route-empty-title">Ruta vacía</div>
-                  <div className="qcv-route-empty-sub">Agrega casas con el botón "Agregar a ruta" en las tarjetas.</div>
-                </div>
-              ) : routeItems.map((item, idx) => (
-                <div key={item.houseId} className="qc-route-item">
-                  <div className="qcv-route-item-num">{idx + 1}</div>
-                  <div className="qcv-route-item-body">
-                    <div className="qcv-route-item-client">{item.client}</div>
-                    <div className="qcv-route-item-address">
-                      <MapPin size={12} color="#94a3b8" /> <span className="qcv-ellipsis">{item.address || '—'}</span>
-                    </div>
-                    {item.team && <div className="qcv-route-item-team"><Users size={11} /> {item.team}</div>}
-                  </div>
-                  <div className="qcv-route-item-order-col">
-                    <button onClick={() => moveRouteItem(idx, -1)} disabled={idx === 0} className="qcv-route-icon-btn" title="Subir"><ArrowUp size={14} /></button>
-                    <button onClick={() => moveRouteItem(idx, 1)} disabled={idx === routeItems.length - 1} className="qcv-route-icon-btn" title="Bajar"><ArrowDown size={14} /></button>
-                  </div>
-                  <button onClick={() => removeFromRoute(item.houseId)} className="qcv-route-remove-btn" title="Quitar de la ruta"><Trash2 size={15} /></button>
-                </div>
-              ))}
-            </div>
-
-            {routeItems.length > 0 && (
-              <div className="qcv-route-drawer-footer">
-                <button onClick={clearRoute} className="qcv-route-clear-btn">
-                  <Trash2 size={16} /> Vaciar ruta
-                </button>
-                <button onClick={closeRouteDrawer} className="qcv-route-close-btn">
-                  Cerrar
-                </button>
-              </div>
-            )}
-          </aside>
         </div>
       )}
 

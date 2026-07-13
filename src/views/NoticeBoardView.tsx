@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  Megaphone, MessageSquare, ThumbsUp, CheckCheck, Send, Clock, X, Trash2, Users
+  Megaphone, MessageSquare, ThumbsUp, CheckCheck, Send, Clock, X, Trash2, Users, Menu
 } from 'lucide-react';
 
 import { db } from '../config/firebase';
@@ -228,8 +228,8 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
       {/* HEADER */}
       <header className="nb-header">
         <div className="nb-header-title-group">
-          <button className="hamburger-btn" onClick={onOpenMenu}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="nb-title">Notice Board</h1>
@@ -291,16 +291,17 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
           <p>When administrators post news, they will appear here.</p>
         </div>
       ) : (
-        announcements.map((post) => {
+        <ul className="nb-feed">
+        {announcements.map((post) => {
           const postComments = comments.filter(c => c.announcementId === post.id);
-          
+
           const currentUserId = currentUser?.id || 'system_admin';
           const hasLiked = post.likes.includes(currentUserId);
           const hasSeen = post.seenBy.includes(currentUserId);
           const isExpanded = expandedComments[post.id as string] || false;
 
           return (
-            <div key={post.id} className="post-card">
+            <li key={post.id} className="post-card">
               {/* Post Header */}
               <div className="post-header">
                 <div className="nb-post-author-row">
@@ -391,9 +392,9 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
               {isExpanded && (
                 <div className="comments-section">
                   {postComments.length > 0 && (
-                    <div className="nb-comments-list">
+                    <ul className="nb-comments-list">
                       {postComments.map(comment => (
-                        <div key={comment.id} className="nb-comment-row">
+                        <li key={comment.id} className="nb-comment-row">
                           <div className="nb-comment-avatar">
                             {comment.authorName.charAt(0).toUpperCase()}
                           </div>
@@ -404,9 +405,9 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
                             </div>
                             <div className="nb-comment-time">{formatDateTime(comment.createdAt)}</div>
                           </div>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
 
                   {/* Add Comment Input */}
@@ -439,9 +440,10 @@ export default function NoticeBoardView({ onOpenMenu, currentUser, isSuperAdmin 
                 </div>
               )}
 
-            </div>
+            </li>
           )
-        })
+        })}
+        </ul>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
-import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Activity } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Activity, Menu } from 'lucide-react';
 import type { Role, Permission, Status } from '../../types/index';
 import { db } from '../../config/firebase';
 import { collection, getDocs, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -121,7 +121,7 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     setIsModalOpen(true);
   };
 
-  const handlePermissionChange = (moduleName: string, field: keyof PermissionExt, value: any) => {
+  const handlePermissionChange = <K extends keyof PermissionExt>(moduleName: string, field: K, value: PermissionExt[K]) => {
     setFormData(prev => ({
       ...prev,
       permissions: prev.permissions.map((p: PermissionExt) => p.module === moduleName ? { ...p, [field]: value } : p)
@@ -181,11 +181,11 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     try {
       if (formData.id) {
         const { id, ...dataToUpdate } = formData;
-        await updateDoc(doc(db, 'settings_roles', formData.id), dataToUpdate as any);
+        await updateDoc(doc(db, 'settings_roles', formData.id), dataToUpdate);
         setRoles(roles.map(r => r.id === formData.id ? (formData as unknown as Role) : r));
       } else {
         const { id, ...dataToAdd } = formData;
-        const docRef = await addDoc(collection(db, 'settings_roles'), dataToAdd as any);
+        const docRef = await addDoc(collection(db, 'settings_roles'), dataToAdd);
         setRoles([...roles, { ...formData, id: docRef.id } as unknown as Role]);
       }
       setIsModalOpen(false);
@@ -216,8 +216,8 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     <div className="fade-in rv-page">
       <header className="rv-header">
         <div className="header-title-group">
-          <button onClick={onOpenMenu} className="mobile-menu-btn">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <button onClick={onOpenMenu} className="mobile-menu-btn" aria-label="Open menu">
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="rv-title">Roles & Permissions</h1>
@@ -299,7 +299,7 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                         <td className="rv-td center"><input type="checkbox" className="rv-checkbox" checked={perm.canEdit} onChange={e => handlePermissionChange(perm.module, 'canEdit', e.target.checked)} /></td>
                         <td className="rv-td center"><input type="checkbox" className="rv-checkbox" checked={perm.canDelete} onChange={e => handlePermissionChange(perm.module, 'canDelete', e.target.checked)} /></td>
                         <td className="rv-td center">
-                          <select className="rv-select" value={perm.scope} onChange={e => handlePermissionChange(perm.module, 'scope', e.target.value)}>
+                          <select className="rv-select" value={perm.scope} onChange={e => handlePermissionChange(perm.module, 'scope', e.target.value as 'Own' | 'All')}>
                             <option value="Own">Own</option>
                             <option value="All">All</option>
                           </select>
