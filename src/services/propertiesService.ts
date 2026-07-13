@@ -1,7 +1,7 @@
 // src/services/propertiesService.ts
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase'; // Conexión a la base de datos
-import type { Property } from '../types';
+import type { Property } from '../types/index';
 
 const COLLECTION_NAME = 'properties';
 

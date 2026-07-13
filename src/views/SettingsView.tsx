@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import type { Dispatch, SetStateAction, CSSProperties } from 'react';
 import {
-  Tags, Users, UserCheck, Flag, Activity, Percent, 
+  Tags, Users, UserCheck, Flag, Activity, Percent,
   MapPin, Wrench, CreditCard, ClipboardList, Package, Building, Plus,
-  Edit2, Trash2, X, ChevronDown, Contact
+  Edit2, Trash2, X, Contact, Menu
 } from 'lucide-react';
-import type { SettingOption, CategoryExpense, Team, Responsable, Priority, Status, Tax, Place, Service, PaymentMethod, Task, Product, Business } from '../types/index';
+import type { SettingOption, CategoryExpense, Team, Responsable, Priority, Status, Tax, Place, Service, PaymentMethod, Task, Product, Business, SystemUser } from '../types/index';
 
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import CustomSelect from '../components/CustomSelect';
 import './SettingsView.css';
 
 const settingsOptions: SettingOption[] = [
@@ -43,44 +44,6 @@ const collectionMap: Record<string, string> = {
   business: 'settings_businesses'
 };
 
-const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const selected = options.find((o: any) => o.id === value);
-
-  return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="stv-cs-wrap">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="stv-cs-trigger"
-      >
-        <Icon size={16} className="stv-cs-icon" />
-        <div className="stv-cs-selected">
-          {selected?.color && <span className="stv-color-dot sz-12" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
-          <span className={`stv-cs-selected-text${selected ? ' has-value' : ''}`}>{selected ? selected.name : placeholder}</span>
-        </div>
-        <ChevronDown size={16} color="#9ca3af" className={`stv-cs-chevron${isOpen ? ' open' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="stv-cs-dropdown">
-          <div className="stv-cs-none-option" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
-            None / Unassigned
-          </div>
-          {options.map((o: any) => (
-            <div
-              key={o.id}
-              className="stv-cs-option"
-              onMouseDown={(e) => { e.preventDefault(); onChange(o.id); setIsOpen(false); }}
-            >
-              {o.color && <span className="stv-color-dot sz-12" style={{ '--dot-color': o.color } as CSSProperties}></span>}
-              <span className="stv-cs-option-name">{o.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 interface SettingsViewProps {
   currentSettingView: string;
@@ -103,7 +66,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
   const [places, setPlaces] = useState<Place[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   
-  const [systemUsers, setSystemUsers] = useState<any[]>([]);
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('All');
   
   const [isLoading, setIsLoading] = useState(true);
@@ -166,7 +129,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
 
         const usersReq = await getDocs(collection(db, 'system_users')).catch(() => null);
         if (usersReq) {
-          setSystemUsers(usersReq.docs.map(d => ({ id: d.id, ...d.data() })));
+          setSystemUsers(usersReq.docs.map(d => ({ id: d.id, ...d.data() } as SystemUser)));
         }
 
       } catch (error) {
@@ -404,11 +367,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
             <div className="header-titles">
               <div className="stv-menu-header-row">
                 <button className="mobile-menu-btn stv-hamburger-btn" onClick={onOpenMenu} aria-label="Abrir menú">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="12" x2="21" y2="12"></line>
-                    <line x1="3" y1="6" x2="21" y2="6"></line>
-                    <line x1="3" y1="18" x2="21" y2="18"></line>
-                  </svg>
+                  <Menu size={24} />
                 </button>
                 <h2 className="stv-menu-title">Settings</h2>
               </div>
@@ -442,11 +401,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
             <div className="table-view-title-group stv-table-view-title-group">
               <div className="stv-menu-header-row">
                 <button className="mobile-menu-btn stv-hamburger-btn compact" onClick={onOpenMenu} aria-label="Abrir menú">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="12" x2="21" y2="12"></line>
-                    <line x1="3" y1="6" x2="21" y2="6"></line>
-                    <line x1="3" y1="18" x2="21" y2="18"></line>
-                  </svg>
+                  <Menu size={20} />
                 </button>
                 <button className="stv-back-btn" onClick={() => setCurrentSettingView('menu')}>&lt; Back to Settings</button>
               </div>
@@ -798,10 +753,10 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                       </div>
                       <ul className="stv-place-tasks-list">
                         {formData.placeTasks.length === 0 && <li className="stv-place-task-empty">No tasks added yet.</li>}
-                        {formData.placeTasks.map((t, idx) => (
-                          <li key={idx} className="stv-place-task-item">
+                        {formData.placeTasks.map((t) => (
+                          <li key={t.id} className="stv-place-task-item">
                             <span className="stv-place-task-name">{t.name}</span>
-                            <button className="stv-place-task-remove-btn" onClick={() => setFormData({...formData, placeTasks: formData.placeTasks.filter((_, i) => i !== idx)})}><Trash2 size={16}/></button>
+                            <button className="stv-place-task-remove-btn" onClick={() => setFormData({...formData, placeTasks: formData.placeTasks.filter(pt => pt.id !== t.id)})}><Trash2 size={16}/></button>
                           </li>
                         ))}
                       </ul>
@@ -830,21 +785,21 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
             <div className="stv-modal-body">
 
               {currentSettingView === 'team_catalog' ? (
-                <>
-                  <div className="stv-detail-item"><span className="stv-detail-label">Employee Name</span><span className="stv-detail-value">{selectedItem.firstName} {selectedItem.lastName}</span></div>
-                  <div className="stv-detail-item"><span className="stv-detail-label">Email Address</span><span className="stv-detail-value">{selectedItem.email}</span></div>
+                <dl className="stv-detail-list">
+                  <div className="stv-detail-item"><dt className="stv-detail-label">Employee Name</dt><dd className="stv-detail-value">{selectedItem.firstName} {selectedItem.lastName}</dd></div>
+                  <div className="stv-detail-item"><dt className="stv-detail-label">Email Address</dt><dd className="stv-detail-value">{selectedItem.email}</dd></div>
                   <div className="stv-detail-item">
-                    <span className="stv-detail-label">Assigned Team</span>
+                    <dt className="stv-detail-label">Assigned Team</dt>
                     {teams.find(t => t.id === selectedItem.teamId) ? (
-                      <div className="stv-detail-value-row">
+                      <dd className="stv-detail-value-row">
                         <span className="stv-color-dot sz-16" style={{ '--dot-color': teams.find(t => t.id === selectedItem.teamId)?.color } as CSSProperties}></span>
                         <span className="stv-detail-value">{teams.find(t => t.id === selectedItem.teamId)?.name}</span>
-                      </div>
+                      </dd>
                     ) : (
-                      <span className="stv-detail-value muted-italic">Unassigned</span>
+                      <dd className="stv-detail-value muted-italic">Unassigned</dd>
                     )}
                   </div>
-                </>
+                </dl>
               ) : currentSettingView === 'place' ? (
                 <>
                   <div className="stv-detail-item">
@@ -887,52 +842,52 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
               ) : currentSettingView === 'tax' ? (
                 <div className="stv-detail-item"><span className="stv-detail-label">Current Tax</span><span className="stv-detail-value large">{selectedItem.percentage}%</span></div>
               ) : (
-                <>
+                <dl className="stv-detail-list">
                   {currentSettingView === 'status' && (
-                    <div className="stv-detail-item"><span className="stv-detail-label">Form Order</span><span className="stv-detail-value">{selectedItem.order}</span></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Form Order</dt><dd className="stv-detail-value">{selectedItem.order}</dd></div>
                   )}
                   {currentSettingView === 'task' && (
-                    <div className="stv-detail-item"><span className="stv-detail-label">Place</span><span className="stv-detail-value">{places.find(p => p.id === selectedItem.placeId)?.name || 'Unknown'}</span></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Place</dt><dd className="stv-detail-value">{places.find(p => p.id === selectedItem.placeId)?.name || 'Unknown'}</dd></div>
                   )}
 
                   <div className="stv-detail-item">
-                    <span className="stv-detail-label">
+                    <dt className="stv-detail-label">
                       {currentSettingView === 'task' ? 'Task Name' : currentSettingView === 'business' ? 'Business Name' : currentSettingView === 'payment' ? 'Payment Method' : 'Name'}
-                    </span>
-                    <span className="stv-detail-value">{selectedItem.name}</span>
+                    </dt>
+                    <dd className="stv-detail-value">{selectedItem.name}</dd>
                   </div>
 
                   {currentSettingView === 'product' && (
-                    <div className="stv-detail-item"><span className="stv-detail-label">Price</span><span className="stv-detail-value">{selectedItem.price ? `$${Number(selectedItem.price).toFixed(2)}` : 'N/A'}</span></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Price</dt><dd className="stv-detail-value">{selectedItem.price ? `$${Number(selectedItem.price).toFixed(2)}` : 'N/A'}</dd></div>
                   )}
 
                   {currentSettingView === 'service' && (
-                    <div className="stv-detail-item"><span className="stv-detail-label">Estimated time (min)</span><span className="stv-detail-value">{selectedItem.estimatedTime || 'N/A'}</span></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Estimated time (min)</dt><dd className="stv-detail-value">{selectedItem.estimatedTime || 'N/A'}</dd></div>
                   )}
 
                   {(currentSettingView === 'team' || currentSettingView === 'priority' || currentSettingView === 'status' || currentSettingView === 'service') && (
-                    <div className="stv-detail-item"><span className="stv-detail-label">Business</span><span className="stv-detail-value">{selectedItem.business || 'N/A'}</span></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Business</dt><dd className="stv-detail-value">{selectedItem.business || 'N/A'}</dd></div>
                   )}
 
                   {currentSettingView === 'status' && (
                     <>
-                      <div className="stv-detail-item"><span className="stv-detail-label">Show in Dashboard?</span><span className="stv-detail-value">{selectedItem.showInDashboard ? 'Yes' : 'No'}</span></div>
+                      <div className="stv-detail-item"><dt className="stv-detail-label">Show in Dashboard?</dt><dd className="stv-detail-value">{selectedItem.showInDashboard ? 'Yes' : 'No'}</dd></div>
                       {selectedItem.showInDashboard && (
-                         <div className="stv-detail-item"><span className="stv-detail-label">Dashboard Tab Order</span><span className="stv-detail-value">{selectedItem.dashboardOrder}</span></div>
+                         <div className="stv-detail-item"><dt className="stv-detail-label">Dashboard Tab Order</dt><dd className="stv-detail-value">{selectedItem.dashboardOrder}</dd></div>
                       )}
                     </>
                   )}
 
                   {(currentSettingView === 'team' || currentSettingView === 'responsable' || currentSettingView === 'priority' || currentSettingView === 'status') && (
                     <div className="stv-detail-item">
-                      <span className="stv-detail-label">Color</span>
-                      <div className="stv-detail-value-row">
+                      <dt className="stv-detail-label">Color</dt>
+                      <dd className="stv-detail-value-row">
                         <span className="stv-color-dot sz-24" style={{ '--dot-color': selectedItem.color } as CSSProperties}></span>
                         <span className="stv-detail-value mono">{selectedItem.color.toUpperCase()}</span>
-                      </div>
+                      </dd>
                     </div>
                   )}
-                </>
+                </dl>
               )}
 
             </div>

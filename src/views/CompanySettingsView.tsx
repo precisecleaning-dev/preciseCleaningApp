@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Building2, Upload, Trash2, Save, Loader2, Image as ImageIcon, Check, AlertCircle
+  Building2, Upload, Trash2, Save, Loader2, Image as ImageIcon, Check, AlertCircle, Menu
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompression';
 import {
@@ -98,7 +98,7 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
         </div>
         {onOpenMenu && (
           <button className="cs-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
         )}
       </header>
@@ -113,7 +113,7 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
           <div className="cs-card">
             {/* Logo */}
             <div>
-              <span className="cs-label">Logo de la empresa</span>
+              <span className="cs-label" id="cs-logo-label">Logo de la empresa</span>
               <div className="cs-logo-row">
                 <div className="cs-logo-preview">
                   {draft.logo
@@ -121,7 +121,7 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
                     : <ImageIcon size={26} color="#cbd5e1" />}
                 </div>
                 <div className="cs-logo-actions">
-                  <button type="button" onClick={() => logoInputRef.current?.click()} className="cs-btn-upload">
+                  <button type="button" onClick={() => logoInputRef.current?.click()} className="cs-btn-upload" aria-describedby="cs-logo-label">
                     <Upload size={15} /> Subir logo
                   </button>
                   {draft.logo && (
@@ -129,30 +129,30 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
                       <Trash2 size={15} /> Quitar
                     </button>
                   )}
-                  <input ref={logoInputRef} type="file" accept="image/*" className="cs-hidden-input" onChange={(e) => { handleLogoUpload(e.target.files?.[0]); if (e.target) e.target.value = ''; }} />
+                  <input ref={logoInputRef} type="file" accept="image/*" aria-labelledby="cs-logo-label" className="cs-hidden-input" onChange={(e) => { handleLogoUpload(e.target.files?.[0]); if (e.target) e.target.value = ''; }} />
                 </div>
               </div>
               <p className="cs-hint">PNG o JPG. Se optimiza automáticamente para los documentos.</p>
             </div>
 
             <div>
-              <span className="cs-label">Nombre de la empresa</span>
-              <input type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} placeholder="Precise Cleaning" className="cs-input" />
+              <label className="cs-label" htmlFor="cs-name">Nombre de la empresa</label>
+              <input id="cs-name" type="text" value={draft.name} onChange={(e) => update({ name: e.target.value })} placeholder="Precise Cleaning" className="cs-input" />
             </div>
 
             <div>
-              <span className="cs-label">Correo de la empresa</span>
-              <input type="email" value={draft.email} onChange={(e) => update({ email: e.target.value })} placeholder="contacto@empresa.com" className="cs-input" />
+              <label className="cs-label" htmlFor="cs-email">Correo de la empresa</label>
+              <input id="cs-email" type="email" value={draft.email} onChange={(e) => update({ email: e.target.value })} placeholder="contacto@empresa.com" className="cs-input" />
             </div>
 
             <div>
-              <span className="cs-label">Dirección</span>
-              <textarea value={draft.address} onChange={(e) => update({ address: e.target.value })} placeholder="123 Main St, Killeen, TX 76541" className="cs-input textarea" />
+              <label className="cs-label" htmlFor="cs-address">Dirección</label>
+              <textarea id="cs-address" value={draft.address} onChange={(e) => update({ address: e.target.value })} placeholder="123 Main St, Killeen, TX 76541" className="cs-input textarea" />
             </div>
 
             <div>
-              <span className="cs-label">Teléfono (opcional)</span>
-              <input type="tel" value={draft.phone} onChange={(e) => update({ phone: e.target.value })} placeholder="(254) 555-0100" className="cs-input" />
+              <label className="cs-label" htmlFor="cs-phone">Teléfono (opcional)</label>
+              <input id="cs-phone" type="tel" value={draft.phone} onChange={(e) => update({ phone: e.target.value })} placeholder="(254) 555-0100" className="cs-input" />
             </div>
 
             <label className="cs-checkbox-row">

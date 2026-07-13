@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Camera, Upload, Image as ImageIcon, Save, Sliders, AlertCircle } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Save, Sliders, AlertCircle, Menu } from 'lucide-react';
 import { photoConfigService, DEFAULT_PHOTO_CONFIG } from '../services/photoConfigService';
 import type { PhotoConfig } from '../services/photoConfigService';
 import './PhotoSettingsView.css';
 
-export default function PhotoSettingsView() {
+interface PhotoSettingsViewProps {
+  onOpenMenu?: () => void;
+}
+
+export default function PhotoSettingsView({ onOpenMenu }: PhotoSettingsViewProps) {
   const [config, setConfig] = useState<PhotoConfig>(DEFAULT_PHOTO_CONFIG);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -32,7 +36,7 @@ export default function PhotoSettingsView() {
       await photoConfigService.update(config);
       setSavedMessage('✅ Configuración guardada correctamente');
       setTimeout(() => setSavedMessage(''), 3000);
-    } catch (error) {
+    } catch {
       alert('Error al guardar la configuración.');
     } finally {
       setIsSaving(false);
@@ -50,12 +54,19 @@ export default function PhotoSettingsView() {
   return (
     <div className="ps-page">
       <header className="ps-header">
-        <h1 className="ps-title">
-          <Sliders size={28} color="#3b82f6" /> Configuración de Fotos
-        </h1>
-        <p className="ps-subtitle">
-          Define cómo los usuarios pueden agregar fotos a las propiedades.
-        </p>
+        <div>
+          <h1 className="ps-title">
+            <Sliders size={28} color="#3b82f6" /> Configuración de Fotos
+          </h1>
+          <p className="ps-subtitle">
+            Define cómo los usuarios pueden agregar fotos a las propiedades.
+          </p>
+        </div>
+        {onOpenMenu && (
+          <button className="ps-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
+            <Menu size={24} />
+          </button>
+        )}
       </header>
 
       {/* CARD: Opciones de carga */}
@@ -199,6 +210,8 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean, onChange: (chec
   return (
     <button
       onClick={() => onChange(!checked)}
+      role="switch"
+      aria-checked={checked}
       className={`ps-toggle-switch${checked ? ' on' : ''}`}
     >
       <div className={`ps-toggle-switch-knob${checked ? ' on' : ''}`} />

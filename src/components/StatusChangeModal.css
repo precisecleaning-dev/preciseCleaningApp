@@ -1,0 +1,59 @@
+/* Modal central de selección de estado — compartido entre PipelineBoardView y HousesView. */
+
+.scm-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 9999;
+  padding: 20px; box-sizing: border-box;
+}
+.scm-card {
+  background: #ffffff; width: 100%; max-width: 480px;
+  border-radius: 18px; box-shadow: 0 24px 48px -12px rgba(15,23,42,0.35);
+  display: flex; flex-direction: column; max-height: 85vh; overflow: hidden;
+  animation: scmCardIn 0.18s ease-out;
+}
+@keyframes scmCardIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+.scm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
+.scm-head-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.scm-icon { width: 40px; height: 40px; border-radius: 11px; background: #dbeafe; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.scm-min-w-0 { min-width: 0; }
+.scm-title { margin: 0; font-size: 1.1rem; font-weight: 800; color: #0f172a; }
+.scm-subtitle { margin: 2px 0 0; font-size: 0.82rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scm-close-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 6px; display: flex; border-radius: 8px; flex-shrink: 0; }
+
+.scm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
+.scm-empty { grid-column: 1 / -1; text-align: center; color: #94a3b8; font-style: italic; padding: 24px; }
+.scm-option {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; cursor: pointer;
+  text-align: left; width: 100%; min-height: 56px; font-family: inherit;
+  background: #ffffff; border: 2px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: all 0.15s;
+}
+.scm-option:hover { border-color: #93c5fd; }
+.scm-option.selected { background: #eff6ff; border-color: #2563eb; box-shadow: 0 2px 10px rgba(37,99,235,0.18); }
+.scm-option-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.12); background: var(--dot-color); box-shadow: 0 0 0 4px var(--dot-shadow); }
+.scm-option-name { flex: 1; font-size: 0.9rem; font-weight: 700; color: #1e293b; line-height: 1.3; word-break: break-word; }
+.scm-option-badge { font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
+
+.scm-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid #eef2f7; flex-shrink: 0; background: #ffffff; }
+.scm-btn-secondary { padding: 11px 18px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
+.scm-btn-secondary:hover { background: #f8fafc; }
+.scm-btn-primary { padding: 11px 20px; border-radius: 10px; border: none; background: #2563eb; color: #ffffff; font-weight: 700; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.25); transition: background 0.15s; }
+.scm-btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.scm-btn-primary:disabled { cursor: not-allowed; box-shadow: none; opacity: 0.55; }
+.scm-shrink-0 { flex-shrink: 0; }
+
+@media (max-width: 768px) {
+  /* En móvil el modal entra como hoja inferior (bottom sheet) */
+  .scm-overlay { align-items: flex-end !important; padding: 0 !important; }
+  .scm-card {
+    max-width: 100% !important; width: 100% !important;
+    border-radius: 22px 22px 0 0 !important; max-height: 82vh !important;
+    animation: scmSheetIn 0.22s ease-out;
+  }
+  .scm-grid { grid-template-columns: 1fr !important; gap: 10px; padding: 18px 16px; }
+  .scm-option { min-height: 60px !important; padding: 16px !important; font-size: 1rem; }
+  .scm-foot { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
+  .scm-btn-secondary, .scm-btn-primary { flex: 1; justify-content: center; min-height: 50px; }
+}
+@keyframes scmSheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }

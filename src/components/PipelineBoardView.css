@@ -1,34 +1,3 @@
-.pb-status-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-.pb-status-card { background: #fff; width: 100%; max-width: 480px; border-radius: 18px; box-shadow: 0 24px 48px -12px rgba(15,23,42,0.35); display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; }
-.pb-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid #eef2f7; flex-shrink: 0; }
-.pb-modal-head-info { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.pb-modal-icon { width: 40px; height: 40px; border-radius: 11px; background: #dbeafe; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.pb-min-w-0 { min-width: 0; }
-.pb-modal-title { margin: 0; font-size: 1.1rem; font-weight: 800; color: #0f172a; }
-.pb-modal-subtitle { margin: 2px 0 0; font-size: 0.82rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pb-close-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 6px; display: flex; border-radius: 8px; flex-shrink: 0; }
-
-.pb-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
-.pb-status-empty { grid-column: 1 / -1; text-align: center; color: #94a3b8; font-style: italic; padding: 24px; }
-.pb-status-option {
-  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; cursor: pointer;
-  text-align: left; width: 100%; min-height: 56px; font-family: inherit;
-  background: #ffffff; border: 2px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-  transition: all 0.15s;
-}
-.pb-status-option.selected { background: #eff6ff; border-color: #2563eb; box-shadow: 0 2px 10px rgba(37,99,235,0.18); }
-.pb-status-option-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.12); background: var(--dot-color); box-shadow: 0 0 0 4px var(--dot-shadow); }
-.pb-status-option-name { flex: 1; font-size: 0.9rem; font-weight: 700; color: #1e293b; line-height: 1.3; word-break: break-word; }
-.pb-status-option-badge { font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
-
-.pb-status-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid #eef2f7; flex-shrink: 0; background: #fff; }
-.pb-btn-secondary { padding: 11px 18px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; color: #475569; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
-.pb-btn-primary {
-  padding: 11px 20px; border-radius: 10px; border: none; background: #2563eb; color: #fff; font-weight: 700; font-size: 0.9rem;
-  cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.25);
-}
-.pb-btn-primary:disabled { cursor: not-allowed; box-shadow: none; opacity: 0.55; }
-
 .pb-status-pill {
   width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px;
@@ -73,17 +42,12 @@
 .pb-job-meta-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb-job-note { display: flex; align-items: flex-start; gap: 5px; font-size: 0.78rem; color: #475569; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; padding: 6px 8px; }
 .pb-job-note-icon { flex-shrink: 0; margin-top: 2px; color: #94a3b8; }
-.pb-job-note-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pb-job-note-text { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pb-job-amount { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
 .pb-job-team-row { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #475569; }
 .pb-job-team-avatar { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--team-bg); color: var(--team-color); }
 
 @media (max-width: 768px) {
-  .pb-status-overlay { align-items: flex-end !important; padding: 0 !important; }
-  .pb-status-card { max-width: 100% !important; width: 100% !important; border-radius: 22px 22px 0 0 !important; max-height: 82vh !important; }
-  .pb-status-grid { grid-template-columns: 1fr !important; }
-  .pb-status-foot > button { flex: 1; justify-content: center; }
-
   .pipeline-board {
     flex-direction: column !important;
     overflow-x: hidden !important;

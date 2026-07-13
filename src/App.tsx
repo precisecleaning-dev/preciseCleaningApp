@@ -15,6 +15,7 @@ import DataImportView from './views/DataImportView'; // ⭐ Vista de importació
 import RecallsView from './views/RecallsView'; // ⭐ Vista de Recalls (ranking de equipos)
 import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de historial de status por casa
 import CompanySettingsView from './views/CompanySettingsView'; // ⭐ Módulo de empresa (logo, nombre, correo, dirección)
+import PhotoSettingsView from './views/PhotoSettingsView'; // ⭐ Configuración de compresión/captura de fotos
 import QCRouteView from './views/QCRouteView'; // ⭐ Hoja de ruta para casas con QC pendiente
 
 import type { Property, Role, SystemUser } from './types/index';
@@ -27,7 +28,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
@@ -67,6 +68,9 @@ export default function App() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [currentSettingView, setCurrentSettingView] = useState<string>('menu');
   const [houseToInspect, setHouseToInspect] = useState<Property | null>(null);
+  // ⭐ Apertura externa en HousesView (desde Quality Check): detalle o formulario de edición
+  const [houseToOpenDetail, setHouseToOpenDetail] = useState<Property | null>(null);
+  const [houseToOpenEdit, setHouseToOpenEdit] = useState<Property | null>(null);
 
   const [roles, setRoles] = useState<Role[]>([]);
 
@@ -312,24 +316,26 @@ export default function App() {
 
       <main className="main-content">
         {activeTab === 'houses' && (
-          <HousesView 
-            properties={visibleProperties as any} 
-            setProperties={setProperties as any} 
-            onOpenMenu={toggleMenu} 
-            onCheckHouse={handleCheckHouse} 
+          <HousesView
+            properties={visibleProperties as any}
+            setProperties={setProperties as any}
+            onOpenMenu={toggleMenu}
             currentUser={currentUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
+            houseToOpenDetail={houseToOpenDetail as any}
+            clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+            houseToOpenEdit={houseToOpenEdit as any}
+            clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
           />
         )}
 
         {activeTab === 'pipeline' && (
-          <HousesView 
+          <HousesView
             viewMode="board"
-            properties={visibleProperties as any} 
-            setProperties={setProperties as any} 
-            onOpenMenu={toggleMenu} 
-            onCheckHouse={handleCheckHouse} 
+            properties={visibleProperties as any}
+            setProperties={setProperties as any}
+            onOpenMenu={toggleMenu}
             currentUser={currentUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
@@ -338,8 +344,8 @@ export default function App() {
         
         {activeTab === 'invoices' && (
           <InvoicesView 
-            properties={visibleProperties as any} 
-            setProperties={setProperties as any} 
+            properties={visibleProperties} 
+            setProperties={setProperties} 
             onOpenMenu={toggleMenu} 
             currentUser={currentUser}
             activeRole={activeRole}
@@ -356,35 +362,60 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'calendar' && <CalendarView properties={visibleProperties as any} onOpenMenu={toggleMenu} />}
+        {activeTab === 'calendar' && (
+          <CalendarView
+            properties={visibleProperties}
+            setProperties={setProperties}
+            onOpenMenu={toggleMenu}
+            onCheckHouse={handleCheckHouse}
+          />
+        )}
         
         {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} />}
 
         {activeTab === 'qc_report' && (
-          <QualityCheckView 
-            onOpenMenu={toggleMenu} 
-            properties={visibleProperties as any}
-            houseToInspect={houseToInspect as any}
-            clearHouseToInspect={() => setHouseToInspect(null)}
-            currentUser={currentUser}
-          />
+          <>
+            <QualityCheckView 
+              onOpenMenu={toggleMenu} 
+              properties={visibleProperties as any}
+              houseToInspect={houseToInspect as any}
+              clearHouseToInspect={() => setHouseToInspect(null)}
+              currentUser={currentUser}
+              onOpenHouseDetail={(house) => setHouseToOpenDetail(house as any)}
+              onOpenHouseEdit={(house) => setHouseToOpenEdit(house as any)}
+            />
+            {/* ⭐ Modales de HousesView montados ENCIMA de QC: el detalle y el
+                formulario se abren aquí mismo, sin sacar al usuario de la vista. */}
+            <HousesView
+              renderMode="modals-only"
+              properties={visibleProperties as any}
+              setProperties={setProperties as any}
+              onOpenMenu={toggleMenu}
+              currentUser={currentUser}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
+              houseToOpenDetail={houseToOpenDetail as any}
+              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+              houseToOpenEdit={houseToOpenEdit as any}
+              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
+            />
+          </>
         )}
 
         {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}
         {activeTab === 'recalls' && (
           <RecallsView 
             onOpenMenu={toggleMenu} 
-            properties={visibleProperties as any}
+            properties={visibleProperties}
             currentUser={currentUser}
           />
         )}
 
         {/* ⭐ STATUS HISTORY — historial de status por casa */}
         {activeTab === 'status_history' && (
-          <StatusHistoryView 
-            onOpenMenu={toggleMenu} 
-            properties={visibleProperties as any}
-            currentUser={currentUser}
+          <StatusHistoryView
+            onOpenMenu={toggleMenu}
+            properties={visibleProperties}
           />
         )}
 
@@ -401,6 +432,9 @@ export default function App() {
         {/* ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en los documentos, el login y el menú) */}
         {activeTab === 'company' && <CompanySettingsView onOpenMenu={toggleMenu} />}
 
+        {/* ⭐ FOTOS — compresión y opciones de captura de fotos */}
+        {activeTab === 'photo_settings' && <PhotoSettingsView onOpenMenu={toggleMenu} />}
+
         {activeTab === 'roles' && <RolesView onOpenMenu={toggleMenu} roles={roles} setRoles={setRoles} />}
         
         {activeTab === 'users' && <UsersView onOpenMenu={toggleMenu} roles={roles} />}
@@ -410,9 +444,9 @@ export default function App() {
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
         {activeTab === 'qc_route' && (
-          <QCRouteView 
-            onOpenMenu={toggleMenu} 
-            properties={visibleProperties as any}
+          <QCRouteView
+            onOpenMenu={toggleMenu}
+            properties={visibleProperties}
             currentUser={currentUser}
           />
         )}

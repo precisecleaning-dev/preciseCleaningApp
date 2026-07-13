@@ -1,5 +1,6 @@
 .nb-page { padding: 20px; max-width: 800px; margin: 0 auto; }
 
+.nb-feed { list-style: none; margin: 0; padding: 0; }
 .post-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); overflow: hidden; }
 .post-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px; border-bottom: 1px solid #f1f5f9; }
 .post-avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #e0f2fe; color: #2563eb; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; }
@@ -62,7 +63,7 @@
 .nb-seen-indicator { color: #10b981; flex: 1; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; }
 
 /* ===================== Comments ===================== */
-.nb-comments-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.nb-comments-list { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nb-comment-row { display: flex; gap: 12px; }
 .nb-comment-avatar { width: 32px; height: 32px; border-radius: 50%; background-color: #f1f5f9; color: #475569; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0; }
 .nb-comment-author { font-weight: 700; font-size: 0.85rem; color: #1e293b; margin-bottom: 4px; }

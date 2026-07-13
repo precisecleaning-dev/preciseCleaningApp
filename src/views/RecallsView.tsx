@@ -2,21 +2,25 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Repeat, AlertTriangle, Trophy, Award, Users, MapPin, CalendarDays,
-  Search, X, TrendingUp, BarChart3, Loader2, ListChecks, FileBarChart, Check, ChevronDown
+  Search, X, TrendingUp, BarChart3, Loader2, ListChecks, FileBarChart, Check, ChevronDown, Menu
 } from 'lucide-react';
-import type { Property, SystemUser } from '../types/index';
+import type { Property, SystemUser, Team, Status, Customer } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
+import type { StatusHistoryEntry } from '../services/statusHistoryService';
+import { getRelationName } from '../utils/relations';
+import { RECALL_STATUS_HINTS, isRecallText } from '../utils/recallStatus';
 import PropertyDetailModal from '../components/PropertyDetailModal';
 import './RecallsView.css';
 
 /* =========================================================================
    CONFIG / HEURÍSTICAS
    - RECALL_PENALTY_PER: puntos que se restan al rendimiento por cada recall.
-   - RECALL_STATUS_HINTS: textos que, si aparecen en un status, lo marcan recall.
+   - RECALL_STATUS_HINTS (utils/recallStatus.ts): textos que, si aparecen en un status,
+     lo marcan recall.
 
    HISTÓRICO PERSISTENTE:
    La lista de recalls se construye principalmente desde `status_history`:
@@ -27,12 +31,6 @@ import './RecallsView.css';
    y con la colección opcional "recalls".
    ========================================================================= */
 const RECALL_PENALTY_PER = 6;
-const RECALL_STATUS_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
-const isRecallText = (txt?: any): boolean => {
-  if (!txt) return false;
-  const t = String(txt).toLowerCase();
-  return RECALL_STATUS_HINTS.some(h => t.includes(h));
-};
 
 interface RecallItem {
   id: string;
@@ -61,17 +59,46 @@ interface RecallsViewProps {
   currentUser?: SystemUser | null;
 }
 
+// ⭐ Registro de Quality Check (colección `quality_checks`) — solo los campos que usa
+// esta vista para calcular pass rate y detectar "vino de QC · no pasó".
+interface QCRecordLite {
+  id: string;
+  houseId?: string;
+  date?: string;
+  createdAt?: string;
+  team?: string;
+  result?: 'passed' | 'failed' | null;
+  qcData?: Record<string, { tasks?: Record<string, string> }>;
+}
+
+// ⭐ Registro de la colección opcional `recalls` (fuente 3 del histórico, ver comentario
+// arriba: "HISTÓRICO PERSISTENTE").
+interface RecallDoc {
+  id: string;
+  houseId?: string;
+  client?: string;
+  address?: string;
+  team?: string;
+  date?: string;
+  recallDate?: string;
+  createdAt?: string;
+  reason?: string;
+  notes?: string;
+  exitDate?: string | null;
+  exitedAt?: string | null;
+}
+
 // ⭐ Pill editable de status para la tabla.
 // El menú se renderiza con posición FIJA respecto a la pantalla para que no lo
 // recorte el overflow de la tabla, con diseño mejorado (encabezado, check del
 // status actual, dot de color y scroll si hay muchos status).
-function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = false }: { statusId?: string; statuses: any[]; onChange: (id: string) => void; disabled?: boolean; fullWidth?: boolean }) {
+function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = false }: { statusId?: string; statuses: Status[]; onChange: (id: string) => void; disabled?: boolean; fullWidth?: boolean }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; openUp: boolean }>({ top: 0, left: 0, width: 240, openUp: false });
   const btnRef = useRef<HTMLDivElement>(null);
 
   const safe = String(statusId || '').toLowerCase().trim();
-  const st = statuses.find((s: any) => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
+  const st = statuses.find(s => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
   const color = st ? st.color : '#64748b';
   const text = st ? st.name : 'Unassigned';
 
@@ -134,7 +161,7 @@ function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = fal
               Cambiar status
             </div>
             <div className="rcv-pill-menu-list">
-              {statuses.map((s: any) => {
+              {statuses.map(s => {
                 const isCurrent = String(s.id) === String(statusId) || String(s.name) === String(statusId);
                 return (
                   <div key={s.id}
@@ -157,17 +184,19 @@ function RowStatusPill({ statusId, statuses, onChange, disabled, fullWidth = fal
 export default function RecallsView({ onOpenMenu, properties, currentUser }: RecallsViewProps) {
   const [tab, setTab] = useState<'recalls' | 'report'>('recalls');
 
-  const [teams, setTeams] = useState<any[]>([]);
-  const [statuses, setStatuses] = useState<any[]>([]);
-  const [customersList, setCustomersList] = useState<any[]>([]);
-  const [qcList, setQcList] = useState<any[]>([]);
-  const [recallDocs, setRecallDocs] = useState<any[]>([]);
-  const [historyDocs, setHistoryDocs] = useState<any[]>([]);
-  const [loadedProps, setLoadedProps] = useState<Property[]>(properties || []);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [statuses, setStatuses] = useState<Status[]>([]);
+  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const [qcList, setQcList] = useState<QCRecordLite[]>([]);
+  const [recallDocs, setRecallDocs] = useState<RecallDoc[]>([]);
+  const [historyDocs, setHistoryDocs] = useState<StatusHistoryEntry[]>([]);
   const [detailHouse, setDetailHouse] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const houses = (loadedProps && loadedProps.length) ? loadedProps : (properties || []);
+  // ⭐ `properties` viene de un listener en tiempo real en App.tsx (ver su comentario:
+  // se agregó justo para que vistas como esta SIEMPRE tengan datos actualizados sin
+  // depender de que HousesView esté montado). Se usa directo, sin fetch propio.
+  const houses = properties || [];
 
   // Filtros de la TABLA
   const [search, setSearch] = useState('');
@@ -180,23 +209,20 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     const load = async () => {
       setLoading(true);
       try {
-        const [teamsData, statusesSnap, customersSnap, qcSnap, recallsSnap, propsSnap, historySnap] = await Promise.all([
+        const [teamsData, statusesSnap, customersSnap, qcSnap, recallsSnap, historySnap] = await Promise.all([
           settingsService.getAll('settings_teams').catch(() => []),
-          getDocs(collection(db, 'settings_statuses')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'recalls')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'properties')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'status_history')).catch(() => ({ docs: [] })),
+          getDocs(collection(db, 'settings_statuses')).catch(() => null),
+          getDocs(collection(db, 'customers')).catch(() => null),
+          getDocs(collection(db, 'quality_checks')).catch(() => null),
+          getDocs(collection(db, 'recalls')).catch(() => null),
+          getDocs(collection(db, 'status_history')).catch(() => null),
         ]);
-        setTeams(teamsData as any[]);
-        const propsData = ((propsSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })) as Property[];
-        if (propsData.length) setLoadedProps(propsData);
-        setStatuses(((statusesSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setQcList(((qcSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setRecallDocs(((recallsSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setHistoryDocs(((historySnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
+        setTeams(teamsData as Team[]);
+        setStatuses((statusesSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as Status)));
+        setCustomersList((customersSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as Customer)));
+        setQcList((qcSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as QCRecordLite)));
+        setRecallDocs((recallsSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as RecallDoc)));
+        setHistoryDocs((historySnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as StatusHistoryEntry)));
       } catch (e) {
         console.error('Error loading recalls data:', e);
       } finally {
@@ -207,41 +233,24 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   }, []);
 
   // ---- Helpers ----
-  const getClientName = (idOrName?: string | null): string => {
-    if (!idOrName) return 'Unknown';
-    const safe = String(idOrName).toLowerCase().trim();
-    const f = customersList.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(idOrName);
-  };
+  const getClientName = (idOrName?: string | null): string =>
+    getRelationName(customersList, idOrName, idOrName ? String(idOrName) : 'Unknown');
 
-  const getTeamName = (house?: any): string => {
+  const getTeamName = (house?: Property | null): string => {
     if (!house) return 'Unassigned';
-    const tid = house.teamId;
-    if (tid) {
-      const f = teams.find((t: any) => String(t.id) === String(tid) || String(t.name) === String(tid));
-      if (f) return f.name;
-    }
-    if (house.team) {
-      const f2 = teams.find((t: any) => String(t.name) === String(house.team) || String(t.id) === String(house.team));
-      return f2 ? f2.name : String(house.team);
-    }
+    if (house.teamId) return getRelationName(teams, house.teamId, 'Unassigned');
     return 'Unassigned';
   };
 
-  const getStatusName = (house?: any): string => {
+  const getStatusName = (house?: Property | null): string => {
     if (!house) return '';
-    const raw = house.statusId ?? house.status;
+    const raw = house.statusId;
     if (!raw) return '';
-    const safe = String(raw).toLowerCase().trim();
-    const f = statuses.find((st: any) => String(st.id).toLowerCase().trim() === safe || String(st.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(raw);
+    return getRelationName(statuses, raw, String(raw));
   };
 
-  const statusNameById = (id?: string): string => {
-    const safe = String(id || '').toLowerCase().trim();
-    const f = statuses.find((st: any) => String(st.id).toLowerCase().trim() === safe || String(st.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(id || '');
-  };
+  const statusNameById = (id?: string | null): string =>
+    getRelationName(statuses, id, String(id || ''));
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
@@ -264,8 +273,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   // ⭐ Casas cuyo ÚLTIMO Quality Check fue "Did not pass" (result === 'failed').
   // Se usa para enfatizar en Recall que la casa viene de un QC que NO pasó.
   const failedQCHouseIds = useMemo(() => {
-    const latestByHouse: Record<string, any> = {};
-    (qcList || []).forEach((qc: any) => {
+    const latestByHouse: Record<string, QCRecordLite> = {};
+    (qcList || []).forEach(qc => {
       const hid = String(qc.houseId || '');
       if (!hid) return;
       const prev = latestByHouse[hid];
@@ -298,18 +307,22 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     if (!propertyId || !enteredAt) return null;
     const enteredMs = new Date(enteredAt).getTime() || 0;
     const exits = historyDocs
-      .filter((h: any) => String(h.propertyId) === String(propertyId) && (new Date(h.changedAt).getTime() || 0) > enteredMs)
-      .filter((h: any) => isRecallText(h.fromStatusName) || isRecallText(statusNameById(h.fromStatusId)))
-      .sort((a: any, b: any) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
+      .filter(h => String(h.propertyId) === String(propertyId) && (new Date(h.changedAt).getTime() || 0) > enteredMs)
+      .filter(h => isRecallText(h.fromStatusName) || isRecallText(statusNameById(h.fromStatusId)))
+      .sort((a, b) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
     return exits.length ? exits[0].changedAt : null;
   };
 
-  const isRecallProperty = (p: any): boolean => {
+  // `Property` no declara los campos legacy usados acá (isRecall/recall/hasRecall/
+  // recalled/recallCount/status/stage/pipelineStatus/jobStatus) — duck-typing
+  // deliberado contra datos históricos que no siguen el esquema canónico.
+  const isRecallProperty = (p: Property | null | undefined): boolean => {
     if (!p) return false;
-    if (p.isRecall === true || p.recall === true || p.hasRecall === true || p.recalled === true) return true;
-    if (typeof p.recallCount === 'number' && p.recallCount > 0) return true;
+    const anyP = p as unknown as Record<string, unknown>;
+    if (anyP.isRecall === true || anyP.recall === true || anyP.hasRecall === true || anyP.recalled === true) return true;
+    if (typeof anyP.recallCount === 'number' && anyP.recallCount > 0) return true;
     const statusName = getStatusName(p);
-    const text = [statusName, p.status, p.stage, p.pipelineStatus, p.jobStatus].filter(Boolean).map((x: any) => String(x).toLowerCase()).join(' ');
+    const text = [statusName, anyP.status, anyP.stage, anyP.pipelineStatus, anyP.jobStatus].filter(Boolean).map(x => String(x).toLowerCase()).join(' ');
     return RECALL_STATUS_HINTS.some(h => text.includes(h));
   };
 
@@ -317,7 +330,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   const changeStatus = async (houseId: string, prevStatusId: string | undefined, newId: string) => {
     if (!houseId || String(newId) === String(prevStatusId || '')) return;
     try {
-      await propertiesService.update(houseId, { statusId: newId } as any);
+      await propertiesService.update(houseId, { statusId: newId });
       const toName = statusNameById(newId);
       await statusHistoryService.log({
         propertyId: houseId,
@@ -327,7 +340,8 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
         toStatusName: toName,
         changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
       });
-      setLoadedProps(prev => prev.map(p => p.id === houseId ? { ...p, statusId: newId } as Property : p));
+      // El prop `properties` viene de un listener en tiempo real (App.tsx), así que la
+      // casa se actualiza sola en `houses` sin necesidad de un update local optimista.
       // Si el nuevo status es Recall, lo agregamos al histórico local para que aparezca al instante
       if (isRecallText(toName)) {
         setHistoryDocs(prev => [...prev, {
@@ -351,14 +365,14 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     const housesWithHistory = new Set<string>();
 
     // 1) Desde status_history: cada transición A Recall = una fila histórica
-    historyDocs.forEach((h: any) => {
+    historyDocs.forEach(h => {
       if (isRecallText(h.toStatusName) || isRecallText(statusNameById(h.toStatusId))) {
-        const house = houses.find((p: any) => p.id === h.propertyId);
+        const house = houses.find(p => p.id === h.propertyId);
         items.push({
           id: `hist-${h.id}`,
           houseId: h.propertyId,
-          client: getClientName((house as any)?.client),
-          address: (house as any)?.address || '-',
+          client: getClientName(house?.client),
+          address: house?.address || '-',
           team: getTeamName(house),
           date: h.changedAt || '',
           reason: 'Recall',
@@ -370,10 +384,13 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
       }
     });
 
-    // 2) Casas actualmente en Recall sin historial (legacy: ocurrió antes del logging)
-    houses.forEach((p: any) => {
+    // 2) Casas actualmente en Recall sin historial (legacy: ocurrió antes del logging).
+    // recallDate/date/updatedAt/recallReason no están en el tipo Property — duck-typing
+    // deliberado contra datos legacy, igual que en `isRecallProperty`.
+    houses.forEach(p => {
       if (isRecallProperty(p) && !housesWithHistory.has(String(p.id))) {
-        const d = p.recallDate || p.scheduleDate || p.date || p.updatedAt || '';
+        const anyP = p as unknown as Record<string, unknown>;
+        const d = String(anyP.recallDate || p.scheduleDate || anyP.date || anyP.updatedAt || '');
         items.push({
           id: `prop-${p.id}`,
           houseId: p.id,
@@ -381,7 +398,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
           address: p.address || '-',
           team: getTeamName(p),
           date: d,
-          reason: p.recallReason || getStatusName(p) || 'Recall',
+          reason: String(anyP.recallReason || '') || getStatusName(p) || 'Recall',
           source: 'property',
           enteredAt: d,
           exitedAt: null, // sigue en Recall
@@ -390,14 +407,14 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     });
 
     // 3) Colección "recalls" (si se usa)
-    recallDocs.forEach((r: any) => {
-      const house = houses.find((p: any) => p.id === r.houseId);
+    recallDocs.forEach(r => {
+      const house = houses.find(p => p.id === r.houseId);
       const d = r.date || r.recallDate || r.createdAt || '';
       items.push({
         id: `rec-${r.id}`,
         houseId: r.houseId,
-        client: getClientName(r.client || (house as any)?.client),
-        address: r.address || (house as any)?.address || '-',
+        client: getClientName(r.client || house?.client),
+        address: r.address || house?.address || '-',
         team: r.team || getTeamName(house),
         date: d,
         reason: r.reason || r.notes || 'Recall',
@@ -433,15 +450,14 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   };
 
   const reportRecalls = useMemo(() => recallHistory.filter(r => inRange(r.date)), [recallHistory, startDate, endDate]);
-  const reportQCs = useMemo(() => qcList.filter((qc: any) => inRange(qc.date || qc.createdAt)), [qcList, startDate, endDate]);
+  const reportQCs = useMemo(() => qcList.filter(qc => inRange(qc.date || qc.createdAt)), [qcList, startDate, endDate]);
 
-  const qcPassRate = (qcData: any): { pass: number; total: number } => {
+  const qcPassRate = (qcData?: QCRecordLite['qcData']): { pass: number; total: number } => {
     let yes = 0, no = 0;
     if (qcData) {
-      Object.keys(qcData).forEach(pid => {
-        const d = qcData[pid];
+      Object.values(qcData).forEach(d => {
         if (!d || !d.tasks) return;
-        Object.values(d.tasks).forEach((v: any) => { if (v === 'Yes') yes++; else if (v === 'No') no++; });
+        Object.values(d.tasks).forEach(v => { if (v === 'Yes') yes++; else if (v === 'No') no++; });
       });
     }
     return { pass: yes, total: yes + no };
@@ -451,11 +467,11 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
     const map: Record<string, { recalls: number; qcPassSum: number; qcCount: number }> = {};
     const ensure = (t: string) => { if (!map[t]) map[t] = { recalls: 0, qcPassSum: 0, qcCount: 0 }; return map[t]; };
 
-    teams.forEach((t: any) => ensure(t.name));
+    teams.forEach(t => ensure(t.name));
     reportRecalls.forEach(r => { ensure(r.team).recalls++; });
 
-    reportQCs.forEach((qc: any) => {
-      const house = houses.find((p: any) => p.id === qc.houseId);
+    reportQCs.forEach(qc => {
+      const house = houses.find(p => p.id === qc.houseId);
       const team = qc.team || getTeamName(house);
       const { pass, total } = qcPassRate(qc.qcData);
       if (total > 0) { const e = ensure(team); e.qcPassSum += (pass / total) * 100; e.qcCount++; }
@@ -496,7 +512,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
       }
     });
     return Object.values(byHouse).map(h => {
-      const houseObj = houses.find((p: any) => p.id === h.houseId) || null;
+      const houseObj = houses.find(p => p.id === h.houseId) || null;
       return { ...h, houseObj, current: houseObj ? isRecallProperty(houseObj) : false };
     }).sort((a, b) => (Number(b.current) - Number(a.current)) || ((new Date(b.lastDate).getTime() || 0) - (new Date(a.lastDate).getTime() || 0)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -513,7 +529,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
       <header className="main-header rcv-header">
         <div className="rcv-header-title-group">
           <button className="hamburger-btn rcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="rcv-title">
@@ -577,7 +593,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                   {filteredRecalls.length === 0 ? (
                     <tr><td colSpan={6} className="rcv-td empty">No recalls found.</td></tr>
                   ) : filteredRecalls.map((r) => {
-                    const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+                    const houseObj = houses.find(p => p.id === r.houseId) || null;
                     const fromQC = cameFromFailedQC(r.houseId);
                     return (
                       <tr key={r.id} onClick={() => houseObj && setDetailHouse(houseObj as Property)} className={`rcv-row${houseObj ? ' clickable' : ''}${fromQC ? ' from-qc' : ''}`}>
@@ -607,7 +623,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                         </td>
                         <td className="rcv-td" onClick={(e) => e.stopPropagation()}>
                           {houseObj ? (
-                            <RowStatusPill statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
+                            <RowStatusPill statusId={houseObj.statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, houseObj.statusId, newId)} />
                           ) : <span className="rcv-no-house">—</span>}
                         </td>
                       </tr>
@@ -623,7 +639,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
             {filteredRecalls.length === 0 ? (
               <div className="rc-card rcv-empty-note-30">No recalls found.</div>
             ) : filteredRecalls.map((r) => {
-              const houseObj = houses.find((p: any) => p.id === r.houseId) || null;
+              const houseObj = houses.find(p => p.id === r.houseId) || null;
               const fromQC = cameFromFailedQC(r.houseId);
               return (
                 <div key={r.id} className={`rc-card rcv-recall-card${houseObj ? ' clickable' : ''}${fromQC ? ' from-qc' : ''}`} onClick={() => houseObj && setDetailHouse(houseObj as Property)}>
@@ -652,7 +668,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
 
                   <div onClick={(e) => e.stopPropagation()}>
                     {houseObj ? (
-                      <RowStatusPill fullWidth statusId={(houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, (houseObj as any).statusId, newId)} />
+                      <RowStatusPill fullWidth statusId={houseObj.statusId} statuses={statuses} onChange={(newId) => changeStatus(houseObj.id, houseObj.statusId, newId)} />
                     ) : <span className="rcv-no-house">—</span>}
                   </div>
                 </div>
@@ -859,7 +875,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
                       <td className={`rcv-td center-tone ${h.count > 1 ? 'high' : 'dark'}`}>{h.count}</td>
                       <td className="rcv-td" onClick={(e) => e.stopPropagation()}>
                         {h.houseObj ? (
-                          <RowStatusPill statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
+                          <RowStatusPill statusId={h.houseObj!.statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, h.houseObj!.statusId, newId)} />
                         ) : <span className="rcv-no-house">—</span>}
                       </td>
                     </tr>
@@ -914,7 +930,7 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
 
                   <div onClick={(e) => e.stopPropagation()}>
                     {h.houseObj ? (
-                      <RowStatusPill fullWidth statusId={(h.houseObj as any).statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, (h.houseObj as any).statusId, newId)} />
+                      <RowStatusPill fullWidth statusId={h.houseObj!.statusId} statuses={statuses} onChange={(newId) => changeStatus(h.houseObj!.id, h.houseObj!.statusId, newId)} />
                     ) : <span className="rcv-no-house">—</span>}
                   </div>
                 </div>

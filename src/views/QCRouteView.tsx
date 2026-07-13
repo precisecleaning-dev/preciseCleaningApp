@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Route, MapPin, Navigation, Save, Trash2, Loader2, ArrowUp, ArrowDown, X, Plus,
-  Clock, LocateFixed, RefreshCw, CheckCircle2, Circle, Building2, ExternalLink, Search
+  Clock, LocateFixed, RefreshCw, CheckCircle2, Circle, Building2, ExternalLink, Search, Menu
 } from 'lucide-react';
-import type { Property, SystemUser } from '../types/index';
+import type { Property, SystemUser, Status, Customer, Team } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { getRelationName } from '../utils/relations';
+import { isQualityCheckStatus, housePassedQC, houseFailedQC, type QCStatusLike } from '../utils/qcStatus';
+import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import './QCRouteView.css';
 
 interface QCRouteViewProps {
@@ -15,7 +18,9 @@ interface QCRouteViewProps {
   currentUser?: SystemUser | null;
 }
 
-interface LatLng { lat: number; lng: number; }
+interface QCListRecord extends QCStatusLike {
+  id?: string;
+}
 
 interface Stop {
   houseId: string;
@@ -40,40 +45,10 @@ interface SavedRoute {
 }
 
 // ---------- utilidades de geo ----------
+// haversineKm/geocodeAddress/getCurrentPosition/ensureLeaflet/fetchOSRMRoute viven en
+// src/utils/routing.ts (compartidas con el motor que antes tenía, por separado, el drawer
+// "Route" embebido en QualityCheckView.tsx — ver code-notes.md).
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-const haversineKm = (a: LatLng, b: LatLng): number => {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const la1 = a.lat * Math.PI / 180;
-  const la2 = b.lat * Math.PI / 180;
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(x));
-};
-
-const geoKey = (addr: string) => 'pc_geo_' + addr.trim().toLowerCase().replace(/\s+/g, '_').slice(0, 120);
-const readGeo = (addr: string): LatLng | null => {
-  try { const r = localStorage.getItem(geoKey(addr)); return r ? JSON.parse(r) : null; } catch { return null; }
-};
-const writeGeo = (addr: string, v: LatLng) => {
-  try { localStorage.setItem(geoKey(addr), JSON.stringify(v)); } catch { /* sin storage */ }
-};
-
-// Geocodificación gratuita (OpenStreetMap / Nominatim). Sin API key.
-const geocodeAddress = async (addr: string): Promise<LatLng | null> => {
-  if (!addr.trim()) return null;
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addr)}`;
-  try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (Array.isArray(data) && data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch (e) {
-    console.error('Error geocodificando dirección:', e);
-  }
-  return null;
-};
 
 const preCoords = (h: any): LatLng | null => {
   const lat = h?.lat ?? h?.latitude ?? h?.coords?.lat ?? h?.location?.lat;
@@ -81,15 +56,6 @@ const preCoords = (h: any): LatLng | null => {
   if (typeof lat === 'number' && typeof lng === 'number') return { lat, lng };
   return null;
 };
-
-const getCurrentLocation = (): Promise<LatLng> => new Promise((resolve, reject) => {
-  if (!('geolocation' in navigator)) { reject(new Error('Geolocalización no disponible')); return; }
-  navigator.geolocation.getCurrentPosition(
-    pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-    err => reject(err),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-  );
-});
 
 const fmtMin = (m: number): string => {
   if (!m || m <= 0) return '0 min';
@@ -99,10 +65,10 @@ const fmtMin = (m: number): string => {
 };
 
 export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCRouteViewProps) {
-  const [statuses, setStatuses] = useState<any[]>([]);
-  const [qcList, setQcList] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [teams, setTeams] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<Status[]>([]);
+  const [qcList, setQcList] = useState<QCListRecord[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [mode, setMode] = useState<'select' | 'route'>('select');
@@ -123,23 +89,30 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
   const [showSaved, setShowSaved] = useState(false);
   const [addPick, setAddPick] = useState('');
 
+  // ⭐ Ruta real de manejo (OSRM) + mapa (Leaflet) — motor compartido en utils/routing.ts
+  const [realDistanceKm, setRealDistanceKm] = useState<number | null>(null);
+  const [realDurationMin, setRealDurationMin] = useState<number | null>(null);
+  const mapElRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const mapLayerRef = useRef<any>(null);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const [statusesData, qcSnap, customersSnap, teamsData, routesSnap] = await Promise.all([
           settingsService.getAll('settings_statuses').catch(() => []),
-          getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] as any[] })),
-          getDocs(collection(db, 'customers')).catch(() => ({ docs: [] as any[] })),
+          getDocs(collection(db, 'quality_checks')).catch(() => null),
+          getDocs(collection(db, 'customers')).catch(() => null),
           settingsService.getAll('settings_teams').catch(() => []),
-          getDocs(collection(db, 'qc_routes')).catch(() => ({ docs: [] as any[] })),
+          getDocs(collection(db, 'qc_routes')).catch(() => null),
         ]);
-        setStatuses(statusesData as any[]);
-        setQcList(((qcSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setCustomers(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() })));
-        setTeams(teamsData as any[]);
-        const routes = ((routesSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() } as SavedRoute));
-        routes.sort((a: SavedRoute, b: SavedRoute) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setStatuses(statusesData as Status[]);
+        setQcList((qcSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as QCListRecord)));
+        setCustomers((customersSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as Customer)));
+        setTeams(teamsData as Team[]);
+        const routes = (routesSnap?.docs || []).map(d => ({ id: d.id, ...d.data() } as SavedRoute));
+        routes.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         setSavedRoutes(routes);
       } catch (e) {
         console.error('Error cargando datos de ruta:', e);
@@ -149,42 +122,14 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     })();
   }, []);
 
-  // ---------- resolución de nombres (igual que Quality Check) ----------
-  const getClientName = (idOrName?: string | null): string => {
-    if (!idOrName) return 'Unknown';
-    const safe = String(idOrName).toLowerCase().trim();
-    const f = customers.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(idOrName);
-  };
-  const getTeamName = (h?: Property | null): string => {
-    const tid = (h as any)?.teamId;
-    if (!tid) return 'Unassigned';
-    const f = teams.find((t: any) => String(t.id) === String(tid) || String(t.name) === String(tid));
-    return f ? f.name : 'Unassigned';
-  };
+  // ---------- resolución de nombres ----------
+  const getClientName = (idOrName?: string | null): string => getRelationName(customers, idOrName, String(idOrName || 'Unknown'));
+  const getTeamName = (h?: Property | null): string => getRelationName(teams, h?.teamId, 'Unassigned');
 
-  // ---------- casas con QC pendiente (misma lógica que Quality Check) ----------
-  const isQualityCheckStatus = (h: Property): boolean => {
-    const sid = (h as any).statusId;
-    const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    const name = String(st?.name || sid || '').toLowerCase().trim();
-    return name === 'qc' || name.includes('quality check') || name.includes('quality-check');
-  };
-  const latestQCForHouse = (houseId: string): any => {
-    const recs = qcList.filter(q => q.houseId === houseId);
-    if (recs.length === 0) return undefined;
-    return recs.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-  };
-  const housePassedQC = (houseId: string): boolean => {
-    const r = latestQCForHouse(houseId);
-    return !!r && r.status === 'Finished' && r.result !== 'failed';
-  };
-  const houseFailedQC = (houseId: string): boolean => {
-    const r = latestQCForHouse(houseId);
-    return !!r && r.result === 'failed';
-  };
-
-  const pendingHouses = properties.filter(h => isQualityCheckStatus(h) && !housePassedQC(h.id) && !houseFailedQC(h.id));
+  // ---------- casas con QC pendiente (lógica compartida con QualityCheckView, ver utils/qcStatus.ts) ----------
+  const pendingHouses = properties.filter(h =>
+    isQualityCheckStatus(h.statusId, statuses) && !housePassedQC(h.id, qcList) && !houseFailedQC(h.id, qcList)
+  );
   const filteredPending = pendingHouses.filter(h => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
@@ -229,7 +174,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
   const persistIfSaved = async (arr: Stop[]) => {
     if (!currentRouteId) return;
     try {
-      await updateDoc(doc(db, 'qc_routes', currentRouteId), { stops: arr, avgSpeed, updatedAt: new Date().toISOString() } as any);
+      await updateDoc(doc(db, 'qc_routes', currentRouteId), { stops: arr, avgSpeed, updatedAt: new Date().toISOString() });
       setSavedRoutes(prev => prev.map(r => r.id === currentRouteId ? { ...r, stops: arr, avgSpeed } : r));
     } catch (e) { console.error('No se pudo actualizar la ruta guardada:', e); }
   };
@@ -241,7 +186,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     try {
       setGeoStatus('Obteniendo tu ubicación actual...');
       let orig: LatLng | null = null;
-      try { orig = await getCurrentLocation(); }
+      try { orig = await getCurrentPosition(); }
       catch { alert('No se pudo obtener tu ubicación (activa el permiso de ubicación). La ruta se generará igual, pero sin tu punto de partida.'); }
       setOrigin(orig);
 
@@ -249,10 +194,9 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
       for (let i = 0; i < chosen.length; i++) {
         const h = chosen[i];
         setGeoStatus(`Ubicando direcciones ${i + 1}/${chosen.length}...`);
-        let coords = preCoords(h) || readGeo(h.address || '');
+        let coords = preCoords(h);
         if (!coords) {
-          const g = await geocodeAddress(h.address || '');
-          if (g) { coords = g; writeGeo(h.address || '', g); }
+          coords = await geocodeAddress(h.address || '');
           await sleep(1100); // respeta el límite de Nominatim (1/seg)
         }
         located.push({
@@ -278,7 +222,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     try {
       setGeoStatus('Obteniendo tu ubicación actual...');
       let orig: LatLng | null = origin;
-      try { orig = await getCurrentLocation(); setOrigin(orig); } catch { /* mantiene origen previo */ }
+      try { orig = await getCurrentPosition(); setOrigin(orig); } catch { /* mantiene origen previo */ }
       const ordered = orderNearestFirst(orig, stops);
       const recomputed = recomputeLegs(orig, ordered, avgSpeed);
       setStops(recomputed);
@@ -326,8 +270,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     setBuilding(true);
     try {
       setGeoStatus('Ubicando dirección...');
-      let coords = preCoords(h) || readGeo(h.address || '');
-      if (!coords) { const g = await geocodeAddress(h.address || ''); if (g) { coords = g; writeGeo(h.address || '', g); } }
+      const coords = preCoords(h) || await geocodeAddress(h.address || '');
       const ns: Stop = {
         houseId: h.id, client: getClientName(h.client), address: h.address || '',
         lat: coords?.lat ?? null, lng: coords?.lng ?? null,
@@ -353,11 +296,11 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     setSavingRoute(true);
     try {
       if (currentRouteId) {
-        await updateDoc(doc(db, 'qc_routes', currentRouteId), { ...payload, updatedAt: new Date().toISOString() } as any);
+        await updateDoc(doc(db, 'qc_routes', currentRouteId), { ...payload, updatedAt: new Date().toISOString() });
         setSavedRoutes(prev => prev.map(r => r.id === currentRouteId ? { id: currentRouteId, ...payload } : r));
         alert('Ruta actualizada.');
       } else {
-        const ref = await addDoc(collection(db, 'qc_routes'), payload as any);
+        const ref = await addDoc(collection(db, 'qc_routes'), payload);
         setCurrentRouteId(ref.id);
         setSavedRoutes(prev => [{ id: ref.id, ...payload }, ...prev]);
         alert('Ruta guardada.');
@@ -393,6 +336,79 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     setMode('select'); setStops([]); setCurrentRouteId(null); setSelectedIds([]); setRouteName('');
   };
 
+  // ---------- mapa (Leaflet) + ruta real de manejo (OSRM) ----------
+  const renderMap = async (orig: LatLng | null, orderedStops: Stop[], geometry: any) => {
+    try {
+      const L = await ensureLeaflet();
+      if (!mapElRef.current) return;
+      if (!mapInstanceRef.current) {
+        mapInstanceRef.current = L.map(mapElRef.current, { zoomControl: true });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapInstanceRef.current);
+      }
+      const map = mapInstanceRef.current;
+      if (mapLayerRef.current) { map.removeLayer(mapLayerRef.current); mapLayerRef.current = null; }
+      const layerGroup = L.layerGroup().addTo(map);
+      mapLayerRef.current = layerGroup;
+
+      const points: LatLng[] = [];
+      if (orig) {
+        L.marker([orig.lat, orig.lng], { title: 'Mi ubicación' }).addTo(layerGroup);
+        points.push(orig);
+      }
+      orderedStops.forEach((s, i) => {
+        if (s.lat == null || s.lng == null) return;
+        L.marker([s.lat, s.lng], { title: s.client }).bindPopup(`${i + 1}. ${s.client}`).addTo(layerGroup);
+        points.push({ lat: s.lat, lng: s.lng });
+      });
+
+      const geom = geometry as { coordinates?: [number, number][] } | null;
+      if (geom?.coordinates) {
+        const latlngs = geom.coordinates.map((c) => [c[1], c[0]]);
+        L.polyline(latlngs, { color: '#4338ca', weight: 4, opacity: 0.8 }).addTo(layerGroup);
+      } else if (points.length >= 2) {
+        L.polyline(points.map(p => [p.lat, p.lng]), { color: '#94a3b8', weight: 3, dashArray: '6 6' }).addTo(layerGroup);
+      }
+
+      if (points.length > 0) {
+        map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [30, 30] });
+      }
+    } catch (e) { console.error('No se pudo dibujar el mapa:', e); }
+  };
+
+  // Recalcula la ruta REAL de manejo (OSRM) + redibuja el mapa cada vez que cambian las
+  // paradas o el origen, mientras estamos en modo "ruta". Independiente de recomputeLegs
+  // (que sigue usando Haversine para el ETA rápido por parada).
+  useEffect(() => {
+    if (mode !== 'route') return;
+    const withCoords = stops.filter(s => s.lat != null && s.lng != null);
+    if (withCoords.length === 0) {
+      setRealDistanceKm(null); setRealDurationMin(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const points: LatLng[] = [
+        ...(origin ? [origin] : []),
+        ...withCoords.map(s => ({ lat: s.lat as number, lng: s.lng as number })),
+      ];
+      const osrm = points.length >= 2 ? await fetchOSRMRoute(points) : null;
+      if (cancelled) return;
+      if (osrm) {
+        setRealDistanceKm(Math.round(osrm.distanceKm * 10) / 10);
+        setRealDurationMin(Math.round(osrm.durationMin));
+      } else {
+        setRealDistanceKm(null); setRealDurationMin(null);
+      }
+      await renderMap(origin, withCoords, osrm?.geometry ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [mode, stops, origin]);
+
+  // Limpia la instancia del mapa al desmontar el componente
+  useEffect(() => {
+    return () => { try { mapInstanceRef.current?.remove(); mapInstanceRef.current = null; } catch { /* noop */ } };
+  }, []);
+
   // ---------- enlaces a Google Maps ----------
   const mapsAllUrl = (): string => {
     if (stops.length === 0) return '#';
@@ -406,8 +422,12 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
   const mapsStopUrl = (s: Stop): string =>
     `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(s.address)}`;
 
-  const totalKm = Math.round(stops.reduce((a, s) => a + (s.legKm || 0), 0) * 10) / 10;
-  const totalMin = stops.reduce((a, s) => a + (s.etaMin || 0), 0);
+  const estimatedKm = Math.round(stops.reduce((a, s) => a + (s.legKm || 0), 0) * 10) / 10;
+  const estimatedMin = stops.reduce((a, s) => a + (s.etaMin || 0), 0);
+  // Distancia/tiempo reales de manejo (OSRM) cuando están disponibles; si no, estimado en línea recta.
+  const displayKm = realDistanceKm ?? estimatedKm;
+  const displayMin = realDurationMin ?? estimatedMin;
+  const isRealRoute = realDistanceKm != null;
   const arrivedCount = stops.filter(s => s.arrived).length;
   const housesNotInRoute = pendingHouses.filter(h => !stops.some(s => s.houseId === h.id));
 
@@ -424,7 +444,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
       </header>
 
       <button className="hamburger-btn qcr-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        <Menu size={24} />
       </button>
 
       {building && (
@@ -526,7 +546,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
                 </button>
               </div>
               <p className="qcr-gen-hint">
-                La ruta parte de tu ubicación actual (se pedirá permiso de GPS) y ordena las paradas de la más cercana a la más lejana. Tiempos y distancias son estimados en línea recta; usa "Abrir en Maps" para la navegación real.
+                La ruta parte de tu ubicación actual (se pedirá permiso de GPS) y ordena las paradas de la más cercana a la más lejana. Al generarla se calcula la ruta real de manejo (con mapa) cuando hay conexión; si no, se usa un estimado en línea recta. Usa "Abrir en Maps" para la navegación turn-by-turn.
               </p>
             </>
           )}
@@ -547,14 +567,17 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
               <div className="qcr-summary-label">Visitadas</div>
             </div>
             <div className="qcr-summary-box">
-              <div className="qcr-summary-value">{totalKm}<span className="qcr-summary-unit"> km</span></div>
-              <div className="qcr-summary-label">Distancia</div>
+              <div className="qcr-summary-value">{displayKm}<span className="qcr-summary-unit"> km</span></div>
+              <div className="qcr-summary-label">Distancia{isRealRoute ? ' real' : ' est.'}</div>
             </div>
             <div className="qcr-summary-box">
-              <div className="qcr-summary-value time">{fmtMin(totalMin)}</div>
-              <div className="qcr-summary-label">Tiempo est.</div>
+              <div className="qcr-summary-value time">{fmtMin(displayMin)}</div>
+              <div className="qcr-summary-label">Tiempo{isRealRoute ? ' real' : ' est.'}</div>
             </div>
           </div>
+
+          {/* Mapa con la ruta (real de manejo cuando hay conexión, o marcadores + línea recta) */}
+          <div className="qcr-map" ref={mapElRef} />
 
           {/* Controles */}
           <div className="qcr-controls-panel">

@@ -1,4 +1,5 @@
 // src/types/index.ts
+import type { LucideIcon } from 'lucide-react';
 
 // ==========================================
 // 1. SYSTEM SECURITY & USERS (RBAC)
@@ -28,7 +29,7 @@ export interface SystemUser {
   phone: string;
   altPhone: string;
   roleId: string;
-  status: 'Active' | 'Pending Invite';
+  status: 'Active' | 'Pending Invite' | 'Inactive';
   teamId?: string; // Para el catálogo de equipos
 }
 
@@ -71,6 +72,14 @@ export interface Property {
     text: string;
     type: string;
   };
+
+  // Work Log (tiempos de inicio y fin de trabajo) — usado por HousesView.tsx,
+  // PropertyDetailModal.tsx y PipelineBoardView.tsx, antes redeclarado por separado en
+  // cada uno como extensión local del tipo.
+  employeeStartedBy?: string | null;
+  employeeStartedAt?: string | null;
+  employeeFinishedBy?: string | null;
+  employeeFinishedAt?: string | null;
 }
 
 // ==========================================
@@ -80,7 +89,7 @@ export interface Property {
 export interface SettingOption {
   id: string;
   label: string;
-  icon: any; 
+  icon: LucideIcon;
 }
 
 export interface Status {
@@ -90,6 +99,7 @@ export interface Status {
   color: string;
   order: number | string; // Orden en el que aparece en pantalla
   showInDashboard?: boolean; // NUEVO: Checkbox para saber si se muestra en el inicio
+  dashboardOrder?: number; // Orden dentro del dashboard (distinto de `order`)
 }
 export interface Team { id: string; name: string; business?: string; color: string; }
 export interface Priority { id: string; name: string; business?: string; color: string; }
@@ -110,7 +120,7 @@ export interface Customer {
 
 export interface CategoryExpense { id: string; name: string; }
 export interface Responsable { id: string; name: string; color: string; }
-export interface Tax { id: string; percentage: number; }
+export interface Tax { id: string; percentage: number; name?: string; }
 export interface Place { id: string; name: string; }
 export interface PaymentMethod { id: string; name: string; }
 export interface Task { id: string; placeId: string; name: string; }
@@ -121,23 +131,6 @@ export interface Business { id: string; name: string; }
 // 4. PAYROLL / PAYMENTS
 // ==========================================
 
-export interface PayrollRecord {
-  id?: string;
-  propertyId: string;
-  date: string;
-  employeeId: string;
-  baseAmount: number;
-  extraAmount: number;
-  extraNote: string;
-  discountAmount: number;
-  discountNote: string;
-  totalAmount: number;
-}
-
-
-// ==========================================
-// 4. PAYROLL / PAYMENTS
-// ==========================================
 export interface PayrollRecord {
   id?: string;
   propertyId: string;

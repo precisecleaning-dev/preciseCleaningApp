@@ -1,7 +1,7 @@
 // src/services/customersService.ts
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase'; 
-import type { Customer } from '../types';
+import type { Customer } from '../types/index';
 
 const COLLECTION_NAME = 'customers';
 

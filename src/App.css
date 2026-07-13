@@ -218,26 +218,6 @@ button, a, .nav-item, [role="button"] {
 .btn-outline { background-color: white; border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 16px; height: 40px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; }
 .btn-outline:hover { background-color: var(--bg-gray); }
 
-/* Side Panel (drawer lateral deslizante) — usado por SidePanel.tsx */
-.side-panel-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(3px); z-index: 1000; }
-.side-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(480px, 100vw); background-color: white; box-shadow: -10px 0 25px rgba(0, 0, 0, 0.15); z-index: 1001; display: flex; flex-direction: column; }
-.fade-in-right { animation: fadeInRight 0.25s ease-out; }
-@keyframes fadeInRight {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.side-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
-.side-panel-title { display: flex; align-items: center; gap: 12px; }
-.side-panel-title h3 { font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin: 0; }
-.side-panel-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.side-panel-body { flex: 1; overflow-y: auto; padding: 24px; }
-.btn-icon { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 6px; transition: background-color 0.2s; }
-.btn-icon:hover { background-color: var(--bg-gray); }
-
-@media (max-width: 768px) {
-  .side-panel { width: 100vw; }
-}
-
 /* Modal ancho "70%" (usado en Payroll, Invoices, Houses, Customers) */
 .modal-70 { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; max-height: 90vh; }
 @media (min-width: 769px) { .modal-70 { width: 70%; } }

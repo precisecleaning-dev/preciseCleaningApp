@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle
+  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle, Menu
 } from 'lucide-react';
 import { db } from '../../config/firebase';
 import { collection, getDocs, setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -13,12 +13,17 @@ interface UsersViewProps {
   roles: Role[];
 }
 
+// ⭐ Tipo extendido local: `inviteSent`/`inviteSentAt` se leen y escriben en Firestore
+//    pero aún no están declarados en el tipo global SystemUser (mismo patrón que
+//    PermissionExt en RolesView.tsx).
+type SystemUserExt = SystemUser & { inviteSent?: boolean; inviteSentAt?: string };
+
 // Genera un doc ID determinístico basado en el email (para usuarios aún no en Auth)
 const emailToPendingId = (email: string) => 
   `pending_${email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_')}`;
 
 export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
-  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [users, setUsers] = useState<SystemUserExt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,7 +46,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
     setIsLoading(true);
     try {
       const snap = await getDocs(collection(db, 'system_users'));
-      const loadedUsers = snap.docs.map(d => ({ id: d.id, ...d.data() } as SystemUser));
+      const loadedUsers = snap.docs.map(d => ({ id: d.id, ...d.data() } as SystemUserExt));
       setUsers(loadedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -81,8 +86,8 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       if (formData.id) {
         // ===== EDITAR =====
         const { id, ...updateData } = formData;
-        await updateDoc(doc(db, 'system_users', id as string), updateData as any);
-        setUsers(users.map(u => u.id === id ? { ...u, ...updateData } as SystemUser : u));
+        await updateDoc(doc(db, 'system_users', id as string), updateData);
+        setUsers(users.map(u => u.id === id ? { ...u, ...updateData } as SystemUserExt : u));
         alert("✅ User updated.");
       } else {
         // ===== AGREGAR (sin email, sin Auth) =====
@@ -98,14 +103,14 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
         const dataToSave = {
           ...newData,
           email: cleanEmail,
-          phone: (newData as any).phone || '',
-          altPhone: (newData as any).altPhone || '',
+          phone: newData.phone || '',
+          altPhone: newData.altPhone || '',
           status: 'Pending Invite' as const,
           inviteSent: false,
           createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'system_users', userId), dataToSave);
-        setUsers([...users, { id: userId, ...dataToSave } as SystemUser]);
+        setUsers([...users, { id: userId, ...dataToSave } as SystemUserExt]);
         alert(`✅ User added.\n\nNo email has been sent yet. Click the ✈️ icon next to their name when you're ready to invite them.`);
       }
       handleCloseForm();
@@ -135,17 +140,17 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
   //    Si el usuario aún tenía un doc con ID temporal ("pending_..."), migramos
   //    el doc para que use el UID de Auth como ID (consistencia con el patrón
   //    que el resto de la app espera al hacer lookup por UID).
-  const handleSendInvite = async (user: SystemUser) => {
+  const handleSendInvite = async (user: SystemUserExt) => {
     if (!user.email) return alert("This user has no email registered.");
 
-    const wasInvited = !!(user as any).inviteSent;
+    const wasInvited = !!user.inviteSent;
     const confirmMsg = wasInvited
       ? `Resend password setup email to ${user.email}?`
       : `Send password setup email to ${user.email}?\n\nThis will create their Firebase Auth account and send them an email with a link to set up their password.`;
-    
+
     if (!window.confirm(confirmMsg)) return;
 
-    setResendingForUserId(user.id as string);
+    setResendingForUserId(user.id);
     try {
       // Si ya estaba invitado, usamos resendPasswordReset (más simple).
       // Si es primera vez, usamos createUserWithResetEmail que crea Auth + envía.
@@ -161,7 +166,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       }
 
       // ¿Necesitamos migrar el doc para usar el UID de Auth?
-      const currentId = user.id as string;
+      const currentId = user.id;
       const needsMigration = !wasInvited && !alreadyExisted && authUid && currentId.startsWith('pending_');
 
       const updatedFields = {
@@ -179,14 +184,14 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
         await deleteDoc(doc(db, 'system_users', currentId));
         finalUserId = authUid!;
         setUsers(users.map(u => u.id === currentId 
-          ? { ...u, id: finalUserId, ...updatedFields } as SystemUser 
+          ? { ...u, id: finalUserId, ...updatedFields } as SystemUserExt 
           : u
         ));
       } else {
         // No hace falta migrar; solo actualizamos
         await updateDoc(doc(db, 'system_users', currentId), updatedFields);
         setUsers(users.map(u => u.id === currentId 
-          ? { ...u, ...updatedFields } as SystemUser 
+          ? { ...u, ...updatedFields } as SystemUserExt 
           : u
         ));
       }
@@ -286,7 +291,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
           importedFromBulk: true
         };
         await setDoc(doc(db, 'system_users', userId), dataToSave);
-        importedUsers.push({ id: userId, ...dataToSave } as SystemUser);
+        importedUsers.push({ id: userId, ...dataToSave } as SystemUserExt);
       } catch (error) {
         console.error(`Error importing ${row.email}:`, error);
         errorCount++;
@@ -310,7 +315,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       <header className="main-header dashboard-header-container uv-header">
         <div className="view-header-title-group">
           <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="uv-title">System Users</h1>
@@ -351,8 +356,8 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
                 const roleName = roles.find(r => r.id === u.roleId)?.name || 'Unknown';
                 const isPending = u.status === 'Pending Invite';
                 const isResending = resendingForUserId === u.id;
-                const wasInvited = !!(u as any).inviteSent;
-                const statusVariant = isPending ? (wasInvited ? 'invited-pending' : 'not-invited') : 'active';
+                const wasInvited = !!u.inviteSent;
+                const statusVariant = isPending ? (wasInvited ? 'invited-pending' : 'not-invited') : u.status === 'Inactive' ? 'inactive' : 'active';
 
                 return (
                   <tr key={u.id}>
@@ -382,7 +387,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
                         <button onClick={() => handleOpenForm(u)} className="uv-btn-edit">
                           <Edit2 size={18} />
                         </button>
-                        <button onClick={() => handleDelete(u.id as string)} className="uv-btn-delete">
+                        <button onClick={() => handleDelete(u.id)} className="uv-btn-delete">
                           <Trash2 size={18} />
                         </button>
                       </div>
@@ -465,7 +470,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
                     <select
                       className="uv-input with-icon selectable"
                       value={formData.status || 'Pending Invite'}
-                      onChange={e => setFormData({...formData, status: e.target.value as any})}
+                      onChange={e => setFormData({...formData, status: e.target.value as SystemUser['status']})}
                     >
                       <option value="Pending Invite">Pending Invite</option>
                       <option value="Active">Active</option>

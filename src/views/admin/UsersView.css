@@ -42,10 +42,12 @@
 .uv-status-dot.not-invited { background-color: #94a3b8; }
 .uv-status-dot.invited-pending { background-color: #f59e0b; }
 .uv-status-dot.active { background-color: #10b981; }
+.uv-status-dot.inactive { background-color: #ef4444; }
 .uv-status-text { font-weight: 600; font-size: 0.9rem; }
 .uv-status-text.not-invited { color: #64748b; }
 .uv-status-text.invited-pending { color: #f59e0b; }
 .uv-status-text.active { color: #10b981; }
+.uv-status-text.inactive { color: #ef4444; }
 
 .uv-actions-cell { display: flex; justify-content: flex-end; gap: 12px; }
 .uv-btn-send { background: none; border: none; color: #0ea5e9; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; }

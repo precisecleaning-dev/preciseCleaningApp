@@ -1,13 +1,22 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
+import type { TabOptions } from '../App';
 import './Sidebar.css';
 
-type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'roles' | 'users' | 'data_import';
+interface NavItemConfig {
+  tab: TabOptions;
+  label: string;
+  icon: LucideIcon;
+  visible: boolean;
+  /** Override opcional: si no se pasa, el click hace handleNavClick(tab). */
+  onClick?: () => void;
+}
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -56,6 +65,52 @@ export default function Sidebar({
     }
   };
 
+  const mainNavItems: NavItemConfig[] = [
+    // ⭐ HOUSES — check propio
+    { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
+    { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canView('Houses') },
+    // ⭐ INVOICES — check INDEPENDIENTE de Houses
+    { tab: 'invoices', label: 'Invoices', icon: FileText, visible: canView('Invoices') },
+    // ⭐ CALENDAR
+    { tab: 'calendar', label: 'Calendar', icon: CalendarDays, visible: canView('Calendar') },
+    // ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses")
+    { tab: 'qc_report', label: 'Quality Check', icon: ClipboardCheck, visible: canView('Quality Check') },
+    // ⭐ STATUS HISTORY — historial de status por casa
+    { tab: 'status_history', label: 'Status History', icon: History, visible: canView('Status History') || canView('Houses') },
+    // ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings")
+    { tab: 'payroll', label: 'Payroll', icon: DollarSign, visible: canView('Payroll') },
+    // ⭐ CUSTOMERS
+    { tab: 'customers', label: 'Customers', icon: Users, visible: canView('Customers') },
+  ];
+
+  const adminNavItems: NavItemConfig[] = [
+    { tab: 'roles', label: 'Roles & Permissions', icon: ShieldCheck, visible: canViewRoles },
+    { tab: 'users', label: 'System Users', icon: UserPlus, visible: canViewUsers },
+    // ⭐ DATA IMPORT — SuperAdmin siempre; además cualquier rol con el permiso
+    //    "Data Import" marcado en Roles & Permissions (casilla View).
+    { tab: 'data_import', label: 'Data Import', icon: Database, visible: isSuperAdmin || canViewDataImport },
+    // ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en documentos, login y menú)
+    { tab: 'company', label: 'Empresa', icon: Building2, visible: canViewSettings },
+    // ⭐ FOTOS — compresión/opciones de captura de fotos (mismo permiso que Empresa/Settings)
+    { tab: 'photo_settings', label: 'Fotos', icon: Camera, visible: canViewSettings },
+    {
+      tab: 'settings', label: 'Settings', icon: SettingsIcon, visible: canViewSettings,
+      onClick: () => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); },
+    },
+  ];
+
+  const renderNavItem = (item: NavItemConfig) => (
+    <li key={item.tab}>
+      <button
+        className={`nav-item ${activeTab === item.tab ? 'active' : ''}`}
+        onClick={item.onClick ?? (() => handleNavClick(item.tab))}
+      >
+        <item.icon size={20} className="nav-icon" />
+        {isSidebarOpen && <span className="nav-text">{item.label}</span>}
+      </button>
+    </li>
+  );
+
   return (
     <>
       {/* ⭐ Fondo oscuro (solo visible en móvil cuando el menú está abierto) */}
@@ -75,112 +130,16 @@ export default function Sidebar({
         </div>
 
         <nav className="sidebar-nav">
+          <ul className="nav-list">
+            {mainNavItems.filter(item => item.visible).map(renderNavItem)}
 
-          {/* ⭐ HOUSES — check propio */}
-          {canView('Houses') && (
-            <button className={`nav-item ${activeTab === 'houses' ? 'active' : ''}`} onClick={() => handleNavClick('houses')}>
-              <Home size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Overview</span>}
-            </button>
-          )}
+            {/* ⭐ ADMIN SECTION — Header solo aparece si al menos uno está visible */}
+            {showAdminSection && isSidebarOpen && (
+              <li className="menu-label spaced">ADMIN</li>
+            )}
 
-          {canView('Houses') && (
-            <button className={`nav-item ${activeTab === 'pipeline' ? 'active' : ''}`} onClick={() => handleNavClick('pipeline')}>
-              <LayoutGrid size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Pipeline</span>}
-            </button>
-          )}
-
-          {/* ⭐ INVOICES — check INDEPENDIENTE de Houses */}
-          {canView('Invoices') && (
-            <button className={`nav-item ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => handleNavClick('invoices')}>
-              <FileText size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Invoices</span>}
-            </button>
-          )}
-
-          {/* ⭐ CALENDAR */}
-          {canView('Calendar') && (
-            <button className={`nav-item ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => handleNavClick('calendar')}>
-              <CalendarDays size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Calendar</span>}
-            </button>
-          )}
-
-          {/* ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses") */}
-          {canView('Quality Check') && (
-            <button className={`nav-item ${activeTab === 'qc_report' ? 'active' : ''}`} onClick={() => handleNavClick('qc_report')}>
-              <ClipboardCheck size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Quality Check</span>}
-            </button>
-          )}
-
-          {/* ⭐ STATUS HISTORY — historial de status por casa */}
-          {(canView('Status History') || canView('Houses')) && (
-            <button className={`nav-item ${activeTab === 'status_history' ? 'active' : ''}`} onClick={() => handleNavClick('status_history')}>
-              <History size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Status History</span>}
-            </button>
-          )}
-
-          {/* ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings") */}
-          {canView('Payroll') && (
-            <button className={`nav-item ${activeTab === 'payroll' ? 'active' : ''}`} onClick={() => handleNavClick('payroll')}>
-              <DollarSign size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Payroll</span>}
-            </button>
-          )}
-
-          {/* ⭐ CUSTOMERS */}
-          {canView('Customers') && (
-            <button className={`nav-item ${activeTab === 'customers' ? 'active' : ''}`} onClick={() => handleNavClick('customers')}>
-              <Users size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Customers</span>}
-            </button>
-          )}
-
-          {/* ⭐ ADMIN SECTION — Header solo aparece si al menos uno está visible */}
-          {showAdminSection && isSidebarOpen && (
-            <div className="menu-label spaced">ADMIN</div>
-          )}
-
-          {canViewRoles && (
-            <button className={`nav-item ${activeTab === 'roles' ? 'active' : ''}`} onClick={() => handleNavClick('roles')}>
-              <ShieldCheck size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Roles & Permissions</span>}
-            </button>
-          )}
-
-          {canViewUsers && (
-            <button className={`nav-item ${activeTab === 'users' ? 'active' : ''}`} onClick={() => handleNavClick('users')}>
-              <UserPlus size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">System Users</span>}
-            </button>
-          )}
-
-          {/* ⭐ DATA IMPORT — SuperAdmin siempre; además cualquier rol con el permiso
-              "Data Import" marcado en Roles & Permissions (casilla View). */}
-          {(isSuperAdmin || canViewDataImport) && (
-            <button className={`nav-item ${activeTab === 'data_import' ? 'active' : ''}`} onClick={() => handleNavClick('data_import')}>
-              <Database size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Data Import</span>}
-            </button>
-          )}
-
-          {/* ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en documentos, login y menú) */}
-          {canViewSettings && (
-            <button className={`nav-item ${activeTab === 'company' ? 'active' : ''}`} onClick={() => handleNavClick('company')}>
-              <Building2 size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Empresa</span>}
-            </button>
-          )}
-
-          {canViewSettings && (
-            <button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); }}>
-              <SettingsIcon size={20} className="nav-icon" />
-              {isSidebarOpen && <span className="nav-text">Settings</span>}
-            </button>
-          )}
+            {adminNavItems.filter(item => item.visible).map(renderNavItem)}
+          </ul>
         </nav>
 
         <div className="sidebar-footer">

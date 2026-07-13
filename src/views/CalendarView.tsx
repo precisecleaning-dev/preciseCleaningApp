@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { 
-  ChevronLeft, ChevronRight, X, Edit2, Trash2, 
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ChevronDown, ClipboardCheck, MapPin, Filter, RotateCcw
+import {
+  ChevronLeft, ChevronRight, X, Edit2, Trash2,
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Menu
 } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
+import { getRelationName, getRelationColor } from '../utils/relations';
+import CustomSelect from '../components/CustomSelect';
 import './CalendarView.css';
 
 // --- FIREBASE SERVICES ---
@@ -20,79 +22,6 @@ const collectionMap: Record<string, string> = {
   service: 'settings_services',
 };
 
-// --- CUSTOM COMPONENTS & HELPERS (A Prueba de Balas) ---
-const CustomSelect = ({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  // Búsqueda inteligente: ignora mayúsculas y espacios para compatibilidad con registros viejos
-  const safeValue = String(value || '').toLowerCase().trim();
-  const selected = options.find((o: any) => 
-    String(o.id).toLowerCase().trim() === safeValue || 
-    String(o.name).toLowerCase().trim() === safeValue
-  );
-
-  return (
-    <div tabIndex={0} onBlur={() => setIsOpen(false)} className="cs-wrap">
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="cs-trigger"
-      >
-        <Icon size={16} className="cs-trigger-icon" />
-        <div className="cs-selected-wrap">
-          {selected?.color && <span className="cs-dot" style={{ '--dot-color': selected.color } as CSSProperties}></span>}
-          <span className={`cs-label${selected ? ' selected' : ''}`}>
-            {selected ? selected.name : placeholder}
-          </span>
-        </div>
-        <ChevronDown size={16} color="#9ca3af" className={`cs-chevron${isOpen ? ' open' : ''}`} />
-      </div>
-
-      {isOpen && (
-        <div className="cs-dropdown">
-          <div className="cs-option-none" onMouseDown={(e) => { e.preventDefault(); onChange(''); setIsOpen(false); }}>
-            None / Unassigned
-          </div>
-          {options.map((o: any) => (
-            <div
-              key={o.id}
-              className="cs-option"
-              onMouseDown={(e) => { e.preventDefault(); onChange(o[returnKey] || o.id); setIsOpen(false); }}
-            >
-              {o.color && <span className="cs-dot" style={{ '--dot-color': o.color } as CSSProperties}></span>}
-              <span className="cs-option-label">{o.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Funciones de mapeo seguras
-const getRelationName = (list: any[], idOrName: string, fallback = '-') => {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(item => 
-    String(item.id).toLowerCase().trim() === safeVal || 
-    String(item.name).toLowerCase().trim() === safeVal
-  );
-  return found ? found.name : fallback;
-};
-
-const getRelationColor = (list: any[], idOrName: string) => {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(item => 
-    String(item.id).toLowerCase().trim() === safeVal || 
-    String(item.name).toLowerCase().trim() === safeVal
-  )?.color;
-};
-
-// Statuses que NUNCA se ocultan con el filtro de fechas (Quality Check / Recall)
-const isAlwaysVisibleStatusName = (name?: string) => {
-  const n = String(name || '').toLowerCase();
-  return n.includes('quality') || n.includes('recall');
-};
 
 // --- TIME CALCULATION HELPERS ---
 const START_HOUR = 6; // El calendario empieza a las 6 AM
@@ -108,13 +37,15 @@ const parseTimeToMinutes = (timeStr: string) => {
 interface CalendarViewProps {
   onOpenMenu: () => void;
   onCheckHouse?: (house: Property) => void;
-  properties?: Property[]; 
+  properties: Property[];
+  setProperties: Dispatch<SetStateAction<Property[]>>;
 }
 
-export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewProps) {
-  
+export default function CalendarView({ onOpenMenu, onCheckHouse, properties, setProperties }: CalendarViewProps) {
+
   // --- FIREBASE STATES ---
-  const [propertiesList, setPropertiesList] = useState<Property[]>([]);
+  // `properties` viene de App.tsx (lista en tiempo real vía onSnapshot, compartida con
+  // el resto de las vistas) — antes este componente hacía su propio fetch desconectado.
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
@@ -127,16 +58,11 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month'); // Selector de vistas, default Month para ver el arreglo
 
-  // --- FILTRO DE FECHAS (rango Desde / Hasta) ---
-  const [filterFrom, setFilterFrom] = useState('');
-  const [filterTo, setFilterTo] = useState('');
-  const filterActive = !!(filterFrom || filterTo);
-  const clearFilter = () => { setFilterFrom(''); setFilterTo(''); };
-
   // --- MODAL STATES ---
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null); // Modal "todos los trabajos del día"
   
   const [formData, setFormData] = useState<Property>({
     id: '', statusId: '', invoiceStatus: 'Pending', receiveDate: '', scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: ''
@@ -147,16 +73,14 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     const fetchAllData = async () => {
       setIsLoading(true);
       try {
-        const [ propsData, statusData, teamData, prioData, servData, custData ] = await Promise.all([
-          propertiesService.getAll(),
+        const [ statusData, teamData, prioData, servData, custData ] = await Promise.all([
           settingsService.getAll(collectionMap.status),
           settingsService.getAll(collectionMap.team),
           settingsService.getAll(collectionMap.priority),
           settingsService.getAll(collectionMap.service),
-          customersService.getAll() 
+          customersService.getAll()
         ]);
 
-        if (propsData) setPropertiesList(propsData);
         if (statusData) setStatuses((statusData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
         if (teamData) setTeams(teamData as Team[]);
         if (prioData) setPriorities(prioData as Priority[]);
@@ -269,18 +193,18 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     setIsSaving(true);
     try {
       if (selectedHouse && selectedHouse.id) {
-        const { id, ...dataToUpdate } = formData; 
-        await propertiesService.update(selectedHouse.id, dataToUpdate as any);
-        setPropertiesList(propertiesList.map(p => p.id === selectedHouse.id ? { ...formData } : p));
+        const { id, ...dataToUpdate } = formData;
+        await propertiesService.update(selectedHouse.id, dataToUpdate);
+        setProperties(properties.map(p => p.id === selectedHouse.id ? { ...formData } : p));
       } else {
-        const { id, ...dataToAdd } = formData; 
+        const { id, ...dataToAdd } = formData;
         const completeData = {
           ...dataToAdd,
           description: `${formData.client} - ${formData.rooms} rooms`,
           city: 'TBD', size: 'TBD'
         };
-        const newId = await propertiesService.create(completeData as any);
-        setPropertiesList([...propertiesList, { ...formData, id: newId, description: completeData.description, city: completeData.city, size: completeData.size }]);
+        const newId = await propertiesService.create(completeData);
+        setProperties([...properties, { ...formData, id: newId, description: completeData.description, city: completeData.city, size: completeData.size }]);
       }
       handleCloseForm();
     } catch (error) {
@@ -299,7 +223,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
     setIsSaving(true);
     try {
       await propertiesService.delete(selectedHouse.id);
-      setPropertiesList(propertiesList.filter(p => p.id !== selectedHouse.id));
+      setProperties(properties.filter(p => p.id !== selectedHouse.id));
       setIsDetailModalOpen(false);
     } catch (error) {
       console.error("Error deleting:", error);
@@ -321,40 +245,66 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
   };
 
   // --- RENDER HELPERS ---
-  const renderEventBlocks = (date: Date) => {
+  const MAX_MONTH_EVENTS = 5; // Máximo de eventos visibles por día en la vista de mes
+
+  // Trabajos que pertenecen a una fecha, ordenados por hora de entrada
+  const getJobsForDate = (date: Date) => {
     const offset = date.getTimezoneOffset();
     const localDate = new Date(date.getTime() - (offset * 60 * 1000));
     const dateString = localDate.toISOString().split('T')[0];
 
-    // Trabajos del día. Aplica el filtro de rango EXCEPTO en Quality Check / Recall,
-    // que siempre se siguen viendo aunque la fecha quede fuera del rango.
-    const dailyJobs = propertiesList.filter(p => {
-      const raw = (p.scheduleDate || p.receiveDate);
-      if (raw !== dateString) return false; // pertenece a este día
-      const stName = getRelationName(statuses, p.statusId, '');
-      if (isAlwaysVisibleStatusName(stName)) return true; // QC / Recall: siempre visibles
-      if (!filterActive) return true;
-      const d = String(raw).slice(0, 10);
-      if (filterFrom && d < filterFrom) return false;
-      if (filterTo && d > filterTo) return false;
-      return true;
-    });
+    // Trabajos del dia (prop `properties` en tiempo real), ordenados por hora de entrada.
+    return properties
+      .filter(p => (p.scheduleDate || p.receiveDate) === dateString)
+      .sort((a, b) => {
+        const ta = parseTimeToMinutes(a.timeIn || '');
+        const tb = parseTimeToMinutes(b.timeIn || '');
+        if (ta === null && tb === null) return 0;
+        if (ta === null) return 1; // sin hora al final
+        if (tb === null) return -1;
+        return ta - tb;
+      });
+  };
+
+  const openJobDetail = (job: Property) => {
+    setSelectedHouse(job);
+    setDayDetailDate(null);
+    setIsDetailModalOpen(true);
+  };
+
+  const renderEventBlocks = (date: Date) => {
+    const dailyJobs = getJobsForDate(date);
 
     if (viewMode === 'month') {
-      // ESTILO MES: Simple stack de eventos
-      return dailyJobs.map(job => {
-        const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
-        return (
-          <div
-            key={job.id}
-            className="calendar-event-month"
-            style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
-            onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
-          >
-            <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
-          </div>
-        );
-      });
+      // ESTILO MES: Stack de eventos limitado a MAX_MONTH_EVENTS + botón "Show more"
+      const visibleJobs = dailyJobs.slice(0, MAX_MONTH_EVENTS);
+      const hiddenCount = dailyJobs.length - visibleJobs.length;
+
+      return (
+        <>
+          {visibleJobs.map(job => {
+            const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+            return (
+              <div
+                key={job.id}
+                className="calendar-event-month"
+                style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
+                onClick={(e) => { e.stopPropagation(); openJobDetail(job); }}
+              >
+                <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
+              </div>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <button
+              className="cv-show-more-btn"
+              onClick={(e) => { e.stopPropagation(); setDayDetailDate(date); }}
+            >
+              Show more (+{hiddenCount})
+            </button>
+          )}
+        </>
+      );
     }
 
     // ESTILO GOOGLE CALENDAR (DÍA Y SEMANA): Posicionamiento Absoluto
@@ -395,7 +345,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
       <header className="cv-header">
         <div className="view-header-title-group">
           <button onClick={onOpenMenu} className="hamburger-btn" aria-label="Open menu">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="cv-title">Calendar</h1>
@@ -419,37 +369,6 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
           </div>
         </div>
       </header>
-
-      {/* --- BARRA DE FILTRO DE FECHAS --- */}
-      <div className="cv-filter-card">
-        <span className="cv-filter-title">
-          <Filter size={15} color="#3b82f6" /> Filtrar por fecha
-        </span>
-
-        <label className="cv-filter-label">
-          Desde
-          <input type="date" value={filterFrom} max={filterTo || undefined}
-            onChange={e => setFilterFrom(e.target.value)} className="cv-filter-date-input" />
-        </label>
-
-        <label className="cv-filter-label">
-          Hasta
-          <input type="date" value={filterTo} min={filterFrom || undefined}
-            onChange={e => setFilterTo(e.target.value)} className="cv-filter-date-input" />
-        </label>
-
-        {filterActive && (
-          <button onClick={clearFilter} className="cv-btn-clear-filter">
-            <RotateCcw size={14} /> Limpiar
-          </button>
-        )}
-
-        {filterActive && (
-          <span className="cv-filter-badge">
-            <ClipboardCheck size={12} /> Quality Check y Recall siempre visibles
-          </span>
-        )}
-      </div>
 
       {/* CALENDAR RENDER */}
       {isLoading ? (
@@ -527,6 +446,62 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
         </div>
       )}
 
+      {/* --- DAY DETAIL MODAL (todos los trabajos del día) --- */}
+      {dayDetailDate && (() => {
+        const dayJobs = getJobsForDate(dayDetailDate);
+        const dayTitleRaw = dayDetailDate.toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const dayTitle = dayTitleRaw.charAt(0).toUpperCase() + dayTitleRaw.slice(1);
+        return (
+          <div className="cv-modal-overlay" onClick={() => setDayDetailDate(null)}>
+            <div className="cv-modal cv-day-modal" onClick={e => e.stopPropagation()}>
+              <header className="cv-modal-header">
+                <div>
+                  <h3 className="cv-modal-title">{dayTitle}</h3>
+                  <span className="cv-day-modal-count">{dayJobs.length} {dayJobs.length === 1 ? 'trabajo' : 'trabajos'}</span>
+                </div>
+                <button className="cv-modal-close" onClick={() => setDayDetailDate(null)}><X size={24} /></button>
+              </header>
+
+              <div className="cv-modal-body cv-day-modal-body">
+                {dayJobs.map(job => {
+                  const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+                  return (
+                    <div
+                      key={job.id}
+                      className="cv-day-job-row"
+                      style={{ '--event-color': statusColor } as CSSProperties}
+                      onClick={() => openJobDetail(job)}
+                    >
+                      <div className="cv-day-job-time">
+                        <Clock size={14} />
+                        <span>{job.timeIn || '--:--'}{job.timeOut ? ` - ${job.timeOut}` : ''}</span>
+                      </div>
+                      <div className="cv-day-job-info">
+                        <span className="cv-day-job-client">{getClientName(job.client)}</span>
+                        <span className="cv-day-job-address"><MapPin size={12} /> {job.address || '-'}</span>
+                      </div>
+                      <div className="cv-day-job-meta">
+                        <span className="cv-day-job-status">
+                          <span className="cv-dot-12" style={{ '--dot-color': statusColor } as CSSProperties}></span>
+                          {getRelationName(statuses, job.statusId, 'Unassigned')}
+                        </span>
+                        {getRelationName(teams, job.teamId, '') && (
+                          <span className="cv-day-job-team"><Users size={12} /> {getRelationName(teams, job.teamId)}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <footer className="cv-modal-footer">
+                <button className="cv-btn-outline" onClick={() => setDayDetailDate(null)}>Close</button>
+              </footer>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* --- FORM MODAL --- */}
       {isFormModalOpen && (
         <div className="cv-modal-overlay" onClick={handleCloseForm}>
@@ -564,7 +539,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
 
                 <div>
                   <label className="cv-label">Invoice Status</label>
-                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: any) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
                 </div>
                 <div>
                   <label className="cv-label">Services</label>
@@ -657,91 +632,91 @@ export default function CalendarView({ onOpenMenu, onCheckHouse }: CalendarViewP
             </header>
 
             <div className="cv-modal-body">
-              <div className="cv-detail-banner">
+              <dl className="cv-detail-banner">
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</span>
-                  <span className="cv-address-value">{selectedHouse.address}</span>
+                  <dt className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
+                  <dd className="cv-address-value">{selectedHouse.address}</dd>
                 </div>
-              </div>
+              </dl>
 
-              <div className="grid-3-cols">
+              <dl className="grid-3-cols">
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Activity size={14} /> STATUS</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Activity size={14} /> STATUS</dt>
+                  <dd className="cv-dot-row">
                     <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(statuses, selectedHouse.statusId) || '#ccc' } as CSSProperties}></span>
                     <span className="cv-detail-value">{getRelationName(statuses, selectedHouse.statusId, 'UNASSIGNED')}</span>
-                  </div>
+                  </dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
-                  <span className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</span>
+                  <dt className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><User size={14} /> CLIENT</span>
-                  <span className="cv-detail-value">{getClientName(selectedHouse.client)}</span>
-                </div>
-
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span className="cv-detail-value">{selectedHouse.receiveDate || '-'}</span>
-                </div>
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</span>
-                </div>
-                <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Wrench size={14} /> SERVICE</span>
-                  <span className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</span>
+                  <dt className="cv-detail-label"><User size={14} /> CLIENT</dt>
+                  <dd className="cv-detail-value">{getClientName(selectedHouse.client)}</dd>
                 </div>
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Clock size={14} /> TIME IN</span>
-                  <span className="cv-detail-value">{selectedHouse.timeIn || '-'}</span>
+                  <dt className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</dt>
+                  <dd className="cv-detail-value">{selectedHouse.receiveDate || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Clock size={14} /> TIME OUT</span>
-                  <span className="cv-detail-value">{selectedHouse.timeOut || '-'}</span>
+                  <dt className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</dt>
+                  <dd className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Flag size={14} /> PRIORITY</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Wrench size={14} /> SERVICE</dt>
+                  <dd className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</dd>
+                </div>
+
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Clock size={14} /> TIME IN</dt>
+                  <dd className="cv-detail-value">{selectedHouse.timeIn || '-'}</dd>
+                </div>
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Clock size={14} /> TIME OUT</dt>
+                  <dd className="cv-detail-value">{selectedHouse.timeOut || '-'}</dd>
+                </div>
+                <div className="cv-detail-item">
+                  <dt className="cv-detail-label"><Flag size={14} /> PRIORITY</dt>
+                  <dd className="cv-dot-row">
                     {getRelationColor(priorities, selectedHouse.priorityId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
                     <span className="cv-detail-value">{getRelationName(priorities, selectedHouse.priorityId)}</span>
-                  </div>
+                  </dd>
                 </div>
 
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Hash size={14} /> ROOMS</span>
-                  <span className="cv-detail-value">{selectedHouse.rooms || '-'}</span>
+                  <dt className="cv-detail-label"><Hash size={14} /> ROOMS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.rooms || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Hash size={14} /> BATHROOMS</span>
-                  <span className="cv-detail-value">{selectedHouse.bathrooms || '-'}</span>
+                  <dt className="cv-detail-label"><Hash size={14} /> BATHROOMS</dt>
+                  <dd className="cv-detail-value">{selectedHouse.bathrooms || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
-                  <span className="cv-detail-label"><Users size={14} /> TEAM</span>
-                  <div className="cv-dot-row">
+                  <dt className="cv-detail-label"><Users size={14} /> TEAM</dt>
+                  <dd className="cv-dot-row">
                     {getRelationColor(teams, selectedHouse.teamId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
                     <span className="cv-detail-value">{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
-                  </div>
+                  </dd>
                 </div>
 
                 <div className="col-span-full">
                   <div className="cv-note-box">
-                    <span className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span>
-                    <span className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</span>
+                    <dt className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</dt>
+                    <dd className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</dd>
                   </div>
                 </div>
 
                 <div className="col-span-full">
                   <div className="cv-note-box orange">
-                    <span className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</span>
-                    <span className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</span>
+                    <dt className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</dt>
+                    <dd className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</dd>
                   </div>
                 </div>
 
-              </div>
+              </dl>
             </div>
 
             <footer className="cv-modal-footer between">

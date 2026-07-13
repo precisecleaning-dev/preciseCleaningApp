@@ -2,19 +2,21 @@ import { useState, useEffect, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
   History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter,
-  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp
+  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp, Menu
 } from 'lucide-react';
-import type { Property, Status, Customer } from '../types/index';
+import type { Property, Status, Customer, Team } from '../types/index';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import StatusHistoryPanel from '../components/StatusHistoryPanel';
 import { statusHistoryService } from '../services/statusHistoryService';
+import type { StatusHistoryEntry } from '../services/statusHistoryService';
+import { getRelationName, getRelationColor } from '../utils/relations';
+import { isRecallText } from '../utils/recallStatus';
 import './StatusHistoryView.css';
 
 interface StatusHistoryViewProps {
   onOpenMenu: () => void;
   properties: Property[];
-  currentUser?: any;
 }
 
 const PAGE_SIZE = 40;
@@ -25,13 +27,6 @@ const PAGE_SIZE = 40;
 // solo cambia el valor de PAYROLL_COLLECTION en esta línea.
 const BILLING_COLLECTION = 'billing_services';
 const PAYROLL_COLLECTION = 'payroll';
-
-const RECALL_STATUS_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
-const isRecallText = (txt?: any): boolean => {
-  if (!txt) return false;
-  const t = String(txt).toLowerCase();
-  return RECALL_STATUS_HINTS.some(h => t.includes(h));
-};
 
 interface RecallEpisode {
   enteredAt: string;
@@ -53,7 +48,7 @@ interface JourneyNode {
 export default function StatusHistoryView({ onOpenMenu, properties }: StatusHistoryViewProps) {
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [teams, setTeams] = useState<any[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [billingByProp, setBillingByProp] = useState<Record<string, { total: number; taxes: number }>>({});
   const [payrollByProp, setPayrollByProp] = useState<Record<string, number>>({});
 
@@ -63,7 +58,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
 
-  const [historyAsc, setHistoryAsc] = useState<any[]>([]);
+  const [historyAsc, setHistoryAsc] = useState<StatusHistoryEntry[]>([]);
   const [episodesLoading, setEpisodesLoading] = useState(false);
 
   useEffect(() => {
@@ -71,7 +66,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
 
     unsubs.push(onSnapshot(collection(db, 'settings_statuses'), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-      setStatuses(data.sort((a, b) => Number((a as any).order || 0) - Number((b as any).order || 0)));
+      setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
     }, (e) => console.error('Error statuses:', e)));
 
     unsubs.push(onSnapshot(collection(db, 'customers'), (snap) => {
@@ -79,7 +74,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     }, (e) => console.error('Error customers:', e)));
 
     unsubs.push(onSnapshot(collection(db, 'settings_teams'), (snap) => {
-      setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
     }, (e) => console.error('Error teams:', e)));
 
     // Suma de facturación por propiedad (Total + Taxes)
@@ -112,29 +107,17 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   }, []);
 
   // ---------- Helpers ----------
-  const getClientName = (idOrName?: string | null) => {
-    if (!idOrName) return 'Unknown';
-    const safe = String(idOrName).toLowerCase().trim();
-    const f = customers.find((c: any) => String(c.id).toLowerCase().trim() === safe || String(c.name).toLowerCase().trim() === safe);
-    return f ? f.name : String(idOrName);
-  };
-  const statusName = (idOrName?: string | null) => {
-    if (!idOrName) return '—';
-    const safe = String(idOrName).toLowerCase().trim();
-    const st = statuses.find(s => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
-    return st?.name || String(idOrName);
-  };
+  const getClientName = (idOrName?: string | null) =>
+    getRelationName(customers, idOrName, idOrName ? String(idOrName) : 'Unknown');
+  const statusName = (idOrName?: string | null) =>
+    getRelationName(statuses, idOrName, String(idOrName || '—'));
   const statusColor = (idOrName?: string | null) => {
     if (!idOrName) return '#94a3b8';
-    const safe = String(idOrName).toLowerCase().trim();
-    const st = statuses.find(s => String(s.id).toLowerCase().trim() === safe || String(s.name).toLowerCase().trim() === safe);
-    return st?.color || '#64748b';
+    return getRelationColor(statuses, idOrName) || '#64748b';
   };
   const teamInfo = (idOrName?: string | null) => {
     if (!idOrName) return null;
-    const safe = String(idOrName).toLowerCase().trim();
-    const t = teams.find((x: any) => String(x.id).toLowerCase().trim() === safe || String(x.name).toLowerCase().trim() === safe);
-    return t ? { name: t.name as string, color: (t.color as string) || '#64748b' } : { name: String(idOrName), color: '#64748b' };
+    return { name: getRelationName(teams, idOrName, String(idOrName)), color: getRelationColor(teams, idOrName) || '#64748b' };
   };
 
   const fmtMoney = (n?: number) => (Number(n) || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -224,7 +207,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
       setEpisodesLoading(true);
       try {
         const entries = await statusHistoryService.getByProperty(selectedId);
-        const asc = [...(entries || [])].sort((a: any, b: any) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
+        const asc = [...(entries || [])].sort((a, b) => (new Date(a.changedAt).getTime() || 0) - (new Date(b.changedAt).getTime() || 0));
         if (active) setHistoryAsc(asc);
       } catch (err) {
         console.error('Error loading history:', err);
@@ -241,7 +224,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const journey = useMemo<JourneyNode[]>(() => {
     if (!historyAsc.length) return [];
     const nodes: JourneyNode[] = [];
-    const first: any = historyAsc[0];
+    const first = historyAsc[0];
     if (first.fromStatusId || first.fromStatusName) {
       nodes.push({
         name: first.fromStatusName || statusName(first.fromStatusId),
@@ -249,8 +232,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
         at: null, initial: true,
       });
     }
-    historyAsc.forEach((e: any, i: number) => {
-      const next: any = historyAsc[i + 1];
+    historyAsc.forEach((e, i) => {
+      const next = historyAsc[i + 1];
       nodes.push({
         name: e.toStatusName || statusName(e.toStatusId),
         color: statusColor(e.toStatusId || e.toStatusName),
@@ -269,7 +252,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     if (!historyAsc.length) return [];
     const eps: RecallEpisode[] = [];
     let open: RecallEpisode | null = null;
-    historyAsc.forEach((e: any) => {
+    historyAsc.forEach(e => {
       const toR = isRecallText(e.toStatusName) || isRecallText(statusName(e.toStatusId));
       const fromR = isRecallText(e.fromStatusName) || isRecallText(statusName(e.fromStatusId));
       if (toR && !open) {
@@ -306,7 +289,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
       {/* Cabecera */}
       <header className="shv-header">
         <button className="hamburger-btn shv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <Menu size={24} />
         </button>
         <div className="shv-header-title-group">
           <div className="shv-header-icon-box">

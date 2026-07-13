@@ -5,14 +5,14 @@
 @keyframes shp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .shp-empty { padding: 24px; text-align: center; color: #94a3b8; font-style: italic; font-size: 0.85rem; }
 
-.shp-counts { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; display: flex; flex-wrap: wrap; gap: 8px; }
+.shp-counts { list-style: none; margin: 0; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; display: flex; flex-wrap: wrap; gap: 8px; }
 .shp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; background: var(--pill-bg); border: 1px solid var(--pill-border); font-size: 0.82rem; font-weight: 600; color: #334155; }
 .shp-count-badge { background-color: var(--dot-color); color: white; border-radius: 10px; min-width: 20px; text-align: center; padding: 0 6px; font-size: 0.72rem; font-weight: 800; }
 
 .shp-dot-8 { width: 8px; height: 8px; border-radius: 50%; background-color: var(--dot-color); }
 .shp-dot-10 { width: 10px; height: 10px; border-radius: 50%; background-color: var(--dot-color); flex-shrink: 0; }
 
-.shp-timeline { max-height: 260px; overflow-y: auto; }
+.shp-timeline { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
 .shp-timeline-row { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
 .shp-timeline-row:not(:last-child) { border-bottom: 1px solid #f1f5f9; }
 .shp-timeline-content { flex: 1; min-width: 0; }

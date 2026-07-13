@@ -77,6 +77,10 @@
 .qcr-summary-unit { font-size: 0.8rem; color: #94a3b8; }
 .qcr-summary-label { font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; }
 
+/* ===================== Mapa de la ruta ===================== */
+.qcr-map { width: 100%; height: 280px; border-radius: 14px; overflow: hidden; border: 1px solid #e5e7eb; background: #eaeff2; margin-bottom: 16px; }
+.qcr-map .leaflet-container { height: 100%; width: 100%; }
+
 /* ===================== Controles modo ruta ===================== */
 .qcr-controls-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .qcr-field-name { flex: 1; min-width: 180px; }
