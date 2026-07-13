@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, X, Edit2, Trash2,
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Filter, RotateCcw, Menu
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Menu
 } from 'lucide-react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
@@ -22,11 +22,6 @@ const collectionMap: Record<string, string> = {
   service: 'settings_services',
 };
 
-// Statuses que NUNCA se ocultan con el filtro de fechas (Quality Check / Recall)
-const isAlwaysVisibleStatusName = (name?: string) => {
-  const n = String(name || '').toLowerCase();
-  return n.includes('quality') || n.includes('recall');
-};
 
 // --- TIME CALCULATION HELPERS ---
 const START_HOUR = 6; // El calendario empieza a las 6 AM
@@ -63,16 +58,11 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month'); // Selector de vistas, default Month para ver el arreglo
 
-  // --- FILTRO DE FECHAS (rango Desde / Hasta) ---
-  const [filterFrom, setFilterFrom] = useState('');
-  const [filterTo, setFilterTo] = useState('');
-  const filterActive = !!(filterFrom || filterTo);
-  const clearFilter = () => { setFilterFrom(''); setFilterTo(''); };
-
   // --- MODAL STATES ---
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null); // Modal "todos los trabajos del día"
   
   const [formData, setFormData] = useState<Property>({
     id: '', statusId: '', invoiceStatus: 'Pending', receiveDate: '', scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: ''
@@ -255,40 +245,66 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   };
 
   // --- RENDER HELPERS ---
-  const renderEventBlocks = (date: Date) => {
+  const MAX_MONTH_EVENTS = 5; // Máximo de eventos visibles por día en la vista de mes
+
+  // Trabajos que pertenecen a una fecha, ordenados por hora de entrada
+  const getJobsForDate = (date: Date) => {
     const offset = date.getTimezoneOffset();
     const localDate = new Date(date.getTime() - (offset * 60 * 1000));
     const dateString = localDate.toISOString().split('T')[0];
 
-    // Trabajos del día. Aplica el filtro de rango EXCEPTO en Quality Check / Recall,
-    // que siempre se siguen viendo aunque la fecha quede fuera del rango.
-    const dailyJobs = properties.filter(p => {
-      const raw = (p.scheduleDate || p.receiveDate);
-      if (raw !== dateString) return false; // pertenece a este día
-      const stName = getRelationName(statuses, p.statusId, '');
-      if (isAlwaysVisibleStatusName(stName)) return true; // QC / Recall: siempre visibles
-      if (!filterActive) return true;
-      const d = String(raw).slice(0, 10);
-      if (filterFrom && d < filterFrom) return false;
-      if (filterTo && d > filterTo) return false;
-      return true;
-    });
+    // Trabajos del dia (prop `properties` en tiempo real), ordenados por hora de entrada.
+    return properties
+      .filter(p => (p.scheduleDate || p.receiveDate) === dateString)
+      .sort((a, b) => {
+        const ta = parseTimeToMinutes(a.timeIn || '');
+        const tb = parseTimeToMinutes(b.timeIn || '');
+        if (ta === null && tb === null) return 0;
+        if (ta === null) return 1; // sin hora al final
+        if (tb === null) return -1;
+        return ta - tb;
+      });
+  };
+
+  const openJobDetail = (job: Property) => {
+    setSelectedHouse(job);
+    setDayDetailDate(null);
+    setIsDetailModalOpen(true);
+  };
+
+  const renderEventBlocks = (date: Date) => {
+    const dailyJobs = getJobsForDate(date);
 
     if (viewMode === 'month') {
-      // ESTILO MES: Simple stack de eventos
-      return dailyJobs.map(job => {
-        const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
-        return (
-          <div
-            key={job.id}
-            className="calendar-event-month"
-            style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
-            onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
-          >
-            <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
-          </div>
-        );
-      });
+      // ESTILO MES: Stack de eventos limitado a MAX_MONTH_EVENTS + botón "Show more"
+      const visibleJobs = dailyJobs.slice(0, MAX_MONTH_EVENTS);
+      const hiddenCount = dailyJobs.length - visibleJobs.length;
+
+      return (
+        <>
+          {visibleJobs.map(job => {
+            const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+            return (
+              <div
+                key={job.id}
+                className="calendar-event-month"
+                style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
+                onClick={(e) => { e.stopPropagation(); openJobDetail(job); }}
+              >
+                <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
+              </div>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <button
+              className="cv-show-more-btn"
+              onClick={(e) => { e.stopPropagation(); setDayDetailDate(date); }}
+            >
+              Show more (+{hiddenCount})
+            </button>
+          )}
+        </>
+      );
     }
 
     // ESTILO GOOGLE CALENDAR (DÍA Y SEMANA): Posicionamiento Absoluto
@@ -353,37 +369,6 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
           </div>
         </div>
       </header>
-
-      {/* --- BARRA DE FILTRO DE FECHAS --- */}
-      <div className="cv-filter-card">
-        <span className="cv-filter-title">
-          <Filter size={15} color="#3b82f6" /> Filtrar por fecha
-        </span>
-
-        <label className="cv-filter-label">
-          Desde
-          <input type="date" value={filterFrom} max={filterTo || undefined}
-            onChange={e => setFilterFrom(e.target.value)} className="cv-filter-date-input" />
-        </label>
-
-        <label className="cv-filter-label">
-          Hasta
-          <input type="date" value={filterTo} min={filterFrom || undefined}
-            onChange={e => setFilterTo(e.target.value)} className="cv-filter-date-input" />
-        </label>
-
-        {filterActive && (
-          <button onClick={clearFilter} className="cv-btn-clear-filter">
-            <RotateCcw size={14} /> Limpiar
-          </button>
-        )}
-
-        {filterActive && (
-          <span className="cv-filter-badge">
-            <ClipboardCheck size={12} /> Quality Check y Recall siempre visibles
-          </span>
-        )}
-      </div>
 
       {/* CALENDAR RENDER */}
       {isLoading ? (
@@ -460,6 +445,62 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
 
         </div>
       )}
+
+      {/* --- DAY DETAIL MODAL (todos los trabajos del día) --- */}
+      {dayDetailDate && (() => {
+        const dayJobs = getJobsForDate(dayDetailDate);
+        const dayTitleRaw = dayDetailDate.toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const dayTitle = dayTitleRaw.charAt(0).toUpperCase() + dayTitleRaw.slice(1);
+        return (
+          <div className="cv-modal-overlay" onClick={() => setDayDetailDate(null)}>
+            <div className="cv-modal cv-day-modal" onClick={e => e.stopPropagation()}>
+              <header className="cv-modal-header">
+                <div>
+                  <h3 className="cv-modal-title">{dayTitle}</h3>
+                  <span className="cv-day-modal-count">{dayJobs.length} {dayJobs.length === 1 ? 'trabajo' : 'trabajos'}</span>
+                </div>
+                <button className="cv-modal-close" onClick={() => setDayDetailDate(null)}><X size={24} /></button>
+              </header>
+
+              <div className="cv-modal-body cv-day-modal-body">
+                {dayJobs.map(job => {
+                  const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+                  return (
+                    <div
+                      key={job.id}
+                      className="cv-day-job-row"
+                      style={{ '--event-color': statusColor } as CSSProperties}
+                      onClick={() => openJobDetail(job)}
+                    >
+                      <div className="cv-day-job-time">
+                        <Clock size={14} />
+                        <span>{job.timeIn || '--:--'}{job.timeOut ? ` - ${job.timeOut}` : ''}</span>
+                      </div>
+                      <div className="cv-day-job-info">
+                        <span className="cv-day-job-client">{getClientName(job.client)}</span>
+                        <span className="cv-day-job-address"><MapPin size={12} /> {job.address || '-'}</span>
+                      </div>
+                      <div className="cv-day-job-meta">
+                        <span className="cv-day-job-status">
+                          <span className="cv-dot-12" style={{ '--dot-color': statusColor } as CSSProperties}></span>
+                          {getRelationName(statuses, job.statusId, 'Unassigned')}
+                        </span>
+                        {getRelationName(teams, job.teamId, '') && (
+                          <span className="cv-day-job-team"><Users size={12} /> {getRelationName(teams, job.teamId)}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <footer className="cv-modal-footer">
+                <button className="cv-btn-outline" onClick={() => setDayDetailDate(null)}>Close</button>
+              </footer>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* --- FORM MODAL --- */}
       {isFormModalOpen && (

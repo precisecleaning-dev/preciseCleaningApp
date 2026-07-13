@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
-import { collection, onSnapshot, query, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit, doc, updateDoc } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import './PayrollView.css';
@@ -98,6 +98,9 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
 
   // ⭐ FIX: default a '' (All Statuses) en vez de 'Pending', para que se vean los registros
   //         existentes que aún no tienen el campo `status` o lo tienen como 'Paid'.
+  // ⭐ Texto de los buscadores de filtros (Employee / Status)
+  const [employeeQuery, setEmployeeQuery] = useState('');
+  const [statusQuery, setStatusQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -233,14 +236,11 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
     const paidAt = new Date().toISOString().split('T')[0]; // fecha en que se pagó (YYYY-MM-DD)
     try {
-      const { id, ...rest } = record;
-      // Esparcimos el registro completo para no perder campos aunque el service sobrescriba.
-      // payrollService.update solo tipa Partial<PayrollRecord> (sin paidAt/paidBy, ver
-      // PayrollRecordExt arriba) — cast puntual acá en vez de tocar el tipo compartido.
-      await payrollService.update(id, { ...rest, status: 'Paid', paidAt, paidBy } as Partial<PayrollRecord>);
-    } catch (error) {
+      // ⭐ Update directo a Firestore (merge parcial garantizado, sin depender del service)
+      await updateDoc(doc(db, 'payroll', record.id), { status: 'Paid', paidAt, paidBy });
+    } catch (error: any) {
       console.error("Error updating status", error);
-      alert("Failed to update status.");
+      alert(`No se pudo marcar como pagado: ${error?.message || error?.code || 'error desconocido'}`);
     }
   };
 
@@ -248,11 +248,10 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     if (!record.id) return;
     if (!window.confirm("Change status back to Pending?")) return;
     try {
-      const { id, ...rest } = record;
-      await payrollService.update(id, { ...rest, status: 'Pending', paidAt: '', paidBy: '' } as Partial<PayrollRecord>);
-    } catch (error) {
+      await updateDoc(doc(db, 'payroll', record.id), { status: 'Pending', paidAt: '', paidBy: '' });
+    } catch (error: any) {
       console.error("Error updating status", error);
-      alert("Failed to update status.");
+      alert(`No se pudo cambiar a Pending: ${error?.message || error?.code || 'error desconocido'}`);
     }
   };
 
@@ -341,21 +340,44 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
           <label className="pv-label">Employee</label>
           <div className="pv-input-wrap">
             <User size={16} color="#9ca3af" className="pv-input-icon" />
-            <select className="pv-input selectable" value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)}>
-              <option value="">All Employees...</option>
-              {employees.map(emp => <option key={emp.id} value={emp.id}>{empName(emp)}</option>)}
-            </select>
+            {/* ⭐ Buscador: escribe para filtrar; elige una sugerencia para aplicar. Vacío = todos. */}
+            <input
+              list="pv-employee-list"
+              className="pv-input"
+              placeholder="All Employees..."
+              value={employeeQuery}
+              onChange={e => {
+                const v = e.target.value;
+                setEmployeeQuery(v);
+                const match = employees.find(emp => empName(emp).toLowerCase() === v.toLowerCase().trim());
+                setSelectedEmployee(match ? match.id : '');
+              }}
+            />
+            <datalist id="pv-employee-list">
+              {employees.map(emp => <option key={emp.id} value={empName(emp)} />)}
+            </datalist>
           </div>
         </div>
         <div className="pv-filter-item status">
           <label className="pv-label">Status</label>
           <div className="pv-input-wrap">
             <Activity size={16} color="#9ca3af" className="pv-input-icon" />
-            <select className="pv-input selectable" value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
-              <option value="">All Statuses</option>
-              <option value="Pending">Pending</option>
-              <option value="Paid">Paid</option>
-            </select>
+            <input
+              list="pv-status-list"
+              className="pv-input"
+              placeholder="All Statuses"
+              value={statusQuery}
+              onChange={e => {
+                const v = e.target.value;
+                setStatusQuery(v);
+                const norm = v.trim().toLowerCase();
+                setSelectedStatus(norm === 'pending' ? 'Pending' : norm === 'paid' ? 'Paid' : '');
+              }}
+            />
+            <datalist id="pv-status-list">
+              <option value="Pending" />
+              <option value="Paid" />
+            </datalist>
           </div>
         </div>
       </div>

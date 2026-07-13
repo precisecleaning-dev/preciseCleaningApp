@@ -541,3 +541,11 @@
 .hv-btn-compact.bg-green { background-color: #10b981; }
 .hv-btn-compact.bg-dark-green { background-color: #047857; }
 .hv-save-photos-row { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+/* Mapa de la dirección en el formulario (aparece al escribir el address) */
+.hv-map-wrap { margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
+.hv-map-iframe { width: 100%; height: 220px; border: 0; display: block; }
+
+/* Modo "solo modales" de HousesView (montado encima de otra vista, p. ej. QC):
+   el contenedor no debe afectar el layout — los modales son overlays fijos. */
+.hv-modals-only { display: contents; }

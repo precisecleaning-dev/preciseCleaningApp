@@ -15,6 +15,9 @@ import './PipelineBoardView.css';
    que no toca Firebase ni tu lógica existente.
    Usa tu misma paleta (#3b82f6, #111827, etc.) y el color de cada
    status para diferenciar columnas.
+
+   Sin filtro de fechas: el tablero muestra todos los trabajos de cada
+   columna, ordenados por fecha descendente (más reciente primero).
    ------------------------------------------------------------------ */
 
 type Property = BaseProperty & {

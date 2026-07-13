@@ -1,0 +1,12 @@
+{
+  // Configuración de Cloudflare Workers para preciseCleaningApp.
+  // Permite que TODOS los deploys (producción y previews de PR) sepan
+  // qué subir: los assets estáticos generados por Vite en ./dist.
+  "name": "precisecleaningapp",
+  "compatibility_date": "2026-07-08",
+  "assets": {
+    "directory": "./dist",
+    // SPA de React: cualquier ruta desconocida sirve index.html
+    "not_found_handling": "single-page-application"
+  }
+}
