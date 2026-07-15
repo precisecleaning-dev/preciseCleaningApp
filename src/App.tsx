@@ -4,7 +4,7 @@ import HousesView from './views/HousesView';
 import CustomersView from './views/CustomersView';
 import SettingsView from './views/SettingsView';
 import CalendarView from './views/CalendarView';
-import QualityCheckView from './views/QualityCheckView'; 
+import QualityCheckHub from './views/QualityCheckHub';
 import PayrollView from './views/PayrollView'; 
 import InvoicesView from './views/InvoicesView';
 import NoticeBoardView from './views/NoticeBoardView';
@@ -36,6 +36,11 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
+  // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
+  //    Quality Check; ahí el hub salta a la pestaña Rutas y abre la vista en vivo.
+  try {
+    if (new URLSearchParams(window.location.search).get('qcRoute')) return 'qc_report';
+  } catch { /* noop */ }
   try {
     const saved = window.localStorage.getItem(ACTIVE_TAB_KEY);
     if (saved && (VALID_TABS as string[]).includes(saved)) return saved as TabOptions;
@@ -375,7 +380,8 @@ export default function App() {
 
         {activeTab === 'qc_report' && (
           <>
-            <QualityCheckView 
+            {/* ⭐ Hub con pestañas: Quality Check | Rutas | Reportes */}
+            <QualityCheckHub 
               onOpenMenu={toggleMenu} 
               properties={visibleProperties as any}
               houseToInspect={houseToInspect as any}

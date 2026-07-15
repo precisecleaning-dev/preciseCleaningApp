@@ -11,6 +11,7 @@ import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName, getRelationColor } from '../utils/relations';
+import HousesView from './HousesView';
 import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
@@ -19,6 +20,15 @@ const INVOICE_STATUSES = [
   { id: 'Pending', name: 'Pending', color: '#ef4444' },
   { id: 'Paid', name: 'Paid', color: '#10b981' }
 ];
+
+// ⭐ Nota general de la casa — misma fuente que las tarjetas de Pipeline/QC:
+//    `note` de la app o `generalNotes` importado de AppSheet. Tipo extendido local
+//    porque `generalNotes` aún no está declarado en Property.
+type PropertyNotes = Property & { note?: string | null; generalNotes?: string | null };
+const houseNote = (h: Property): string => {
+  const g = h as PropertyNotes;
+  return String(g.note || g.generalNotes || '').trim();
+};
 
 // billing_services no tiene un tipo compartido en types/index.ts todavía.
 interface BilledServiceRecord {
@@ -229,7 +239,7 @@ interface InvoicesViewProps {
   onEditProperty?: (property: Property) => void;
 }
 
-export default function InvoicesView({ onOpenMenu, properties, setProperties, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
+export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -255,6 +265,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
   // ⭐ Copia LOCAL de properties (cargada por esta vista). Renderizamos desde aquí
   //    para no depender de cómo el padre derive/filtre su lista.
   const [allProps, setAllProps] = useState<Property[]>([]);
+
+  // ⭐ Edición de la casa SIN salir de Invoices: si App.tsx pasa `onEditProperty`
+  //    se usa esa vía (cableado externo); si no, esta vista incrusta HousesView en
+  //    modo 'modals-only' y abre su formulario de edición aquí mismo.
+  const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
+  const openEdit = (house: Property) => {
+    if (onEditProperty) { onEditProperty(house); return; }
+    setHouseToEdit(house);
+  };
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
@@ -565,9 +584,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
                       >
                         <Eye size={16} />
                       </button>
-                      {canEdit && onEditProperty && (
+                      {canEdit && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }}
+                          onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
                           title="Edit Job"
                           className="inv-icon-btn edit"
                         >
@@ -612,6 +631,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
                     <div className="inv-client-address">
                       <MapPin size={12} /> {prop.address || '-'}
                     </div>
+                    {houseNote(prop) !== '' && (
+                      <div className="inv-note">
+                        <StickyNote size={12} className="inv-note-icon" />
+                        <span className="inv-note-text">{houseNote(prop)}</span>
+                      </div>
+                    )}
                   </td>
 
                   <td className="inv-td strong">
@@ -685,6 +710,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
                   <Users size={16} color="#94a3b8" className="inv-shrink-0" />
                   <span>{getTeamName(prop.teamId)}</span>
                 </div>
+                {houseNote(prop) !== '' && (
+                  <div className="inv-note">
+                    <StickyNote size={12} className="inv-note-icon" />
+                    <span className="inv-note-text">{houseNote(prop)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Pills de estado (ancho completo) */}
@@ -726,9 +757,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
                   className="inv-card-btn view">
                   <Eye size={16} /> Ver
                 </button>
-                {canEdit && onEditProperty && (
+                {canEdit && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); onEditProperty(prop); }}
+                    onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
                     className="inv-card-btn edit">
                     <Edit2 size={16} /> Editar
                   </button>
@@ -878,9 +909,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
             </div>
 
             <footer className="inv-modal-footer">
-              {canEdit && onEditProperty && (
+              {canEdit && (
                 <button
-                  onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) onEditProperty(p); }}
+                  onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) openEdit(p); }}
                   className="inv-btn-primary-modal"
                 >
                   <Edit2 size={16} /> Edit Details
@@ -898,6 +929,23 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, ac
           config={statusModal}
           statuses={statuses}
           onClose={() => setStatusModal(null)}
+        />
+      )}
+
+      {/* ⭐ EDICIÓN DE LA CASA sin salir de Invoices: HousesView en modo 'modals-only'
+          dibuja únicamente sus modales (aquí, el formulario de edición) encima de
+          esta vista. Se monta solo mientras hay una casa por editar. */}
+      {houseToEdit && !onEditProperty && (
+        <HousesView
+          renderMode="modals-only"
+          onOpenMenu={() => { /* sin página propia en modals-only */ }}
+          properties={baseProps}
+          setProperties={setProperties}
+          currentUser={currentUser}
+          activeRole={activeRole}
+          isSuperAdmin={isSuperAdmin}
+          houseToOpenEdit={houseToEdit}
+          clearHouseToOpenEdit={() => setHouseToEdit(null)}
         />
       )}
 

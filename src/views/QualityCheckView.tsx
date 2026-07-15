@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
   Save, Clock, WifiOff, Plus, StickyNote,
-  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu
+  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '../types/index';
 import { getRelationName } from '../utils/relations';
@@ -18,6 +18,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from '
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
+import QCRouteDrawer, { type RouteDrawerHouse } from './QCRouteDrawer';
 import './QualityCheckView.css';
 
 interface QCRecord {
@@ -286,6 +287,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
 
+  // ⭐ Ruta de inspección (drawer lateral): ids de casas agregadas + apertura del panel
+  const [routeHouseIds, setRouteHouseIds] = useState<string[]>([]);
+  const [routeDrawerOpen, setRouteDrawerOpen] = useState(false);
+
   // ⭐ EDITOR de foto (anotación estilo WhatsApp)
   const [annotate, setAnnotate] = useState<null | { placeId: string; index: number; url: string }>(null);
   const [savingAnnotation, setSavingAnnotation] = useState(false);
@@ -522,6 +527,45 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Resuelve el nombre del cliente desde la colección customers (id o nombre)
   const getClientName = (clientIdOrName?: string | null): string =>
     getRelationName(customersList, clientIdOrName, String(clientIdOrName || 'Unknown'));
+
+  // ⭐ Ruta de inspección — agregar/quitar casas del drawer lateral
+  const isHouseInRoute = (houseId: string): boolean => routeHouseIds.includes(houseId);
+  const toggleRouteHouse = (house: Property) => {
+    setRouteHouseIds(prev => prev.includes(house.id) ? prev.filter(id => id !== house.id) : [...prev, house.id]);
+  };
+
+  // ⭐ Coordenadas pre-guardadas si la casa las trae (campos aún no declarados en Property).
+  //    Espejo de `preCoords` en QCRouteView.tsx — candidato a unificar en utils/routing.ts.
+  type PropertyGeo = Property & {
+    lat?: number; lng?: number; latitude?: number; longitude?: number;
+    coords?: { lat?: number; lng?: number }; location?: { lat?: number; lng?: number };
+  };
+  const houseCoords = (h: Property): { lat: number | null; lng: number | null } => {
+    const g = h as PropertyGeo;
+    const lat = g.lat ?? g.latitude ?? g.coords?.lat ?? g.location?.lat;
+    const lng = g.lng ?? g.longitude ?? g.coords?.lng ?? g.location?.lng;
+    return (typeof lat === 'number' && typeof lng === 'number') ? { lat, lng } : { lat: null, lng: null };
+  };
+
+  // ⭐ Nota general de la casa — misma fuente que la tarjeta del Pipeline
+  //    (PipelineBoardView.tsx): `note` de la app o `generalNotes` importado de AppSheet.
+  //    Tipo extendido local porque `generalNotes` aún no está declarado en Property.
+  type PropertyNotes = Property & { note?: string | null; generalNotes?: string | null };
+  const houseNote = (h: Property): string => {
+    const g = h as PropertyNotes;
+    return String(g.note || g.generalNotes || '').trim();
+  };
+
+  // ⭐ Casas de la ruta con el nombre de cliente ya resuelto (entrada del drawer).
+  //    Memoizado para que el drawer no re-sincronice/geocodifique en cada render del padre.
+  const routeDrawerHouses = useMemo<RouteDrawerHouse[]>(() =>
+    routeHouseIds
+      .map(id => properties.find(p => p.id === id))
+      .filter((h): h is Property => Boolean(h))
+      .map(h => ({ id: h.id, client: getClientName(h.client), address: h.address || '', ...houseCoords(h) })),
+    // getClientName/houseCoords se recrean por render pero solo dependen de customersList/properties.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routeHouseIds, properties, customersList]);
 
   // ⭐ Id del estado "Quality Check" (para regresar una casa cuando NO pasó)
   const getQualityCheckStatusId = (): string | null => {
@@ -1765,6 +1809,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <Users size={16} color="#94a3b8" className="qcv-shrink-0" />
                       <span>{getTeamNameForHouse(house)}</span>
                     </div>
+                    {houseNote(house) !== '' && (
+                      <div className="qcv-house-note">
+                        <StickyNote size={12} className="qcv-house-note-icon" />
+                        <span className="qcv-house-note-text">{houseNote(house)}</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
@@ -1774,6 +1824,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       <span className="qcv-house-status-dot" style={{ '--dot-color': houseStatusInfo(house).color } as CSSProperties} />
                       {houseStatusInfo(house).name}
                       <Edit2 size={12} color="#94a3b8" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleRouteHouse(house); }}
+                      title={isHouseInRoute(house.id) ? 'Quitar de la ruta' : 'Agregar a la ruta de inspección'}
+                      className={`qcv-house-route-btn${isHouseInRoute(house.id) ? ' in-route' : ''}`}
+                    >
+                      {isHouseInRoute(house.id)
+                        ? <><Check size={13} /> En ruta — quitar</>
+                        : <><Route size={13} /> Agregar a ruta</>}
                     </button>
                   </div>
                   <button
@@ -1836,6 +1896,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     <Users size={16} color="#94a3b8" className="qcv-shrink-0" />
                     <span>{getTeamNameForHouse(house)}</span>
                   </div>
+                  {houseNote(house) !== '' && (
+                    <div className="qcv-house-note">
+                      <StickyNote size={12} className="qcv-house-note-icon" />
+                      <span className="qcv-house-note-text">{houseNote(house)}</span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
@@ -1845,6 +1911,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     <span className="qcv-house-status-dot" style={{ '--dot-color': houseStatusInfo(house).color } as CSSProperties} />
                     {houseStatusInfo(house).name}
                     <Edit2 size={12} color="#94a3b8" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleRouteHouse(house); }}
+                    title={isHouseInRoute(house.id) ? 'Quitar de la ruta' : 'Agregar a la ruta de inspección'}
+                    className={`qcv-house-route-btn${isHouseInRoute(house.id) ? ' in-route' : ''}`}
+                  >
+                    {isHouseInRoute(house.id)
+                      ? <><Check size={13} /> En ruta — quitar</>
+                      : <><Route size={13} /> Agregar a ruta</>}
                   </button>
                 </div>
                 <button
@@ -2278,6 +2354,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           onSave={handleSaveAnnotation}
         />
       )}
+
+      {/* ⭐ RUTA DE INSPECCIÓN: botón flotante + drawer lateral con mapa numerado */}
+      {routeHouseIds.length > 0 && !routeDrawerOpen && (
+        <button type="button" className="qcv-route-fab" onClick={() => setRouteDrawerOpen(true)}>
+          <Route size={17} /> Ver ruta ({routeHouseIds.length})
+        </button>
+      )}
+      <QCRouteDrawer
+        open={routeDrawerOpen}
+        onClose={() => setRouteDrawerOpen(false)}
+        houses={routeDrawerHouses}
+        onRemove={(houseId: string) => setRouteHouseIds(prev => prev.filter(id => id !== houseId))}
+        currentUser={currentUser}
+      />
 
     </div>
   );
