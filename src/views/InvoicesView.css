@@ -201,3 +201,9 @@
 
 .inv-note-box { background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; width: 100%; }
 .inv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
+
+/* Nota general en la fila/tarjeta — espejo visual de .pb-job-note / .qcv-house-note
+   (clases locales de Pipeline y QC, por eso no se reusan directamente). */
+.inv-note { display: flex; align-items: flex-start; gap: 5px; font-size: 0.76rem; color: #475569; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; padding: 5px 8px; margin-top: 6px; max-width: 260px; }
+.inv-note-icon { flex-shrink: 0; margin-top: 2px; color: #94a3b8; }
+.inv-note-text { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

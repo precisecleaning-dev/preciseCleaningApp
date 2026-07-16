@@ -12,6 +12,7 @@
 .route-btn.ghost { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
 .route-btn.soft { background: #f1f5f9; color: #334155; border-color: #e2e8f0; }
 .route-btn:disabled { opacity: 0.6; cursor: wait; }
+.route-btn.live { background: #dcfce7; color: #166534; border-color: #86efac; }
 .stop-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; display: flex; gap: 12px; align-items: stretch; }
 .stop-card.arrived { background: #f0fdf4; border-color: #bbf7d0; }
 .stop-num { width: 34px; height: 34px; border-radius: 50%; background: #4338ca; color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }

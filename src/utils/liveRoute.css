@@ -1,0 +1,21 @@
+/* ===================== liveRoute — marcadores de posición en vivo =====================
+   Importado una sola vez desde src/utils/liveRoute.ts (archivo hermano). Los marcadores
+   se inyectan como divIcon de Leaflet, por eso viven como clases globales. */
+
+.qclive-div-icon { background: transparent; border: none; }
+
+.qclive-marker {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #ea580c; color: #fff;
+  font-weight: 800; font-size: 0.7rem; letter-spacing: 0.02em;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid #fff; box-shadow: 0 1px 5px rgba(15, 23, 42, 0.4);
+  box-sizing: border-box;
+}
+
+.qclive-marker.mine { background: #2563eb; animation: qclive-pulse 1.6s ease-out infinite; }
+
+@keyframes qclive-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+  100% { box-shadow: 0 0 0 14px rgba(37, 99, 235, 0); }
+}

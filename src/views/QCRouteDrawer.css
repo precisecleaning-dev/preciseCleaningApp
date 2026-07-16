@@ -1,0 +1,144 @@
+/* ===================== QCRouteDrawer — menú lateral de ruta ===================== */
+
+.qcrd-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 80; }
+
+.qcrd-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 81;
+  width: 480px; max-width: 100%;
+  background: #f8fafc; border-left: 1px solid #e5e7eb;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+  display: flex; flex-direction: column;
+  animation: qcrd-slide-in 0.2s ease-out;
+  transition: width 0.2s ease-out;
+}
+@keyframes qcrd-slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+.qcrd-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.qcrd-title { margin: 0; font-size: 1.05rem; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.qcrd-header-actions { display: flex; align-items: center; gap: 8px; }
+/* Expandir / cerrar: mismo morado del botón de guardar, íconos blancos */
+.qcrd-icon-btn { background: #4338ca; border: 1px solid #4338ca; border-radius: 9px; width: 40px; height: 40px; cursor: pointer; color: #ffffff; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; }
+.qcrd-icon-btn:hover { background: #3730a3; border-color: #3730a3; }
+
+.qcrd-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+
+.qcrd-spin { animation: qcrd-spin 1s linear infinite; }
+@keyframes qcrd-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.qcrd-building-banner { display: flex; align-items: center; gap: 8px; background: #eef2ff; border: 1px solid #c7d2fe; color: #4338ca; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-weight: 600; font-size: 0.85rem; }
+
+/* ---------- botones (todos los de la ruta: morado sólido + texto/íconos blancos) ---------- */
+.qcrd-btn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 10px; font-weight: 700; font-size: 0.82rem; cursor: pointer; border: 1px solid #4338ca; background: #4338ca; color: #ffffff; white-space: nowrap; }
+.qcrd-btn:hover:not(:disabled) { background: #3730a3; border-color: #3730a3; }
+.qcrd-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Variantes: hoy comparten el morado sólido pedido por el usuario; se conservan las
+   clases (primary/ghost/soft) por si más adelante se quiere volver a diferenciar. */
+.qcrd-btn.primary, .qcrd-btn.ghost, .qcrd-btn.soft { background: #4338ca; border-color: #4338ca; color: #ffffff; }
+.qcrd-btn.primary:hover:not(:disabled), .qcrd-btn.ghost:hover:not(:disabled), .qcrd-btn.soft:hover:not(:disabled) { background: #3730a3; border-color: #3730a3; }
+/* Seguimiento GPS activo: verde para que se distinga que está transmitiendo */
+.qcrd-btn.live { background: #16a34a; border-color: #16a34a; color: #ffffff; }
+.qcrd-btn.live:hover:not(:disabled) { background: #15803d; border-color: #15803d; }
+.qcrd-maps-link { text-decoration: none; }
+.qcrd-maps-link.disabled { opacity: 0.55; pointer-events: none; }
+
+.qcrd-field-label { display: block; font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.qcrd-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 9px 12px; font-size: 0.88rem; color: #111827; background-color: #fff; outline: none; box-sizing: border-box; }
+.qcrd-shrink-0 { flex-shrink: 0; }
+.qcrd-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- punto de inicio ---------- */
+.qcrd-origin-panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.qcrd-origin-current { display: flex; align-items: center; gap: 7px; color: #16a34a; font-weight: 600; font-size: 0.85rem; margin-bottom: 10px; min-width: 0; }
+.qcrd-origin-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qcrd-origin-search { display: flex; align-items: center; gap: 7px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 0 11px; height: 40px; flex: 1; min-width: 170px; }
+.qcrd-origin-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.85rem; min-width: 0; }
+
+/* ---------- resumen ---------- */
+.qcrd-summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.qcrd-summary-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; text-align: center; }
+.qcrd-summary-value { font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+.qcrd-summary-value.time { font-size: 1rem; line-height: 1.7; }
+.qcrd-summary-unit { font-size: 0.72rem; color: #94a3b8; }
+.qcrd-summary-label { font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; }
+
+/* ---------- mapa + marcadores numerados (divIcon de Leaflet) ---------- */
+.qcrd-map { width: 100%; height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; background: #eaeff2; margin-bottom: 12px; flex-shrink: 0; }
+.qcrd-map .leaflet-container { height: 100%; width: 100%; }
+
+.qcrd-div-icon { background: transparent; border: none; }
+.qcrd-marker { width: 30px; height: 30px; border-radius: 50%; background: #4338ca; color: #fff; font-weight: 800; font-size: 0.82rem; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35); box-sizing: border-box; }
+.qcrd-marker.origin { background: #16a34a; }
+
+/* ---------- acciones ---------- */
+.qcrd-actions-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.qcrd-speed-field { width: 96px; margin-left: auto; }
+
+/* Aviso de seguimiento en vivo sin ruta guardada */
+.qcrd-live-hint { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 0.8rem; line-height: 1.5; }
+
+/* ---------- lista de paradas ---------- */
+.qcrd-empty-box { text-align: center; color: #6b7280; font-style: italic; padding: 26px 14px; background: #fff; border-radius: 12px; border: 1px dashed #cbd5e1; font-size: 0.88rem; }
+
+.qcrd-stops-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.qcrd-stop-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 11px; display: flex; gap: 10px; align-items: stretch; }
+.qcrd-stop-num { width: 30px; height: 30px; border-radius: 50%; background: #4338ca; color: #fff; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; align-self: center; }
+.qcrd-stop-body { flex: 1; min-width: 0; }
+.qcrd-stop-client { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+.qcrd-stop-address-row { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; color: #475569; margin-top: 3px; }
+.qcrd-stop-meta-row { display: flex; align-items: center; gap: 10px; font-size: 0.76rem; color: #64748b; margin-top: 5px; flex-wrap: wrap; }
+.qcrd-stop-no-location { color: #d97706; font-weight: 600; }
+.qcrd-stop-eta { display: inline-flex; align-items: center; gap: 4px; }
+.qcrd-stop-nav-link { display: inline-flex; align-items: center; gap: 4px; color: #2563eb; font-weight: 700; text-decoration: none; }
+
+/* Subir / bajar / quitar: morado sólido con íconos blancos (quitar en rojo por ser
+   destructivo, también con ícono blanco). El svg se fuerza a mostrarse por si alguna
+   regla global de la app lo oculta/encoge (visto en producción: botones vacíos). */
+.qcrd-stop-order-col { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; justify-content: center; }
+.qcrd-order-btn { width: 38px; height: 38px; border-radius: 9px; border: 1px solid #4338ca; background: #4338ca; color: #ffffff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.qcrd-order-btn:hover:not(:disabled) { background: #3730a3; border-color: #3730a3; }
+.qcrd-order-btn:disabled { cursor: not-allowed; opacity: 0.35; }
+.qcrd-remove-btn { width: 38px; height: 38px; border-radius: 9px; border: 1px solid #dc2626; background: #ef4444; color: #ffffff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.qcrd-remove-btn:hover { background: #dc2626; }
+
+.qcrd-btn svg, .qcrd-order-btn svg, .qcrd-remove-btn svg, .qcrd-icon-btn svg {
+  display: block; width: 18px; height: 18px; flex-shrink: 0;
+  stroke: currentColor; color: inherit; opacity: 1; visibility: visible;
+}
+
+/* ---------- footer: compartir + guardar en qc_routes ---------- */
+.qcrd-footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #fff; border-top: 1px solid #e5e7eb; flex-shrink: 0; }
+.qcrd-footer-name { flex: 1; min-width: 0; }
+
+/* ===================== Modo EXPANDIDO: mapa a pantalla completa =====================
+   El panel ocupa todo el ancho y el mapa crece para llenar el alto disponible;
+   inicio y resumen se ocultan para dar el máximo espacio al mapa (contraer para
+   volver a editarlos). La lista de paradas queda abajo con su propio scroll. */
+.qcrd-drawer.expanded { width: 100%; border-left: none; }
+.qcrd-drawer.expanded .qcrd-body { display: flex; flex-direction: column; overflow: hidden; }
+.qcrd-drawer.expanded .qcrd-building-banner { order: -2; }
+.qcrd-drawer.expanded .qcrd-map { order: -1; flex: 1 1 auto; min-height: 0; height: auto; }
+.qcrd-drawer.expanded .qcrd-origin-panel,
+.qcrd-drawer.expanded .qcrd-summary-grid,
+.qcrd-drawer.expanded .qcrd-live-hint { display: none; }
+.qcrd-drawer.expanded .qcrd-actions-row { flex-shrink: 0; }
+.qcrd-drawer.expanded .qcrd-stops-list { overflow-y: auto; flex: 0 0 auto; max-height: 30vh; }
+.qcrd-drawer.expanded .qcrd-empty-box { flex-shrink: 0; }
+
+/* ---------- móvil ---------- */
+@media (max-width: 560px) {
+  .qcrd-drawer { width: 100%; border-left: none; }
+  .qcrd-header { padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); }
+  .qcrd-title { font-size: 1rem; }
+  .qcrd-body { padding: 12px; }
+  .qcrd-map { height: 220px; }
+  /* Botones de acción a lo ancho, en parejas, para dedos y no para mouse */
+  .qcrd-actions-row { gap: 8px; }
+  .qcrd-actions-row .qcrd-btn { flex: 1 1 45%; justify-content: center; height: 44px; }
+  .qcrd-speed-field { width: 110px; margin-left: 0; flex: 0 0 auto; }
+  .qcrd-origin-row .qcrd-btn { flex: 1 1 45%; justify-content: center; height: 44px; }
+  .qcrd-origin-search { width: 100%; flex: 1 1 100%; height: 44px; }
+  .qcrd-footer { flex-wrap: wrap; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .qcrd-footer-name { flex: 1 1 100%; }
+  .qcrd-footer .qcrd-btn { flex: 1 1 45%; justify-content: center; height: 44px; }
+  .qcrd-drawer.expanded .qcrd-stops-list { max-height: 26vh; }
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Route, MapPin, Navigation, Save, Trash2, Loader2, ArrowUp, ArrowDown, X, Plus,
-  Clock, LocateFixed, RefreshCw, CheckCircle2, Circle, Building2, ExternalLink, Search, Menu
+  Clock, LocateFixed, RefreshCw, CheckCircle2, Circle, Building2, ExternalLink, Search, Menu, Radio, Share2
 } from 'lucide-react';
 import type { Property, SystemUser, Status, Customer, Team } from '../types/index';
 import { settingsService } from '../services/settingsService';
@@ -10,6 +10,8 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase
 import { getRelationName } from '../utils/relations';
 import { isQualityCheckStatus, housePassedQC, houseFailedQC, type QCStatusLike } from '../utils/qcStatus';
 import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { escapeHtml } from '../utils/escapeHtml';
+import { useLiveRoute, liveDivIcon, shareRouteLink, type LiveUserPosition } from '../utils/liveRoute';
 import './QCRouteView.css';
 
 interface QCRouteViewProps {
@@ -95,6 +97,14 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
   const mapElRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const mapLayerRef = useRef<any>(null);
+  const liveLayerRef = useRef<any>(null);
+  const openedFromLinkRef = useRef(false);
+
+  // ⭐ Seguimiento GPS en vivo (compartido con QCRouteDrawer vía utils/liveRoute.ts):
+  //    publica mi posición en qc_routes/{id}.live y muestra la de otros usuarios que
+  //    tengan esta misma ruta guardada abierta.
+  const { tracking, startTracking, stopTracking, myPos, others } = useLiveRoute(mode === 'route' ? currentRouteId : null, currentUser);
+  const othersCount = Object.keys(others).length;
 
   useEffect(() => {
     (async () => {
@@ -121,6 +131,20 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
       }
     })();
   }, []);
+
+  // ⭐ Link compartido: si la URL trae ?qcRoute=<id> (generado con "Compartir" en el
+  //    drawer de QualityCheckView o en la tabla de Rutas), abre esa ruta guardada
+  //    automáticamente para que la persona pueda seguirla (y activar su GPS).
+  useEffect(() => {
+    if (loading || openedFromLinkRef.current) return;
+    openedFromLinkRef.current = true;
+    const id = new URLSearchParams(window.location.search).get('qcRoute');
+    if (!id) return;
+    const r = savedRoutes.find(x => x.id === id);
+    if (r) openSaved(r);
+    else alert('La ruta del link ya no existe (pudo haber sido eliminada).');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, savedRoutes]);
 
   // ---------- resolución de nombres ----------
   const getClientName = (idOrName?: string | null): string => getRelationName(customers, idOrName, String(idOrName || 'Unknown'));
@@ -333,6 +357,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
   };
 
   const newRoute = () => {
+    stopTracking();
     setMode('select'); setStops([]); setCurrentRouteId(null); setSelectedIds([]); setRouteName('');
   };
 
@@ -404,6 +429,37 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     return () => { cancelled = true; };
   }, [mode, stops, origin]);
 
+  // ⭐ Capa de posiciones en vivo (mi GPS + otros usuarios), separada de la capa de la
+  //    ruta para no redibujar todo el mapa ni mover el encuadre con cada actualización.
+  useEffect(() => {
+    const clear = () => {
+      if (liveLayerRef.current && mapInstanceRef.current) {
+        try { mapInstanceRef.current.removeLayer(liveLayerRef.current); } catch { /* noop */ }
+      }
+      liveLayerRef.current = null;
+    };
+    if (mode !== 'route' || (!myPos && Object.keys(others).length === 0)) { clear(); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const L = await ensureLeaflet();
+        if (cancelled || !mapInstanceRef.current) return;
+        clear();
+        const layer = L.layerGroup().addTo(mapInstanceRef.current);
+        liveLayerRef.current = layer;
+        if (myPos) {
+          L.marker([myPos.lat, myPos.lng], { icon: liveDivIcon(L, 'Yo', true), zIndexOffset: 1000 }).addTo(layer);
+        }
+        Object.values(others).forEach((o: LiveUserPosition) => {
+          L.marker([o.lat, o.lng], { icon: liveDivIcon(L, o.name, false), zIndexOffset: 900 })
+            .bindPopup(escapeHtml(o.name))
+            .addTo(layer);
+        });
+      } catch { /* noop */ }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, myPos, others]);
+
   // Limpia la instancia del mapa al desmontar el componente
   useEffect(() => {
     return () => { try { mapInstanceRef.current?.remove(); mapInstanceRef.current = null; } catch { /* noop */ } };
@@ -460,6 +516,11 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
         </button>
         {mode === 'route' && <button className="route-btn soft" onClick={newRoute}><Plus size={16} /> Nueva ruta</button>}
         <div className="qcr-toolbar-spacer" />
+        {mode === 'route' && currentRouteId && (
+          <button className="route-btn ghost" onClick={() => shareRouteLink(currentRouteId, routeName.trim() || 'Ruta QC')} title="Compartir link para que otra persona siga esta ruta">
+            <Share2 size={16} /> Compartir link
+          </button>
+        )}
         {mode === 'route' && (
           <a className="route-btn soft qcr-maps-link" href={mapsAllUrl()} target="_blank" rel="noopener noreferrer">
             <Navigation size={16} /> Abrir toda la ruta en Maps
@@ -590,6 +651,15 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
               <input type="number" min={5} value={avgSpeed} onChange={e => changeSpeed(parseInt(e.target.value) || 40)} className="qcr-input-sm" />
             </div>
             <button className="route-btn soft" onClick={recalcFromLocation} disabled={building}><RefreshCw size={16} /> Recalcular desde mi ubicación</button>
+            <button
+              className={`route-btn ghost${tracking ? ' live' : ''}`}
+              onClick={tracking ? stopTracking : startTracking}
+              title={currentRouteId
+                ? 'Comparte tu posición en esta ruta y ve la de otros usuarios en el mapa'
+                : 'Guarda la ruta primero para que otros usuarios puedan ver tu posición'}
+            >
+              <Radio size={16} /> {tracking ? 'Detener GPS' : 'Seguir con GPS'}{othersCount > 0 ? ` · ${othersCount} en ruta` : ''}
+            </button>
             <button className="route-btn primary" onClick={saveRoute} disabled={savingRoute}>
               {savingRoute ? <Loader2 size={16} className="route-spin" /> : <Save size={16} />} {currentRouteId ? 'Actualizar' : 'Guardar'} ruta
             </button>
