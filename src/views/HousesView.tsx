@@ -1559,16 +1559,6 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
       );
       console.log(`✅ All images ready for PDF`);
 
-      // 'noopener': corta el acceso de la ventana nueva a window.opener, para que un script
-      // inyectado vía nombre de cliente/dirección (ver escapeHtml abajo) no pueda alcanzar
-      // la pestaña principal de la app aunque algo se cuele.
-      const printWindow = window.open('', '_blank', 'noopener');
-      if (!printWindow) {
-        alert("Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
-        setIsSaving(false);
-        return;
-      }
-
       const title = type === 'before' ? 'Before Photos' : 'After Photos';
       const accentColor = type === 'before' ? '#1e3a8a' : '#047857';
       const clientLabel = escapeHtml(selectedHouse?.client ? getClientName(selectedHouse.client) : 'Propiedad');
@@ -1697,8 +1687,24 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
         </html>
       `;
 
-      printWindow.document.write(html);
-      printWindow.document.close();
+      // Se abre el reporte como Blob URL en vez de document.write sobre about:blank.
+      // Nota: NO usar la feature 'noopener' aquí — hace que window.open retorne null
+      // y era la causa de la ventana en blanco + falsa alerta de pop-ups.
+      // La protección equivalente se logra con printWindow.opener = null (abajo).
+      const blob = new Blob([html], { type: 'text/html' });
+      const blobUrl = URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, '_blank');
+      if (!printWindow) {
+        URL.revokeObjectURL(blobUrl);
+        alert("Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
+        setIsSaving(false);
+        return;
+      }
+      // Corta el acceso de la ventana nueva a la pestaña principal (defensa en profundidad,
+      // complementa el escapeHtml de nombre de cliente/dirección).
+      printWindow.opener = null;
+      // Liberar el Blob URL cuando la ventana ya cargó el contenido.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Error al generar el PDF. Revisa la consola.');
