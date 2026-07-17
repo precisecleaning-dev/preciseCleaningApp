@@ -1048,7 +1048,10 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
       const total = Number(payrollForm.baseAmount) + Number(payrollForm.extraAmount) - Number(payrollForm.discountAmount);
       const dataToSave = { ...payrollForm, totalAmount: total, status: 'Pending' as const };
       const newId = await payrollService.create(dataToSave);
-      setHousePayrollRecords([...housePayrollRecords, { ...dataToSave, id: newId }]);
+      setHousePayrollRecords(
+        [...housePayrollRecords, { ...dataToSave, id: newId }]
+          .sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)) // ⭐ más reciente primero
+      );
       setIsPayrollModalOpen(false);
       alert("Payment registered successfully.");
     } catch (error) {
@@ -1446,6 +1449,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
       });
 
       const pRecords = await payrollService.getByPropertyId(house.id);
+      // ⭐ Más reciente primero (dateSortValue tolera los formatos de fecha mixtos)
+      pRecords.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
       setHousePayrollRecords(pRecords);
 
       const q = query(collection(db, 'billing_services'), where('propertyId', '==', house.id));
@@ -2972,8 +2977,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                               const emp = employees.find(e => e.id === record.employeeId);
                               return (
                                 <tr key={record.id}>
-                                  <td className="hv-fin-td muted">{record.date}</td>
-                                  <td className="hv-fin-td strong">{emp ? `${emp.firstName} ${emp.lastName}` : 'Unknown'}</td>
+                                  <td className="hv-fin-td muted">{formatDate(record.date)}</td>
+                                  <td className="hv-fin-td strong">{emp ? [emp.firstName, emp.lastName].filter(Boolean).join(' ') : 'Unknown'}</td>
                                   <td className="hv-fin-td right">${Number(record.baseAmount).toFixed(2)}</td>
                                   <td className="hv-fin-td right extra">+${Number(record.extraAmount).toFixed(2)}</td>
                                   <td className="hv-fin-td right discount">-${Number(record.discountAmount).toFixed(2)}</td>

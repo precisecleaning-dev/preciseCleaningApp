@@ -6,14 +6,20 @@ import {
   Search, Wallet, ClipboardList
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
+import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
 import { db, auth } from '../config/firebase';
-import { collection, onSnapshot, query, limit, doc, updateDoc, deleteField } from 'firebase/firestore';
-import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer } from '../types/index';
+import { collection, onSnapshot, doc, updateDoc, deleteField } from 'firebase/firestore';
+import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer, Role } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import './PayrollView.css';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
+  // ⭐ Contexto de usuario para el formulario de edición de casa (HousesView modals-only):
+  //    sin esto, canEdit de HousesView sería false y el formulario quedaría de solo lectura.
+  currentUser?: SystemUser | null;
+  activeRole?: Role | null;
+  isSuperAdmin?: boolean;
 }
 
 const collectionMap: Record<string, string> = {
@@ -100,7 +106,7 @@ const weekLabel = (mondayT: number): string => {
   return `${MESES[a.getMonth()]} ${a.getDate()} - ${MESES[b.getMonth()]} ${b.getDate()}`;
 };
 
-export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
+export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
   const [records, setRecords] = useState<PayrollRecordExt[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [employees, setEmployees] = useState<SystemUser[]>([]);
@@ -120,6 +126,13 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecordExt | null>(null);
   const [isEditingPayroll, setIsEditingPayroll] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  // ⭐ Casa a EDITAR desde el botón de la fila: monta HousesView en modo 'modals-only'.
+  //    IMPORTANTE: houseEditorMounted mantiene HousesView MONTADO una vez usado.
+  //    HousesView llama clearHouseToOpenEdit() apenas abre el formulario; si el montaje
+  //    dependiera de houseToEdit, se desmontaría en el mismo frame y el modal moriría
+  //    al instante (el bug de "el botón no hace nada").
+  const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
+  const [houseEditorMounted, setHouseEditorMounted] = useState(false);
 
   // Formulario temporal de edición
   const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
@@ -269,14 +282,22 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
     const TOTAL = 8;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
-    // ⭐ FIX (lecturas + visibilidad): traemos hasta 100 registros con `limit(100)`,
-    //    SIN orderBy en el servidor. Motivo: orderBy('date') en Firestore EXCLUYE los
-    //    documentos que no tengan ese campo exacto (y puede exigir un índice), lo que
-    //    dejaba la tabla vacía. El límite de 100 cuida la cuota del plan gratuito, y el
-    //    orden por fecha (más reciente primero) se hace en el cliente, tolerando que
-    //    algún documento no tenga `date`.
+    // ⭐ FIX (registros nuevos invisibles): NO usar limit() ni orderBy() en el servidor
+    //    para esta colección.
+    //    - limit(100) sin orderBy devolvía los primeros 100 por ID de documento (orden
+    //      lexicográfico), NO los más recientes: al pasar de 100 docs, los pagos nuevos
+    //      del botón Pay de Houses quedaban fuera del corte y no aparecían jamás.
+    //    - orderBy('date') tampoco sirve: el campo `date` existe en formatos mixtos
+    //      ("YYYY-MM-DD", "MM/DD/YYYY", Timestamps — ver toTime()), y el orden
+    //      lexicográfico del servidor con formatos mezclados es basura (mostraba
+    //      hasta abril y excluía los pagos recientes). Además excluye docs sin `date`.
+    //    Por eso: se trae la colección COMPLETA y el orden (más reciente primero) se
+    //    resuelve en el cliente con toTime(), tolerante a todos los formatos.
+    //    Costo: lecturas = tamaño de la colección por sesión. Esta vista es de admin
+    //    (pocos usuarios); si la colección crece a miles, migrar a paginación con
+    //    cursor como en ServiciosCompletados, o agregar un campo `createdAt` uniforme.
     unsubscribes.push(onSnapshot(
-      query(collection(db, 'payroll'), limit(100)),
+      collection(db, 'payroll'),
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollRecordExt));
         // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
@@ -284,7 +305,7 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
           const ta = toTime(a.date), tb = toTime(b.date);
           return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
         });
-        console.log(`[PayrollView] Loaded ${data.length} payroll records (max 100)`, data);
+        console.log(`[PayrollView] Loaded ${data.length} payroll records (colección completa)`);
         setRecords(data);
         tick();
       },
@@ -364,13 +385,16 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
       }
       return true;
     }).sort((a, b) => {
-      // ⭐ Orden principal: Schedule Date descendente (más reciente primero).
-      const ta = recScheduleTime(a), tb = recScheduleTime(b);
-      const d = (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
-      if (d !== 0) return d;
-      // ⭐ Empate (o sin Schedule Date): el registro AGREGADO más recientemente primero.
+      // ⭐ Orden principal: fecha del PAGO registrado (record.date) descendente —
+      //    el pago que registras hoy desde el botón Pay aparece ARRIBA, sin importar
+      //    el Schedule Date de la casa (había casas con schedule en nov/dic que
+      //    enterraban los pagos recientes cientos de filas abajo).
       const ca = toTime(a.date), cb = toTime(b.date);
-      return (isNaN(cb) ? 0 : cb) - (isNaN(ca) ? 0 : ca);
+      const d = (isNaN(cb) ? 0 : cb) - (isNaN(ca) ? 0 : ca);
+      if (d !== 0) return d;
+      // ⭐ Empate (o sin fecha de pago): Schedule Date de la casa descendente.
+      const ta = recScheduleTime(a), tb = recScheduleTime(b);
+      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, properties, startDate, endDate, selectedEmployee]);
@@ -824,7 +848,9 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
                         y desde la pestaña Nóminas, ya no con Mark Paid aquí) */}
                     <td className="pv-td right" onClick={(e) => e.stopPropagation()}>
                       <div className="pv-row-actions end">
-                        <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar"><Edit2 size={16} /></button>
+                        {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (HousesView modals-only) para rectificar información */}
+                        {prop && <button onClick={() => { setHouseEditorMounted(true); setHouseToEdit(prop); }} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
+                        <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar pago"><Edit2 size={16} /></button>
                         <button onClick={() => handleDeletePayroll(record.id as string)} className="pv-icon-btn delete" title="Eliminar"><Trash2 size={16} /></button>
                       </div>
                     </td>
@@ -1456,6 +1482,23 @@ export default function PayrollView({ onOpenMenu }: PayrollViewProps) {
             </footer>
           </div>
         </div>
+      )}
+
+      {/* ⭐ EDICIÓN DE LA CASA sin salir de Payroll: HousesView en modo 'modals-only'
+          dibuja únicamente su formulario de edición encima de esta vista.
+          Se monta solo mientras hay una casa por editar (mismo patrón que Invoices). */}
+      {houseEditorMounted && (
+        <HousesView
+          renderMode="modals-only"
+          onOpenMenu={() => { /* sin página propia en modals-only */ }}
+          properties={properties}
+          setProperties={setProperties}
+          currentUser={currentUser}
+          activeRole={activeRole}
+          isSuperAdmin={isSuperAdmin}
+          houseToOpenEdit={houseToEdit}
+          clearHouseToOpenEdit={() => setHouseToEdit(null)}
+        />
       )}
 
     </div>

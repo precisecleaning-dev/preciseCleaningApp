@@ -17,6 +17,7 @@ import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de histo
 import CompanySettingsView from './views/CompanySettingsView'; // ⭐ Módulo de empresa (logo, nombre, correo, dirección)
 import PhotoSettingsView from './views/PhotoSettingsView'; // ⭐ Configuración de compresión/captura de fotos
 import QCRouteView from './views/QCRouteView'; // ⭐ Hoja de ruta para casas con QC pendiente
+import { MigrarPayroll } from './views/MigrarPayroll'; // ⭐ TEMPORAL — migración única payroll_records → payroll (quitar al terminar)
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -28,12 +29,12 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -270,6 +271,8 @@ export default function App() {
   const isSuperAdmin = isBypass || activeRole?.name === 'Administrator';
   // ⭐ Data Import: SuperAdmin siempre; o cualquier rol con el permiso "Data Import" (casilla View en Roles).
   const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Data Import')?.canView;
+  // ⭐ TEMPORAL — permiso para la vista Migrar Payroll: misma regla que Settings en el Sidebar.
+  const canViewMigrarPayroll = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Settings')?.canView;
   const visibleProperties = properties; 
 
   const handleSettingsClick = () => {
@@ -376,7 +379,9 @@ export default function App() {
           />
         )}
         
-        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} />}
+        {/* ⭐ Payroll recibe contexto de usuario para poder abrir el formulario de
+            edición de casa (HousesView modals-only) con los permisos correctos */}
+        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} currentUser={currentUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
 
         {activeTab === 'qc_report' && (
           <>
@@ -447,6 +452,11 @@ export default function App() {
 
         {/* ⭐ DATA IMPORT — SuperAdmin o rol con permiso "Data Import" (el Sidebar usa la misma regla). */}
         {activeTab === 'data_import' && canViewDataImport && <DataImportView onOpenMenu={toggleMenu} />}
+
+        {/* ⭐ TEMPORAL — Migración única payroll_records → payroll. Visible con
+            permiso de Settings (misma regla que el item del Sidebar).
+            QUITAR este bloque, el import de arriba y el item del Sidebar al terminar. */}
+        {activeTab === 'migrar_payroll' && canViewMigrarPayroll && <MigrarPayroll />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
         {activeTab === 'qc_route' && (

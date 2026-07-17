@@ -1,0 +1,128 @@
+/* Estilos del componente temporal de migración payroll_records -> payroll */
+.migrar-payroll-box {
+  max-width: 560px;
+  margin: 24px auto;
+  padding: 24px;
+  background: #fffbeb;
+  border: 2px dashed #f59e0b;
+  border-radius: 12px;
+}
+
+.migrar-payroll-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 8px;
+}
+
+.migrar-payroll-desc {
+  font-size: 13px;
+  color: #78350f;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.migrar-payroll-btn {
+  padding: 10px 20px;
+  background: #f59e0b;
+  color: #ffffff;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.migrar-payroll-btn:hover {
+  background: #d97706;
+}
+
+.migrar-payroll-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.migrar-payroll-progreso {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #78350f;
+}
+
+.migrar-payroll-resumen {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.migrar-payroll-resumen.ok {
+  color: #047857;
+}
+
+.migrar-payroll-resumen.error {
+  color: #b91c1c;
+}
+
+/* Sección 2: corrección de fechas invertidas */
+.migrar-payroll-box.seccion-fechas {
+  margin-top: 24px;
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.migrar-payroll-box.seccion-fechas .migrar-payroll-title {
+  color: #1e3a8a;
+}
+
+.migrar-payroll-box.seccion-fechas .migrar-payroll-desc,
+.migrar-payroll-box.seccion-fechas .migrar-payroll-progreso {
+  color: #1e40af;
+}
+
+.migrar-payroll-btn-row {
+  display: flex;
+  gap: 12px;
+}
+
+.migrar-payroll-btn.aplicar {
+  background: #1d4ed8;
+}
+
+.migrar-payroll-btn.aplicar:hover {
+  background: #1e40af;
+}
+
+.migrar-payroll-preview {
+  margin-top: 16px;
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.migrar-payroll-preview-row {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.migrar-payroll-preview-col {
+  color: #64748b;
+  min-width: 76px;
+}
+
+.migrar-payroll-preview-label {
+  color: #0f172a;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migrar-payroll-preview-change {
+  color: #1d4ed8;
+  font-weight: 600;
+  white-space: nowrap;
+}
