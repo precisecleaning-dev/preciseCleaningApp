@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -97,6 +97,11 @@ export default function Sidebar({
       tab: 'settings', label: 'Settings', icon: SettingsIcon, visible: canViewSettings,
       onClick: () => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); },
     },
+    // ⭐ TEMPORAL — Migración única payroll_records → payroll. Visible para
+    //    cualquier rol con permiso de Settings (misma regla que Empresa/Fotos).
+    //    QUITAR este item (y el icono ArrowLeftRight del import) cuando la
+    //    migración esté hecha y verificada. Ver MigrarPayroll.tsx.
+    { tab: 'migrar_payroll', label: 'Migrar Payroll', icon: ArrowLeftRight, visible: canViewSettings },
   ];
 
   const renderNavItem = (item: NavItemConfig) => (

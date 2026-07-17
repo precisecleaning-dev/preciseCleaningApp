@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
@@ -262,6 +262,14 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [searchClient, setSearchClient] = useState('');
   // ⭐ Default 'All' para que TODAS las casas se vean al entrar (antes 'Pending' las ocultaba)
   const [filterStatus, setFilterStatus] = useState<string>('All');
+
+  // ⭐ RENDIMIENTO — paginación incremental: con ~3,700 registros, renderizar TODAS
+  //    las filas (y además duplicadas en las tarjetas móviles) congelaba la vista:
+  //    cada clic o tecla re-renderizaba miles de nodos. Se muestran 50 y el botón
+  //    "Mostrar más" trae el resto por bloques.
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filterStatus, searchClient, startDate, endDate]);
   // ⭐ Copia LOCAL de properties (cargada por esta vista). Renderizamos desde aquí
   //    para no depender de cómo el padre derive/filtre su lista.
   const [allProps, setAllProps] = useState<Property[]>([]);
@@ -269,9 +277,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   // ⭐ Edición de la casa SIN salir de Invoices: si App.tsx pasa `onEditProperty`
   //    se usa esa vía (cableado externo); si no, esta vista incrusta HousesView en
   //    modo 'modals-only' y abre su formulario de edición aquí mismo.
+  //    ⚠ houseToEdit es solo el DISPARADOR: HousesView lo consume y lo limpia al
+  //    instante (así funciona su houseToOpenEdit). Por eso el montaje del editor va
+  //    en una bandera aparte que queda encendida — si se condicionara al disparador,
+  //    el componente se desmontaría justo después de abrir y el modal "se cerraría".
   const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
+  const [editorMounted, setEditorMounted] = useState(false);
   const openEdit = (house: Property) => {
     if (onEditProperty) { onEditProperty(house); return; }
+    setEditorMounted(true);
     setHouseToEdit(house);
   };
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
@@ -423,57 +437,108 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    MISMA mecánica que StatusHistoryView (que sí encuentra los 3,616):
   //    fuente = prop `properties` de App (con respaldo en la carga local), y
   //    resolución del status por id/nombre en minúsculas contra settings_statuses.
-  const isInvoiceJobStatus = (p: Property) => {
-    const raw = String(p.statusId || '').toLowerCase().trim();
-    if (raw === '748aad00') return true; // ID de AppSheet para INVOICE (datos importados)
-    const st = statuses.find(x => String(x.id).toLowerCase().trim() === raw || String(x.name).toLowerCase().trim() === raw);
-    return String(st?.name || raw).toLowerCase().trim() === 'invoice';
-  };
-  const baseProps = (properties && properties.length > 0) ? properties : allProps;
-  const invoiceProps = (baseProps || []).filter(isInvoiceJobStatus);
+  // ⭐ RENDIMIENTO — todo lo de abajo estaba SIN memoizar y se recalculaba en cada
+  //    render (cada clic/tecla): filtrar 3,700 props contra statuses con .find, y
+  //    por CADA fila recorrer completas las colecciones de payroll y servicios
+  //    (O(filas × registros) ≈ millones de operaciones). Ahora: useMemo + Maps.
 
-  // Conteos por status (para mostrar como badge en cada pill button)
-  const invoiceCounts = INVOICE_STATUSES.reduce((acc, st) => {
-    acc[st.id] = invoiceProps.filter(p => String(p.invoiceStatus || '').toLowerCase().trim() === st.id.toLowerCase()).length;
+  // Claves que identifican el status "Invoice" (id/nombre en minúsculas + id legacy de AppSheet)
+  const invoiceStatusKeys = useMemo(() => {
+    const keys = new Set<string>(['748aad00', 'invoice']);
+    statuses.forEach(st => {
+      if (String(st.name || '').toLowerCase().trim() === 'invoice') {
+        keys.add(String(st.id).toLowerCase().trim());
+        keys.add(String(st.name).toLowerCase().trim());
+      }
+    });
+    return keys;
+  }, [statuses]);
+
+  const baseProps = (properties && properties.length > 0) ? properties : allProps;
+
+  const invoiceProps = useMemo(
+    () => (baseProps || []).filter(p => invoiceStatusKeys.has(String(p.statusId || '').toLowerCase().trim())),
+    [baseProps, invoiceStatusKeys]
+  );
+
+  // Conteos por status (badge de cada pill), en UNA pasada
+  const invoiceCounts = useMemo(() => {
+    const acc = {} as Record<string, number>;
+    INVOICE_STATUSES.forEach(st => { acc[st.id] = 0; });
+    const idByLower = new Map(INVOICE_STATUSES.map(st => [st.id.toLowerCase(), st.id]));
+    invoiceProps.forEach(p => {
+      const key = idByLower.get(String(p.invoiceStatus || '').toLowerCase().trim());
+      if (key) acc[key] += 1;
+    });
     return acc;
-  }, {} as Record<string, number>);
+  }, [invoiceProps]);
   const totalScopedCount = invoiceProps.length;
 
-  // Filtrado completo + ordenado por Schedule Date DESCENDENTE (más reciente primero)
-  // ⭐ Filtrado: pastilla de invoice status (case-insensitive), búsqueda por
-  //    cliente/dirección y rango de fechas por timestamp. Orden descendente.
-  const filteredProperties = invoiceProps.filter(prop => {
-    if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
-    if (searchClient) {
-      const q = searchClient.toLowerCase();
-      const clientName = getClientName(prop.client).toLowerCase();
-      const address = (prop.address || '').toLowerCase();
-      if (!clientName.includes(q) && !address.includes(q)) return false;
-    }
-    if (startDate || endDate) {
-      if (!prop.scheduleDate) return false;
-      const recT = parseDateForSort(prop.scheduleDate);
-      if (startDate && recT < parseDateForSort(startDate)) return false;
-      if (endDate && recT > parseDateForSort(endDate) + (24 * 60 * 60 * 1000 - 1)) return false;
-    }
-    return true;
-  }).sort((a, b) => {
-    const hasA = !!a.scheduleDate;
-    const hasB = !!b.scheduleDate;
-    if (!hasA && !hasB) return 0;
-    if (!hasA) return 1;
-    if (!hasB) return -1;
-    return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
-  });
+  // Índice de búsqueda por propiedad ("cliente dirección" en minúsculas): así el
+  // filtro de texto no resuelve el nombre del cliente contra el catálogo por tecla.
+  const searchTextByProp = useMemo(() => {
+    const m = new Map<string, string>();
+    invoiceProps.forEach(p => m.set(p.id, `${getClientName(p.client)} ${p.address || ''}`.toLowerCase()));
+    return m;
+    // getClientName solo depende de customers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceProps, customers]);
 
-  // ⭐ Helper para los cálculos financieros de una propiedad (reutilizado en tabla y tarjetas)
+  // Filtrado + orden por Schedule Date DESCENDENTE, memoizado
+  const filteredProperties = useMemo(() => {
+    const q = searchClient.toLowerCase();
+    const startT = startDate ? parseDateForSort(startDate) : null;
+    const endT = endDate ? parseDateForSort(endDate) + (24 * 60 * 60 * 1000 - 1) : null;
+    return invoiceProps.filter(prop => {
+      if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
+      if (q && !(searchTextByProp.get(prop.id) || '').includes(q)) return false;
+      if (startT !== null || endT !== null) {
+        if (!prop.scheduleDate) return false;
+        const recT = parseDateForSort(prop.scheduleDate);
+        if (startT !== null && recT < startT) return false;
+        if (endT !== null && recT > endT) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const hasA = !!a.scheduleDate;
+      const hasB = !!b.scheduleDate;
+      if (!hasA && !hasB) return 0;
+      if (!hasA) return 1;
+      if (!hasB) return -1;
+      return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
+    });
+  }, [invoiceProps, filterStatus, searchClient, startDate, endDate, searchTextByProp]);
+
+  // Solo se renderiza la página visible (tabla Y tarjetas usan esta lista)
+  const visibleProperties = useMemo(
+    () => filteredProperties.slice(0, visibleCount),
+    [filteredProperties, visibleCount]
+  );
+
+  // ⭐ Financieros por propiedad en UNA pasada por colección (Map O(1) por fila),
+  //    en vez de filtrar payroll y servicios completos por cada fila renderizada.
+  const financialsByProp = useMemo(() => {
+    const m = new Map<string, { totalCost: number; payrollTotal: number }>();
+    billedServices.forEach(srv => {
+      if (!srv.propertyId) return;
+      const e = m.get(srv.propertyId) || { totalCost: 0, payrollTotal: 0 };
+      e.totalCost += Number(srv.total) || 0;
+      m.set(srv.propertyId, e);
+    });
+    payrolls.forEach(pay => {
+      if (!pay.propertyId) return;
+      const e = m.get(pay.propertyId) || { totalCost: 0, payrollTotal: 0 };
+      e.payrollTotal += getPayrollTotal(pay);
+      m.set(pay.propertyId, e);
+    });
+    return m;
+  }, [billedServices, payrolls]);
+
   const calcFinancials = (prop: Property) => {
-    const propServices = billedServices.filter(srv => srv.propertyId === prop.id);
-    const totalCost = propServices.reduce((sum, srv) => sum + (Number(srv.total) || 0), 0);
-    const propPayrolls = payrolls.filter(pay => pay.propertyId === prop.id);
-    const payrollTotal = propPayrolls.reduce((sum, pay) => sum + getPayrollTotal(pay), 0);
-    const profit = totalCost - payrollTotal;
-    return { totalCost, payrollTotal, profit };
+    const e = financialsByProp.get(prop.id);
+    const totalCost = e?.totalCost || 0;
+    const payrollTotal = e?.payrollTotal || 0;
+    return { totalCost, payrollTotal, profit: totalCost - payrollTotal };
   };
 
   return (
@@ -562,7 +627,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <tr><td colSpan={9} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
             ) : filteredProperties.length === 0 ? (
               <tr><td colSpan={9} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
-            ) : filteredProperties.map(prop => {
+            ) : visibleProperties.map(prop => {
 
               const { totalCost, payrollTotal, profit } = calcFinancials(prop);
               const clientName = getClientName(prop.client);
@@ -675,7 +740,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
         ) : filteredProperties.length === 0 ? (
           <div className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</div>
-        ) : filteredProperties.map(prop => {
+        ) : visibleProperties.map(prop => {
 
           const { totalCost, payrollTotal, profit } = calcFinancials(prop);
           const clientName = getClientName(prop.client);
@@ -776,6 +841,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           );
         })}
       </div>
+
+      {/* ⭐ Paginación: carga el resto por bloques (aplica a tabla y tarjetas) */}
+      {!isLoading && filteredProperties.length > visibleCount && (
+        <div className="inv-load-more-row">
+          <button className="inv-load-more-btn" onClick={() => setVisibleCount(c => c + 100)}>
+            Mostrar más — viendo {visibleCount} de {filteredProperties.length}
+          </button>
+        </div>
+      )}
 
       {/* --- ⭐ MODAL DETALLE DE PROPIEDAD (READ ONLY) — igual al de House view --- */}
       {detailHouse && (
@@ -935,7 +1009,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       {/* ⭐ EDICIÓN DE LA CASA sin salir de Invoices: HousesView en modo 'modals-only'
           dibuja únicamente sus modales (aquí, el formulario de edición) encima de
           esta vista. Se monta solo mientras hay una casa por editar. */}
-      {houseToEdit && !onEditProperty && (
+      {editorMounted && !onEditProperty && (
         <HousesView
           renderMode="modals-only"
           onOpenMenu={() => { /* sin página propia en modals-only */ }}
