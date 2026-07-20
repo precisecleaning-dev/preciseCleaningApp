@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Route, X, MapPin, Navigation, LocateFixed, Search, Loader2,
   ArrowUp, ArrowDown, Trash2, Save, Wand2, Clock, ExternalLink,
-  Maximize2, Minimize2, Radio, Share2
+  Maximize2, Minimize2, Radio, Share2, Copy, ListOrdered
 } from 'lucide-react';
 import type { SystemUser } from '../types/index';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { escapeHtml } from '../utils/escapeHtml';
 import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { geocodeAddressForced } from '../utils/geocodeForce';
 import { useLiveRoute, liveDivIcon, shareRouteLink, type LiveUserPosition } from '../utils/liveRoute';
 import './QCRouteDrawer.css';
 
@@ -188,7 +189,7 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
           setGeoStatus(`Ubicando direcciones ${i + 1}/${missing.length}...`);
           let coords: LatLng | null = (h.lat != null && h.lng != null) ? { lat: h.lat, lng: h.lng } : null;
           if (!coords) {
-            coords = await geocodeAddress(h.address || '');
+            coords = await geocodeAddressForced(h.address || '');
             await sleep(1100); // respeta el límite de Nominatim (1/seg)
           }
           if (cancelled) return;
@@ -259,6 +260,59 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
   const removeStop = (stop: Stop) => {
     setStops(prev => recomputeLegs(origin, prev.filter(s => s.houseId !== stop.houseId), avgSpeed));
     onRemove(stop.houseId);
+  };
+
+  // ⭐ Copiar/pegar direcciones (flujo con IA): "Copiar direcciones" saca la lista
+  //    numerada al portapapeles; el usuario la reordena afuera (p. ej. con una IA) y
+  //    la pega en el panel — cada línea se reconoce contra las paradas existentes
+  //    (contención normalizada o mismo prefijo) y la ruta se reordena dinámicamente.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
+  const copyAddresses = async () => {
+    if (stops.length === 0) { alert('No hay paradas que copiar.'); return; }
+    const txt = stops.map((s, i) => `${i + 1}. ${s.address || s.client}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(txt);
+      alert(`${stops.length} dirección(es) copiadas al portapapeles.`);
+    } catch {
+      // navegadores sin permiso de clipboard: mostrarlas para copiar a mano
+      window.prompt('Copia las direcciones:', txt);
+    }
+  };
+
+  // normaliza para comparar: minúsculas, sin numeración inicial ("1." / "2)"),
+  // sin puntuación y con espacios colapsados. La numeración exige delimitador
+  // para NO comerse el número de la casa ("2500 Westcliff" queda intacto).
+  const normAddr = (s: string): string =>
+    s.toLowerCase()
+      .replace(/^\s*\d{1,3}[\).\-:]\s*/, '')
+      .replace(/[.,#]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const applyPastedOrder = () => {
+    const lines = pasteText.split('\n').map(normAddr).filter(Boolean);
+    if (lines.length === 0) { alert('Pega primero la lista de direcciones (una por línea).'); return; }
+    const remaining = [...stops];
+    const ordered: Stop[] = [];
+    lines.forEach(line => {
+      const idx = remaining.findIndex(s => {
+        const addr = normAddr(s.address || s.client || '');
+        if (!addr) return false;
+        return addr.includes(line) || line.includes(addr) || addr.slice(0, 14) === line.slice(0, 14);
+      });
+      if (idx !== -1) ordered.push(...remaining.splice(idx, 1));
+    });
+    if (ordered.length === 0) {
+      alert('No reconocí ninguna dirección de la lista pegada. Verifica que sean las mismas direcciones de la ruta.');
+      return;
+    }
+    // las no reconocidas conservan su lugar al final para no perder paradas
+    setStops(recomputeLegs(origin, [...ordered, ...remaining], avgSpeed));
+    alert(`Orden aplicado: ${ordered.length} reconocida(s)${remaining.length > 0 ? `, ${remaining.length} sin reconocer (quedaron al final)` : ''}.`);
+    setPasteText('');
+    setPasteOpen(false);
   };
 
   const optimizeOrder = () => {
@@ -538,7 +592,35 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
               <label className="qcrd-field-label" htmlFor="qcrd-speed">Vel. (km/h)</label>
               <input id="qcrd-speed" type="number" min={5} value={avgSpeed} onChange={e => setAvgSpeed(parseInt(e.target.value) || 40)} className="qcrd-input" />
             </div>
+            {/* ⭐ Copiar direcciones + pegar el orden externo (IA) */}
+            <button className="qcrd-btn soft" onClick={copyAddresses} disabled={stops.length === 0} title="Copia la lista numerada de direcciones al portapapeles">
+              <Copy size={15} /> Copiar direcciones
+            </button>
+            <button className={`qcrd-btn soft${pasteOpen ? ' live' : ''}`} onClick={() => setPasteOpen(v => !v)} disabled={stops.length === 0} title="Pega la lista reordenada y la ruta se reordena sola">
+              <ListOrdered size={15} /> Pegar orden
+            </button>
           </div>
+
+          {pasteOpen && (
+            <div className="qcrd-paste-panel">
+              <label className="qcrd-field-label" htmlFor="qcrd-paste">
+                Pega las direcciones en el nuevo orden (una por línea; se aceptan con o sin numeración)
+              </label>
+              <textarea
+                id="qcrd-paste"
+                className="qcrd-paste-textarea"
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder={'1. 2500 Westcliff Rd A Killeen, TX 76543\n2. 618 N 22nd St Killeen, TX 76541\n3. ...'}
+              />
+              <div className="qcrd-paste-actions">
+                <button className="qcrd-btn" onClick={applyPastedOrder}>
+                  <ListOrdered size={15} /> Aplicar orden
+                </button>
+                <button className="qcrd-btn soft" onClick={() => { setPasteOpen(false); setPasteText(''); }}>Cancelar</button>
+              </div>
+            </div>
+          )}
 
           {/* Aviso: para que otros usuarios te sigan, la ruta debe estar guardada */}
           {tracking && !savedRouteId && (

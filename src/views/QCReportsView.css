@@ -1,0 +1,54 @@
+/* ============================================================
+   QCReportsView — pestaña Reportes del hub de Quality Check
+   Mobile-first: tarjetas siempre, cero scroll horizontal.
+   ============================================================ */
+.qcr-root { padding: 18px 16px 40px 16px; max-width: 860px; margin: 0 auto; box-sizing: border-box; }
+.qcr-header { margin-bottom: 14px; }
+.qcr-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.15rem; color: #0f172a; }
+.qcr-title svg { color: #7c3aed; flex-shrink: 0; }
+.qcr-subtitle { margin: 4px 0 0 0; color: #64748b; font-size: 0.82rem; font-weight: 600; }
+
+.qcr-search-wrap { position: relative; margin-bottom: 16px; }
+.qcr-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+.qcr-search { width: 100%; box-sizing: border-box; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 14px 12px 38px; font-size: 0.92rem; background: #fff; }
+.qcr-search:focus { outline: none; border-color: #7c3aed; }
+
+.qcr-empty { background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; padding: 34px 20px; text-align: center; color: #64748b; font-size: 0.9rem; line-height: 1.6; }
+
+.qcr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.qcr-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+.qcr-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.18); border-color: #ddd6fe; }
+
+.qcr-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.qcr-card-id { min-width: 0; }
+.qcr-client { font-weight: 800; color: #0f172a; font-size: 0.95rem; }
+.qcr-address { display: flex; align-items: center; gap: 5px; color: #64748b; font-size: 0.8rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+.qcr-address svg { flex-shrink: 0; }
+.qcr-badge { display: inline-flex; align-items: center; gap: 5px; background: var(--qcr-bg); color: var(--qcr-fg); font-weight: 800; font-size: 0.72rem; padding: 5px 11px; border-radius: 999px; flex-shrink: 0; white-space: nowrap; }
+.qcr-badge svg { display: block; flex-shrink: 0; stroke: currentColor; }
+
+.qcr-meta { margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 14px; }
+.qcr-meta-pair dt { display: flex; align-items: center; gap: 5px; font-size: 0.66rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.qcr-meta-pair dt svg { flex-shrink: 0; }
+.qcr-meta-pair dd { margin: 0; font-size: 0.86rem; color: #0f172a; font-weight: 700; }
+
+.qcr-corr { display: inline-flex; align-items: center; gap: 5px; background: #dcfce7; border: 1px solid #86efac; color: #166534; font-weight: 700; font-size: 0.72rem; padding: 5px 10px; border-radius: 999px; margin-top: 10px; }
+.qcr-corr svg { display: block; flex-shrink: 0; stroke: currentColor; }
+
+@media (min-width: 640px) {
+  .qcr-meta { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Acciones de cada reporte */
+.qcr-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.qcr-action-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1 1 30%; min-height: 42px; border-radius: 10px; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+.qcr-action-btn svg { display: block; flex-shrink: 0; stroke: currentColor; }
+.qcr-action-btn.pdf { background: #4338ca; border: 1px solid #4338ca; color: #fff; }
+.qcr-action-btn.pdf:hover:not(:disabled) { background: #3730a3; }
+.qcr-action-btn.pdf:disabled { opacity: 0.6; cursor: wait; }
+.qcr-action-btn.edit { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+.qcr-action-btn.edit:hover { background: #dbeafe; }
+.qcr-action-btn.delete { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+.qcr-action-btn.delete:hover { background: #fee2e2; }
+.qcr-spin { animation: qcr-spin 1s linear infinite; }
+@keyframes qcr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

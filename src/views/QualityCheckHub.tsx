@@ -3,8 +3,9 @@ import type { CSSProperties } from 'react';
 import { ClipboardCheck, Route, FileBarChart } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
-import QualityCheckView from './QualityCheckView';
+import QualityCheckView, { type QCRecord } from './QualityCheckView';
 import QCRoutesTableView from './QCRoutesTableView';
+import QCReportsView from './QCReportsView';
 import './QualityCheckHub.css';
 
 // ============================================================================
@@ -40,6 +41,9 @@ export default function QualityCheckHub(props: Props) {
   const [tab, setTab] = useState<HubTab>(() =>
     new URLSearchParams(window.location.search).get('qcRoute') ? 'routes' : 'inspections');
 
+  // ⭐ "Editar" desde la pestaña Reportes: brinca a Quality Check con el registro
+  const [reportToEdit, setReportToEdit] = useState<QCRecord | null>(null);
+
   const tabBtn = (key: HubTab, label: string, Icon: LucideIcon, activeColor: string) => {
     const active = tab === key;
     return (
@@ -74,18 +78,14 @@ export default function QualityCheckHub(props: Props) {
           currentUser={props.currentUser}
           onOpenHouseDetail={props.onOpenHouseDetail}
           onOpenHouseEdit={props.onOpenHouseEdit}
+          reportToEdit={reportToEdit}
+          clearReportToEdit={() => setReportToEdit(null)}
         />
       )}
       {tab === 'routes' && <QCRoutesTableView onOpenMenu={props.onOpenMenu} />}
+      {/* ⭐ Punto 9: reportes acumulados del más reciente al más antiguo */}
       {tab === 'reports' && (
-        <div className="qch-reports-empty">
-          <FileBarChart size={30} />
-          <h3 className="qch-reports-title">Reportes de Quality Check</h3>
-          <p className="qch-reports-text">
-            Esta sección está en construcción. Aquí vivirán los reportes de inspecciones
-            (resultados, recalls, desempeño por equipo, etc.).
-          </p>
-        </div>
+        <QCReportsView onEditReport={(qc) => { setReportToEdit(qc); setTab('inspections'); }} />
       )}
     </div>
   );
