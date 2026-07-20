@@ -52,3 +52,8 @@
 .qcr-action-btn.delete:hover { background: #fee2e2; }
 .qcr-spin { animation: qcr-spin 1s linear infinite; }
 @keyframes qcr-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.qcr-action-btn { flex: 1 1 22%; }
+.qcr-action-btn.email { background: #0f766e; border: 1px solid #0f766e; color: #fff; }
+.qcr-action-btn.email:hover:not(:disabled) { background: #115e59; }
+.qcr-action-btn.email:disabled { opacity: 0.6; cursor: wait; }

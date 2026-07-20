@@ -7,6 +7,7 @@ import {
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, limit, doc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import type { Customer } from '../types/index';
+import type { QCRecord } from './QualityCheckView';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import './QCReportsView.css';
 
@@ -28,27 +29,15 @@ interface Props {
   onEditReport?: (qc: QCReportRecord) => void;
 }
 
-export interface QCReportRecord {
-  id: string;
-  houseId: string;
-  date: string;
-  address?: string;
-  client?: string;
-  team?: string;
-  status: 'Finished' | 'Pending';
-  result?: 'passed' | 'failed' | null;
-  inspector?: string;
-  checkInAt?: string | null;
-  checkOutAt?: string | null;
-  durationMinutes?: number | null;
+// ⭐ El registro base es el MISMO QCRecord de la vista Quality Check (import de solo
+//    tipo — se borra al compilar, no crea ciclo). Así el hub puede mandarlo directo
+//    al editor sin conversiones. Aquí solo se agregan los campos propios de reportes.
+export type QCReportRecord = QCRecord & {
+  id: string; // en esta vista siempre existe: viene del doc de Firestore
   createdAt?: string | null;
   correctionsDoneAt?: string | null;
   correctionsDoneBy?: string | null;
-  // Payload completo de la inspección (necesario para regenerar el PDF)
-  selectedPlaces?: string[];
-  // Excepción documentada (CLAUDE.md): estructura dinámica por configuración
-  qcData?: Record<string, any>;
-}
+};
 
 const toMs = (iso?: string | null): number => {
   if (!iso) return NaN;

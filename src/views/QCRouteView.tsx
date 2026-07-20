@@ -9,7 +9,7 @@ import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import { isQualityCheckStatus, housePassedQC, houseFailedQC, type QCStatusLike } from '../utils/qcStatus';
-import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { type LatLng, haversineKm, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { geocodeAddressForced } from '../utils/geocodeForce';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useLiveRoute, liveDivIcon, shareRouteLink, type LiveUserPosition } from '../utils/liveRoute';
