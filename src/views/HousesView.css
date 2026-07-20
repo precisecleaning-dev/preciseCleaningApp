@@ -549,3 +549,8 @@
 /* Modo "solo modales" de HousesView (montado encima de otra vista, p. ej. QC):
    el contenedor no debe afectar el layout — los modales son overlays fijos. */
 .hv-modals-only { display: contents; }
+/* ⭐ Configurador de campos: fila de SOLO LECTURA por rol (segunda fila de chips) */
+.hv-fieldconfig-mode-tag { font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; flex-shrink: 0; align-self: center; }
+.hv-fieldconfig-roles-wrap.readonly-row { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
+.hv-role-toggle.ro { border-color: #e2e8f0; }
+.hv-role-toggle.ro.locked { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
