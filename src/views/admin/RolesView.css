@@ -75,3 +75,11 @@
 .rv-btn-cancel { background-color: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
 .rv-btn-save { display: flex; align-items: center; gap: 8px; background: #2563eb; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
 .rv-btn-save:disabled { cursor: wait; opacity: 0.7; }
+
+/* ===== Campos del formulario de Houses: editable (verde) / solo lectura (rojo) ===== */
+.rv-fields-section { margin-top: 16px; }
+.rv-fields-title { font-weight: 700; color: #0f172a; font-size: 0.9rem; margin-bottom: 4px; }
+.rv-fields-hint { color: #64748b; font-size: 0.78rem; margin-bottom: 10px; }
+.rv-fields-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.rv-field-option { display: flex; align-items: center; gap: 8px; border: 1px solid #fecaca; background: #fef2f2; border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 0.82rem; color: #b91c1c; font-weight: 600; }
+.rv-field-option.editable { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }

@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Route, Menu, Share2, Eye, X, CheckCircle2, Radio, MapPin,
-  Loader2, Clock, Search, LocateFixed
+  Loader2, Clock, Search, LocateFixed, Edit2, Trash2, Save, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { db } from '../config/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { shareRouteLink, liveDivIcon, type LiveUserPosition } from '../utils/liveRoute';
 import { type LatLng, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -71,6 +71,9 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<QCRouteDoc | null>(null);
+  // ⭐ Punto 5: edición de una ruta guardada (nombre + paradas: quitar/reordenar)
+  const [editRoute, setEditRoute] = useState<QCRouteDoc | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   // ⭐ Vista EN VIVO: modal con mapa (ruta + posiciones GPS en tiempo real)
   const [liveView, setLiveView] = useState<QCRouteDoc | null>(null);
   // Tick cada 30 s para refrescar qué posiciones "en vivo" siguen frescas
@@ -194,6 +197,61 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
     // liveUsers es estable a efectos prácticos (función del componente que lee Date.now()).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveView]);
+
+  // ⭐ Punto 5: eliminar una ruta guardada
+  const handleDeleteRoute = async (r: QCRouteDoc) => {
+    if (!window.confirm(`¿Eliminar la ruta "${r.name || 'Sin nombre'}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await deleteDoc(doc(db, 'qc_routes', r.id));
+      setDetail(prev => (prev?.id === r.id ? null : prev));
+      setLiveView(prev => (prev?.id === r.id ? null : prev));
+    } catch (e) {
+      console.error('Error eliminando la ruta:', e);
+      alert('No se pudo eliminar la ruta.');
+    }
+  };
+
+  // ⭐ Punto 5: guardar la edición (nombre y paradas reordenadas/quitadas)
+  const handleSaveEditRoute = async () => {
+    if (!editRoute) return;
+    if ((editRoute.stops || []).length === 0) {
+      alert('La ruta debe tener al menos una parada.');
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      await updateDoc(doc(db, 'qc_routes', editRoute.id), {
+        name: editRoute.name || 'Ruta QC',
+        stops: editRoute.stops,
+      });
+      setEditRoute(null);
+    } catch (e) {
+      console.error('Error guardando la ruta:', e);
+      alert('No se pudo guardar la ruta.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const moveEditStop = (index: number, dir: -1 | 1) => {
+    setEditRoute(prev => {
+      if (!prev) return prev;
+      const stops = [...(prev.stops || [])];
+      const j = index + dir;
+      if (j < 0 || j >= stops.length) return prev;
+      [stops[index], stops[j]] = [stops[j], stops[index]];
+      return { ...prev, stops };
+    });
+  };
+
+  const removeEditStop = (index: number) => {
+    setEditRoute(prev => {
+      if (!prev) return prev;
+      const stops = [...(prev.stops || [])];
+      stops.splice(index, 1);
+      return { ...prev, stops };
+    });
+  };
 
   // ---------- derivados por ruta ----------
   const liveUsers = (r: QCRouteDoc): LiveUserPosition[] => {
@@ -335,6 +393,13 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
                         <button className="qcrt-action-btn" onClick={() => shareRouteLink(r.id, r.name || 'Ruta QC')} title="Compartir link para seguir esta ruta">
                           <Share2 size={16} /> Compartir
                         </button>
+                        {/* ⭐ Punto 5: editar y eliminar la ruta guardada */}
+                        <button className="qcrt-action-btn" onClick={() => setEditRoute({ ...r, stops: [...(r.stops || [])] })} title="Editar nombre y paradas">
+                          <Edit2 size={16} /> Editar
+                        </button>
+                        <button className="qcrt-action-btn danger" onClick={() => handleDeleteRoute(r)} title="Eliminar esta ruta">
+                          <Trash2 size={16} /> Eliminar
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -342,6 +407,51 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ═══════════ MODAL: EDITAR RUTA (nombre + paradas) ═══════════ */}
+      {editRoute && (
+        <div className="qcrt-overlay" onClick={() => setEditRoute(null)}>
+          <div className="qcrt-modal qcrt-edit-modal" onClick={e => e.stopPropagation()}>
+            <div className="qcrt-modal-header">
+              <h3 className="qcrt-modal-title"><Edit2 size={17} /> Editar ruta</h3>
+              <button onClick={() => setEditRoute(null)} className="qcrt-modal-close" aria-label="Cerrar"><X size={18} /></button>
+            </div>
+            <div className="qcrt-modal-body">
+              <label className="qcrt-edit-label" htmlFor="qcrt-edit-name">Nombre de la ruta</label>
+              <input
+                id="qcrt-edit-name"
+                className="qcrt-edit-input"
+                value={editRoute.name || ''}
+                onChange={e => setEditRoute({ ...editRoute, name: e.target.value })}
+                placeholder="Nombre de la ruta..."
+              />
+              <span className="qcrt-edit-label">Paradas ({(editRoute.stops || []).length})</span>
+              <ul className="qcrt-edit-stops">
+                {(editRoute.stops || []).map((s, i) => (
+                  <li key={`${s.houseId}_${i}`} className="qcrt-edit-stop">
+                    <span className="qcrt-addr-num">{i + 1}</span>
+                    <div className="qcrt-edit-stop-info">
+                      <div className="qcrt-edit-stop-client">{s.client || '—'}</div>
+                      <div className="qcrt-edit-stop-addr">{s.address || '—'}</div>
+                    </div>
+                    <div className="qcrt-edit-stop-actions">
+                      <button className="qcrt-mini-btn" onClick={() => moveEditStop(i, -1)} disabled={i === 0} aria-label="Subir"><ArrowUp size={14} /></button>
+                      <button className="qcrt-mini-btn" onClick={() => moveEditStop(i, 1)} disabled={i === (editRoute.stops || []).length - 1} aria-label="Bajar"><ArrowDown size={14} /></button>
+                      <button className="qcrt-mini-btn danger" onClick={() => removeEditStop(i)} aria-label="Quitar parada"><Trash2 size={14} /></button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="qcrt-modal-footer">
+              <button className="qcrt-action-btn" onClick={() => setEditRoute(null)}>Cancelar</button>
+              <button className="qcrt-action-btn solid" onClick={handleSaveEditRoute} disabled={isSavingEdit}>
+                {isSavingEdit ? <Loader2 size={16} className="qcrt-spin" /> : <Save size={16} />} Guardar cambios
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -6,7 +6,7 @@ import {
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, ChevronDown,
   Briefcase, ShieldCheck, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, Filter, CheckCircle, Calendar, Percent, PlayCircle, BarChart3, FileImage,
   Save, XCircle, Layers, Settings, Receipt, CalendarClock, CloudOff, Camera, Menu
-} from 'lucide-react';
+, Lock } from 'lucide-react';
 
 import type { Property as BaseProperty, Status, Team, Priority, Service, Customer, SystemUser, Role, PayrollRecord, Tax } from '../types/index';
 
@@ -108,9 +108,12 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
 
 type FormVisibilityConfig = {
   visibility: Record<string, string[]>;
+  // ⭐ Roles para los que el CAMPO es de SOLO LECTURA (lo ven pero no lo editan).
+  //    Solo aplica a los campos del formulario, no a botones/tabs.
+  readOnly?: Record<string, string[]>;
 };
 
-const DEFAULT_FORM_CONFIG: FormVisibilityConfig = { visibility: {} };
+const DEFAULT_FORM_CONFIG: FormVisibilityConfig = { visibility: {}, readOnly: {} };
 
 interface SelectOption {
   id: string;
@@ -118,8 +121,8 @@ interface SelectOption {
   color?: string;
 }
 
-function SearchableSelect<T extends SelectOption>({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' as keyof T }: {
-  options: T[]; value?: string; onChange: (value: string) => void; placeholder: string; icon: LucideIcon; returnKey?: keyof T;
+function SearchableSelect<T extends SelectOption>({ options, value, onChange, placeholder, icon: Icon, returnKey = 'id' as keyof T, disabled = false }: {
+  options: T[]; value?: string; onChange: (value: string) => void; placeholder: string; icon: LucideIcon; returnKey?: keyof T; disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -130,7 +133,7 @@ function SearchableSelect<T extends SelectOption>({ options, value, onChange, pl
   const filteredOptions = options.filter(o => o.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className="hv-searchsel-wrap">
+    <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`hv-searchsel-wrap${disabled ? ' disabled' : ''}`}>
       <div className="hv-searchsel-trigger">
         <Icon size={16} className="hv-searchsel-icon" />
         <input
@@ -141,9 +144,10 @@ function SearchableSelect<T extends SelectOption>({ options, value, onChange, pl
             setSearch(e.target.value);
             if(!isOpen) setIsOpen(true);
           }}
-          onClick={() => { setIsOpen(true); setSearch(''); }}
+          onClick={() => { if (disabled) return; setIsOpen(true); setSearch(''); }}
+          disabled={disabled}
         />
-        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron clickable${isOpen ? ' open' : ''}`} onClick={() => setIsOpen(!isOpen)} />
+        <ChevronDown size={16} color="#9ca3af" className={`hv-select-chevron clickable${isOpen ? ' open' : ''}`} onClick={() => { if (!disabled) setIsOpen(!isOpen); }} />
       </div>
       {isOpen && (
         <div className="hv-searchsel-dropdown">
@@ -731,12 +735,27 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     }
   }, [serviceForm.quantity, serviceForm.price, serviceForm.taxPercentage, serviceForm.applyTax, serviceForm.minusTax, isServiceModalOpen]);
 
-  type PermissionExt = { module: string; canView?: boolean; canAdd?: boolean; canEdit?: boolean; canDelete?: boolean; scope?: 'All' | 'Own'; allowedStatusIds?: string[]; hiddenGroups?: string[] };
+  type PermissionExt = { module: string; canView?: boolean; canAdd?: boolean; canEdit?: boolean; canDelete?: boolean; scope?: 'All' | 'Own'; allowedStatusIds?: string[]; hiddenGroups?: string[]; readOnlyFields?: string[] };
 
   const housePermission = activeRole?.permissions?.find(p => p.module === 'Houses') as PermissionExt | undefined;
   const userScope = isSuperAdmin ? 'All' : (housePermission?.scope || 'Own');
   const allowedStatusIds: string[] = housePermission?.allowedStatusIds || [];
   const hiddenGroups: string[] = housePermission?.hiddenGroups || [];
+
+  // ⭐ CAMPOS DEL FORMULARIO EN SOLO LECTURA para el rol activo, configurados por el
+  //    admin en Roles & Permissions → "Houses Form Fields". El super admin edita todo.
+  //    Los ids deben coincidir con HOUSES_FORM_FIELDS de RolesView.tsx.
+  const roleReadOnlyFields: string[] = housePermission?.readOnlyFields || [];
+  // ⭐ Un campo es de SOLO LECTURA si lo marca cualquiera de las dos configuraciones:
+  //    (1) readOnlyFields del rol (Roles & Permissions) o (2) el modal "Field &
+  //    Button Visibility" de esta vista (app_settings/houses_form_config.readOnly).
+  //    El super admin siempre edita todo.
+  const isFieldRO = (fieldId: string): boolean => {
+    if (isSuperAdmin) return false;
+    if (roleReadOnlyFields.includes(fieldId)) return true;
+    const roRoles = formConfig?.readOnly?.[fieldId] || [];
+    return !!currentUser?.roleId && roRoles.includes(currentUser.roleId);
+  };
 
   const isVisible = (groupId: string): boolean => {
     if (isSuperAdmin) return true;
@@ -764,8 +783,25 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     });
   };
 
+  // ⭐ Toggle de SOLO LECTURA de un campo para un rol (segunda fila de chips del modal)
+  const toggleElementReadOnlyForRole = (elementId: string, roleId: string) => {
+    setFieldConfigDraft(prev => {
+      const currentRO = prev.readOnly?.[elementId] || [];
+      const newRO = currentRO.includes(roleId)
+        ? currentRO.filter(r => r !== roleId)
+        : [...currentRO, roleId];
+      return {
+        ...prev,
+        readOnly: { ...(prev.readOnly || {}), [elementId]: newRO }
+      };
+    });
+  };
+
   const openFieldConfigModal = () => {
-    setFieldConfigDraft({ visibility: { ...(formConfig.visibility || {}) } });
+    setFieldConfigDraft({
+      visibility: { ...(formConfig.visibility || {}) },
+      readOnly: { ...(formConfig.readOnly || {}) }
+    });
     setIsFieldConfigOpen(true);
   };
 
@@ -773,11 +809,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     setIsSavingFieldConfig(true);
     try {
       const ref = doc(db, 'app_settings', 'houses_form_config');
-      await setDoc(ref, { visibility: fieldConfigDraft.visibility }, { merge: true });
+      await setDoc(ref, { visibility: fieldConfigDraft.visibility, readOnly: fieldConfigDraft.readOnly || {} }, { merge: true });
       setIsFieldConfigOpen(false);
     } catch (error) {
       console.error("Error guardando configuración de campos:", error);
-      alert("Error al guardar la configuración. Revisa las reglas de Firestore.");
+      // ⭐ Mostrar el error REAL de Firebase (code + message) para diagnosticar:
+      //    'permission-denied' = reglas/sesión; 'invalid-argument' = datos inválidos.
+      const fbErr = error as { code?: string; message?: string };
+      alert(`Error al guardar la configuración.\n\nCódigo: ${fbErr.code || 'desconocido'}\nDetalle: ${fbErr.message || String(error)}`);
     } finally {
       setIsSavingFieldConfig(false);
     }
@@ -873,6 +912,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     .sort((a, b) => Number(a.dashboardOrder || 0) - Number(b.dashboardOrder || 0));
 
   const handleQuickStatusChange = async (propertyId: string, newStatusId: string) => {
+    // ⭐ Respeta la config "Solo lectura" del campo Job Status para el rol activo:
+    //    bloquea TODAS las vías de cambio (pills, banner del detalle y drag del board).
+    if (isFieldRO('statusId')) {
+      alert('El status del trabajo es de SOLO LECTURA para tu rol.');
+      return;
+    }
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { statusId: newStatusId });
@@ -888,14 +933,35 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     }
   };
 
+  // ⭐ CANDADO de Start/Finish: una vez marcado por un empleado, SOLO esa persona
+  //    (o el super admin) puede deshacerlo — otro empleado no puede volver a marcar
+  //    ni deshacer. Se guarda también el id (registros viejos solo tienen el nombre,
+  //    por eso el fallback de comparación por nombre).
+  type PropertyMarks = Property & { employeeStartedById?: string | null; employeeFinishedById?: string | null };
+  const currentUserFullName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : '';
+  const canUndoStart = (h: Property): boolean => {
+    if (isSuperAdmin) return true;
+    const g = h as PropertyMarks;
+    if (g.employeeStartedById) return g.employeeStartedById === currentUser?.id;
+    return !!h.employeeStartedBy && h.employeeStartedBy === currentUserFullName;
+  };
+  const canUndoFinish = (h: Property): boolean => {
+    if (isSuperAdmin) return true;
+    const g = h as PropertyMarks;
+    if (g.employeeFinishedById) return g.employeeFinishedById === currentUser?.id;
+    return !!h.employeeFinishedBy && h.employeeFinishedBy === currentUserFullName;
+  };
+
   const handleStartJob = async () => {
     if (!selectedHouse) return;
     setIsSaving(true);
     try {
       const startedAt = new Date().toISOString();
       const startedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      await propertiesService.update(selectedHouse.id, { employeeStartedAt: startedAt, employeeStartedBy: startedBy });
-      const updatedHouse = { ...selectedHouse, employeeStartedAt: startedAt, employeeStartedBy: startedBy };
+      // ⭐ Payload tipado con la extensión local (employeeStartedById aún no está en Property)
+      const startPayload: Partial<PropertyMarks> = { employeeStartedAt: startedAt, employeeStartedBy: startedBy, employeeStartedById: currentUser?.id || '' };
+      await propertiesService.update(selectedHouse.id, startPayload);
+      const updatedHouse = { ...selectedHouse, employeeStartedAt: startedAt, employeeStartedBy: startedBy, employeeStartedById: currentUser?.id || '' } as Property;
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
     } catch (error) {
@@ -908,11 +974,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
 
   const handleUndoStart = async () => {
     if (!selectedHouse) return;
+    if (!canUndoStart(selectedHouse)) {
+      alert(`Solo ${selectedHouse.employeeStartedBy || 'quien lo marcó'} (o un administrador) puede deshacer el Start Job.`);
+      return;
+    }
     if (!window.confirm("Undo start job?")) return;
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { employeeStartedAt: null, employeeStartedBy: null });
-      const updatedHouse = { ...selectedHouse, employeeStartedAt: undefined, employeeStartedBy: undefined };
+      const undoStartPayload: Partial<PropertyMarks> = { employeeStartedAt: null, employeeStartedBy: null, employeeStartedById: null };
+      await propertiesService.update(selectedHouse.id, undoStartPayload);
+      const updatedHouse = { ...selectedHouse, employeeStartedAt: undefined, employeeStartedBy: undefined, employeeStartedById: undefined } as Property;
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
     } catch (error) {
@@ -935,8 +1006,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     try {
       const finishedAt = new Date().toISOString();
       const finishedBy = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy });
-      const updatedHouse = { ...selectedHouse, employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy };
+      const finishPayload: Partial<PropertyMarks> = { employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy, employeeFinishedById: currentUser?.id || '' };
+      await propertiesService.update(selectedHouse.id, finishPayload);
+      const updatedHouse = { ...selectedHouse, employeeFinishedAt: finishedAt, employeeFinishedBy: finishedBy, employeeFinishedById: currentUser?.id || '' } as Property;
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
     } catch (error) {
@@ -949,11 +1021,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
 
   const handleUndoFinished = async () => {
     if (!selectedHouse) return;
+    if (!canUndoFinish(selectedHouse)) {
+      alert(`Solo ${selectedHouse.employeeFinishedBy || 'quien lo marcó'} (o un administrador) puede deshacer el Mark Finished.`);
+      return;
+    }
     if (!window.confirm("Undo finished status?")) return;
     setIsSaving(true);
     try {
-      await propertiesService.update(selectedHouse.id, { employeeFinishedAt: null, employeeFinishedBy: null });
-      const updatedHouse = { ...selectedHouse, employeeFinishedAt: undefined, employeeFinishedBy: undefined };
+      const undoFinishPayload: Partial<PropertyMarks> = { employeeFinishedAt: null, employeeFinishedBy: null, employeeFinishedById: null };
+      await propertiesService.update(selectedHouse.id, undoFinishPayload);
+      const updatedHouse = { ...selectedHouse, employeeFinishedAt: undefined, employeeFinishedBy: undefined, employeeFinishedById: undefined } as Property;
       setSelectedHouse(updatedHouse);
       setProperties(properties.map(p => p.id === selectedHouse.id ? updatedHouse : p));
     } catch (error) {
@@ -1963,7 +2040,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                           <td data-label="Type" className="hv-td strong">{serviceName}</td>
                           <td data-label="Team" className="hv-td muted">{teamName}</td>
                           <td data-label="Status" className="hv-td">
-                            <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(prop.client)} modalSubtitle={prop.address} />
+                            <StatusPillSelector currentStatusId={prop.statusId} statuses={statuses} onChange={(newId) => handleQuickStatusChange(prop.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow') || isFieldRO('statusId')} onRequestOpen={setStatusModal} modalTitle={getClientName(prop.client)} modalSubtitle={prop.address} />
                           </td>
                           <td data-label="Actions" className="hv-td right">
                             <div className="hv-actions-cell-row">
@@ -2038,7 +2115,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                           currentStatusId={prop.statusId}
                           statuses={statuses}
                           onChange={(newId) => handleQuickStatusChange(prop.id, newId)}
-                          disabled={isSaving || !canEdit || !isVisible('workflow')}
+                          disabled={isSaving || !canEdit || !isVisible('workflow') || isFieldRO('statusId')}
                           onRequestOpen={setStatusModal}
                           modalTitle={getClientName(prop.client)}
                           modalSubtitle={prop.address}
@@ -2206,7 +2283,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Client <span className="hv-required">*</span></label>
                         <div className="hv-client-row">
                           <div className="hv-flex-1-minw0">
-                            <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" />
+                            <SearchableSelect options={customersList} value={formData.client} onChange={handleCustomerSelect} placeholder="Type to search Client..." icon={User} returnKey="id" disabled={isFieldRO('client')} />
                           </div>
                           <button
                             type="button"
@@ -2225,7 +2302,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Address <span className="hv-required">*</span></label>
                         <div className="hv-input-wrap">
                           <MapPin className="hv-input-icon" size={16} />
-                          <input type="text" className="hv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                          <input type="text" className="hv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} disabled={isFieldRO('address')} />
                         </div>
                         {/* ⭐ Mapa de la dirección (aparece al escribirla; sin API key) */}
                         {mapAddress && (
@@ -2251,34 +2328,34 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                   <div className="hv-form-grid cols-200">
                     <div>
                       <label className="hv-label">Status <span className="hv-required">*</span></label>
-                      <SearchableSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
+                      <SearchableSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} disabled={isFieldRO('statusId')} />
                     </div>
                     <div>
                       <label className="hv-label">Invoice Status</label>
-                      <SearchableSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
+                      <SearchableSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} disabled={isFieldRO('invoiceStatus')} />
                     </div>
                     {isElementVisible('serviceId') && (
                       <div>
                         <label className="hv-label">Services</label>
-                        <SearchableSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
+                        <SearchableSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} disabled={isFieldRO('serviceId')} />
                       </div>
                     )}
                     {isElementVisible('priorityId') && (
                       <div>
                         <label className="hv-label">Priority</label>
-                        <SearchableSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
+                        <SearchableSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} disabled={isFieldRO('priorityId')} />
                       </div>
                     )}
                     {isElementVisible('rooms') && (
                       <div>
                         <label className="hv-label">Rooms</label>
-                        <SearchableSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
+                        <SearchableSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} disabled={isFieldRO('rooms')} />
                       </div>
                     )}
                     {isElementVisible('bathrooms') && (
                       <div>
                         <label className="hv-label">Bathrooms</label>
-                        <SearchableSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
+                        <SearchableSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} disabled={isFieldRO('bathrooms')} />
                       </div>
                     )}
                   </div>
@@ -2295,7 +2372,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Receive Date</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input type="date" className="hv-input" value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                          <input type="date" className="hv-input" value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} disabled={isFieldRO('receiveDate')} />
                         </div>
                       </div>
                     )}
@@ -2304,7 +2381,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Schedule Date</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input type="date" className="hv-input" value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                          <input type="date" className="hv-input" value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} disabled={isFieldRO('scheduleDate')} />
                         </div>
                       </div>
                     )}
@@ -2312,14 +2389,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       <label className="hv-label">Date of Issue</label>
                       <div className="hv-input-wrap">
                         <CalendarDays className="hv-input-icon" size={16} />
-                        <input type="date" className="hv-input" value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} />
+                        <input type="date" className="hv-input" value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} disabled={isFieldRO('dateOfIssue')} />
                       </div>
                     </div>
                     <div>
                       <label className="hv-label">Due Date</label>
                       <div className="hv-input-wrap">
                         <CalendarDays className="hv-input-icon" size={16} />
-                        <input type="date" className="hv-input" value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} />
+                        <input type="date" className="hv-input" value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} disabled={isFieldRO('dueDate')} />
                       </div>
                     </div>
                     {isElementVisible('timeIn') && (
@@ -2327,7 +2404,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Time In</label>
                         <div className="hv-input-wrap">
                           <Clock className="hv-input-icon" size={16} />
-                          <input type="time" className="hv-input" value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
+                          <input type="time" className="hv-input" value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} disabled={isFieldRO('timeIn')} />
                         </div>
                       </div>
                     )}
@@ -2336,7 +2413,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <label className="hv-label">Time Out</label>
                         <div className="hv-input-wrap">
                           <Clock className="hv-input-icon" size={16} />
-                          <input type="time" className="hv-input" value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
+                          <input type="time" className="hv-input" value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} disabled={isFieldRO('timeOut')} />
                         </div>
                       </div>
                     )}
@@ -2353,6 +2430,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         placeholder="Type to search Team..."
                         icon={Users}
                         returnKey="id"
+                        disabled={isFieldRO('teamId')}
                       />
                     </div>
                     )}
@@ -2366,7 +2444,8 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         <button
                           type="button"
                           onClick={() => setIsAssigningWorkerForm(!isAssigningWorkerForm)}
-                          disabled={isSaving}
+                          disabled={isSaving || isFieldRO('assignedWorkers')}
+                          title={isFieldRO('assignedWorkers') ? 'Campo de solo lectura para tu rol' : undefined}
                           className="hv-btn-toggle-workers"
                         >
                           {isAssigningWorkerForm ? 'Close' : '+ Assign / Remove'}
@@ -2501,13 +2580,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                     {isElementVisible('note') && (
                     <div>
                       <label className="hv-label">General Note</label>
-                      <textarea className="hv-input hv-textarea" placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
+                      <textarea className="hv-input hv-textarea" placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })} disabled={isFieldRO('note')}></textarea>
                     </div>
                     )}
                     {isElementVisible('employeeNote') && (
                     <div>
                       <label className="hv-label danger">Employee's Note</label>
-                      <textarea className="hv-input hv-textarea danger" placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
+                      <textarea className="hv-input hv-textarea danger" placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })} disabled={isFieldRO('employeeNote')}></textarea>
                     </div>
                     )}
                   </div>
@@ -2646,28 +2725,41 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                     <Calendar size={16} /> Sync
                   </button>
                 )}
-                {isVisible('workflow') && isElementVisible('btn_startJob') && (
-                  <button
-                    onClick={selectedHouse.employeeStartedBy ? handleUndoStart : handleStartJob}
-                    disabled={isSaving || !!selectedHouse.employeeFinishedBy}
-                    className={`hv-action-btn start${selectedHouse.employeeStartedBy ? ' done' : ''}`}
-                  >
-                    <PlayCircle size={16} color={selectedHouse.employeeStartedBy ? "#64748b" : "currentColor"} />
-                    {selectedHouse.employeeStartedBy ? 'Undo Start' : 'Start Job'}
-                  </button>
-                )}
-                {isVisible('workflow') && isElementVisible('btn_markFinished') && (
-                  <button
-                    onClick={selectedHouse.employeeFinishedBy ? handleUndoFinished : handleMarkAsFinished}
-                    disabled={isSaving}
-                    className={`hv-action-btn finish${selectedHouse.employeeFinishedBy ? ' done' : ''}`}
-                  >
-                    <span title={selectedHouse.employeeFinishedBy ? `Finished at ${formatDateTime(selectedHouse.employeeFinishedAt)} - Click to Undo` : 'Mark as Finished'}>
-                      <CheckCircle size={16} color={selectedHouse.employeeFinishedBy ? "#10b981" : "currentColor"} />
-                    </span>
-                    {selectedHouse.employeeFinishedBy ? 'Undo Finished' : 'Mark Finished'}
-                  </button>
-                )}
+                {isVisible('workflow') && isElementVisible('btn_startJob') && (() => {
+                  const started = !!selectedHouse.employeeStartedBy;
+                  const startLocked = started && !canUndoStart(selectedHouse);
+                  return (
+                    <button
+                      onClick={started ? handleUndoStart : handleStartJob}
+                      disabled={isSaving || !!selectedHouse.employeeFinishedBy || startLocked}
+                      title={started
+                        ? `Iniciado por ${selectedHouse.employeeStartedBy} · ${formatDateTime(selectedHouse.employeeStartedAt)}${startLocked ? ' — solo esa persona (o un admin) puede deshacerlo' : ' — clic para deshacer'}`
+                        : 'Marcar inicio del trabajo'}
+                      className={`hv-action-btn start${started ? ' done' : ''}`}
+                    >
+                      <PlayCircle size={16} color={started ? "#64748b" : "currentColor"} />
+                      {started ? `Iniciado: ${selectedHouse.employeeStartedBy}` : 'Start Job'}
+                    </button>
+                  );
+                })()}
+                {isVisible('workflow') && isElementVisible('btn_markFinished') && (() => {
+                  const started = !!selectedHouse.employeeStartedBy;
+                  const finished = !!selectedHouse.employeeFinishedBy;
+                  const finishLocked = finished && !canUndoFinish(selectedHouse);
+                  return (
+                    <button
+                      onClick={finished ? handleUndoFinished : handleMarkAsFinished}
+                      disabled={isSaving || (!started && !finished) || finishLocked}
+                      title={finished
+                        ? `Terminado por ${selectedHouse.employeeFinishedBy} · ${formatDateTime(selectedHouse.employeeFinishedAt)}${finishLocked ? ' — solo esa persona (o un admin) puede deshacerlo' : ' — clic para deshacer'}`
+                        : started ? 'Marcar trabajo terminado' : 'Primero se debe marcar Start Job'}
+                      className={`hv-action-btn finish${finished ? ' done' : ''}`}
+                    >
+                      <CheckCircle size={16} color={finished ? "#10b981" : "currentColor"} />
+                      {finished ? `Terminado: ${selectedHouse.employeeFinishedBy}` : 'Mark Finished'}
+                    </button>
+                  );
+                })()}
                 {canEdit && isVisible('financial') && isElementVisible('btn_pay') && (
                   <button onClick={() => handleOpenPayrollForm(selectedHouse.id)} disabled={isSaving} className="hv-action-btn pay">
                     <DollarSign size={16} /> Pay
@@ -2707,7 +2799,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                     currentStatusId={selectedHouse.statusId}
                     statuses={statuses}
                     onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)}
-                    disabled={isSaving || !canEdit}
+                    disabled={isSaving || !canEdit || isFieldRO('statusId')}
                     onRequestOpen={setStatusModal}
                     modalTitle={getClientName(selectedHouse.client)}
                     modalSubtitle={selectedHouse.address}
@@ -2783,7 +2875,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       <div className="hv-info-header"><Activity size={14} className="hv-icon-inline-tb"/> Status & Assignment</div>
                       <div className="hv-info-row">
                         <span className="hv-info-label">Job Status</span>
-                        <div className="hv-text-right"><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
+                        <div className="hv-text-right"><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow') || isFieldRO('statusId')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
                       </div>
                       <div className="hv-info-row">
                         <span className="hv-info-label">Invoice Status</span>
@@ -3374,7 +3466,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
             <header className="hv-modal-header">
               <div>
                 <h3 className="hv-modal-title">Field & Button Visibility</h3>
-                <p className="hv-modal-subtitle">Marca un rol para OCULTARLE ese elemento.</p>
+                <p className="hv-modal-subtitle">Ocultar: el rol NO ve el elemento. Solo lectura: lo ve pero NO puede editarlo.</p>
               </div>
               <button className="hv-modal-close-btn" onClick={() => setIsFieldConfigOpen(false)}><X size={22} /></button>
             </header>
@@ -3389,12 +3481,26 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       <div key={field.id} className="hv-fieldconfig-row">
                         <div className="hv-fieldconfig-row-label">{field.label} <span className="hv-fieldconfig-section-tag">· {field.section}</span></div>
                         <div className="hv-fieldconfig-roles-wrap">
+                          <span className="hv-fieldconfig-mode-tag">Ocultar a:</span>
                           {rolesList.map(role => {
                             const hidden = (fieldConfigDraft.visibility?.[field.id] || []).includes(role.id);
                             return (
                               <button key={role.id} onClick={() => toggleElementVisibilityForRole(field.id, role.id)}
                                 className={`hv-role-toggle${hidden ? ' hidden' : ''}`}>
                                 {hidden ? <X size={12} /> : <CheckSquare size={12} />} {role.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {/* ⭐ Segunda fila: SOLO LECTURA por rol (el rol ve el campo pero no lo edita) */}
+                        <div className="hv-fieldconfig-roles-wrap readonly-row">
+                          <span className="hv-fieldconfig-mode-tag">Solo lectura para:</span>
+                          {rolesList.map(role => {
+                            const ro = (fieldConfigDraft.readOnly?.[field.id] || []).includes(role.id);
+                            return (
+                              <button key={role.id} onClick={() => toggleElementReadOnlyForRole(field.id, role.id)}
+                                className={`hv-role-toggle ro${ro ? ' locked' : ''}`}>
+                                {ro ? <Lock size={12} /> : <CheckSquare size={12} />} {role.name}
                               </button>
                             );
                           })}

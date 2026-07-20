@@ -17,6 +17,7 @@ interface RolesViewProps {
 type PermissionExt = Permission & {
   allowedStatusIds?: string[];
   hiddenGroups?: string[];   // ⭐ Grupos de elementos que este rol NO ve
+  readOnlyFields?: string[]; // ⭐ Campos del formulario de Houses en SOLO LECTURA para este rol
 };
 type RoleExt = Omit<Role, 'permissions'> & { permissions: PermissionExt[]; description?: string };
 
@@ -26,6 +27,7 @@ const DEFAULT_MODULES = [
   'Notice Board',
   'Calendar',
   'Quality Check',
+  'Status History',
   'Payroll',
   'Invoices',
   'Customers',
@@ -44,6 +46,29 @@ const HOUSES_ELEMENT_GROUPS: { id: string; label: string; description: string }[
   { id: 'media', label: 'Media & Photos', description: 'Upload/delete photos, Export PDF, photo gallery' }
 ];
 
+// ⭐ CAMPOS del formulario de Houses configurables como editable / solo lectura por rol.
+//    Los ids DEBEN coincidir EXACTAMENTE con los usados por isFieldRO() en HousesView.tsx.
+const HOUSES_FORM_FIELDS: { id: string; label: string }[] = [
+  { id: 'client', label: 'Client' },
+  { id: 'address', label: 'Address' },
+  { id: 'statusId', label: 'Job Status' },
+  { id: 'invoiceStatus', label: 'Invoice Status' },
+  { id: 'serviceId', label: 'Service' },
+  { id: 'priorityId', label: 'Priority' },
+  { id: 'rooms', label: 'Rooms' },
+  { id: 'bathrooms', label: 'Bathrooms' },
+  { id: 'receiveDate', label: 'Receive Date' },
+  { id: 'scheduleDate', label: 'Schedule Date' },
+  { id: 'dateOfIssue', label: 'Date of Issue' },
+  { id: 'dueDate', label: 'Due Date' },
+  { id: 'timeIn', label: 'Time In' },
+  { id: 'timeOut', label: 'Time Out' },
+  { id: 'teamId', label: 'Team' },
+  { id: 'assignedWorkers', label: 'Assigned Workers' },
+  { id: 'note', label: 'General Note' },
+  { id: 'employeeNote', label: 'Employee Note' },
+];
+
 const buildEmptyPermissions = (): PermissionExt[] =>
   DEFAULT_MODULES.map(mod => ({
     module: mod,
@@ -53,7 +78,8 @@ const buildEmptyPermissions = (): PermissionExt[] =>
     canDelete: false,
     scope: 'Own' as const,
     allowedStatusIds: [],
-    hiddenGroups: []
+    hiddenGroups: [],
+    readOnlyFields: []
   }));
 
 export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProps) {
@@ -99,7 +125,8 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
           return {
             ...existing,
             allowedStatusIds: existing.allowedStatusIds || [],
-            hiddenGroups: existing.hiddenGroups || []
+            hiddenGroups: existing.hiddenGroups || [],
+            readOnlyFields: existing.readOnlyFields || []
           };
         }
         return {
@@ -110,7 +137,8 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
           canDelete: false,
           scope: 'Own' as const,
           allowedStatusIds: [],
-          hiddenGroups: []
+          hiddenGroups: [],
+          readOnlyFields: []
         };
       });
       const roleAsExt = role as RoleExt;
@@ -169,9 +197,26 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     }));
   };
 
+  // ⭐ Toggle de un campo del formulario de Houses (editable / solo lectura).
+  //    Si el campo está en readOnlyFields, el rol lo VE pero NO puede editarlo.
+  const toggleFieldReadOnly = (fieldId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.map((p: PermissionExt) => {
+        if (p.module !== 'Houses') return p;
+        const current: string[] = p.readOnlyFields || [];
+        const newList = current.includes(fieldId)
+          ? current.filter((id: string) => id !== fieldId)
+          : [...current, fieldId];
+        return { ...p, readOnlyFields: newList };
+      })
+    }));
+  };
+
   const housesPermission: PermissionExt | undefined = formData.permissions.find((p: PermissionExt) => p.module === 'Houses');
   const housesAllowedStatuses: string[] = housesPermission?.allowedStatusIds || [];
   const housesHiddenGroups: string[] = housesPermission?.hiddenGroups || [];
+  const housesReadOnlyFields: string[] = housesPermission?.readOnlyFields || [];
 
   // Guardar DIRECTO en Firebase
   const handleSaveRole = async () => {
@@ -410,6 +455,34 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                       <strong>{housesHiddenGroups.length}</strong> {housesHiddenGroups.length === 1 ? 'group is' : 'groups are'} hidden for this role.
                     </div>
                   )}
+
+                  {/* ⭐ CAMPOS DEL FORMULARIO DE HOUSES: palomeado = EDITABLE;
+                      sin palomear = SOLO LECTURA para este rol (verde/rojo). */}
+                  <div className="rv-fields-section">
+                    <div className="rv-fields-title">Houses Form Fields — editable o solo lectura</div>
+                    <div className="rv-fields-hint">Palomeado = el rol puede editar el campo. Sin palomear = lo ve pero no puede modificarlo.</div>
+                    <div className="rv-fields-grid">
+                      {HOUSES_FORM_FIELDS.map(field => {
+                        const isEditable = !housesReadOnlyFields.includes(field.id);
+                        return (
+                          <label key={field.id} className={`rv-field-option${isEditable ? ' editable' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={isEditable}
+                              onChange={() => toggleFieldReadOnly(field.id)}
+                              className="rv-checkbox"
+                            />
+                            <span>{field.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {housesReadOnlyFields.length > 0 && (
+                      <div className="rv-summary-box warning">
+                        <strong>{housesReadOnlyFields.length}</strong> campo(s) serán de SOLO LECTURA en el formulario de Houses para este rol.
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

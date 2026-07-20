@@ -9,7 +9,8 @@ import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import { isQualityCheckStatus, housePassedQC, houseFailedQC, type QCStatusLike } from '../utils/qcStatus';
-import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { type LatLng, haversineKm, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { geocodeAddressForced } from '../utils/geocodeForce';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useLiveRoute, liveDivIcon, shareRouteLink, type LiveUserPosition } from '../utils/liveRoute';
 import './QCRouteView.css';
@@ -220,7 +221,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
         setGeoStatus(`Ubicando direcciones ${i + 1}/${chosen.length}...`);
         let coords = preCoords(h);
         if (!coords) {
-          coords = await geocodeAddress(h.address || '');
+          coords = await geocodeAddressForced(h.address || '');
           await sleep(1100); // respeta el límite de Nominatim (1/seg)
         }
         located.push({
@@ -294,7 +295,7 @@ export default function QCRouteView({ onOpenMenu, properties, currentUser }: QCR
     setBuilding(true);
     try {
       setGeoStatus('Ubicando dirección...');
-      const coords = preCoords(h) || await geocodeAddress(h.address || '');
+      const coords = preCoords(h) || await geocodeAddressForced(h.address || '');
       const ns: Stop = {
         houseId: h.id, client: getClientName(h.client), address: h.address || '',
         lat: coords?.lat ?? null, lng: coords?.lng ?? null,
