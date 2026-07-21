@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Search, Plus, X, Edit2, Trash2, Menu
+  Search, Plus, X, Edit2, Trash2, Menu, Mail, Phone, MapPin, StickyNote, Building2
 } from 'lucide-react';
 import { customersService } from '../services/customersService';
 import type { Customer } from '../types/index';
@@ -17,6 +17,9 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ⭐ Detalle del cliente: al hacer clic en la fila se abre este modal con los datos guardados
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   const [formData, setFormData] = useState<Customer>({
     id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6'
@@ -42,6 +45,14 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     (c.business && c.business.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // ⭐ Clase del badge de tipo (Commercial / Residential / Private customer)
+  const typeBadgeClass = (type?: string) => {
+    const t = String(type || '').toLowerCase().trim();
+    if (t === 'commercial') return 'commercial';
+    if (t === 'private customer') return 'private';
+    return 'residential';
+  };
+
   const handleOpenForm = (customer?: Customer) => {
     if (customer) {
       setFormData(customer);
@@ -55,6 +66,15 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     setIsFormModalOpen(false);
   };
 
+  // ⭐ Abre el detalle del cliente (clic en la fila)
+  const handleOpenDetail = (customer: Customer) => {
+    setSelectedCustomer(customer);
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedCustomer(null);
+  };
+
   const handleSave = async () => {
     if (!formData.name) return alert('Name is required.');
     setIsSaving(true);
@@ -62,6 +82,10 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       if (formData.id) {
         await customersService.update(formData.id, formData);
         setCustomers(customers.map(c => c.id === formData.id ? formData : c));
+        // ⭐ Si el detalle está abierto sobre este cliente, refleja los cambios
+        if (selectedCustomer && selectedCustomer.id === formData.id) {
+          setSelectedCustomer(formData);
+        }
       } else {
         const { id, ...dataToAdd } = formData;
         const newId = await customersService.create(dataToAdd);
@@ -82,6 +106,10 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     try {
       await customersService.delete(id);
       setCustomers(customers.filter(c => c.id !== id));
+      // ⭐ Si estaba abierto el detalle de este cliente, ciérralo
+      if (selectedCustomer && selectedCustomer.id === id) {
+        setSelectedCustomer(null);
+      }
     } catch (error) {
       console.error("Error deleting customer:", error);
       alert("Error deleting customer.");
@@ -139,13 +167,13 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
               <tr><td colSpan={9} className="cx-empty-row">No customers found.</td></tr>
             ) : (
               filteredCustomers.map(c => (
-                <tr key={c.id}>
+                <tr key={c.id} onClick={() => handleOpenDetail(c)} className="cx-row-clickable" title="Ver detalle del cliente">
                   <td data-label="Color" className="cx-td">
                     <div className="td-content">
                       <span className="cx-color-dot" style={{ '--dot-color': c.color || '#e2e8f0' } as CSSProperties}></span>
                     </div>
                   </td>
-                  <td data-label="Type" className="cx-td"><div className="td-content"><span className={`cx-type-badge ${c.type === 'Commercial' ? 'commercial' : 'residential'}`}>{c.type}</span></div></td>
+                  <td data-label="Type" className="cx-td"><div className="td-content"><span className={`cx-type-badge ${typeBadgeClass(c.type)}`}>{c.type}</span></div></td>
                   <td data-label="Name" className="cx-td strong"><div className="td-content">{c.name}</div></td>
                   <td data-label="Business" className="cx-td"><div className="td-content">{c.business || '-'}</div></td>
                   <td data-label="Note" className="cx-td muted-small"><div className="td-content">{c.note || '-'}</div></td>
@@ -156,8 +184,9 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                   <td data-label="Email" className="cx-td"><div className="td-content">{c.email || '-'}</div></td>
                   <td data-label="Actions" className="cx-td right">
                     <div className="td-content actions-cell cx-actions-cell">
-                      <button onClick={() => handleOpenForm(c)} className="cx-btn-edit"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDelete(c.id)} className="cx-btn-delete"><Trash2 size={16} /></button>
+                      {/* ⭐ stopPropagation: que el botón no dispare también el detalle de la fila */}
+                      <button onClick={(e) => { e.stopPropagation(); handleOpenForm(c); }} className="cx-btn-edit" title="Editar cliente"><Edit2 size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }} className="cx-btn-delete" title="Eliminar cliente"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -166,6 +195,66 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
           </tbody>
         </table>
       </div>
+
+      {/* ⭐ DETAIL MODAL — se abre al hacer clic en la fila del cliente */}
+      {selectedCustomer && (
+        <div className="modal-overlay-centered" onClick={handleCloseDetail}>
+          <div className="modal-70 modal-narrow" onClick={e => e.stopPropagation()}>
+            <header className="cx-modal-header">
+              <div className="cx-detail-title-group">
+                <span className="cx-color-dot lg" style={{ '--dot-color': selectedCustomer.color || '#e2e8f0' } as CSSProperties}></span>
+                <div>
+                  <h3 className="cx-modal-title">{selectedCustomer.name}</h3>
+                  <span className={`cx-type-badge ${typeBadgeClass(selectedCustomer.type)}`}>{selectedCustomer.type}</span>
+                </div>
+              </div>
+              <button onClick={handleCloseDetail} className="cx-modal-close"><X size={24} color="#64748b" /></button>
+            </header>
+
+            <div className="cx-modal-body">
+              <div className="cx-detail-grid">
+                <div className="cx-detail-row">
+                  <span className="cx-detail-label"><Building2 size={13} /> Business</span>
+                  <span className="cx-detail-value">{selectedCustomer.business || '-'}</span>
+                </div>
+                <div className="cx-detail-row">
+                  <span className="cx-detail-label"><Mail size={13} /> Email</span>
+                  <span className="cx-detail-value">{selectedCustomer.email || '-'}</span>
+                </div>
+                <div className="cx-detail-row">
+                  <span className="cx-detail-label"><Phone size={13} /> Phone</span>
+                  <span className="cx-detail-value">{selectedCustomer.phone || '-'}</span>
+                </div>
+                <div className="cx-detail-row">
+                  <span className="cx-detail-label"><MapPin size={13} /> Address</span>
+                  <span className="cx-detail-value">{selectedCustomer.address || '-'}</span>
+                </div>
+                <div className="cx-detail-row">
+                  <span className="cx-detail-label"><MapPin size={13} /> City / State / Zip</span>
+                  <span className="cx-detail-value">{selectedCustomer.cityStateZip || '-'}</span>
+                </div>
+              </div>
+
+              <div className="cx-detail-note-box">
+                <span className="cx-detail-label"><StickyNote size={13} /> Note</span>
+                <p className="cx-detail-note-text">{selectedCustomer.note || 'No notes saved.'}</p>
+              </div>
+            </div>
+
+            <footer className="cx-modal-footer between">
+              <button onClick={() => handleDelete(selectedCustomer.id)} disabled={isSaving} className="cx-btn-delete-modal">
+                <Trash2 size={15} /> Delete
+              </button>
+              <div className="cx-footer-actions">
+                <button onClick={handleCloseDetail} disabled={isSaving} className="cx-btn-cancel">Close</button>
+                <button onClick={() => handleOpenForm(selectedCustomer)} disabled={isSaving} className="cx-btn-edit-modal">
+                  <Edit2 size={15} /> Edit
+                </button>
+              </div>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {/* FORM MODAL */}
       {isFormModalOpen && (
@@ -181,6 +270,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                 <div>
                   <label className="cx-label">Type</label>
                   <select className="cx-input selectable" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
+                    <option value="Private customer">Private customer</option>
                     <option value="Residential">Residential</option>
                     <option value="Commercial">Commercial</option>
                   </select>

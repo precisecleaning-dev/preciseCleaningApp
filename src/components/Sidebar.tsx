@@ -76,7 +76,10 @@ export default function Sidebar({
     // ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses")
     { tab: 'qc_report', label: 'Quality Check', icon: ClipboardCheck, visible: canView('Quality Check') },
     // ⭐ STATUS HISTORY — historial de status por casa
-    { tab: 'status_history', label: 'Status History', icon: History, visible: canView('Status History') || canView('Houses') },
+    // ⭐ STATUS HISTORY — SOLO su propio permiso (el fallback a Houses se eliminó:
+    //    existía de antes de que el módulo estuviera en Roles y hacía que roles sin
+    //    el permiso lo vieran igual).
+    { tab: 'status_history', label: 'Status History', icon: History, visible: canView('Status History') },
     // ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings")
     { tab: 'payroll', label: 'Payroll', icon: DollarSign, visible: canView('Payroll') },
     // ⭐ CUSTOMERS

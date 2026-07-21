@@ -61,3 +61,33 @@
 .cx-modal-footer { padding: 16px 24px; background-color: #f8fafc; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; border-radius: 0 0 12px 12px; }
 .cx-btn-cancel { background-color: white; border: 1px solid #cbd5e1; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
 .cx-btn-save { background-color: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+
+/* ⭐ Fila clicable (abre el detalle del cliente) */
+.cx-row-clickable { cursor: pointer; transition: background-color 0.12s; }
+.cx-row-clickable:hover { background-color: #f8fafc; }
+
+/* ⭐ Badge para tipo "Private customer" */
+.cx-type-badge.private { background-color: #fdf4ff; color: #86198f; }
+
+/* ⭐ Modal de DETALLE del cliente */
+.cx-detail-title-group { display: flex; align-items: center; gap: 12px; }
+.cx-detail-title-group .cx-modal-title { margin-bottom: 4px; }
+.cx-color-dot.lg { width: 28px; height: 28px; flex-shrink: 0; }
+.cx-detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; border: 1px solid #f1f5f9; border-radius: 10px; padding: 6px 16px; margin-bottom: 16px; }
+.cx-detail-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+.cx-detail-grid .cx-detail-row:nth-last-child(-n+2) { border-bottom: none; }
+.cx-detail-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.cx-detail-value { font-size: 0.9rem; color: #111827; font-weight: 600; text-align: right; word-break: break-word; }
+.cx-detail-note-box { background-color: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+.cx-detail-note-text { margin: 8px 0 0 0; font-size: 0.9rem; color: #334155; line-height: 1.5; white-space: pre-wrap; }
+
+/* ⭐ Footer del detalle: Delete a la izquierda, Close/Edit a la derecha */
+.cx-modal-footer.between { justify-content: space-between; }
+.cx-footer-actions { display: flex; gap: 12px; }
+.cx-btn-delete-modal { display: inline-flex; align-items: center; gap: 6px; background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+.cx-btn-edit-modal { display: inline-flex; align-items: center; gap: 6px; background-color: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+
+@media (max-width: 768px) {
+  .cx-detail-grid { grid-template-columns: 1fr; }
+  .cx-detail-grid .cx-detail-row:nth-last-child(2) { border-bottom: 1px solid #f1f5f9; }
+}
