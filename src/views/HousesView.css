@@ -554,3 +554,9 @@
 .hv-fieldconfig-roles-wrap.readonly-row { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
 .hv-role-toggle.ro { border-color: #e2e8f0; }
 .hv-role-toggle.ro.locked { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+
+/* ⭐ Badge del tipo de cliente seleccionado en el formulario (Houses) */
+.hv-client-type-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.hv-client-type-badge.commercial { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.hv-client-type-badge.residential { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.hv-client-type-badge.private-customer { background: #fdf4ff; color: #86198f; border-color: #f5d0fe; }
