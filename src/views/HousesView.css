@@ -276,8 +276,19 @@
 .hv-fieldconfig-row-label { font-size: 0.85rem; font-weight: 700; color: #334155; margin-bottom: 8px; }
 .hv-fieldconfig-section-tag { color: #94a3b8; font-weight: 500; }
 .hv-fieldconfig-roles-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
-.hv-role-toggle { padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid #cbd5e1; background-color: white; color: #475569; display: flex; align-items: center; gap: 4px; }
-.hv-role-toggle.hidden { border-color: #fca5a5; background-color: #fef2f2; color: #dc2626; }
+/* ⭐ Configurador rediseñado: UN chip por rol con estado explícito.
+   Verde = Visible (ve y edita) · Ámbar = Solo lectura · Rojo = Oculto */
+.hv-fieldconfig-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 12px 14px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; }
+.hv-fieldconfig-hint { margin: -6px 0 12px 0; font-size: 0.8rem; color: #64748b; }
+.hv-role-state { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: filter 0.12s, box-shadow 0.12s; }
+.hv-role-state:hover { filter: brightness(0.96); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.hv-role-state.demo { cursor: default; }
+.hv-role-state.demo:hover { filter: none; box-shadow: none; }
+.hv-role-state.visible { background-color: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.hv-role-state.readonly { background-color: #fffbeb; color: #92400e; border-color: #fde68a; }
+.hv-role-state.hidden { background-color: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.hv-role-state-name { font-weight: 700; }
+.hv-role-state-label::before { content: "·"; margin-right: 6px; opacity: 0.6; }
 
 /* ===================== CÁMARA RÁPIDA (RÁFAGA) ===================== */
 .hv-camera-overlay { position: fixed; inset: 0; z-index: 10000; background: #000; display: flex; flex-direction: column; }
@@ -550,10 +561,7 @@
    el contenedor no debe afectar el layout — los modales son overlays fijos. */
 .hv-modals-only { display: contents; }
 /* ⭐ Configurador de campos: fila de SOLO LECTURA por rol (segunda fila de chips) */
-.hv-fieldconfig-mode-tag { font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; flex-shrink: 0; align-self: center; }
-.hv-fieldconfig-roles-wrap.readonly-row { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0; }
-.hv-role-toggle.ro { border-color: #e2e8f0; }
-.hv-role-toggle.ro.locked { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+
 
 /* ⭐ Badge del tipo de cliente seleccionado en el formulario (Houses) */
 .hv-client-type-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }

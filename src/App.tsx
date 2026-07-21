@@ -23,11 +23,8 @@ import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
 
 import { auth, db } from './config/firebase';
-import { onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-
-// ⭐ Tiempo de inactividad antes de cerrar sesión automáticamente (15 minutos)
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type TabOptions = 'houses' | 'pipeline' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
@@ -205,52 +202,8 @@ export default function App() {
     };
   }, []);
 
-  // ⭐ AUTO-LOGOUT POR INACTIVIDAD (15 minutos)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    let timer: ReturnType<typeof setTimeout>;
-
-    const handleAutoLogout = async () => {
-      console.log('🕒 Sesión cerrada por inactividad (15 min)');
-      try {
-        if (auth.currentUser) {
-          await signOut(auth);
-        }
-      } catch (err) {
-        console.error('Error cerrando sesión por inactividad:', err);
-      }
-      // Limpiar estado local
-      setIsAuthenticated(false);
-      setIsBypass(false);
-      setCurrentUser(null);
-      // Avisar al usuario
-      alert('Tu sesión se cerró por inactividad (15 minutos). Por favor inicia sesión nuevamente.');
-    };
-
-    const resetTimer = () => {
-      clearTimeout(timer);
-      timer = setTimeout(handleAutoLogout, INACTIVITY_TIMEOUT_MS);
-    };
-
-    // Eventos que cuentan como "actividad del usuario"
-    const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
-
-    events.forEach(event => {
-      window.addEventListener(event, resetTimer, { passive: true });
-    });
-
-    // Iniciar el timer al montar
-    resetTimer();
-
-    // Cleanup: remover listeners y limpiar timer al desmontar/cambiar auth
-    return () => {
-      clearTimeout(timer);
-      events.forEach(event => {
-        window.removeEventListener(event, resetTimer);
-      });
-    };
-  }, [isAuthenticated]);
+  // ⭐ Se ELIMINÓ el auto-logout por inactividad (15 min): la sesión ahora
+  //    solo se cierra cuando el usuario presiona Log Out manualmente.
 
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);

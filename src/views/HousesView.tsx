@@ -44,6 +44,8 @@ import {
   Camera,
   Menu,
   Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 import type {
@@ -1228,19 +1230,57 @@ export default function HousesView({
     });
   };
 
-  // ⭐ Toggle de SOLO LECTURA de un campo para un rol (segunda fila de chips del modal)
-  const toggleElementReadOnlyForRole = (elementId: string, roleId: string) => {
+  // ⭐ CONFIGURADOR REDISEÑADO: cada rol tiene UN solo chip con 3 estados claros.
+  //    Visible (verde)      = el rol ve y edita el elemento.
+  //    Solo lectura (ámbar) = el rol lo ve pero NO lo edita (solo campos).
+  //    Oculto (rojo)        = el rol NO lo ve.
+  //    Un clic recorre: Visible → Solo lectura → Oculto → Visible.
+  type FieldRoleState = "visible" | "readonly" | "hidden";
+
+  const getFieldStateForRole = (
+    elementId: string,
+    roleId: string,
+  ): FieldRoleState => {
+    if ((fieldConfigDraft.visibility?.[elementId] || []).includes(roleId))
+      return "hidden";
+    if ((fieldConfigDraft.readOnly?.[elementId] || []).includes(roleId))
+      return "readonly";
+    return "visible";
+  };
+
+  const cycleFieldStateForRole = (elementId: string, roleId: string) => {
     setFieldConfigDraft((prev) => {
-      const currentRO = prev.readOnly?.[elementId] || [];
-      const newRO = currentRO.includes(roleId)
-        ? currentRO.filter((r) => r !== roleId)
-        : [...currentRO, roleId];
+      const hiddenList = prev.visibility?.[elementId] || [];
+      const roList = prev.readOnly?.[elementId] || [];
+      const isHidden = hiddenList.includes(roleId);
+      const isRO = roList.includes(roleId);
+      // Base: quitar el rol de ambas listas y luego colocarlo según el siguiente estado
+      let newHidden = hiddenList.filter((r) => r !== roleId);
+      let newRO = roList.filter((r) => r !== roleId);
+      if (!isHidden && !isRO) {
+        // Visible → Solo lectura
+        newRO = [...newRO, roleId];
+      } else if (isRO && !isHidden) {
+        // Solo lectura → Oculto
+        newHidden = [...newHidden, roleId];
+      }
+      // Oculto → Visible (queda fuera de ambas listas)
       return {
         ...prev,
+        visibility: { ...prev.visibility, [elementId]: newHidden },
         readOnly: { ...(prev.readOnly || {}), [elementId]: newRO },
       };
     });
   };
+
+  // ⭐ Botones/tabs solo tienen 2 estados: Visible ↔ Oculto
+  const getButtonStateForRole = (
+    elementId: string,
+    roleId: string,
+  ): "visible" | "hidden" =>
+    (fieldConfigDraft.visibility?.[elementId] || []).includes(roleId)
+      ? "hidden"
+      : "visible";
 
   const openFieldConfigModal = () => {
     setFieldConfigDraft({
@@ -5812,8 +5852,8 @@ export default function HousesView({
               <div>
                 <h3 className="hv-modal-title">Field & Button Visibility</h3>
                 <p className="hv-modal-subtitle">
-                  Ocultar: el rol NO ve el elemento. Solo lectura: lo ve pero NO
-                  puede editarlo.
+                  Haz clic en el chip de cada rol para cambiar su estado. Los
+                  cambios se aplican al presionar "Save Configuration".
                 </p>
               </div>
               <button
@@ -5830,6 +5870,19 @@ export default function HousesView({
                 </div>
               ) : (
                 <>
+                  {/* ⭐ LEYENDA: qué significa cada color/estado */}
+                  <div className="hv-fieldconfig-legend">
+                    <span className="hv-role-state visible demo">
+                      <Eye size={13} /> Visible — lo ve y lo edita
+                    </span>
+                    <span className="hv-role-state readonly demo">
+                      <Lock size={13} /> Solo lectura — lo ve pero NO lo edita
+                    </span>
+                    <span className="hv-role-state hidden demo">
+                      <EyeOff size={13} /> Oculto — NO lo ve
+                    </span>
+                  </div>
+
                   <h4 className="hv-fieldconfig-section-title">Form Fields</h4>
                   <div className="hv-fieldconfig-list">
                     {CONFIGURABLE_FIELDS.map((field) => (
@@ -5841,60 +5894,33 @@ export default function HousesView({
                           </span>
                         </div>
                         <div className="hv-fieldconfig-roles-wrap">
-                          <span className="hv-fieldconfig-mode-tag">
-                            Ocultar a:
-                          </span>
                           {rolesList.map((role) => {
-                            const hidden = (
-                              fieldConfigDraft.visibility?.[field.id] || []
-                            ).includes(role.id);
-                            return (
-                              <button
-                                key={role.id}
-                                onClick={() =>
-                                  toggleElementVisibilityForRole(
-                                    field.id,
-                                    role.id,
-                                  )
-                                }
-                                className={`hv-role-toggle${hidden ? " hidden" : ""}`}
-                              >
-                                {hidden ? (
-                                  <X size={12} />
-                                ) : (
-                                  <CheckSquare size={12} />
-                                )}{" "}
-                                {role.name}
-                              </button>
+                            const state = getFieldStateForRole(
+                              field.id,
+                              role.id,
                             );
-                          })}
-                        </div>
-                        {/* ⭐ Segunda fila: SOLO LECTURA por rol (el rol ve el campo pero no lo edita) */}
-                        <div className="hv-fieldconfig-roles-wrap readonly-row">
-                          <span className="hv-fieldconfig-mode-tag">
-                            Solo lectura para:
-                          </span>
-                          {rolesList.map((role) => {
-                            const ro = (
-                              fieldConfigDraft.readOnly?.[field.id] || []
-                            ).includes(role.id);
                             return (
                               <button
                                 key={role.id}
                                 onClick={() =>
-                                  toggleElementReadOnlyForRole(
-                                    field.id,
-                                    role.id,
-                                  )
+                                  cycleFieldStateForRole(field.id, role.id)
                                 }
-                                className={`hv-role-toggle ro${ro ? " locked" : ""}`}
+                                className={`hv-role-state ${state}`}
+                                title="Clic para cambiar: Visible → Solo lectura → Oculto"
                               >
-                                {ro ? (
-                                  <Lock size={12} />
-                                ) : (
-                                  <CheckSquare size={12} />
-                                )}{" "}
-                                {role.name}
+                                {state === "visible" && <Eye size={13} />}
+                                {state === "readonly" && <Lock size={13} />}
+                                {state === "hidden" && <EyeOff size={13} />}
+                                <span className="hv-role-state-name">
+                                  {role.name}
+                                </span>
+                                <span className="hv-role-state-label">
+                                  {state === "visible"
+                                    ? "Visible"
+                                    : state === "readonly"
+                                      ? "Solo lectura"
+                                      : "Oculto"}
+                                </span>
                               </button>
                             );
                           })}
@@ -5906,6 +5932,10 @@ export default function HousesView({
                   <h4 className="hv-fieldconfig-section-title">
                     Buttons & Tabs
                   </h4>
+                  <p className="hv-fieldconfig-hint">
+                    Los botones y tabs solo tienen dos estados: Visible u
+                    Oculto (clic para alternar).
+                  </p>
                   <div className="hv-fieldconfig-list no-mb">
                     {CONFIGURABLE_BUTTONS.map((btn) => (
                       <div key={btn.id} className="hv-fieldconfig-row">
@@ -5917,9 +5947,10 @@ export default function HousesView({
                         </div>
                         <div className="hv-fieldconfig-roles-wrap">
                           {rolesList.map((role) => {
-                            const hidden = (
-                              fieldConfigDraft.visibility?.[btn.id] || []
-                            ).includes(role.id);
+                            const state = getButtonStateForRole(
+                              btn.id,
+                              role.id,
+                            );
                             return (
                               <button
                                 key={role.id}
@@ -5929,14 +5960,20 @@ export default function HousesView({
                                     role.id,
                                   )
                                 }
-                                className={`hv-role-toggle${hidden ? " hidden" : ""}`}
+                                className={`hv-role-state ${state}`}
+                                title="Clic para alternar: Visible ↔ Oculto"
                               >
-                                {hidden ? (
-                                  <X size={12} />
+                                {state === "visible" ? (
+                                  <Eye size={13} />
                                 ) : (
-                                  <CheckSquare size={12} />
-                                )}{" "}
-                                {role.name}
+                                  <EyeOff size={13} />
+                                )}
+                                <span className="hv-role-state-name">
+                                  {role.name}
+                                </span>
+                                <span className="hv-role-state-label">
+                                  {state === "visible" ? "Visible" : "Oculto"}
+                                </span>
                               </button>
                             );
                           })}
