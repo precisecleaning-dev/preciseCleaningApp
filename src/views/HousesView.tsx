@@ -2346,6 +2346,24 @@ export default function HousesView({
     }
   };
 
+  // ⭐ Abre el detalle DIRECTO en el tab de fotos, desplazándose a la sección
+  //    Before o After según el botón presionado en la tarjeta de Daily Jobs.
+  const handleOpenPhotosFromCard = async (
+    house: Property,
+    which: "before" | "after",
+  ) => {
+    await handleOpenDetail(house);
+    setActiveDetailTab("media");
+    // Esperar a que el modal y el tab rendericen antes de desplazar
+    setTimeout(() => {
+      document
+        .getElementById(
+          which === "before" ? "hv-photos-before" : "hv-photos-after",
+        )
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 300);
+  };
+
   // ⭐ Apertura EXTERNA (desde Quality Check u otras vistas):
   //    - houseToOpenDetail: abre el modal de detalle de esa casa.
   //    - houseToOpenEdit: abre el formulario de edición con sus campos guardados.
@@ -3198,6 +3216,33 @@ export default function HousesView({
                                 modalSubtitle={prop.address}
                               />
                             </div>
+
+                            {/* ⭐ Botones de fotos en la tarjeta (táctiles, con feedback
+                                al presionar). Respetan el configurador de visibilidad. */}
+                            {isVisible("media") &&
+                              isElementVisible("btn_tabMedia") &&
+                              isElementVisible("card_photos") && (
+                                <div className="hv-card-photos-row">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenPhotosFromCard(prop, "before");
+                                    }}
+                                    className="hv-card-btn-photos before"
+                                  >
+                                    <Camera size={18} /> Before Photos
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenPhotosFromCard(prop, "after");
+                                    }}
+                                    className="hv-card-btn-photos after"
+                                  >
+                                    <ImageIcon size={18} /> After Photos
+                                  </button>
+                                </div>
+                              )}
 
                             {((canEdit &&
                               isElementVisible("btn_editDetails")) ||
@@ -5088,7 +5133,7 @@ export default function HousesView({
 
                   {isElementVisible("card_photos") && (
                     <div className="hv-media-grid no-mb">
-                      <div>
+                      <div id="hv-photos-before">
                         <div className="hv-workers-header">
                           <span className="hv-detail-label">
                             <ImageIcon
@@ -5140,7 +5185,7 @@ export default function HousesView({
                           }
                         />
                       </div>
-                      <div>
+                      <div id="hv-photos-after">
                         <div className="hv-workers-header">
                           <span className="hv-detail-label">
                             <ImageIcon
