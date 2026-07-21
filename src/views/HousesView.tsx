@@ -5098,7 +5098,7 @@ export default function HousesView({
                             BEFORE PHOTOS
                           </span>
                           <div className="hv-photo-actions-row">
-                            {canEdit && isElementVisible("btn_takePhoto") && (
+                            {isElementVisible("btn_takePhoto") && (
                               <button
                                 onClick={() => openBurstCamera("before")}
                                 disabled={isSaving}
@@ -5124,9 +5124,7 @@ export default function HousesView({
                           urls={beforePhotoURLs}
                           excludedUrls={beforeExcluded}
                           pendingCount={pendingForHouse.before}
-                          canEdit={
-                            !!canEdit && isElementVisible("btn_uploadPhoto")
-                          }
+                          canEdit={isElementVisible("btn_uploadPhoto")}
                           isSaving={isSaving}
                           isCompressing={isCompressing}
                           photoConfig={photoConfig}
@@ -5152,7 +5150,7 @@ export default function HousesView({
                             AFTER PHOTOS
                           </span>
                           <div className="hv-photo-actions-row">
-                            {canEdit && isElementVisible("btn_takePhoto") && (
+                            {isElementVisible("btn_takePhoto") && (
                               <button
                                 onClick={() => openBurstCamera("after")}
                                 disabled={isSaving}
@@ -5178,9 +5176,7 @@ export default function HousesView({
                           urls={afterPhotoURLs}
                           excludedUrls={afterExcluded}
                           pendingCount={pendingForHouse.after}
-                          canEdit={
-                            !!canEdit && isElementVisible("btn_uploadPhoto")
-                          }
+                          canEdit={isElementVisible("btn_uploadPhoto")}
                           isSaving={isSaving}
                           isCompressing={isCompressing}
                           photoConfig={photoConfig}
@@ -5199,7 +5195,11 @@ export default function HousesView({
                     </div>
                   )}
 
-                  {canEdit && isElementVisible("card_photos") && (
+                  {/* ⭐ Save Photos: se muestra si el rol puede AGREGAR fotos según el
+                      configurador (subir o cámara), aunque no tenga Edit del módulo. */}
+                  {(isElementVisible("btn_uploadPhoto") ||
+                    isElementVisible("btn_takePhoto")) &&
+                    isElementVisible("card_photos") && (
                     <div className="hv-save-photos-row">
                       <button
                         onClick={handleSavePhotosFromDetail}
