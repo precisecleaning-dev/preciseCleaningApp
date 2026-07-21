@@ -269,11 +269,54 @@ export default function App() {
   }, [currentUser, roles]);
 
   const isSuperAdmin = isBypass || activeRole?.name === 'Administrator';
+
+  // ⭐ CUMPLIMIENTO ESTRICTO DE PERMISOS POR MÓDULO: el Sidebar oculta los items,
+  //    pero el tab activo puede llegar por localStorage (última pestaña usada) o
+  //    navegación directa. Esta guardia verifica el permiso canView del módulo
+  //    correspondiente y, si el rol no lo tiene, redirige al primer módulo permitido.
+  useEffect(() => {
+    if (isSuperAdmin || !activeRole) return;
+    const TAB_MODULE: Partial<Record<TabOptions, string[]>> = {
+      houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
+      qc_report: ['Quality Check'], status_history: ['Status History'], payroll: ['Payroll'],
+      customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
+      data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
+      settings: ['Settings'], migrar_payroll: ['Settings'],
+    };
+    const canViewModule = (m: string) =>
+      !!activeRole.permissions?.find(p => p.module === m && p.canView);
+    const mods = TAB_MODULE[activeTab];
+    if (!mods || mods.some(canViewModule)) return; // sin mapeo o permitido: no tocar
+    const order: TabOptions[] = ['houses', 'pipeline', 'invoices', 'calendar', 'qc_report',
+      'status_history', 'payroll', 'customers', 'roles', 'users', 'data_import', 'company',
+      'photo_settings', 'settings'];
+    const fallback = order.find(t => (TAB_MODULE[t] || []).some(canViewModule));
+    if (fallback) setActiveTab(fallback);
+  }, [activeTab, activeRole, isSuperAdmin]);
   // ⭐ Data Import: SuperAdmin siempre; o cualquier rol con el permiso "Data Import" (casilla View en Roles).
   const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Data Import')?.canView;
   // ⭐ TEMPORAL — permiso para la vista Migrar Payroll: misma regla que Settings en el Sidebar.
   const canViewMigrarPayroll = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Settings')?.canView;
-  const visibleProperties = properties; 
+  // ⭐ SCOPE POR MÓDULO (Roles & Permissions → columna Scope): 'Own' significa que
+  //    el rol solo ve SUS registros. Un registro es "propio" si el usuario está en
+  //    assignedWorkers (ids de system_users) o comparte teamId — exactamente la
+  //    misma regla que HousesView aplica internamente (propertiesWithScope).
+  const isOwnProperty = (prop: Property): boolean => {
+    if (!currentUser) return false;
+    if (prop.assignedWorkers?.includes(currentUser.id)) return true;
+    return !!(currentUser.teamId && prop.teamId === currentUser.teamId);
+  };
+  const moduleScope = (module: string): 'All' | 'Own' => {
+    if (isSuperAdmin) return 'All';
+    const p = activeRole?.permissions?.find((x: { module: string; scope?: 'All' | 'Own' }) => x.module === module);
+    return p?.scope === 'Own' ? 'Own' : 'All';
+  };
+  const propertiesForModule = (module: string): Property[] =>
+    moduleScope(module) === 'Own' ? properties.filter(isOwnProperty) : properties;
+
+  // Houses/Pipeline reciben todo: HousesView aplica su propio scope adentro (y
+  // además sus allowedStatusIds); duplicar el filtro aquí cambiaría su comportamiento.
+  const visibleProperties = properties;
 
   const handleSettingsClick = () => {
     setActiveTab('settings');
@@ -372,7 +415,7 @@ export default function App() {
 
         {activeTab === 'calendar' && (
           <CalendarView
-            properties={visibleProperties}
+            properties={propertiesForModule('Calendar')}
             setProperties={setProperties}
             onOpenMenu={toggleMenu}
             onCheckHouse={handleCheckHouse}

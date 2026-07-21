@@ -75,6 +75,8 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   { id: 'address', label: 'Address', section: 'General Info' },
   { id: 'receiveDate', label: 'Receive Date', section: 'Schedule' },
   { id: 'scheduleDate', label: 'Schedule Date', section: 'Schedule' },
+  { id: 'dateOfIssue', label: 'Date of Issue', section: 'Schedule' },
+  { id: 'dueDate', label: 'Due Date', section: 'Schedule' },
   { id: 'timeIn', label: 'Time In', section: 'Schedule' },
   { id: 'timeOut', label: 'Time Out', section: 'Schedule' },
   { id: 'serviceId', label: 'Service', section: 'Job Specs' },
@@ -88,7 +90,8 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   { id: 'note', label: 'General Note', section: 'Notes' },
   { id: 'employeeNote', label: "Employee's Note", section: 'Notes' },
   { id: 'card_billedServices', label: 'Billed Services (entire section)', section: 'Sections' },
-  { id: 'card_photos', label: 'Photos (entire section)', section: 'Sections' }
+  { id: 'card_photos', label: 'Photos (entire section)', section: 'Sections' },
+  { id: 'card_workLog', label: 'Work Log (detail view)', section: 'Sections' }
 ];
 
 const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
@@ -769,6 +772,11 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
     const hiddenForRoles = formConfig?.visibility?.[elementId] || [];
     return !hiddenForRoles.includes(userRoleId);
   };
+
+  // ⭐ ¿Alguno de estos elementos es visible para el rol activo?
+  //    Sirve para ocultar tarjetas COMPLETAS del detalle cuando todas sus filas
+  //    están ocultas (Schedule & Timing, Job Specifications, etc.).
+  const anyVisible = (...elementIds: string[]): boolean => elementIds.some(id => isElementVisible(id));
 
   const toggleElementVisibilityForRole = (elementId: string, roleId: string) => {
     setFieldConfigDraft(prev => {
@@ -2044,12 +2052,12 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                           </td>
                           <td data-label="Actions" className="hv-td right">
                             <div className="hv-actions-cell-row">
-                              {canEdit && isVisible('admin') && (
+                              {canEdit && isVisible('admin') && isElementVisible('btn_editDetails') && (
                                 <button className="action-btn-edit" onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}>
                                   <Edit2 size={16} /> <span className="mobile-action-text">Editar</span>
                                 </button>
                               )}
-                              {canDelete && isVisible('admin') && (
+                              {canDelete && isVisible('admin') && isElementVisible('btn_deleteProperty') && (
                                 <button className="action-btn-delete" onClick={(e) => { e.stopPropagation(); handleDelete(prop); }}>
                                   <Trash2 size={16} /> <span className="mobile-action-text">Eliminar</span>
                                 </button>
@@ -2122,15 +2130,15 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         />
                       </div>
 
-                      {(canEdit || canDelete) && isVisible('admin') && (
+                      {((canEdit && isElementVisible('btn_editDetails')) || (canDelete && isElementVisible('btn_deleteProperty'))) && isVisible('admin') && (
                         <div className="hv-card-actions-row">
-                          {canEdit && (
+                          {canEdit && isElementVisible('btn_editDetails') && (
                             <button onClick={(e) => { e.stopPropagation(); handleOpenForm(prop); }}
                               className="hv-card-btn-edit">
                               <Edit2 size={17} /> Editar
                             </button>
                           )}
-                          {canDelete && (
+                          {canDelete && isElementVisible('btn_deleteProperty') && (
                             <button onClick={(e) => { e.stopPropagation(); handleDelete(prop); }}
                               className="hv-card-btn-delete">
                               <Trash2 size={17} /> Eliminar
@@ -2326,14 +2334,18 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                     <Settings size={20} color="#8B5CF6"/> Logistics & Settings
                   </h3>
                   <div className="hv-form-grid cols-200">
-                    <div>
-                      <label className="hv-label">Status <span className="hv-required">*</span></label>
-                      <SearchableSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} disabled={isFieldRO('statusId')} />
-                    </div>
-                    <div>
-                      <label className="hv-label">Invoice Status</label>
-                      <SearchableSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} disabled={isFieldRO('invoiceStatus')} />
-                    </div>
+                    {isElementVisible('statusId') && (
+                      <div>
+                        <label className="hv-label">Status <span className="hv-required">*</span></label>
+                        <SearchableSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} disabled={isFieldRO('statusId')} />
+                      </div>
+                    )}
+                    {isElementVisible('invoiceStatus') && (
+                      <div>
+                        <label className="hv-label">Invoice Status</label>
+                        <SearchableSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} disabled={isFieldRO('invoiceStatus')} />
+                      </div>
+                    )}
                     {isElementVisible('serviceId') && (
                       <div>
                         <label className="hv-label">Services</label>
@@ -2385,20 +2397,24 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         </div>
                       </div>
                     )}
-                    <div>
-                      <label className="hv-label">Date of Issue</label>
-                      <div className="hv-input-wrap">
-                        <CalendarDays className="hv-input-icon" size={16} />
-                        <input type="date" className="hv-input" value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} disabled={isFieldRO('dateOfIssue')} />
+                    {isElementVisible('dateOfIssue') && (
+                      <div>
+                        <label className="hv-label">Date of Issue</label>
+                        <div className="hv-input-wrap">
+                          <CalendarDays className="hv-input-icon" size={16} />
+                          <input type="date" className="hv-input" value={formData.dateOfIssue || ''} onChange={e => setFormData({ ...formData, dateOfIssue: e.target.value })} disabled={isFieldRO('dateOfIssue')} />
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <label className="hv-label">Due Date</label>
-                      <div className="hv-input-wrap">
-                        <CalendarDays className="hv-input-icon" size={16} />
-                        <input type="date" className="hv-input" value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} disabled={isFieldRO('dueDate')} />
+                    )}
+                    {isElementVisible('dueDate') && (
+                      <div>
+                        <label className="hv-label">Due Date</label>
+                        <div className="hv-input-wrap">
+                          <CalendarDays className="hv-input-icon" size={16} />
+                          <input type="date" className="hv-input" value={formData.dueDate || ''} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} disabled={isFieldRO('dueDate')} />
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {isElementVisible('timeIn') && (
                       <div>
                         <label className="hv-label">Time In</label>
@@ -2600,25 +2616,29 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                   </h3>
                   <div className="hv-form-grid cols-280">
                     <div>
-                      <button type="button" onClick={() => openBurstCamera('before')} disabled={isSaving}
-                        className="hv-btn-camera before">
-                        <Camera size={18} /> Cámara rápida · Before
-                      </button>
+                      {isElementVisible('btn_takePhoto') && (
+                        <button type="button" onClick={() => openBurstCamera('before')} disabled={isSaving}
+                          className="hv-btn-camera before">
+                          <Camera size={18} /> Cámara rápida · Before
+                        </button>
+                      )}
                       <PhotoSection label="Before" type="before"
                         urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
-                        canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        canEdit={isElementVisible('btn_uploadPhoto')} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
                         onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
                         onRemove={(i: number) => handleRemovePhoto(i, 'before')}
                         onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
                     </div>
                     <div>
-                      <button type="button" onClick={() => openBurstCamera('after')} disabled={isSaving}
-                        className="hv-btn-camera after">
-                        <Camera size={18} /> Cámara rápida · After
-                      </button>
+                      {isElementVisible('btn_takePhoto') && (
+                        <button type="button" onClick={() => openBurstCamera('after')} disabled={isSaving}
+                          className="hv-btn-camera after">
+                          <Camera size={18} /> Cámara rápida · After
+                        </button>
+                      )}
                       <PhotoSection label="After" type="after"
                         urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
-                        canEdit isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        canEdit={isElementVisible('btn_uploadPhoto')} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
                         onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
                         onRemove={(i: number) => handleRemovePhoto(i, 'after')}
                         onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
@@ -2646,29 +2666,34 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                   </p>
                 </div>
 
+                {anyVisible('client', 'address') && (
                 <div className="hv-info-box">
                   <div className="hv-info-box-header">
                     <div className="hv-info-icon-badge indigo"><User size={16} /></div>
                     <h4 className="hv-info-box-label">Client Details</h4>
                   </div>
                   <div className="hv-info-box-body">
-                    <p className={`hv-info-primary-text${formData.client ? ' filled' : ''}`}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>
-                    {formData.address && <p className="hv-info-secondary-text">{formData.address}</p>}
+                    {isElementVisible('client') && <p className={`hv-info-primary-text${formData.client ? ' filled' : ''}`}>{formData.client ? getClientName(formData.client) : 'Not defined'}</p>}
+                    {isElementVisible('address') && formData.address && <p className="hv-info-secondary-text">{formData.address}</p>}
                   </div>
                 </div>
+                )}
 
+                {anyVisible('scheduleDate', 'timeIn', 'timeOut', 'teamId') && (
                 <div className="hv-info-box">
                   <div className="hv-info-box-header">
                     <div className="hv-info-icon-badge green"><CalendarClock size={16} /></div>
                     <h4 className="hv-info-box-label">Timing & Assignment</h4>
                   </div>
                   <div className="hv-info-box-body">
-                    <p className="hv-schedule-date">{formData.scheduleDate ? formatDate(formData.scheduleDate) : 'No date set'}</p>
-                    <p className="hv-schedule-time">{formData.timeIn} {formData.timeOut ? `- ${formData.timeOut}` : ''}</p>
-                    <p className="hv-schedule-team">Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>
+                    {isElementVisible('scheduleDate') && <p className="hv-schedule-date">{formData.scheduleDate ? formatDate(formData.scheduleDate) : 'No date set'}</p>}
+                    {anyVisible('timeIn', 'timeOut') && <p className="hv-schedule-time">{isElementVisible('timeIn') ? formData.timeIn : ''} {isElementVisible('timeOut') && formData.timeOut ? `- ${formData.timeOut}` : ''}</p>}
+                    {isElementVisible('teamId') && <p className="hv-schedule-team">Team: {getRelationName(teams, formData.teamId, 'Unassigned')}</p>}
                   </div>
                 </div>
+                )}
 
+                {isVisible('financial') && isElementVisible('card_billedServices') && (
                 <div className="hv-cost-summary">
                   <div className="hv-cost-header-row">
                     <Receipt size={18} color="#0F172A" />
@@ -2685,6 +2710,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                     </div>
                   </div>
                 </div>
+                )}
 
               </div>
 
@@ -2708,7 +2734,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
           <div className="modal-90" onClick={e => e.stopPropagation()}>
             <header className="hv-modal-header">
               <div className="hv-detail-title-group">
-                <h3 className="hv-modal-title">{getClientName(selectedHouse.client)}</h3>
+                <h3 className="hv-modal-title">{isElementVisible('client') ? getClientName(selectedHouse.client) : 'Property Overview'}</h3>
                 {selectedHouse.employeeFinishedBy && (
                   <span className="hv-finished-badge">
                     <CheckCircle size={14} />
@@ -2778,12 +2804,14 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
 
             <div className="modal-body-scroll hv-detail-body">
 
-              <div className="hv-detail-address-row">
-                <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
-              </div>
+              {isElementVisible('address') && (
+                <div className="hv-detail-address-row">
+                  <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
+                </div>
+              )}
 
               {/* ⭐ SELECTOR DE STATUS PROMINENTE — mover la casa de lugar fácilmente */}
-              {isVisible('workflow') && (
+              {isVisible('workflow') && isElementVisible('statusId') && (
                 <div className="hv-status-banner">
                   <div className="hv-status-banner-head">
                     <div className="hv-status-banner-icon">
@@ -2820,40 +2848,58 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
               {activeDetailTab === 'overview' && (
                 <div className="fade-in">
                   <div className="hv-detail-grid">
+                    {anyVisible('receiveDate', 'scheduleDate', 'dateOfIssue', 'dueDate', 'timeIn', 'timeOut') && (
                     <div className="hv-info-card">
                       <div className="hv-info-header"><CalendarDays size={14} className="hv-icon-inline-tb"/> Schedule & Timing</div>
+                      {isElementVisible('receiveDate') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Receive Date</span>
                         <span className="hv-info-value">{selectedHouse.receiveDate ? formatDate(selectedHouse.receiveDate) : '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('scheduleDate') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Schedule Date</span>
                         <span className="hv-info-value">{selectedHouse.scheduleDate ? formatDate(selectedHouse.scheduleDate) : '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('dateOfIssue') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Date of Issue</span>
                         <span className="hv-info-value">{selectedHouse.dateOfIssue ? formatDate(selectedHouse.dateOfIssue) : '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('dueDate') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Due Date</span>
                         <span className="hv-info-value">{selectedHouse.dueDate ? formatDate(selectedHouse.dueDate) : '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('timeIn') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Time In</span>
                         <span className="hv-info-value"><Clock size={12} color="#94a3b8"/> {selectedHouse.timeIn || '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('timeOut') && (
                       <div className="hv-info-row no-border">
                         <span className="hv-info-label">Time Out</span>
                         <span className="hv-info-value"><Clock size={12} color="#94a3b8"/> {selectedHouse.timeOut || '-'}</span>
                       </div>
+                      )}
                     </div>
+                    )}
 
+                    {anyVisible('serviceId', 'priorityId', 'rooms', 'bathrooms') && (
                     <div className="hv-info-card">
                       <div className="hv-info-header"><Wrench size={14} className="hv-icon-inline-tb"/> Job Specifications</div>
+                      {isElementVisible('serviceId') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Service</span>
                         <span className="hv-info-value">{getRelationName(services, selectedHouse.serviceId)}</span>
                       </div>
+                      )}
+                      {isElementVisible('priorityId') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Priority</span>
                         <span className="hv-info-value">
@@ -2861,26 +2907,38 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                           {getRelationName(priorities, selectedHouse.priorityId)}
                         </span>
                       </div>
+                      )}
+                      {isElementVisible('rooms') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Rooms</span>
                         <span className="hv-info-value"><Hash size={12} color="#94a3b8"/> {selectedHouse.rooms || '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('bathrooms') && (
                       <div className="hv-info-row no-border">
                         <span className="hv-info-label">Bathrooms</span>
                         <span className="hv-info-value"><Hash size={12} color="#94a3b8"/> {selectedHouse.bathrooms || '-'}</span>
                       </div>
+                      )}
                     </div>
+                    )}
 
+                    {anyVisible('statusId', 'invoiceStatus', 'teamId') && (
                     <div className="hv-info-card">
                       <div className="hv-info-header"><Activity size={14} className="hv-icon-inline-tb"/> Status & Assignment</div>
+                      {isElementVisible('statusId') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Job Status</span>
                         <div className="hv-text-right"><StatusPillSelector currentStatusId={selectedHouse.statusId} statuses={statuses} onChange={(newId: string) => handleQuickStatusChange(selectedHouse.id, newId)} disabled={isSaving || !canEdit || !isVisible('workflow') || isFieldRO('statusId')} onRequestOpen={setStatusModal} modalTitle={getClientName(selectedHouse.client)} modalSubtitle={selectedHouse.address} /></div>
                       </div>
+                      )}
+                      {isElementVisible('invoiceStatus') && (
                       <div className="hv-info-row">
                         <span className="hv-info-label">Invoice Status</span>
                         <span className="hv-info-value hv-invoice-status-badge">{selectedHouse.invoiceStatus || '-'}</span>
                       </div>
+                      )}
+                      {isElementVisible('teamId') && (
                       <div className="hv-info-row no-border">
                         <span className="hv-info-label">Assigned Team</span>
                         <span className="hv-info-value">
@@ -2888,10 +2946,13 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                           {getRelationName(teams, selectedHouse.teamId, 'Unassigned')}
                         </span>
                       </div>
+                      )}
                     </div>
+                    )}
                   </div>
 
                   <div className="hv-detail-grid no-mb">
+                    {isElementVisible('assignedWorkers') && (
                     <div className="hv-subcard">
                       <div className="hv-workers-header">
                         <span className="hv-detail-label"><User size={14} className="hv-label-icon-inline"/> SPECIFIC ASSIGNED WORKERS</span>
@@ -2946,7 +3007,9 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         )}
                       </div>
                     </div>
+                    )}
 
+                    {isElementVisible('card_workLog') && (
                     <div className="hv-subcard">
                       <span className="hv-detail-label"><PenTool size={14} className="hv-label-icon-inline"/> WORK LOG</span>
                       <div className="hv-worklog-rows-wrap">
@@ -2964,6 +3027,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                         </div>
                       </div>
                     </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3093,23 +3157,30 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
 
               {activeDetailTab === 'media' && isVisible('media') && (
                 <div className="fade-in">
+                  {anyVisible('note', 'employeeNote') && (
                   <div className="hv-media-grid">
+                    {isElementVisible('note') && (
                     <div className="hv-note-box">
                       <span className="hv-detail-label"><StickyNote size={14} className="hv-label-icon-inline"/> GENERAL NOTE</span>
                       <p className="hv-note-text">{selectedHouse.note || 'No general notes.'}</p>
                     </div>
+                    )}
+                    {isElementVisible('employeeNote') && (
                     <div className="hv-note-box orange">
                       <span className="hv-detail-label orange"><StickyNote size={14} className="hv-label-icon-inline"/> EMPLOYEE'S NOTE</span>
                       <p className="hv-note-text">{selectedHouse.employeeNote || 'No employee notes.'}</p>
                     </div>
+                    )}
                   </div>
+                  )}
 
+                  {isElementVisible('card_photos') && (
                   <div className="hv-media-grid no-mb">
                     <div>
                       <div className="hv-workers-header">
                         <span className="hv-detail-label"><ImageIcon size={14} className="hv-label-icon-inline"/> BEFORE PHOTOS</span>
                         <div className="hv-photo-actions-row">
-                          {canEdit && (
+                          {canEdit && isElementVisible('btn_takePhoto') && (
                             <button onClick={() => openBurstCamera('before')} disabled={isSaving} className="hv-btn-compact bg-blue">
                               <Camera size={14} /> Cámara rápida
                             </button>
@@ -3123,7 +3194,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       </div>
                       <PhotoSection label="Before" type="before"
                         urls={beforePhotoURLs} excludedUrls={beforeExcluded} pendingCount={pendingForHouse.before}
-                        canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        canEdit={!!canEdit && isElementVisible('btn_uploadPhoto')} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
                         onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'before')}
                         onRemove={(i: number) => handleRemovePhoto(i, 'before')}
                         onToggleReport={(u: string) => toggleReportPhoto(u, 'before')} />
@@ -3132,7 +3203,7 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       <div className="hv-workers-header">
                         <span className="hv-detail-label"><ImageIcon size={14} className="hv-label-icon-inline"/> AFTER PHOTOS</span>
                         <div className="hv-photo-actions-row">
-                          {canEdit && (
+                          {canEdit && isElementVisible('btn_takePhoto') && (
                             <button onClick={() => openBurstCamera('after')} disabled={isSaving} className="hv-btn-compact bg-green">
                               <Camera size={14} /> Cámara rápida
                             </button>
@@ -3146,14 +3217,16 @@ export default function HousesView({ onOpenMenu, properties, setProperties, curr
                       </div>
                       <PhotoSection label="After" type="after"
                         urls={afterPhotoURLs} excludedUrls={afterExcluded} pendingCount={pendingForHouse.after}
-                        canEdit={!!canEdit} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
+                        canEdit={!!canEdit && isElementVisible('btn_uploadPhoto')} isSaving={isSaving} isCompressing={isCompressing} photoConfig={photoConfig} reportSelectable
                         onAddFiles={(f: FileList | null) => addPhotoFiles(f, 'after')}
                         onRemove={(i: number) => handleRemovePhoto(i, 'after')}
                         onToggleReport={(u: string) => toggleReportPhoto(u, 'after')} />
                     </div>
                   </div>
 
-                  {canEdit && (
+                  )}
+
+                  {canEdit && isElementVisible('card_photos') && (
                     <div className="hv-save-photos-row">
                       <button onClick={handleSavePhotosFromDetail} disabled={isSaving} className="hv-btn-primary-modal center">
                         <Save size={16} /> {isSaving ? 'Saving...' : 'Save Photos'}
