@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Lock, LogIn, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Mail, Lock, LogIn, ArrowRight } from 'lucide-react';
 import { auth } from '../../config/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth';
 import { usersService } from '../../services/usersService';
@@ -258,11 +258,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
             <button type="submit" disabled={isLoading} className="login-submit">
               {isLoading ? 'Checking Access...' : 'Sign In'} <ArrowRight size={18} />
-            </button>
-
-            {/* BOTÓN TEMPORAL ADMIN - Solo para desarrollo */}
-            <button type="button" className="login-bypass" onClick={onLoginSuccess}>
-              <ShieldAlert size={16} /> Enter as Super Admin (Bypass)
             </button>
           </form>
         ) : resetSent ? (

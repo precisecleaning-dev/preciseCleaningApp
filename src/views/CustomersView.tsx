@@ -75,26 +75,48 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     setSelectedCustomer(null);
   };
 
+  // ⭐ FIX: Firestore rechaza cualquier campo con valor `undefined`
+  //    ("Unsupported field value: undefined"). Al editar clientes viejos que no
+  //    tenían campos como phone o cityStateZip, esos campos llegaban undefined y
+  //    Firebase lanzaba error. Este helper normaliza TODOS los campos a string
+  //    (o su default) antes de escribir en Firestore.
+  const sanitizeCustomer = (c: Customer): Customer => ({
+    id: c.id || '',
+    name: (c.name || '').trim(),
+    type: c.type || 'Residential',
+    business: c.business || '',
+    note: c.note || '',
+    address: c.address || '',
+    cityStateZip: c.cityStateZip || '',
+    email: (c.email || '').trim(),
+    phone: c.phone || '',
+    color: c.color || '#3b82f6'
+  });
+
   const handleSave = async () => {
     if (!formData.name) return alert('Name is required.');
     setIsSaving(true);
     try {
-      if (formData.id) {
-        await customersService.update(formData.id, formData);
-        setCustomers(customers.map(c => c.id === formData.id ? formData : c));
+      const clean = sanitizeCustomer(formData);
+      if (clean.id) {
+        await customersService.update(clean.id, clean);
+        setCustomers(customers.map(c => c.id === clean.id ? clean : c));
         // ⭐ Si el detalle está abierto sobre este cliente, refleja los cambios
-        if (selectedCustomer && selectedCustomer.id === formData.id) {
-          setSelectedCustomer(formData);
+        if (selectedCustomer && selectedCustomer.id === clean.id) {
+          setSelectedCustomer(clean);
         }
       } else {
-        const { id, ...dataToAdd } = formData;
+        const { id, ...dataToAdd } = clean;
         const newId = await customersService.create(dataToAdd);
-        setCustomers([...customers, { ...formData, id: newId }]);
+        setCustomers([...customers, { ...clean, id: newId }]);
       }
       setIsFormModalOpen(false);
     } catch (error) {
       console.error("Error saving customer:", error);
-      alert("Error saving customer.");
+      // ⭐ Mostrar el error REAL de Firebase (code + message) para diagnosticar:
+      //    'permission-denied' = reglas/sesión; 'invalid-argument' = datos inválidos.
+      const fbErr = error as { code?: string; message?: string };
+      alert(`Error al guardar el cliente.\n\nCódigo: ${fbErr.code || 'desconocido'}\nDetalle: ${fbErr.message || String(error)}`);
     } finally {
       setIsSaving(false);
     }
@@ -112,7 +134,8 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       }
     } catch (error) {
       console.error("Error deleting customer:", error);
-      alert("Error deleting customer.");
+      const fbErr = error as { code?: string; message?: string };
+      alert(`Error al eliminar el cliente.\n\nCódigo: ${fbErr.code || 'desconocido'}\nDetalle: ${fbErr.message || String(error)}`);
     } finally {
       setIsSaving(false);
     }
