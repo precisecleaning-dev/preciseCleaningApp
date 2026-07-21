@@ -582,6 +582,7 @@ export default function HousesView({
   // ⭐ CÁMARA RÁPIDA (ráfaga): se abre una vez y permite tomar varias fotos
   //    seguidas sin cerrarse. Cada toma se agrega a Before o After.
   const [cameraOpen, setCameraOpen] = useState<null | "before" | "after">(null);
+  const [cameraAutoSave, setCameraAutoSave] = useState(false);
   const [burstCount, setBurstCount] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -610,6 +611,7 @@ export default function HousesView({
           'No se pudo abrir la cámara. Revisa los permisos del navegador o usa "Cargar/Galería".',
         );
         setCameraOpen(null);
+        setCameraAutoSave(false);
       }
     };
     start();
@@ -623,9 +625,26 @@ export default function HousesView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraOpen]);
 
-  const openBurstCamera = (type: "before" | "after") => {
+  const openBurstCamera = (
+    type: "before" | "after",
+    opts?: { autoSave?: boolean },
+  ) => {
     setBurstCount(0);
+    // ⭐ autoSave: cuando la cámara se abre desde la TARJETA de Daily Jobs,
+    //    al presionar "Guardar" las fotos se suben solas (sin pasos extra).
+    setCameraAutoSave(!!opts?.autoSave);
     setCameraOpen(type);
+  };
+
+  // ⭐ Cierra la cámara y, si está en modo autoguardado y hay fotos tomadas,
+  //    las guarda de inmediato en Before/After según el modo de la cámara.
+  const closeBurstCamera = async () => {
+    const shouldSave = cameraAutoSave && burstCount > 0;
+    setCameraOpen(null);
+    setCameraAutoSave(false);
+    if (shouldSave) {
+      await handleSavePhotosFromDetail();
+    }
   };
 
   const captureBurst = async () => {
@@ -2346,15 +2365,19 @@ export default function HousesView({
     }
   };
 
-  // ⭐ Abre el detalle DIRECTO en el tab de fotos, desplazándose a la sección
-  //    Before o After según el botón presionado en la tarjeta de Daily Jobs.
+  // ⭐ Desde la TARJETA de Daily Jobs: abre el detalle en el tab de fotos y
+  //    dispara la CÁMARA de inmediato en el modo correcto (Before o After).
+  //    Al presionar "Guardar" en la cámara, las fotos se suben automáticamente
+  //    a la sección correspondiente sin pasos adicionales.
   const handleOpenPhotosFromCard = async (
     house: Property,
     which: "before" | "after",
   ) => {
     await handleOpenDetail(house);
     setActiveDetailTab("media");
-    // Esperar a que el modal y el tab rendericen antes de desplazar
+    openBurstCamera(which, { autoSave: true });
+    // Dejar posicionada la sección correcta detrás de la cámara, para que al
+    // cerrar el empleado vea sus fotos recién guardadas
     setTimeout(() => {
       document
         .getElementById(
@@ -6059,7 +6082,22 @@ export default function HousesView({
               {burstCount} tomada(s)
             </div>
             <button
-              onClick={() => setCameraOpen(null)}
+              onClick={() => {
+                // ⭐ "Cerrar" descarta la sesión de cámara SIN guardar. Si hay
+                //    fotos en modo autoguardado, pedir confirmación para no
+                //    perder el trabajo por un toque accidental.
+                if (
+                  cameraAutoSave &&
+                  burstCount > 0 &&
+                  !window.confirm(
+                    "Tienes fotos sin guardar. ¿Cerrar sin guardarlas?",
+                  )
+                ) {
+                  return;
+                }
+                setCameraOpen(null);
+                setCameraAutoSave(false);
+              }}
               className="hv-camera-close-btn"
             >
               <X size={18} /> Cerrar
@@ -6088,10 +6126,12 @@ export default function HousesView({
               className="hv-camera-shutter"
             />
             <button
-              onClick={() => setCameraOpen(null)}
+              onClick={closeBurstCamera}
               className="hv-camera-done-btn"
             >
-              Listo ({burstCount})
+              {cameraAutoSave
+                ? `Guardar (${burstCount})`
+                : `Listo (${burstCount})`}
             </button>
           </div>
         </div>
