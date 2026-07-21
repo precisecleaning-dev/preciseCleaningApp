@@ -21,7 +21,6 @@
 .login-input-icon { position: absolute; left: 14px; top: 12px; }
 .login-submit { width: 100%; background-color: #2563eb; color: #ffffff; border: none; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color 0.2s; cursor: pointer; }
 .login-submit:disabled { cursor: wait; }
-.login-bypass { margin-top: 8px; width: 100%; background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .login-link-btn { background: none; border: none; color: #2563eb; font-weight: 700; cursor: pointer; font-size: 0.9rem; }
 
 .login-reset-sent { text-align: center; }
@@ -63,7 +62,6 @@
   .login-input:focus { background-color: #ffffff; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
   .login-input-icon { top: 17px; }
   .login-submit { padding: 18px; font-size: 1.15rem; border-radius: 14px; box-shadow: 0 10px 22px rgba(37,99,235,0.28); }
-  .login-bypass { padding: 16px !important; font-size: 1rem !important; border-radius: 14px !important; }
   .login-forgot { font-size: 0.95rem !important; }
 }
 
