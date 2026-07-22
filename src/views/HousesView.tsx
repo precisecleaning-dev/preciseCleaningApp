@@ -407,6 +407,9 @@ interface HousesViewProps {
   // ⭐ Apertura externa (p. ej. desde Quality Check):
   houseToOpenDetail?: Property | null; // abre el modal de DETALLE de esta casa
   clearHouseToOpenDetail?: () => void;
+  // ⭐ Tab inicial del detalle al abrir vía houseToOpenDetail (p. ej. Invoices
+  //    abre directo en "media" para exportar los PDF de fotos).
+  detailInitialTab?: "overview" | "financials" | "media";
   houseToOpenEdit?: Property | null; // abre el FORMULARIO de edición de esta casa
   clearHouseToOpenEdit?: () => void;
   // ⭐ 'modals-only': no dibuja la página (header/tabla/tablero), solo los modales.
@@ -428,6 +431,7 @@ export default function HousesView({
   viewMode = "table",
   houseToOpenDetail,
   clearHouseToOpenDetail,
+  detailInitialTab,
   houseToOpenEdit,
   clearHouseToOpenEdit,
   renderMode = "full",
@@ -2397,6 +2401,9 @@ export default function HousesView({
       properties.find((p) => p.id === houseToOpenDetail.id) ||
       houseToOpenDetail;
     handleOpenDetail(fresh);
+    // ⭐ Si la vista externa pidió un tab específico (p. ej. "media" desde
+    //    Invoices para los PDF de fotos), se aplica sobre el default "overview".
+    if (detailInitialTab) setActiveDetailTab(detailInitialTab);
     clearHouseToOpenDetail?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseToOpenDetail]);

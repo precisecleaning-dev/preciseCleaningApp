@@ -3,7 +3,7 @@ import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
-  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User, Menu, CheckCircle
+  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User, Menu, CheckCircle, FileImage
 } from 'lucide-react';
 
 import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Service, PayrollRecord } from '../types/index';
@@ -287,6 +287,16 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     if (onEditProperty) { onEditProperty(house); return; }
     setEditorMounted(true);
     setHouseToEdit(house);
+  };
+
+  // ⭐ FOTOS / PDF sin salir de Invoices: abre el DETALLE de la casa (HousesView
+  //    en modo 'modals-only') directo en el tab "Notes & Photos", donde están los
+  //    botones Export PDF de Before/After — misma UI y permisos que el resto de
+  //    las vistas. Siempre usa el incrustado propio (no delega al padre).
+  const [houseToView, setHouseToView] = useState<Property | null>(null);
+  const openPhotosPdf = (house: Property) => {
+    setEditorMounted(true);
+    setHouseToView(house);
   };
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
@@ -649,6 +659,13 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                       >
                         <Eye size={16} />
                       </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
+                        title="Photos / Export PDF"
+                        className="inv-icon-btn photos"
+                      >
+                        <FileImage size={16} />
+                      </button>
                       {canEdit && (
                         <button
                           onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
@@ -822,6 +839,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   className="inv-card-btn view">
                   <Eye size={16} /> Ver
                 </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
+                  className="inv-card-btn photos">
+                  <FileImage size={16} /> Fotos
+                </button>
                 {canEdit && (
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
@@ -983,6 +1005,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             </div>
 
             <footer className="inv-modal-footer">
+              <button
+                onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) openPhotosPdf(p); }}
+                className="inv-btn-outline-modal photos"
+              >
+                <FileImage size={16} /> Photos / PDF
+              </button>
               {canEdit && (
                 <button
                   onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) openEdit(p); }}
@@ -1006,10 +1034,10 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         />
       )}
 
-      {/* ⭐ EDICIÓN DE LA CASA sin salir de Invoices: HousesView en modo 'modals-only'
-          dibuja únicamente sus modales (aquí, el formulario de edición) encima de
-          esta vista. Se monta solo mientras hay una casa por editar. */}
-      {editorMounted && !onEditProperty && (
+      {/* ⭐ EDICIÓN y FOTOS/PDF de la casa sin salir de Invoices: HousesView en modo
+          'modals-only' dibuja únicamente sus modales encima de esta vista
+          (formulario de edición o detalle abierto en el tab de fotos). */}
+      {editorMounted && (
         <HousesView
           renderMode="modals-only"
           onOpenMenu={() => { /* sin página propia en modals-only */ }}
@@ -1020,6 +1048,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           isSuperAdmin={isSuperAdmin}
           houseToOpenEdit={houseToEdit}
           clearHouseToOpenEdit={() => setHouseToEdit(null)}
+          houseToOpenDetail={houseToView}
+          clearHouseToOpenDetail={() => setHouseToView(null)}
+          detailInitialTab="media"
         />
       )}
 
