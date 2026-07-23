@@ -577,3 +577,64 @@
 .hv-client-type-badge.commercial { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 .hv-client-type-badge.residential { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
 .hv-client-type-badge.private-customer { background: #fdf4ff; color: #86198f; border-color: #f5d0fe; }
+
+/* ⭐ Botón "Mi historial" del header (casas asignadas al usuario) */
+.hv-btn-history { display: flex; align-items: center; gap: 8px; background-color: #ffffff; color: #111827; border: 1px solid #e5e7eb; padding: 0 18px; height: 42px; border-radius: 20px; font-weight: 600; cursor: pointer; font-size: 0.9rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); flex-shrink: 0; }
+.hv-btn-history:hover { background-color: #f8fafc; }
+
+/* ⭐ Modal Mi historial */
+.hv-history-modal { background-color: #ffffff; width: 100%; max-width: 640px; border-radius: 16px; display: flex; flex-direction: column; max-height: 86vh; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+.hv-history-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid #f1f5f9; }
+.hv-history-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.hv-history-close { background: none; border: none; cursor: pointer; color: #64748b; display: flex; padding: 4px; }
+.hv-history-sub { margin: 10px 22px 0 22px; color: #64748b; font-size: 0.82rem; }
+.hv-history-body { padding: 14px 22px 22px 22px; overflow-y: auto; }
+.hv-history-empty { text-align: center; color: #94a3b8; font-style: italic; padding: 30px 10px; border: 1px dashed #cbd5e1; border-radius: 12px; }
+.hv-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hv-history-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
+.hv-history-card:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+.hv-history-main { min-width: 0; }
+.hv-history-client { font-weight: 700; color: #0f172a; font-size: 0.92rem; }
+.hv-history-address { display: flex; align-items: center; gap: 5px; color: #64748b; font-size: 0.8rem; margin-top: 2px; }
+.hv-history-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.hv-history-date { display: inline-flex; align-items: center; gap: 5px; color: #475569; font-size: 0.78rem; font-weight: 600; }
+.hv-history-status { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; color: var(--hst-color); background-color: color-mix(in srgb, var(--hst-color) 12%, white); border: 1px solid color-mix(in srgb, var(--hst-color) 30%, white); }
+
+/* ⭐ Sección DAMAGES del detalle (colección 'damages') */
+.hv-damages-card { margin-top: 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 14px 16px; }
+.hv-damages-count { background: #ffedd5; color: #9a3412; font-weight: 800; font-size: 0.78rem; padding: 2px 10px; border-radius: 12px; }
+.hv-damages-empty { text-align: center; color: #9a3412; opacity: 0.7; font-style: italic; font-size: 0.85rem; padding: 14px 0; }
+.hv-damages-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hv-damage-item { background: #ffffff; border: 1px solid #fde8d0; border-radius: 10px; padding: 12px; }
+.hv-damage-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.hv-damage-id { font-size: 0.7rem; font-weight: 800; color: #9a3412; letter-spacing: 0.04em; }
+.hv-damage-actions { display: flex; gap: 6px; }
+.hv-damage-btn { width: 28px; height: 28px; border-radius: 7px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.hv-damage-btn.edit { color: #2563eb; }
+.hv-damage-btn.edit:hover { background: #eff6ff; border-color: #bfdbfe; }
+.hv-damage-btn.delete { color: #dc2626; }
+.hv-damage-btn.delete:hover { background: #fef2f2; border-color: #fecaca; }
+.hv-damage-desc { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+.hv-damage-notes { color: #475569; font-size: 0.83rem; margin-top: 4px; white-space: pre-wrap; }
+.hv-damage-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.hv-damage-photo-wrap { position: relative; }
+.hv-damage-photo { width: 74px; height: 74px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; display: block; }
+.hv-damage-photo-remove { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: #dc2626; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.hv-damage-add-photos { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 12px; border-radius: 8px; border: 1px dashed #fdba74; background: #fff7ed; color: #9a3412; font-weight: 700; font-size: 0.78rem; cursor: pointer; }
+.hv-damage-file-input { display: none; }
+.hv-damage-new { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #fdba74; display: flex; flex-direction: column; gap: 8px; }
+.hv-damage-textarea { min-height: 64px; resize: vertical; font-family: inherit; }
+.hv-damage-edit-form { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.hv-damage-edit-actions { display: flex; gap: 8px; }
+
+/* ⭐ Botón Damages del footer del detalle + modal de Damages */
+.hv-btn-damages-modal { display: inline-flex; align-items: center; gap: 7px; background-color: #fff7ed; color: #9a3412; border: 1px solid #fdba74; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 0.88rem; cursor: pointer; }
+.hv-btn-damages-modal:hover { background-color: #ffedd5; }
+.hv-damages-footer-count { background: #ea580c; color: #ffffff; font-weight: 800; font-size: 0.72rem; padding: 1px 8px; border-radius: 10px; }
+.hv-damages-modal { background-color: #ffffff; width: 100%; max-width: 620px; border-radius: 16px; display: flex; flex-direction: column; max-height: 88vh; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+.hv-damages-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid #f1f5f9; }
+.hv-damages-modal-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #9a3412; display: flex; align-items: center; gap: 8px; }
+.hv-damages-modal-close { background: none; border: none; cursor: pointer; color: #64748b; display: flex; padding: 4px; }
+.hv-damages-modal-sub { margin: 10px 22px 0 22px; color: #64748b; font-size: 0.82rem; }
+.hv-damages-modal-body { padding: 14px 22px 22px 22px; overflow-y: auto; }
+@media (max-width: 640px) { .hv-damages-modal { max-height: 94vh; } }

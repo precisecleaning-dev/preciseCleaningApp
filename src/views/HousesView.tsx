@@ -177,11 +177,15 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   },
   { id: "card_photos", label: "Photos (entire section)", section: "Sections" },
   { id: "card_workLog", label: "Work Log (detail view)", section: "Sections" },
-  { id: "card_damages", label: "Damages (entire section)", section: "Sections" },
+  {
+    id: "card_damages",
+    label: "Damages (botón y modal)",
+    section: "Sections",
+  },
   {
     id: "card_kpis",
-    label: "KPI Cards (Overview dashboard)",
-    section: "Sections",
+    label: "Tarjetas del Dashboard (KPIs del Overview)",
+    section: "Dashboard",
   },
 ];
 
@@ -1373,6 +1377,7 @@ export default function HousesView({
   const [newDamageDesc, setNewDamageDesc] = useState("");
   const [newDamageNotes, setNewDamageNotes] = useState("");
   const [newDamageFiles, setNewDamageFiles] = useState<File[]>([]);
+  const [isDamagesOpen, setIsDamagesOpen] = useState(false);
   const [editingDamageId, setEditingDamageId] = useState<string | null>(null);
   const [editDamageDesc, setEditDamageDesc] = useState("");
   const [editDamageNotes, setEditDamageNotes] = useState("");
@@ -5500,213 +5505,6 @@ export default function HousesView({
                     </div>
                   )}
 
-                  {/* ⭐ DAMAGES — daños reportados de esta casa (colección 'damages') */}
-                  {isVisible("media") && isElementVisible("card_damages") && (
-                    <div className="hv-damages-card">
-                      <div className="hv-workers-header">
-                        <span className="hv-detail-label">
-                          <AlertTriangle
-                            size={14}
-                            className="hv-label-icon-inline"
-                          />{" "}
-                          DAMAGES
-                        </span>
-                        <span className="hv-damages-count">
-                          {damages.length}
-                        </span>
-                      </div>
-
-                      {isLoadingDamages ? (
-                        <div className="hv-damages-empty">Cargando daños…</div>
-                      ) : damages.length === 0 ? (
-                        <div className="hv-damages-empty">
-                          Sin daños reportados para esta casa.
-                        </div>
-                      ) : (
-                        <ul className="hv-damages-list">
-                          {damages.map((dam) => (
-                            <li key={dam.id} className="hv-damage-item">
-                              <div className="hv-damage-top">
-                                <span className="hv-damage-id" title={dam.id}>
-                                  ID: {dam.id.slice(0, 8).toUpperCase()}
-                                </span>
-                                {canEdit && (
-                                  <div className="hv-damage-actions">
-                                    <button
-                                      className="hv-damage-btn edit"
-                                      title="Editar daño"
-                                      onClick={() => {
-                                        setEditingDamageId(dam.id);
-                                        setEditDamageDesc(
-                                          dam.description || "",
-                                        );
-                                        setEditDamageNotes(dam.notes || "");
-                                      }}
-                                    >
-                                      <Edit2 size={13} />
-                                    </button>
-                                    <button
-                                      className="hv-damage-btn delete"
-                                      title="Eliminar daño"
-                                      onClick={() => handleDeleteDamage(dam)}
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {editingDamageId === dam.id ? (
-                                <div className="hv-damage-edit-form">
-                                  <input
-                                    className="hv-input"
-                                    value={editDamageDesc}
-                                    onChange={(e) =>
-                                      setEditDamageDesc(e.target.value)
-                                    }
-                                    placeholder="Description *"
-                                  />
-                                  <textarea
-                                    className="hv-input hv-damage-textarea"
-                                    value={editDamageNotes}
-                                    onChange={(e) =>
-                                      setEditDamageNotes(e.target.value)
-                                    }
-                                    placeholder="Notes"
-                                  />
-                                  <div className="hv-damage-edit-actions">
-                                    <button
-                                      className="hv-btn-compact bg-blue"
-                                      onClick={handleSaveDamageEdit}
-                                      disabled={isSavingDamage}
-                                    >
-                                      <Save size={13} /> Guardar
-                                    </button>
-                                    <button
-                                      className="hv-btn-compact"
-                                      onClick={() => setEditingDamageId(null)}
-                                    >
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="hv-damage-desc">
-                                    {dam.description}
-                                  </div>
-                                  {dam.notes && (
-                                    <div className="hv-damage-notes">
-                                      {dam.notes}
-                                    </div>
-                                  )}
-                                </>
-                              )}
-
-                              {(dam.photos || []).length > 0 && (
-                                <div className="hv-damage-photos">
-                                  {(dam.photos || []).map((url, i) => (
-                                    <div
-                                      key={`${dam.id}-${i}`}
-                                      className="hv-damage-photo-wrap"
-                                    >
-                                      <a
-                                        href={url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        <img
-                                          src={url}
-                                          alt={`Damage ${i + 1}`}
-                                          className="hv-damage-photo"
-                                        />
-                                      </a>
-                                      {canEdit && (
-                                        <button
-                                          className="hv-damage-photo-remove"
-                                          onClick={() =>
-                                            handleRemoveDamagePhoto(dam, i)
-                                          }
-                                          title="Quitar foto"
-                                        >
-                                          <X size={12} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {canEdit && isElementVisible("btn_uploadPhoto") && (
-                                <label className="hv-damage-add-photos">
-                                  <ImageIcon size={13} /> Agregar fotos
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    className="hv-damage-file-input"
-                                    onChange={(e) => {
-                                      handleAddPhotosToDamage(
-                                        dam,
-                                        e.target.files,
-                                      );
-                                      e.target.value = "";
-                                    }}
-                                    disabled={isSavingDamage}
-                                  />
-                                </label>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {canEdit && (
-                        <div className="hv-damage-new">
-                          <span className="hv-detail-label">
-                            REPORTAR NUEVO DAÑO
-                          </span>
-                          <input
-                            className="hv-input"
-                            value={newDamageDesc}
-                            onChange={(e) => setNewDamageDesc(e.target.value)}
-                            placeholder="Description *"
-                          />
-                          <textarea
-                            className="hv-input hv-damage-textarea"
-                            value={newDamageNotes}
-                            onChange={(e) => setNewDamageNotes(e.target.value)}
-                            placeholder="Notes"
-                          />
-                          <label className="hv-damage-add-photos">
-                            <ImageIcon size={13} /> Fotos (
-                            {newDamageFiles.length})
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hv-damage-file-input"
-                              onChange={(e) => {
-                                if (e.target.files)
-                                  setNewDamageFiles(
-                                    Array.from(e.target.files),
-                                  );
-                              }}
-                              disabled={isSavingDamage}
-                            />
-                          </label>
-                          <button
-                            className="hv-btn-primary-modal center"
-                            onClick={handleAddDamage}
-                            disabled={isSavingDamage}
-                          >
-                            <Plus size={15} />{" "}
-                            {isSavingDamage ? "Guardando…" : "Guardar daño"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -5726,6 +5524,22 @@ export default function HousesView({
                   )}
               </div>
               <div className="hv-footer-actions">
+                {/* ⭐ DAMAGES: abre el modal de daños. Se controla SOLO con el
+                    elemento "card_damages" del configurador: visible = lo ve;
+                    solo lectura = lo ve pero no agrega/edita. */}
+                {isElementVisible("card_damages") && (
+                  <button
+                    onClick={() => setIsDamagesOpen(true)}
+                    className="hv-btn-damages-modal"
+                  >
+                    <AlertTriangle size={16} /> Damages
+                    {damages.length > 0 && (
+                      <span className="hv-damages-footer-count">
+                        {damages.length}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => setIsDetailModalOpen(false)}
                   className="hv-btn-outline-modal"
@@ -6338,6 +6152,210 @@ export default function HousesView({
       )}
 
       {/* --- FIELD CONFIGURATION MODAL --- */}
+      {/* ⭐ MODAL DAMAGES — daños reportados de la casa (colección 'damages').
+          Permisos SOLO por configurador: card_damages visible = ver;
+          NO solo-lectura = agregar/editar/eliminar. */}
+      {isDamagesOpen && selectedHouse && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setIsDamagesOpen(false)}
+        >
+          <div
+            className="hv-damages-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="hv-damages-modal-header">
+              <h3 className="hv-damages-modal-title">
+                <AlertTriangle size={18} /> Damages
+                <span className="hv-damages-count">{damages.length}</span>
+              </h3>
+              <button
+                className="hv-damages-modal-close"
+                onClick={() => setIsDamagesOpen(false)}
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <p className="hv-damages-modal-sub">
+              {getClientName(selectedHouse.client)} ·{" "}
+              {selectedHouse.address || "—"}
+            </p>
+
+            <div className="hv-damages-modal-body">
+              {isLoadingDamages ? (
+                <div className="hv-damages-empty">Cargando daños…</div>
+              ) : damages.length === 0 ? (
+                <div className="hv-damages-empty">
+                  Sin daños reportados para esta casa.
+                </div>
+              ) : (
+                <ul className="hv-damages-list">
+                  {damages.map((dam) => (
+                    <li key={dam.id} className="hv-damage-item">
+                      <div className="hv-damage-top">
+                        <span className="hv-damage-id" title={dam.id}>
+                          ID: {dam.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        {!isFieldRO("card_damages") && (
+                          <div className="hv-damage-actions">
+                            <button
+                              className="hv-damage-btn edit"
+                              title="Editar daño"
+                              onClick={() => {
+                                setEditingDamageId(dam.id);
+                                setEditDamageDesc(dam.description || "");
+                                setEditDamageNotes(dam.notes || "");
+                              }}
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              className="hv-damage-btn delete"
+                              title="Eliminar daño"
+                              onClick={() => handleDeleteDamage(dam)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {editingDamageId === dam.id ? (
+                        <div className="hv-damage-edit-form">
+                          <input
+                            className="hv-input"
+                            value={editDamageDesc}
+                            onChange={(e) => setEditDamageDesc(e.target.value)}
+                            placeholder="Description *"
+                          />
+                          <textarea
+                            className="hv-input hv-damage-textarea"
+                            value={editDamageNotes}
+                            onChange={(e) => setEditDamageNotes(e.target.value)}
+                            placeholder="Notes"
+                          />
+                          <div className="hv-damage-edit-actions">
+                            <button
+                              className="hv-btn-compact bg-blue"
+                              onClick={handleSaveDamageEdit}
+                              disabled={isSavingDamage}
+                            >
+                              <Save size={13} /> Guardar
+                            </button>
+                            <button
+                              className="hv-btn-compact"
+                              onClick={() => setEditingDamageId(null)}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="hv-damage-desc">
+                            {dam.description}
+                          </div>
+                          {dam.notes && (
+                            <div className="hv-damage-notes">{dam.notes}</div>
+                          )}
+                        </>
+                      )}
+
+                      {(dam.photos || []).length > 0 && (
+                        <div className="hv-damage-photos">
+                          {(dam.photos || []).map((url, i) => (
+                            <div
+                              key={`${dam.id}-${i}`}
+                              className="hv-damage-photo-wrap"
+                            >
+                              <a href={url} target="_blank" rel="noreferrer">
+                                <img
+                                  src={url}
+                                  alt={`Damage ${i + 1}`}
+                                  className="hv-damage-photo"
+                                />
+                              </a>
+                              {!isFieldRO("card_damages") && (
+                                <button
+                                  className="hv-damage-photo-remove"
+                                  onClick={() =>
+                                    handleRemoveDamagePhoto(dam, i)
+                                  }
+                                  title="Quitar foto"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!isFieldRO("card_damages") && (
+                        <label className="hv-damage-add-photos">
+                          <ImageIcon size={13} /> Agregar fotos
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hv-damage-file-input"
+                            onChange={(e) => {
+                              handleAddPhotosToDamage(dam, e.target.files);
+                              e.target.value = "";
+                            }}
+                            disabled={isSavingDamage}
+                          />
+                        </label>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {!isFieldRO("card_damages") && (
+                <div className="hv-damage-new">
+                  <span className="hv-detail-label">REPORTAR NUEVO DAÑO</span>
+                  <input
+                    className="hv-input"
+                    value={newDamageDesc}
+                    onChange={(e) => setNewDamageDesc(e.target.value)}
+                    placeholder="Description *"
+                  />
+                  <textarea
+                    className="hv-input hv-damage-textarea"
+                    value={newDamageNotes}
+                    onChange={(e) => setNewDamageNotes(e.target.value)}
+                    placeholder="Notes"
+                  />
+                  <label className="hv-damage-add-photos">
+                    <ImageIcon size={13} /> Fotos ({newDamageFiles.length})
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hv-damage-file-input"
+                      onChange={(e) => {
+                        if (e.target.files)
+                          setNewDamageFiles(Array.from(e.target.files));
+                      }}
+                      disabled={isSavingDamage}
+                    />
+                  </label>
+                  <button
+                    className="hv-btn-primary-modal center"
+                    onClick={handleAddDamage}
+                    disabled={isSavingDamage}
+                  >
+                    <Plus size={15} />{" "}
+                    {isSavingDamage ? "Guardando…" : "Guardar daño"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ⭐ MI HISTORIAL — casas asignadas al usuario (habilitado por rol) */}
       {isHistoryOpen && (
         <div
