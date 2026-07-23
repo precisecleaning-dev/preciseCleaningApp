@@ -85,9 +85,64 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
     try {
       if (formData.id) {
         // ===== EDITAR =====
-        const { id, ...updateData } = formData;
-        await updateDoc(doc(db, 'system_users', id as string), updateData);
-        setUsers(users.map(u => u.id === id ? { ...u, ...updateData } as SystemUserExt : u));
+        const id = formData.id as string;
+        const original = users.find(u => u.id === id);
+        const emailChanged =
+          !!original && (original.email || '').toLowerCase().trim() !== cleanEmail;
+
+        // ⭐ Si cambió el email, validar que no choque con otro usuario del sistema
+        if (emailChanged) {
+          const clash = users.find(
+            u => u.id !== id && u.email?.toLowerCase().trim() === cleanEmail
+          );
+          if (clash) {
+            alert(`This email is already registered as a user (${clash.firstName}).`);
+            setIsSaving(false);
+            return;
+          }
+        }
+
+        const { id: _omit, ...updateData } = formData;
+        const payload: Partial<SystemUserExt> = { ...updateData, email: cleanEmail };
+
+        if (emailChanged) {
+          // ⭐ El email cambió: la invitación anterior ya no aplica. Se marca
+          //    inviteSent=false para que el botón ✈️ cree la cuenta de Auth del
+          //    NUEVO email y envíe el enlace de contraseña (con migración del doc
+          //    al nuevo UID; ver handleSendInvite).
+          payload.inviteSent = false;
+
+          if (id.startsWith('pending_')) {
+            // Aún sin cuenta de Auth: migrar el doc al nuevo ID determinístico
+            const newId = emailToPendingId(cleanEmail);
+            const newData = { ...(original as SystemUserExt), ...payload };
+            delete (newData as Partial<SystemUserExt>).id;
+            await setDoc(doc(db, 'system_users', newId), newData);
+            await deleteDoc(doc(db, 'system_users', id));
+            setUsers(users.map(u =>
+              u.id === id ? ({ ...u, ...payload, id: newId } as SystemUserExt) : u
+            ));
+            alert('✅ User updated.\n\n📧 El email fue cambiado. Cuando estés listo, usa el botón ✈️ para enviar la invitación al NUEVO correo.');
+            handleCloseForm();
+            setIsSaving(false);
+            return;
+          }
+
+          // Usuario que YA fue invitado: Firestore se actualiza aquí, pero la
+          // cuenta de Firebase AUTH del email viejo NO se puede modificar desde
+          // la app (requiere Admin SDK). El flujo es: ✈️ crea la cuenta del
+          // nuevo email y migra este doc a su UID; la cuenta vieja se borra a
+          // mano en Firebase Console → Authentication.
+          await updateDoc(doc(db, 'system_users', id), payload);
+          setUsers(users.map(u => u.id === id ? ({ ...u, ...payload } as SystemUserExt) : u));
+          alert('✅ User updated.\n\n⚠️ Este usuario ya tenía cuenta de acceso con el email anterior.\n\n1) Usa el botón ✈️ para crear su acceso con el NUEVO email y enviarle el enlace de contraseña.\n2) Borra la cuenta del email VIEJO en Firebase Console → Authentication para revocar ese acceso.');
+          handleCloseForm();
+          setIsSaving(false);
+          return;
+        }
+
+        await updateDoc(doc(db, 'system_users', id), payload);
+        setUsers(users.map(u => u.id === id ? ({ ...u, ...payload } as SystemUserExt) : u));
         alert("✅ User updated.");
       } else {
         // ===== AGREGAR (sin email, sin Auth) =====
@@ -165,9 +220,13 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
         alreadyExisted = authResult.alreadyExisted;
       }
 
-      // ¿Necesitamos migrar el doc para usar el UID de Auth?
+      // ¿Necesitamos migrar el doc para usar el UID de Auth? Aplica cuando se
+      //    creó una cuenta nueva y su UID no coincide con el ID actual del doc:
+      //    · docs "pending_..." (usuario nuevo), o
+      //    · docs con el UID viejo tras un CAMBIO DE EMAIL (el ✈️ crea la cuenta
+      //      del nuevo correo y el doc debe apuntar al nuevo UID).
       const currentId = user.id;
-      const needsMigration = !wasInvited && !alreadyExisted && authUid && currentId.startsWith('pending_');
+      const needsMigration = !wasInvited && !alreadyExisted && !!authUid && authUid !== currentId;
 
       const updatedFields = {
         inviteSent: true,
@@ -437,7 +496,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
               <div>
                 <label className="uv-label">
                   Email Address <span className="uv-required">*</span>
-                  {formData.id && <span className="uv-label-hint">(cannot be changed)</span>}
+                  {formData.id && <span className="uv-label-hint">(al cambiarlo, reenvía la invitación con ✈️)</span>}
                 </label>
                 <div className="uv-input-wrap">
                   <Mail size={16} color="#9ca3af" className="uv-input-icon" />
@@ -447,7 +506,6 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
                     value={formData.email || ''}
                     onChange={e => setFormData({...formData, email: e.target.value})}
                     placeholder="john@example.com"
-                    disabled={!!formData.id}
                   />
                 </div>
               </div>

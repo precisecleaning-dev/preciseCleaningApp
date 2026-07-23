@@ -177,6 +177,12 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   },
   { id: "card_photos", label: "Photos (entire section)", section: "Sections" },
   { id: "card_workLog", label: "Work Log (detail view)", section: "Sections" },
+  { id: "card_damages", label: "Damages (entire section)", section: "Sections" },
+  {
+    id: "card_kpis",
+    label: "KPI Cards (Overview dashboard)",
+    section: "Sections",
+  },
 ];
 
 const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
@@ -196,7 +202,24 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     section: "Tabs",
   },
   { id: "btn_tabMedia", label: "Notes & Photos Tab", section: "Tabs" },
+  {
+    id: "btn_myHistory",
+    label: "Mi historial (casas asignadas)",
+    section: "Header",
+  },
 ];
+
+// ⭐ Registro de la colección 'damages': daños reportados por casa.
+//    Campos pedidos: ID (doc id), Description, Notes, Photos (varias).
+type DamageRecord = {
+  id: string;
+  houseId: string;
+  description: string;
+  notes?: string;
+  photos?: string[];
+  createdAt?: string;
+  createdBy?: string;
+};
 
 type FormVisibilityConfig = {
   visibility: Record<string, string[]>;
@@ -1338,6 +1361,184 @@ export default function HousesView({
       setIsSavingFieldConfig(false);
     }
   };
+
+  // ============================================================================
+  // ⭐ DAMAGES — colección 'damages' de Firestore (daños por casa).
+  //    Las fotos van a la MISMA carpeta cliente+dirección que Before/After,
+  //    dentro de una subcarpeta "Damages".
+  // ============================================================================
+  const [damages, setDamages] = useState<DamageRecord[]>([]);
+  const [isLoadingDamages, setIsLoadingDamages] = useState(false);
+  const [isSavingDamage, setIsSavingDamage] = useState(false);
+  const [newDamageDesc, setNewDamageDesc] = useState("");
+  const [newDamageNotes, setNewDamageNotes] = useState("");
+  const [newDamageFiles, setNewDamageFiles] = useState<File[]>([]);
+  const [editingDamageId, setEditingDamageId] = useState<string | null>(null);
+  const [editDamageDesc, setEditDamageDesc] = useState("");
+  const [editDamageNotes, setEditDamageNotes] = useState("");
+
+  // Cargar los daños en tiempo real al abrir el detalle de una casa
+  useEffect(() => {
+    if (!selectedHouse?.id) {
+      setDamages([]);
+      return;
+    }
+    setIsLoadingDamages(true);
+    const qDam = query(
+      collection(db, "damages"),
+      where("houseId", "==", selectedHouse.id),
+    );
+    const unsub = onSnapshot(
+      qDam,
+      (snap) => {
+        const list = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as DamageRecord,
+        );
+        list.sort((a, b) =>
+          String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+        );
+        setDamages(list);
+        setIsLoadingDamages(false);
+      },
+      (err) => {
+        console.error("Error cargando damages:", err);
+        setIsLoadingDamages(false);
+      },
+    );
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHouse?.id]);
+
+  // ⭐ Sube fotos de daños a la carpeta cliente+dirección / "Damages".
+  //    NOTA: si storageService tipa el 4º parámetro como 'before' | 'after',
+  //    amplíalo a string; el cast solo mantiene la compilación.
+  const uploadDamagePhotos = async (files: File[]): Promise<string[]> => {
+    if (!selectedHouse || files.length === 0) return [];
+    return await storageService.uploadMultiplePropertyPhotos(
+      files,
+      getClientName(selectedHouse.client),
+      selectedHouse.address,
+      "Damages" as unknown as "before",
+    );
+  };
+
+  const handleAddDamage = async () => {
+    if (!selectedHouse) return;
+    if (!newDamageDesc.trim()) {
+      alert("La descripción del daño es obligatoria.");
+      return;
+    }
+    setIsSavingDamage(true);
+    try {
+      const photos = await uploadDamagePhotos(newDamageFiles);
+      await addDoc(collection(db, "damages"), {
+        houseId: selectedHouse.id,
+        description: newDamageDesc.trim(),
+        notes: newDamageNotes.trim(),
+        photos,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser
+          ? `${currentUser.firstName} ${currentUser.lastName}`
+          : "Unknown",
+      });
+      setNewDamageDesc("");
+      setNewDamageNotes("");
+      setNewDamageFiles([]);
+    } catch (error) {
+      console.error("Error guardando el daño:", error);
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `Error al guardar el daño.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
+    } finally {
+      setIsSavingDamage(false);
+    }
+  };
+
+  const handleAddPhotosToDamage = async (
+    dam: DamageRecord,
+    fl: FileList | null,
+  ) => {
+    if (!fl || fl.length === 0) return;
+    setIsSavingDamage(true);
+    try {
+      const urls = await uploadDamagePhotos(Array.from(fl));
+      await updateDoc(doc(db, "damages", dam.id), {
+        photos: [...(dam.photos || []), ...urls],
+      });
+    } catch (error) {
+      console.error("Error agregando fotos al daño:", error);
+      alert("No se pudieron agregar las fotos al daño.");
+    } finally {
+      setIsSavingDamage(false);
+    }
+  };
+
+  const handleSaveDamageEdit = async () => {
+    if (!editingDamageId) return;
+    if (!editDamageDesc.trim()) {
+      alert("La descripción del daño es obligatoria.");
+      return;
+    }
+    setIsSavingDamage(true);
+    try {
+      await updateDoc(doc(db, "damages", editingDamageId), {
+        description: editDamageDesc.trim(),
+        notes: editDamageNotes.trim(),
+      });
+      setEditingDamageId(null);
+    } catch (error) {
+      console.error("Error actualizando el daño:", error);
+      alert("No se pudo actualizar el daño.");
+    } finally {
+      setIsSavingDamage(false);
+    }
+  };
+
+  const handleRemoveDamagePhoto = async (dam: DamageRecord, idx: number) => {
+    if (!window.confirm("¿Quitar esta foto del daño?")) return;
+    try {
+      const photos = (dam.photos || []).filter((_, i) => i !== idx);
+      await updateDoc(doc(db, "damages", dam.id), { photos });
+    } catch (error) {
+      console.error("Error quitando la foto del daño:", error);
+      alert("No se pudo quitar la foto.");
+    }
+  };
+
+  const handleDeleteDamage = async (dam: DamageRecord) => {
+    if (
+      !window.confirm(
+        "¿Eliminar este daño? Esta acción no se puede deshacer.",
+      )
+    )
+      return;
+    try {
+      await deleteDoc(doc(db, "damages", dam.id));
+    } catch (error) {
+      console.error("Error eliminando el daño:", error);
+      alert("No se pudo eliminar el daño.");
+    }
+  };
+
+  // ============================================================================
+  // ⭐ MI HISTORIAL — casas que le fueron ASIGNADAS al usuario para trabajar
+  //    (por assignedWorkers o por su equipo). Se habilita por rol con el
+  //    elemento "btn_myHistory" del configurador (Configure Fields).
+  // ============================================================================
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const myHistoryHouses = properties
+    .filter((p) => {
+      if (!currentUser) return false;
+      const assigned = p.assignedWorkers?.includes(currentUser.id);
+      const sameTeam = !!currentUser.teamId && p.teamId === currentUser.teamId;
+      return !!assigned || sameTeam;
+    })
+    .sort(
+      (a, b) =>
+        dateSortValue(b.scheduleDate || b.receiveDate) -
+        dateSortValue(a.scheduleDate || a.receiveDate),
+    );
 
   const propertiesWithScope = properties.filter((prop) => {
     if (userScope !== "All") {
@@ -2760,6 +2961,16 @@ export default function HousesView({
                 />
               </div>
 
+              {isElementVisible("btn_myHistory") && (
+                <button
+                  className="hv-btn-history"
+                  onClick={() => setIsHistoryOpen(true)}
+                  title="Historial de casas asignadas a mí"
+                >
+                  <Clock size={16} /> Mi historial
+                </button>
+              )}
+
               {(isSuperAdmin ||
                 activeRole?.permissions?.find((p) => p.module === "Houses")
                   ?.canAdd) && (
@@ -2773,6 +2984,7 @@ export default function HousesView({
             </div>
           </header>
 
+          {isElementVisible("card_kpis") && (
           <div className="dash-grid hv-kpi-grid">
             {isLoading ? (
               <div className="hv-loading-text">Loading metrics...</div>
@@ -2815,6 +3027,7 @@ export default function HousesView({
               })
             )}
           </div>
+          )}
 
           {viewMode === "board" ? (
             <PipelineBoardView
@@ -5286,6 +5499,214 @@ export default function HousesView({
                       </button>
                     </div>
                   )}
+
+                  {/* ⭐ DAMAGES — daños reportados de esta casa (colección 'damages') */}
+                  {isVisible("media") && isElementVisible("card_damages") && (
+                    <div className="hv-damages-card">
+                      <div className="hv-workers-header">
+                        <span className="hv-detail-label">
+                          <AlertTriangle
+                            size={14}
+                            className="hv-label-icon-inline"
+                          />{" "}
+                          DAMAGES
+                        </span>
+                        <span className="hv-damages-count">
+                          {damages.length}
+                        </span>
+                      </div>
+
+                      {isLoadingDamages ? (
+                        <div className="hv-damages-empty">Cargando daños…</div>
+                      ) : damages.length === 0 ? (
+                        <div className="hv-damages-empty">
+                          Sin daños reportados para esta casa.
+                        </div>
+                      ) : (
+                        <ul className="hv-damages-list">
+                          {damages.map((dam) => (
+                            <li key={dam.id} className="hv-damage-item">
+                              <div className="hv-damage-top">
+                                <span className="hv-damage-id" title={dam.id}>
+                                  ID: {dam.id.slice(0, 8).toUpperCase()}
+                                </span>
+                                {canEdit && (
+                                  <div className="hv-damage-actions">
+                                    <button
+                                      className="hv-damage-btn edit"
+                                      title="Editar daño"
+                                      onClick={() => {
+                                        setEditingDamageId(dam.id);
+                                        setEditDamageDesc(
+                                          dam.description || "",
+                                        );
+                                        setEditDamageNotes(dam.notes || "");
+                                      }}
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                      className="hv-damage-btn delete"
+                                      title="Eliminar daño"
+                                      onClick={() => handleDeleteDamage(dam)}
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {editingDamageId === dam.id ? (
+                                <div className="hv-damage-edit-form">
+                                  <input
+                                    className="hv-input"
+                                    value={editDamageDesc}
+                                    onChange={(e) =>
+                                      setEditDamageDesc(e.target.value)
+                                    }
+                                    placeholder="Description *"
+                                  />
+                                  <textarea
+                                    className="hv-input hv-damage-textarea"
+                                    value={editDamageNotes}
+                                    onChange={(e) =>
+                                      setEditDamageNotes(e.target.value)
+                                    }
+                                    placeholder="Notes"
+                                  />
+                                  <div className="hv-damage-edit-actions">
+                                    <button
+                                      className="hv-btn-compact bg-blue"
+                                      onClick={handleSaveDamageEdit}
+                                      disabled={isSavingDamage}
+                                    >
+                                      <Save size={13} /> Guardar
+                                    </button>
+                                    <button
+                                      className="hv-btn-compact"
+                                      onClick={() => setEditingDamageId(null)}
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="hv-damage-desc">
+                                    {dam.description}
+                                  </div>
+                                  {dam.notes && (
+                                    <div className="hv-damage-notes">
+                                      {dam.notes}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              {(dam.photos || []).length > 0 && (
+                                <div className="hv-damage-photos">
+                                  {(dam.photos || []).map((url, i) => (
+                                    <div
+                                      key={`${dam.id}-${i}`}
+                                      className="hv-damage-photo-wrap"
+                                    >
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        <img
+                                          src={url}
+                                          alt={`Damage ${i + 1}`}
+                                          className="hv-damage-photo"
+                                        />
+                                      </a>
+                                      {canEdit && (
+                                        <button
+                                          className="hv-damage-photo-remove"
+                                          onClick={() =>
+                                            handleRemoveDamagePhoto(dam, i)
+                                          }
+                                          title="Quitar foto"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {canEdit && isElementVisible("btn_uploadPhoto") && (
+                                <label className="hv-damage-add-photos">
+                                  <ImageIcon size={13} /> Agregar fotos
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hv-damage-file-input"
+                                    onChange={(e) => {
+                                      handleAddPhotosToDamage(
+                                        dam,
+                                        e.target.files,
+                                      );
+                                      e.target.value = "";
+                                    }}
+                                    disabled={isSavingDamage}
+                                  />
+                                </label>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {canEdit && (
+                        <div className="hv-damage-new">
+                          <span className="hv-detail-label">
+                            REPORTAR NUEVO DAÑO
+                          </span>
+                          <input
+                            className="hv-input"
+                            value={newDamageDesc}
+                            onChange={(e) => setNewDamageDesc(e.target.value)}
+                            placeholder="Description *"
+                          />
+                          <textarea
+                            className="hv-input hv-damage-textarea"
+                            value={newDamageNotes}
+                            onChange={(e) => setNewDamageNotes(e.target.value)}
+                            placeholder="Notes"
+                          />
+                          <label className="hv-damage-add-photos">
+                            <ImageIcon size={13} /> Fotos (
+                            {newDamageFiles.length})
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hv-damage-file-input"
+                              onChange={(e) => {
+                                if (e.target.files)
+                                  setNewDamageFiles(
+                                    Array.from(e.target.files),
+                                  );
+                              }}
+                              disabled={isSavingDamage}
+                            />
+                          </label>
+                          <button
+                            className="hv-btn-primary-modal center"
+                            onClick={handleAddDamage}
+                            disabled={isSavingDamage}
+                          >
+                            <Plus size={15} />{" "}
+                            {isSavingDamage ? "Guardando…" : "Guardar daño"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -5917,6 +6338,88 @@ export default function HousesView({
       )}
 
       {/* --- FIELD CONFIGURATION MODAL --- */}
+      {/* ⭐ MI HISTORIAL — casas asignadas al usuario (habilitado por rol) */}
+      {isHistoryOpen && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setIsHistoryOpen(false)}
+        >
+          <div
+            className="hv-history-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="hv-history-header">
+              <h3 className="hv-history-title">
+                <Clock size={18} /> Mi historial de casas asignadas
+              </h3>
+              <button
+                onClick={() => setIsHistoryOpen(false)}
+                className="hv-history-close"
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <p className="hv-history-sub">
+              {myHistoryHouses.length} casa(s) asignadas a ti (por trabajador o
+              por tu equipo), de la más reciente a la más antigua.
+            </p>
+            <div className="hv-history-body">
+              {myHistoryHouses.length === 0 ? (
+                <div className="hv-history-empty">
+                  No tienes casas asignadas en el historial.
+                </div>
+              ) : (
+                <ul className="hv-history-list">
+                  {myHistoryHouses.map((p) => {
+                    const st = statuses.find(
+                      (s) => s.id === p.statusId || s.name === p.statusId,
+                    );
+                    return (
+                      <li
+                        key={p.id}
+                        className="hv-history-card"
+                        onClick={() => {
+                          setIsHistoryOpen(false);
+                          handleOpenDetail(p);
+                        }}
+                        title="Ver detalle de la casa"
+                      >
+                        <div className="hv-history-main">
+                          <div className="hv-history-client">
+                            {getClientName(p.client)}
+                          </div>
+                          <div className="hv-history-address">
+                            <MapPin size={12} /> {p.address || "—"}
+                          </div>
+                        </div>
+                        <div className="hv-history-meta">
+                          <span className="hv-history-date">
+                            <CalendarDays size={12} />{" "}
+                            {p.scheduleDate
+                              ? formatDate(p.scheduleDate)
+                              : "Sin fecha"}
+                          </span>
+                          <span
+                            className="hv-history-status"
+                            style={
+                              {
+                                "--hst-color": st?.color || "#64748b",
+                              } as CSSProperties
+                            }
+                          >
+                            {st?.name || "—"}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isFieldConfigOpen && (
         <div
           className="modal-overlay-centered"

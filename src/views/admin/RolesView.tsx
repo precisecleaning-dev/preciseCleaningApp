@@ -43,7 +43,7 @@ const HOUSES_ELEMENT_GROUPS: { id: string; label: string; description: string }[
   { id: 'workflow', label: 'Workflow Buttons', description: 'Sync, Start Job, Mark Finished, status changes' },
   { id: 'financial', label: 'Financial Operations', description: 'Pay, Financial tab, billed services, payments' },
   { id: 'admin', label: 'Admin Actions', description: 'Edit, Delete, Duplicate, Quality Check, assign workers/team' },
-  { id: 'media', label: 'Media & Photos', description: 'Upload/delete photos, Export PDF, photo gallery' }
+  { id: 'media', label: 'Media & Photos', description: 'Upload/delete photos, Export PDF, photo gallery, Damages' }
 ];
 
 // ⭐ CAMPOS del formulario de Houses configurables como editable / solo lectura por rol.

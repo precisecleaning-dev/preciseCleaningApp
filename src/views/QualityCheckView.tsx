@@ -625,7 +625,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (String(statusModalSelected) === String(prevStatusId)) { setStatusModalHouse(null); return; }
     setSavingStatus(true);
     try {
-      await updateDoc(doc(db, 'properties', house.id), { statusId: statusModalSelected });
+      // ⭐ ¿El destino es el status "Invoice"? (resuelve por id o nombre contra
+      //    settings_statuses; '748aad00' es el id legacy de AppSheet para Invoice)
+      const targetSt = statuses.find((s: any) => String(s.id) === String(statusModalSelected) || String(s.name) === String(statusModalSelected));
+      const targetName = String(targetSt?.name || statusModalSelected || '').toLowerCase().trim();
+      const isInvoiceTarget = targetName === 'invoice' || String(statusModalSelected) === '748aad00';
+
+      // ⭐ Marca de ENVÍO A INVOICES desde QC: InvoicesView usa este timestamp
+      //    para poner estas casas DE PRIMERAS en su lista (más reciente arriba).
+      const updatePayload: Record<string, string> = { statusId: statusModalSelected };
+      if (isInvoiceTarget) updatePayload.sentToInvoiceAt = new Date().toISOString();
+
+      await updateDoc(doc(db, 'properties', house.id), updatePayload);
       try {
         await statusHistoryService.log({
           propertyId: house.id,

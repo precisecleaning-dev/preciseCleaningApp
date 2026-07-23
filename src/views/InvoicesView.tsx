@@ -494,7 +494,18 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceProps, customers]);
 
-  // Filtrado + orden por Schedule Date DESCENDENTE, memoizado
+  // ⭐ Marca de "enviada a Invoices desde QC" (ISO → ms, o null si no existe).
+  //    La escribe QualityCheckView (applyHouseStatusChange) al mover la casa a Invoice.
+  const toSentToInvoiceMs = (p: Property): number | null => {
+    const iso = (p as Property & { sentToInvoiceAt?: string | null }).sentToInvoiceAt;
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    return isNaN(t) ? null : t;
+  };
+
+  // Filtrado + orden, memoizado. ⭐ Las casas ENVIADAS DESDE QC van SIEMPRE de
+  // primeras (sentToInvoiceAt descendente); el resto conserva el orden por
+  // Schedule Date DESCENDENTE de siempre.
   const filteredProperties = useMemo(() => {
     const q = searchClient.toLowerCase();
     const startT = startDate ? parseDateForSort(startDate) : null;
@@ -510,6 +521,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       }
       return true;
     }).sort((a, b) => {
+      // ⭐ Prioridad 1: enviadas desde QC (sentToInvoiceAt), más reciente arriba
+      const sentA = toSentToInvoiceMs(a);
+      const sentB = toSentToInvoiceMs(b);
+      if (sentA !== null || sentB !== null) {
+        if (sentA === null) return 1;
+        if (sentB === null) return -1;
+        return sentB - sentA;
+      }
+      // Prioridad 2: el resto por Schedule Date descendente (comportamiento original)
       const hasA = !!a.scheduleDate;
       const hasB = !!b.scheduleDate;
       if (!hasA && !hasB) return 0;
