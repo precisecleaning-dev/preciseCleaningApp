@@ -1378,6 +1378,8 @@ export default function HousesView({
   const [newDamageNotes, setNewDamageNotes] = useState("");
   const [newDamageFiles, setNewDamageFiles] = useState<File[]>([]);
   const [isDamagesOpen, setIsDamagesOpen] = useState(false);
+  // ⭐ El formulario de nuevo daño vive COLAPSADO tras el botón "Agregar más daños"
+  const [isAddingDamage, setIsAddingDamage] = useState(false);
   const [editingDamageId, setEditingDamageId] = useState<string | null>(null);
   const [editDamageDesc, setEditDamageDesc] = useState("");
   const [editDamageNotes, setEditDamageNotes] = useState("");
@@ -1449,6 +1451,7 @@ export default function HousesView({
       setNewDamageDesc("");
       setNewDamageNotes("");
       setNewDamageFiles([]);
+      setIsAddingDamage(false);
     } catch (error) {
       console.error("Error guardando el daño:", error);
       const fbErr = error as { code?: string; message?: string };
@@ -5529,7 +5532,10 @@ export default function HousesView({
                     solo lectura = lo ve pero no agrega/edita. */}
                 {isElementVisible("card_damages") && (
                   <button
-                    onClick={() => setIsDamagesOpen(true)}
+                    onClick={() => {
+                      setIsAddingDamage(false);
+                      setIsDamagesOpen(true);
+                    }}
                     className="hv-btn-damages-modal"
                   >
                     <AlertTriangle size={16} /> Damages
@@ -6312,7 +6318,17 @@ export default function HousesView({
                 </ul>
               )}
 
-              {!isFieldRO("card_damages") && (
+              {!isFieldRO("card_damages") && !isAddingDamage && (
+                <button
+                  className="hv-damage-add-btn"
+                  onClick={() => setIsAddingDamage(true)}
+                >
+                  <Plus size={16} />{" "}
+                  {damages.length > 0 ? "Agregar más daños" : "Agregar daño"}
+                </button>
+              )}
+
+              {!isFieldRO("card_damages") && isAddingDamage && (
                 <div className="hv-damage-new">
                   <span className="hv-detail-label">REPORTAR NUEVO DAÑO</span>
                   <input
@@ -6341,14 +6357,28 @@ export default function HousesView({
                       disabled={isSavingDamage}
                     />
                   </label>
-                  <button
-                    className="hv-btn-primary-modal center"
-                    onClick={handleAddDamage}
-                    disabled={isSavingDamage}
-                  >
-                    <Plus size={15} />{" "}
-                    {isSavingDamage ? "Guardando…" : "Guardar daño"}
-                  </button>
+                  <div className="hv-damage-new-actions">
+                    <button
+                      className="hv-btn-outline-modal"
+                      onClick={() => {
+                        setIsAddingDamage(false);
+                        setNewDamageDesc("");
+                        setNewDamageNotes("");
+                        setNewDamageFiles([]);
+                      }}
+                      disabled={isSavingDamage}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      className="hv-btn-primary-modal"
+                      onClick={handleAddDamage}
+                      disabled={isSavingDamage}
+                    >
+                      <Plus size={15} />{" "}
+                      {isSavingDamage ? "Guardando…" : "Guardar daño"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

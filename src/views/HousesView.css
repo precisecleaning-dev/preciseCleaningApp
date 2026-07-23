@@ -638,3 +638,8 @@
 .hv-damages-modal-sub { margin: 10px 22px 0 22px; color: #64748b; font-size: 0.82rem; }
 .hv-damages-modal-body { padding: 14px 22px 22px 22px; overflow-y: auto; }
 @media (max-width: 640px) { .hv-damages-modal { max-height: 94vh; } }
+
+/* ⭐ Botón "Agregar más daños" (el formulario vive colapsado detrás) */
+.hv-damage-add-btn { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 14px; padding: 12px; border-radius: 10px; border: 1.5px dashed #fdba74; background: #fff7ed; color: #9a3412; font-weight: 700; font-size: 0.88rem; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
+.hv-damage-add-btn:hover { background: #ffedd5; border-color: #fb923c; }
+.hv-damage-new-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
