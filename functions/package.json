@@ -10,12 +10,14 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "main": "lib/index.js",
   "dependencies": {
+    "@googleapis/calendar": "^15.0.0",
     "firebase-admin": "^12.6.0",
-    "firebase-functions": "^6.1.0",
-    "googleapis": "^144.0.0"
+    "firebase-functions": "^6.1.0"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

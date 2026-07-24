@@ -15,19 +15,28 @@
       resumen a la cuenta configurada, usando la extensión Trigger Email
       (colección "mail") que ya usa la app.
 
-   AUTENTICACIÓN CON GOOGLE CALENDAR
-   Se usa la cuenta de servicio por defecto del proyecto (Application Default
-   Credentials). NO requiere archivos de llaves: solo hay que COMPARTIR el
-   calendario de account@precisecleaningtx.com con el email de la cuenta de
-   servicio, con permiso "Hacer cambios en los eventos".
+   AUTENTICACIÓN — OAuth de usuario con refresh token
+   La cuenta account@precisecleaningtx.com autoriza la app UNA SOLA VEZ desde
+   la pantalla de consentimiento normal de Google. El refresh token resultante
+   se guarda como secreto y las funciones renuevan solas el access_token.
+
+   Ventajas: NO requiere ser administrador del Workspace, NO requiere llaves
+   .json (bloqueadas por política), NO requiere compartir el calendario.
+
+   Secretos necesarios (ver INSTRUCCIONES):
+     GCAL_CLIENT_ID · GCAL_CLIENT_SECRET · GCAL_REFRESH_TOKEN
    ============================================================================ */
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 import * as admin from "firebase-admin";
-import { google, calendar_v3 } from "googleapis";
+// ⭐ Se importa SOLO la API de Calendar (@googleapis/calendar) en vez del
+//    paquete "googleapis" completo: este último carga cientos de APIs y hace
+//    que el despliegue falle con "Timeout after 10000" al analizar el código.
+import { auth as gauth, calendar, calendar_v3 } from "@googleapis/calendar";
 import * as crypto from "crypto";
 
 admin.initializeApp();
@@ -41,16 +50,66 @@ const TIMEZONE = "America/Chicago";
 // Documento donde se guarda el estado de la sincronización (syncToken + canal)
 const SYNC_STATE_DOC = "app_settings/gcal_sync";
 
+// ⭐ Credenciales OAuth del usuario dueño del calendario. Se cargan con:
+//    firebase functions:secrets:set GCAL_CLIENT_ID
+//    firebase functions:secrets:set GCAL_CLIENT_SECRET
+//    firebase functions:secrets:set GCAL_REFRESH_TOKEN
+const GCAL_CLIENT_ID = defineSecret("GCAL_CLIENT_ID");
+const GCAL_CLIENT_SECRET = defineSecret("GCAL_CLIENT_SECRET");
+const GCAL_REFRESH_TOKEN = defineSecret("GCAL_REFRESH_TOKEN");
+
+// URI de redirección usado al obtener el refresh token (OAuth Playground).
+// Debe COINCIDIR con el que se registró en el cliente OAuth.
+const OAUTH_REDIRECT =
+  process.env.GCAL_REDIRECT_URI ||
+  "https://developers.google.com/oauthplayground";
+
 // Error de la API de Google (para leer .code y .message sin usar any)
 type GoogleApiError = { code?: number; message?: string };
 
-// Cliente de Calendar autenticado con la cuenta de servicio del proyecto
+/**
+ * Cliente de Calendar autenticado COMO el usuario que dio el consentimiento.
+ * googleapis renueva el access_token automáticamente con el refresh token, así
+ * que no hay que gestionar caducidades a mano.
+ */
 async function getCalendarClient(): Promise<calendar_v3.Calendar> {
-  const auth = new google.auth.GoogleAuth({
-    scopes: ["https://www.googleapis.com/auth/calendar"],
-  });
-  return google.calendar({ version: "v3", auth });
+  const clientId = GCAL_CLIENT_ID.value();
+  const clientSecret = GCAL_CLIENT_SECRET.value();
+  const refreshToken = GCAL_REFRESH_TOKEN.value();
+
+  const faltantes: string[] = [];
+  if (!clientId) faltantes.push("GCAL_CLIENT_ID");
+  if (!clientSecret) faltantes.push("GCAL_CLIENT_SECRET");
+  if (!refreshToken) faltantes.push("GCAL_REFRESH_TOKEN");
+  if (faltantes.length) {
+    throw new Error(
+      `Faltan secretos: ${faltantes.join(", ")}. Cárgalos con: firebase functions:secrets:set <NOMBRE>`,
+    );
+  }
+
+  const oauth = new gauth.OAuth2(clientId, clientSecret, OAUTH_REDIRECT);
+  oauth.setCredentials({ refresh_token: refreshToken });
+
+  // Validación temprana: si el refresh token fue revocado, avisa con claridad
+  try {
+    await oauth.getAccessToken();
+  } catch (err) {
+    const e = err as GoogleApiError;
+    throw new Error(
+      `No se pudo renovar el acceso a Google Calendar (${e.message || String(err)}). ` +
+        "El refresh token puede haber sido revocado: vuelve a generarlo siguiendo las instrucciones y recarga el secreto GCAL_REFRESH_TOKEN.",
+    );
+  }
+
+  return calendar({ version: "v3", auth: oauth });
 }
+
+// Secretos que necesitan las funciones que hablan con Calendar
+const CALENDAR_SECRETS = [
+  GCAL_CLIENT_ID,
+  GCAL_CLIENT_SECRET,
+  GCAL_REFRESH_TOKEN,
+];
 
 // ---------------------------------------------------------------------------
 // Helpers de fecha/hora
@@ -92,7 +151,7 @@ function parseGoogleDate(
 //    data: { houseId, clientName }
 // ===========================================================================
 export const synchousetocalendar = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: CALENDAR_SECRETS },
   async (request) => {
     const { houseId, clientName } = (request.data || {}) as {
       houseId?: string;
@@ -150,7 +209,17 @@ export const synchousetocalendar = onCall(
       extendedProperties: { private: { houseId } },
     };
 
-    const calendar = await getCalendarClient();
+    let calendar: calendar_v3.Calendar;
+    try {
+      calendar = await getCalendarClient();
+    } catch (err) {
+      const e = err as GoogleApiError;
+      logger.error("No se pudo autenticar con Google Calendar:", err);
+      throw new HttpsError(
+        "internal",
+        `Autenticación con Google Calendar fallida: ${e.message || String(err)}`,
+      );
+    }
     let eventId: string | null | undefined = house.gcalEventId || null;
 
     try {
@@ -200,7 +269,7 @@ export const synchousetocalendar = onCall(
 // 2) calendarwebhook — Google avisa aquí cuando algo cambia en el calendario
 // ===========================================================================
 export const calendarwebhook = onRequest(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: CALENDAR_SECRETS },
   async (req, res) => {
     // Google manda headers; el body llega vacío. Respondemos 200 SIEMPRE y
     // rápido para que Google no reintente, y luego procesamos.
@@ -318,7 +387,7 @@ async function runIncrementalSync(): Promise<void> {
 //    deploy, y cuando quieras re-crearlo manualmente)
 // ===========================================================================
 export const setupcalendarwatch = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: CALENDAR_SECRETS },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
@@ -330,8 +399,19 @@ export const setupcalendarwatch = onCall(
         "Configura CALENDAR_WEBHOOK_URL en functions/.env (la URL de calendarwebhook) y vuelve a desplegar.",
       );
     }
-    const info = await createWatchChannel(url);
-    return { ok: true, ...info };
+    // ⭐ Se devuelve el MOTIVO real al cliente: sin esto Firebase responde solo
+    //    "internal" y hay que ir a los logs para saber qué pasó.
+    try {
+      const info = await createWatchChannel(url);
+      return { ok: true, ...info };
+    } catch (err) {
+      const e = err as GoogleApiError;
+      logger.error("setupcalendarwatch falló:", err);
+      throw new HttpsError(
+        "internal",
+        `No se pudo crear el watch: ${e.message || String(err)}`,
+      );
+    }
   },
 );
 
@@ -387,7 +467,12 @@ async function createWatchChannel(
 // 4) renewcalendarwatch — renovación diaria automática del canal
 // ===========================================================================
 export const renewcalendarwatch = onSchedule(
-  { schedule: "every 24 hours", region: "us-central1", timeZone: TIMEZONE },
+  {
+    schedule: "every 24 hours",
+    region: "us-central1",
+    timeZone: TIMEZONE,
+    secrets: CALENDAR_SECRETS,
+  },
   async () => {
     const stateSnap = await db.doc(SYNC_STATE_DOC).get();
     const url =
