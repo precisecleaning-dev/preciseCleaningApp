@@ -5680,20 +5680,19 @@ export default function HousesView({
                   )}
               </div>
               <div className="hv-footer-actions">
-                {/* ⭐ TEMPORAL: pruebas de Cloud Functions (solo Super Admin).
-                    Borrar este botón cuando todo esté verificado. */}
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => {
-                      setCfTestLog([]);
-                      setIsCfTestOpen(true);
-                    }}
-                    className="hv-btn-cftest"
-                    title="Probar las Cloud Functions de Calendar y email de QC"
-                  >
-                    <Zap size={16} /> Probar functions
-                  </button>
-                )}
+                {/* ⭐ TEMPORAL: pruebas de Cloud Functions. Visible para TODOS
+                    mientras se verifica el despliegue. Borrar este botón (y su
+                    modal, más abajo) cuando todo esté confirmado. */}
+                <button
+                  onClick={() => {
+                    setCfTestLog([]);
+                    setIsCfTestOpen(true);
+                  }}
+                  className="hv-btn-cftest"
+                  title="Probar las Cloud Functions de Calendar y email de QC"
+                >
+                  <Zap size={16} /> Probar functions
+                </button>
                 {/* ⭐ DAMAGES: abre el modal de daños. Se controla SOLO con el
                     elemento "card_damages" del configurador: visible = lo ve;
                     solo lectura = lo ve pero no agrega/edita. */}
