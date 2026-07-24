@@ -218,6 +218,11 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
 
 // ⭐ Registro de la colección 'damages': daños reportados por casa.
 //    Campos pedidos: ID (doc id), Description, Notes, Photos (varias).
+// ⭐ Property con el campo `unit` (Unit/Apto). Se declara aquí para no tener
+//    que modificar types/index.ts; si prefieres, agrega `unit?: string;` al
+//    tipo Property y este alias sigue funcionando igual.
+type PropertyU = Property & { unit?: string };
+
 type DamageRecord = {
   id: string;
   houseId: string;
@@ -1771,7 +1776,7 @@ export default function HousesView({
           .includes(q),
       );
       // ⭐ El número de unidad/apto también es buscable
-      const unitMatch = String(p.unit || "")
+      const unitMatch = String((p as PropertyU).unit || "")
         .toLowerCase()
         .includes(q);
       passSearch = addressMatch || clientMatch || noteMatch || unitMatch;
@@ -3966,21 +3971,44 @@ export default function HousesView({
                         <label className="hv-label">
                           Address <span className="hv-required">*</span>
                         </label>
-                        <div className="hv-input-wrap">
-                          <MapPin className="hv-input-icon" size={16} />
-                          <input
-                            type="text"
-                            className="hv-input"
-                            placeholder="Enter full address..."
-                            value={formData.address}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                address: e.target.value,
-                              })
-                            }
-                            disabled={isFieldRO("address")}
-                          />
+                        {/* ⭐ Dirección + Unit/Apto en la misma fila: la unidad se
+                            captura aparte para poder buscarla y para que el mapa
+                            reciba la dirección limpia. */}
+                        <div className="hv-address-row">
+                          <div className="hv-input-wrap hv-address-main">
+                            <MapPin className="hv-input-icon" size={16} />
+                            <input
+                              type="text"
+                              className="hv-input"
+                              placeholder="Enter full address..."
+                              value={formData.address}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  address: e.target.value,
+                                })
+                              }
+                              disabled={isFieldRO("address")}
+                            />
+                          </div>
+                          {isElementVisible("unit") && (
+                            <div className="hv-input-wrap hv-address-unit">
+                              <Hash className="hv-input-icon" size={16} />
+                              <input
+                                type="text"
+                                className="hv-input"
+                                placeholder="Unit / Apto"
+                                value={(formData as PropertyU).unit || ""}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    unit: e.target.value,
+                                  } as Property)
+                                }
+                                disabled={isFieldRO("unit")}
+                              />
+                            </div>
+                          )}
                         </div>
                         {/* ⭐ Mapa de la dirección (aparece al escribirla; sin API key) */}
                         {mapAddress && (
@@ -4862,6 +4890,12 @@ export default function HousesView({
               {isElementVisible("address") && (
                 <div className="hv-detail-address-row">
                   <MapPin size={18} color="#3b82f6" /> {selectedHouse.address}
+                  {isElementVisible("unit") &&
+                    (selectedHouse as PropertyU).unit && (
+                      <span className="hv-detail-unit-badge">
+                        <Hash size={12} /> {(selectedHouse as PropertyU).unit}
+                      </span>
+                    )}
                 </div>
               )}
 
