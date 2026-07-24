@@ -1076,4 +1076,4 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
     </div>
   );
-}
+} 

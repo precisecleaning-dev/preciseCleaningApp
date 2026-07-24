@@ -643,3 +643,24 @@
 .hv-damage-add-btn { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 14px; padding: 12px; border-radius: 10px; border: 1.5px dashed #fdba74; background: #fff7ed; color: #9a3412; font-weight: 700; font-size: 0.88rem; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
 .hv-damage-add-btn:hover { background: #ffedd5; border-color: #fb923c; }
 .hv-damage-new-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
+/* ⭐ TEMPORAL — Panel de pruebas de Cloud Functions (borrar cuando ya no se use) */
+.hv-btn-cftest { display: inline-flex; align-items: center; gap: 7px; background-color: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; padding: 10px 16px; border-radius: 8px; font-weight: 700; font-size: 0.86rem; cursor: pointer; }
+.hv-btn-cftest:hover { background-color: #ede9fe; }
+.hv-cftest-modal { background-color: #ffffff; width: 100%; max-width: 560px; border-radius: 16px; display: flex; flex-direction: column; max-height: 88vh; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+.hv-cftest-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid #f1f5f9; }
+.hv-cftest-title { margin: 0; font-size: 1.05rem; font-weight: 700; color: #6d28d9; display: flex; align-items: center; gap: 8px; }
+.hv-cftest-close { background: none; border: none; cursor: pointer; color: #64748b; display: flex; padding: 4px; }
+.hv-cftest-close:disabled { opacity: 0.4; cursor: wait; }
+.hv-cftest-body { padding: 16px 22px 22px 22px; overflow-y: auto; }
+.hv-cftest-hint { margin: 0 0 14px 0; font-size: 0.84rem; color: #64748b; }
+.hv-cftest-actions { display: flex; flex-direction: column; gap: 4px; }
+.hv-cftest-btn { width: 100%; text-align: left; margin-top: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #0f172a; font-weight: 700; font-size: 0.88rem; cursor: pointer; }
+.hv-cftest-btn:hover:not(:disabled) { background: #f1f5f9; border-color: #cbd5e1; }
+.hv-cftest-btn:disabled { opacity: 0.5; cursor: wait; }
+.hv-cftest-btn.primary { background: #6d28d9; border-color: #6d28d9; color: #ffffff; }
+.hv-cftest-btn.primary:hover:not(:disabled) { background: #5b21b6; border-color: #5b21b6; }
+.hv-cftest-note { font-size: 0.75rem; color: #94a3b8; line-height: 1.4; padding-left: 2px; }
+.hv-cftest-log { margin-top: 18px; background: #0f172a; border-radius: 10px; padding: 12px 14px; min-height: 120px; max-height: 240px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Monaco, Consolas, monospace; font-size: 0.76rem; line-height: 1.6; }
+.hv-cftest-log-empty { color: #64748b; font-style: italic; }
+.hv-cftest-log-line { color: #e2e8f0; word-break: break-word; margin-bottom: 2px; }

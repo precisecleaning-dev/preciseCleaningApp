@@ -8,6 +8,7 @@ import {
   X,
   Edit2,
   Trash2,
+  Zap,
   Activity,
   FileText,
   CalendarDays,
@@ -63,6 +64,7 @@ import type {
 
 import { propertiesService } from "../services/propertiesService";
 import { storageService } from "../services/storageService";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
 import type { PhotoConfig } from "../services/photoConfigService";
@@ -1377,6 +1379,131 @@ export default function HousesView({
   const [newDamageDesc, setNewDamageDesc] = useState("");
   const [newDamageNotes, setNewDamageNotes] = useState("");
   const [newDamageFiles, setNewDamageFiles] = useState<File[]>([]);
+  // ============================================================================
+  // ⭐ PANEL DE PRUEBAS DE CLOUD FUNCTIONS (temporal, solo Super Admin)
+  //    Sirve para: activar el watch del calendario (paso único tras el deploy),
+  //    probar la sincronización y probar el email automático de Quality Check.
+  //    Cuando todo esté verificado, se puede borrar este bloque y su botón.
+  // ============================================================================
+  const [isCfTestOpen, setIsCfTestOpen] = useState(false);
+  const [cfTestLog, setCfTestLog] = useState<string[]>([]);
+  const [isCfTesting, setIsCfTesting] = useState(false);
+
+  const cfLog = (line: string) =>
+    setCfTestLog((prev) => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] ${line}`,
+    ]);
+
+  const cfErrorText = (err: unknown): string => {
+    const e = err as { code?: string; message?: string };
+    return `${e.code ? `(${e.code}) ` : ""}${e.message || String(err)}`;
+  };
+
+  // 1) Activa el canal de avisos de Google Calendar (se hace UNA sola vez)
+  const handleCfActivateWatch = async () => {
+    setIsCfTesting(true);
+    cfLog("Activando watch del calendario…");
+    try {
+      const call = httpsCallable(getFunctions(), "setupcalendarwatch");
+      const res = (await call({})) as {
+        data?: { ok?: boolean; channelId?: string; expiration?: string };
+      };
+      if (res?.data?.ok) {
+        cfLog(`✅ Watch activo. Canal: ${res.data.channelId}`);
+        cfLog(
+          "A partir de ahora, editar un evento en Google Calendar actualiza la casa.",
+        );
+      } else {
+        cfLog(`⚠️ Respuesta inesperada: ${JSON.stringify(res?.data)}`);
+      }
+    } catch (err) {
+      cfLog(`❌ Error: ${cfErrorText(err)}`);
+    } finally {
+      setIsCfTesting(false);
+    }
+  };
+
+  // 2) Sincroniza ESTA casa con Google Calendar vía Cloud Function
+  const handleCfTestSync = async () => {
+    if (!selectedHouse) return;
+    if (!selectedHouse.scheduleDate || !selectedHouse.timeIn) {
+      cfLog("⚠️ Esta casa necesita Schedule Date y Time In para sincronizar.");
+      return;
+    }
+    setIsCfTesting(true);
+    cfLog("Sincronizando esta casa con Google Calendar…");
+    try {
+      const call = httpsCallable(getFunctions(), "synchousetocalendar");
+      const res = (await call({
+        houseId: selectedHouse.id,
+        clientName: getClientName(selectedHouse.client),
+      })) as { data?: { ok?: boolean; eventId?: string } };
+      if (res?.data?.ok) {
+        cfLog(`✅ Evento creado/actualizado. ID: ${res.data.eventId}`);
+        cfLog(
+          "Revisa el calendario. Cambia la hora del evento y vuelve a abrir esta casa en ~30 s.",
+        );
+      } else {
+        cfLog(`⚠️ Respuesta inesperada: ${JSON.stringify(res?.data)}`);
+      }
+    } catch (err) {
+      cfLog(`❌ Error: ${cfErrorText(err)}`);
+    } finally {
+      setIsCfTesting(false);
+    }
+  };
+
+  // 3) Prueba el email automático de Quality Check: crea un registro de prueba
+  //    con status "Finished" (eso dispara la función) y lo borra al terminar.
+  const handleCfTestQcEmail = async () => {
+    if (!selectedHouse) return;
+    setIsCfTesting(true);
+    cfLog("Creando un Quality Check de PRUEBA (status Finished)…");
+    let tempId = "";
+    try {
+      const ref = await addDoc(collection(db, "quality_checks"), {
+        client: selectedHouse.client || "",
+        address: `[PRUEBA] ${selectedHouse.address || ""}`,
+        team: "Prueba",
+        inspector: currentUser
+          ? `${currentUser.firstName} ${currentUser.lastName}`
+          : "Prueba",
+        date: new Date().toISOString().slice(0, 10),
+        status: "Finished",
+        result: "passed",
+        durationMinutes: 1,
+        qcData: {},
+        createdAt: new Date().toISOString(),
+        isTestRecord: true,
+      });
+      tempId = ref.id;
+      cfLog(`Registro creado (${tempId}). Esperando a la función…`);
+
+      // La función corre en segundo plano; se le dan unos segundos.
+      await new Promise((r) => setTimeout(r, 9000));
+      cfLog("✅ Listo. Revisa la bandeja del correo configurado.");
+      cfLog(
+        "Si no llega: firebase functions:log  → busca onqualitycheckfinished",
+      );
+    } catch (err) {
+      cfLog(`❌ Error creando el registro: ${cfErrorText(err)}`);
+    } finally {
+      // Borrar el registro de prueba para que no ensucie la pestaña Reportes
+      if (tempId) {
+        try {
+          await deleteDoc(doc(db, "quality_checks", tempId));
+          cfLog("🧹 Registro de prueba eliminado.");
+        } catch {
+          cfLog(
+            `⚠️ No se pudo borrar el registro de prueba (${tempId}). Bórralo a mano en Reportes.`,
+          );
+        }
+      }
+      setIsCfTesting(false);
+    }
+  };
+
   const [isDamagesOpen, setIsDamagesOpen] = useState(false);
   // ⭐ El formulario de nuevo daño vive COLAPSADO tras el botón "Agregar más daños"
   const [isAddingDamage, setIsAddingDamage] = useState(false);
@@ -1874,7 +2001,7 @@ export default function HousesView({
     }
   };
 
-  const handleGoogleCalendarSync = () => {
+  const handleGoogleCalendarSync = async () => {
     if (
       !selectedHouse ||
       !selectedHouse.scheduleDate ||
@@ -1883,6 +2010,32 @@ export default function HousesView({
       return alert(
         "Por favor asegúrate de que la propiedad tenga fecha de Schedule y hora Time In.",
       );
+    }
+
+    // ⭐ VÍA API (Cloud Function synchousetocalendar): crea/actualiza el evento
+    //    y guarda gcalEventId en la casa. Con ese vínculo, las EDICIONES hechas
+    //    en Google Calendar regresan solas a la app (webhook calendarwebhook).
+    try {
+      setIsSaving(true);
+      const call = httpsCallable(getFunctions(), "synchousetocalendar");
+      const res = (await call({
+        houseId: selectedHouse.id,
+        clientName: getClientName(selectedHouse.client),
+      })) as { data?: { ok?: boolean; eventId?: string } };
+      if (res?.data?.ok) {
+        alert(
+          "✅ Evento sincronizado con Google Calendar.\n\nSi lo editas en el calendario (fecha, horas, dirección o nota), el cambio regresará a la app automáticamente.",
+        );
+        return;
+      }
+    } catch (fnErr) {
+      // Función no desplegada o sin permisos: usar el método manual de siempre
+      console.warn(
+        "synchousetocalendar no disponible; usando el método manual:",
+        fnErr,
+      );
+    } finally {
+      setIsSaving(false);
     }
     // ⭐ Hora "flotante" (local) exacta: respeta Time In y Time Out tal cual, sin
     //    convertir a UTC. Google Calendar interpreta YYYYMMDDTHHMMSS (sin 'Z') en la
@@ -5527,6 +5680,20 @@ export default function HousesView({
                   )}
               </div>
               <div className="hv-footer-actions">
+                {/* ⭐ TEMPORAL: pruebas de Cloud Functions (solo Super Admin).
+                    Borrar este botón cuando todo esté verificado. */}
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => {
+                      setCfTestLog([]);
+                      setIsCfTestOpen(true);
+                    }}
+                    className="hv-btn-cftest"
+                    title="Probar las Cloud Functions de Calendar y email de QC"
+                  >
+                    <Zap size={16} /> Probar functions
+                  </button>
+                )}
                 {/* ⭐ DAMAGES: abre el modal de daños. Se controla SOLO con el
                     elemento "card_damages" del configurador: visible = lo ve;
                     solo lectura = lo ve pero no agrega/edita. */}
@@ -6158,6 +6325,89 @@ export default function HousesView({
       )}
 
       {/* --- FIELD CONFIGURATION MODAL --- */}
+      {/* ⭐ MODAL TEMPORAL — PRUEBAS DE CLOUD FUNCTIONS (solo Super Admin) */}
+      {isCfTestOpen && selectedHouse && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => !isCfTesting && setIsCfTestOpen(false)}
+        >
+          <div className="hv-cftest-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-cftest-header">
+              <h3 className="hv-cftest-title">
+                <Zap size={18} /> Pruebas de Cloud Functions
+              </h3>
+              <button
+                className="hv-cftest-close"
+                onClick={() => setIsCfTestOpen(false)}
+                disabled={isCfTesting}
+              >
+                <X size={22} />
+              </button>
+            </header>
+
+            <div className="hv-cftest-body">
+              <p className="hv-cftest-hint">
+                Casa: <b>{getClientName(selectedHouse.client)}</b> ·{" "}
+                {selectedHouse.address || "—"}
+              </p>
+
+              <div className="hv-cftest-actions">
+                <button
+                  className="hv-cftest-btn primary"
+                  onClick={handleCfActivateWatch}
+                  disabled={isCfTesting}
+                >
+                  1 · Activar watch del calendario
+                </button>
+                <span className="hv-cftest-note">
+                  Solo la primera vez. Habilita que las ediciones hechas en
+                  Google Calendar regresen a la app.
+                </span>
+
+                <button
+                  className="hv-cftest-btn"
+                  onClick={handleCfTestSync}
+                  disabled={isCfTesting}
+                >
+                  2 · Sincronizar esta casa con Calendar
+                </button>
+                <span className="hv-cftest-note">
+                  Crea el evento vía API y guarda el vínculo en la casa.
+                </span>
+
+                <button
+                  className="hv-cftest-btn"
+                  onClick={handleCfTestQcEmail}
+                  disabled={isCfTesting}
+                >
+                  3 · Probar email de Quality Check
+                </button>
+                <span className="hv-cftest-note">
+                  Crea un QC de prueba, dispara el email y borra el registro.
+                </span>
+              </div>
+
+              <div className="hv-cftest-log">
+                {cfTestLog.length === 0 ? (
+                  <span className="hv-cftest-log-empty">
+                    Los resultados aparecerán aquí…
+                  </span>
+                ) : (
+                  cfTestLog.map((line, i) => (
+                    <div key={i} className="hv-cftest-log-line">
+                      {line}
+                    </div>
+                  ))
+                )}
+                {isCfTesting && (
+                  <div className="hv-cftest-log-line">⏳ Ejecutando…</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ⭐ MODAL DAMAGES — daños reportados de la casa (colección 'damages').
           Permisos SOLO por configurador: card_damages visible = ver;
           NO solo-lectura = agregar/editar/eliminar. */}
