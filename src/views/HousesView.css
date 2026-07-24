@@ -664,3 +664,14 @@
 .hv-cftest-log { margin-top: 18px; background: #0f172a; border-radius: 10px; padding: 12px 14px; min-height: 120px; max-height: 240px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Monaco, Consolas, monospace; font-size: 0.76rem; line-height: 1.6; }
 .hv-cftest-log-empty { color: #64748b; font-style: italic; }
 .hv-cftest-log-line { color: #e2e8f0; word-break: break-word; margin-bottom: 2px; }
+
+/* ⭐ Fila Address + Unit/Apto (el Unit ocupa un ancho fijo a la derecha) */
+.hv-address-row { display: flex; gap: 10px; align-items: flex-start; }
+.hv-address-main { flex: 1; min-width: 0; }
+.hv-address-unit { flex: 0 0 150px; }
+.hv-detail-unit-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding: 2px 10px; border-radius: 12px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+
+@media (max-width: 640px) {
+  .hv-address-row { flex-direction: column; }
+  .hv-address-unit { flex: 1 1 auto; width: 100%; }
+}

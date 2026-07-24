@@ -148,6 +148,7 @@ type ConfigurableElement = { id: string; label: string; section: string };
 const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   { id: "client", label: "Client", section: "General Info" },
   { id: "address", label: "Address", section: "General Info" },
+  { id: "unit", label: "Unit / Apto", section: "General Info" },
   { id: "receiveDate", label: "Receive Date", section: "Schedule" },
   { id: "scheduleDate", label: "Schedule Date", section: "Schedule" },
   { id: "dateOfIssue", label: "Date of Issue", section: "Schedule" },
@@ -1769,7 +1770,11 @@ export default function HousesView({
           .toLowerCase()
           .includes(q),
       );
-      passSearch = addressMatch || clientMatch || noteMatch;
+      // ⭐ El número de unidad/apto también es buscable
+      const unitMatch = String(p.unit || "")
+        .toLowerCase()
+        .includes(q);
+      passSearch = addressMatch || clientMatch || noteMatch || unitMatch;
     }
 
     return (
