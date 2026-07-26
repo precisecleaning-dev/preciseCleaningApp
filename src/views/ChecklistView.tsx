@@ -3,13 +3,16 @@ import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
   Upload, Loader2, Search, Check, Save, Clock, Plus, StickyNote, Menu,
+  Printer, Mail,
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task, Customer } from '../types/index';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { compressImage } from '../utils/imageCompression';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+// ⭐ Mismo generador de PDF/HTML que usa Quality Check (formato idéntico)
+import { exportQCReportPDF, type QCPdfBranding } from '../utils/qcReportPdf';
 // ⭐ Se REUSA el CSS del Quality Check para tener EXACTAMENTE el mismo formato.
 import './QualityCheckView.css';
 import './ChecklistView.css';
@@ -70,6 +73,11 @@ export default function ChecklistView({
   const [clList, setClList] = useState<ChecklistRecord[]>([]);
   const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  // ⭐ PDF / Email (misma mecánica que Quality Check)
+  const [branding, setBranding] = useState<QCPdfBranding>({ name: 'Precise Cleaning' });
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [exportingForClId, setExportingForClId] = useState<string | null>(null);
+  const [sendingForClId, setSendingForClId] = useState<string | null>(null);
 
   // Filtros de la vista
   const [tableSearch, setTableSearch] = useState('');
@@ -110,6 +118,21 @@ export default function ChecklistView({
             .map((d) => ({ id: d.id, ...d.data() } as ChecklistRecord))
             .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
         );
+        // Branding de la empresa para el PDF y el email
+        try {
+          const companySnap = await getDoc(doc(db, 'settings_company', 'main'));
+          if (companySnap.exists()) {
+            const d = companySnap.data() as {
+              name?: string; address?: string; logo?: string; email?: string;
+            };
+            setBranding({
+              name: d.name || 'Precise Cleaning',
+              address: d.address || '',
+              logo: d.logo || '',
+              email: d.email || '',
+            });
+          }
+        } catch { /* branding por defecto */ }
       } catch (err) {
         console.error('Error cargando checklist:', err);
       } finally {
@@ -405,6 +428,97 @@ export default function ChecklistView({
     }
   };
 
+  // ── PDF / Email (mismo formato que Quality Check) ─────────────────────────
+  //    El shape de clData es idéntico al de qcData, así que se reusa el mismo
+  //    generador; el PDF sale con el layout del reporte de Quality Check.
+  const pdfArgsFor = (rec: ChecklistRecord) => ({
+    house: { address: rec.address || '' },
+    clientName: getClientName(rec.client),
+    teamName: rec.team || '—',
+    qcData: rec.clData || {},
+    inspectorName: rec.inspector || 'Unknown',
+    recordDate: rec.date,
+    places,
+    tasks,
+    branding,
+  });
+
+  // Registro temporal con lo que está en el modal (aún sin guardar)
+  const currentRecord = (): ChecklistRecord | null => {
+    if (!selectedHouse) return null;
+    const dataToSend: Record<string, PlaceData> = {};
+    selectedPlaceIds.forEach((pid) => { dataToSend[pid] = clData[pid] || {}; });
+    return {
+      houseId: selectedHouse.id,
+      date: new Date().toISOString().slice(0, 10),
+      address: selectedHouse.address || '',
+      client: selectedHouse.client || '',
+      team: getTeamNameForHouse(selectedHouse),
+      inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+      selectedPlaces: selectedPlaceIds,
+      clData: dataToSend,
+    };
+  };
+
+  const handleExportPdf = async (rec: ChecklistRecord) => {
+    setExportingForClId(rec.id || '__modal__');
+    setIsExportingPDF(true);
+    try {
+      await exportQCReportPDF(pdfArgsFor(rec));
+    } catch (err) {
+      console.error('Error exportando el PDF del checklist:', err);
+      alert('No se pudo generar el PDF.');
+    } finally {
+      setIsExportingPDF(false);
+      setExportingForClId(null);
+    }
+  };
+
+  const handleExportFromModal = () => {
+    const rec = currentRecord();
+    if (!rec) return;
+    if (selectedPlaceIds.length === 0) {
+      alert('Selecciona al menos un área para generar el PDF.');
+      return;
+    }
+    void handleExportPdf(rec);
+  };
+
+  const handleSendEmail = async (rec: ChecklistRecord) => {
+    const to = branding.email;
+    if (!to) {
+      alert('No hay un email de empresa configurado. Ve a la sección Empresa y captura el email para poder enviar el checklist.');
+      return;
+    }
+    if (!window.confirm(`¿Enviar este checklist por email a ${to}?`)) return;
+    setSendingForClId(rec.id || '__modal__');
+    try {
+      const html = await exportQCReportPDF({ ...pdfArgsFor(rec), returnHtml: true });
+      if (!html || typeof html !== 'string') {
+        alert('Este checklist no tiene datos para enviar (sin tareas, notas ni fotos).');
+        return;
+      }
+      const subject = `Checklist - ${getClientName(rec.client)} (${rec.date})`;
+      await addDoc(collection(db, 'mail'), { to, message: { subject, html } });
+      alert(`📧 Checklist enviado a ${to}.`);
+    } catch (err) {
+      console.error('Error enviando el checklist por email:', err);
+      alert('No se pudo enviar el checklist por email.');
+    } finally {
+      setSendingForClId(null);
+    }
+  };
+
+  const handleEmailFromModal = () => {
+    const rec = currentRecord();
+    if (!rec) return;
+    if (selectedPlaceIds.length === 0) {
+      alert('Selecciona al menos un área para enviar el checklist.');
+      return;
+    }
+    void handleSendEmail(rec);
+  };
+
   const handleDeleteChecklist = async (id?: string) => {
     if (!id) return;
     if (!window.confirm('¿Eliminar este checklist? Esta acción no se puede deshacer.')) return;
@@ -586,6 +700,12 @@ export default function ChecklistView({
                       </td>
                       <td className="qcv-td actions">
                         <div className="qcv-row-actions">
+                          <button onClick={() => handleExportPdf(rec)} title="Exportar PDF" disabled={exportingForClId === rec.id} className="qcv-row-icon-btn">
+                            {exportingForClId === rec.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
+                          </button>
+                          <button onClick={() => handleSendEmail(rec)} title="Enviar por email" disabled={sendingForClId === rec.id} className="qcv-row-icon-btn email">
+                            {sendingForClId === rec.id ? <Loader2 size={16} className="spin-qc" /> : <Mail size={16} />}
+                          </button>
                           <button onClick={() => handleEditChecklist(rec)} title="Editar" className="qcv-row-icon-btn edit">
                             <Edit2 size={16} />
                           </button>
@@ -626,6 +746,12 @@ export default function ChecklistView({
                 <span className="qcv-record-meta-item"><Clock size={14} color="#94a3b8" /> {fmtDuration(rec.durationMinutes)}</span>
               </div>
               <div className="qcv-row-actions cl-card-actions">
+                <button onClick={() => handleExportPdf(rec)} disabled={exportingForClId === rec.id} className="qcv-row-icon-btn">
+                  {exportingForClId === rec.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
+                </button>
+                <button onClick={() => handleSendEmail(rec)} disabled={sendingForClId === rec.id} className="qcv-row-icon-btn email">
+                  {sendingForClId === rec.id ? <Loader2 size={16} className="spin-qc" /> : <Mail size={16} />}
+                </button>
                 <button onClick={() => handleEditChecklist(rec)} className="qcv-row-icon-btn edit"><Edit2 size={16} /></button>
                 <button onClick={() => handleDeleteChecklist(rec.id)} className="qcv-row-icon-btn delete"><Trash2 size={16} /></button>
               </div>
@@ -650,6 +776,14 @@ export default function ChecklistView({
                 </p>
               </div>
               <div className="qcv-im-header-actions">
+                <button onClick={handleExportFromModal} title="Exportar PDF" disabled={isExportingPDF} className="qcv-im-header-btn">
+                  {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
+                  <span className="qc-export-label">PDF</span>
+                </button>
+                <button onClick={handleEmailFromModal} title="Enviar por email" disabled={sendingForClId === '__modal__'} className="qcv-im-header-btn">
+                  {sendingForClId === '__modal__' ? <Loader2 size={16} className="spin-qc" /> : <Mail size={16} />}
+                  <span className="qc-export-label">Email</span>
+                </button>
                 <button onClick={handleCloseForm} className="qcv-im-close-btn" aria-label="Cerrar"><X size={22} /></button>
               </div>
             </div>
