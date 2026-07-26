@@ -1,100 +1,36 @@
 /* ============================================================================
-   ChecklistView.css — estilos EXCLUSIVOS del Checklist (prefijo .cl-).
-   No mezclar con clases de otras vistas.
+   ChecklistView.css — SOLO los estilos propios del Checklist.
+   ----------------------------------------------------------------------------
+   ⚠️ El formato base (layout, tarjetas, modal, tabla) viene de
+   QualityCheckView.css, que ChecklistView.tsx importa a propósito para tener
+   EXACTAMENTE el mismo formato que Quality Check. Aquí solo van los ajustes
+   específicos del checklist (prefijo .cl-). No pegar aquí clases .qc-/.qcv-.
    ============================================================================ */
 
-.cl-page { padding: 20px; box-sizing: border-box; overflow-x: hidden; max-width: 100%; }
+/* Contador de tareas marcadas por área, en el título de la tarjeta */
+.cl-place-counter {
+  margin-left: 10px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
 
-.cl-header { display: flex; align-items: center; margin-bottom: 20px; }
-.cl-header-title-group { display: flex; align-items: center; gap: 14px; }
-.cl-hamburger { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; }
-.cl-title { margin: 0; color: #111827; font-size: 1.7rem; font-weight: 700; display: flex; align-items: center; gap: 9px; }
-.cl-subtitle { margin: 4px 0 0 0; color: #6b7280; font-size: 0.92rem; }
+/* Botón "Yes" único (no hay "No"): ocupa más ancho y muestra el check */
+.cl-yes-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 86px;
+}
 
-/* Caja de búsqueda de casa */
-.cl-newbox { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; margin-bottom: 18px; }
-.cl-search-wrap { position: relative; }
-.cl-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
-.cl-search-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 40px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 0.92rem; outline: none; }
-.cl-search-input:focus { border-color: #3b82f6; }
-
-.cl-house-results { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
-.cl-house-result { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 10px 14px; border: 1px solid #eef2f7; border-radius: 10px; background: #f8fafc; cursor: pointer; }
-.cl-house-result:hover { background: #eff6ff; border-color: #bfdbfe; }
-.cl-house-client { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
-.cl-house-address { display: flex; align-items: center; gap: 5px; color: #64748b; font-size: 0.8rem; }
-.cl-house-empty { color: #94a3b8; font-style: italic; padding: 12px; text-align: center; }
-
-/* Historial */
-.cl-list-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 8px; }
-.cl-empty { text-align: center; color: #94a3b8; font-style: italic; padding: 34px 16px; }
-.cl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.cl-list-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background-color 0.12s; }
-.cl-list-item:last-child { border-bottom: none; }
-.cl-list-item:hover { background: #f8fafc; }
-.cl-list-main { flex: 1; min-width: 0; }
-.cl-list-client { font-weight: 700; color: #0f172a; font-size: 0.92rem; }
-.cl-list-address { display: flex; align-items: center; gap: 5px; color: #64748b; font-size: 0.8rem; margin-top: 2px; }
-.cl-list-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
-.cl-list-date { display: inline-flex; align-items: center; gap: 5px; color: #475569; font-size: 0.78rem; font-weight: 600; }
-.cl-list-count { display: inline-flex; align-items: center; gap: 5px; background: #ecfdf5; color: #047857; padding: 2px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 800; }
-.cl-list-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.cl-icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.cl-icon-btn.edit { color: #2563eb; }
-.cl-icon-btn.edit:hover { background: #eff6ff; border-color: #bfdbfe; }
-.cl-icon-btn.delete { color: #dc2626; }
-.cl-icon-btn.delete:hover { background: #fef2f2; border-color: #fecaca; }
-
-/* Modal del formulario */
-.cl-modal { background: #ffffff; width: 100%; max-width: 640px; border-radius: 16px; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-.cl-modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9; }
-.cl-modal-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
-.cl-modal-sub { margin: 6px 0 0 0; display: flex; align-items: center; gap: 5px; color: #64748b; font-size: 0.82rem; }
-.cl-modal-close { background: none; border: none; cursor: pointer; color: #64748b; display: flex; padding: 4px; }
-.cl-modal-close:disabled { opacity: 0.4; cursor: wait; }
-
-.cl-modal-progress { padding: 12px 22px 0 22px; }
-.cl-progress-text { font-size: 0.78rem; font-weight: 700; color: #047857; }
-.cl-progress-track { height: 7px; background: #f1f5f9; border-radius: 10px; margin-top: 6px; overflow: hidden; }
-.cl-progress-fill { height: 100%; width: var(--cl-pct, 0%); background: #10b981; border-radius: 10px; transition: width 0.2s; }
-
-.cl-modal-body { padding: 16px 22px 22px 22px; overflow-y: auto; }
-
-/* Lugar (place) */
-.cl-place { margin-bottom: 16px; }
-.cl-place-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.cl-place-name { font-weight: 800; color: #0f172a; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.03em; }
-.cl-place-toggle-all { background: none; border: none; color: #2563eb; font-size: 0.76rem; font-weight: 700; cursor: pointer; }
-.cl-place-toggle-all:hover { text-decoration: underline; }
-.cl-tasks { display: flex; flex-direction: column; gap: 6px; }
-
-/* Tarea — solo "Yes": marcada o no */
-.cl-task { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 11px 12px; border-radius: 10px; border: 1px solid #e5e7eb; background: #ffffff; cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
-.cl-task:hover { background: #f8fafc; }
-.cl-task.on { background: #ecfdf5; border-color: #a7f3d0; }
-.cl-task-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; }
-.cl-task.on .cl-task-check { background: #10b981; border-color: #10b981; }
-.cl-task-name { flex: 1; font-size: 0.88rem; color: #1e293b; font-weight: 600; }
-.cl-task-yes { font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; }
-.cl-task.on .cl-task-yes { color: #047857; }
-
-/* Notas */
-.cl-notes-box { margin-top: 14px; }
-.cl-notes-label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 6px; }
-.cl-notes-input { width: 100%; box-sizing: border-box; min-height: 70px; resize: vertical; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-family: inherit; font-size: 0.88rem; outline: none; }
-.cl-notes-input:focus { border-color: #3b82f6; }
-
-/* Footer */
-.cl-modal-footer { padding: 14px 22px; background: #f8fafc; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 12px; border-radius: 0 0 16px 16px; }
-.cl-btn-cancel { background: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 0.86rem; cursor: pointer; }
-.cl-btn-cancel:hover { background: #f1f5f9; }
-.cl-btn-save { display: inline-flex; align-items: center; gap: 7px; background: #10b981; color: #ffffff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 0.86rem; cursor: pointer; }
-.cl-btn-save:hover { background: #059669; }
-.cl-btn-save:disabled { opacity: 0.6; cursor: wait; }
-
-@media (max-width: 640px) {
-  .cl-page { padding: 14px; }
-  .cl-modal { max-height: 94vh; }
-  .cl-modal-footer { flex-wrap: wrap; }
-  .cl-btn-cancel, .cl-btn-save { flex: 1 1 45%; justify-content: center; }
+/* Acciones en las tarjetas de registro (móvil) */
+.cl-card-actions {
+  margin-top: 10px;
+  justify-content: flex-end;
 }

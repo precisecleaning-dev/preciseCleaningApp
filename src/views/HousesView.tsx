@@ -2144,10 +2144,31 @@ export default function HousesView({
     }
   };
 
+  // ============================================================================
+  // ⭐ REGLA: no se puede marcar Finished sin fotos Before y After cargadas.
+  //    Devuelve qué falta para poder avisarlo en pantalla y bloquear el botón.
+  // ============================================================================
+  const photoStatusFor = (house: Property | null) => {
+    const before = (house?.beforePhotos || []).length;
+    const after = (house?.afterPhotos || []).length;
+    const missing: string[] = [];
+    if (before === 0) missing.push("Before");
+    if (after === 0) missing.push("After");
+    return { before, after, missing, ok: missing.length === 0 };
+  };
+
   const handleMarkAsFinished = async () => {
     if (!selectedHouse) return;
     if (!selectedHouse.employeeStartedBy) {
       alert("Error: You must Start the job before marking it as Finished.");
+      return;
+    }
+    // ⭐ Bloqueo por fotos: sin Before/After no se puede finalizar
+    const photoCheck = photoStatusFor(selectedHouse);
+    if (!photoCheck.ok) {
+      alert(
+        `No se puede finalizar la casa.\n\nFaltan fotos: ${photoCheck.missing.join(" y ")}.\n\nCarga las fotos en la pestaña "Notes & Photos" y vuelve a intentarlo.`,
+      );
       return;
     }
     if (!window.confirm("Are you sure you want to mark this job as finished?"))
@@ -5046,20 +5067,28 @@ export default function HousesView({
                     const finished = !!selectedHouse.employeeFinishedBy;
                     const finishLocked =
                       finished && !canUndoFinish(selectedHouse);
+                    // ⭐ Sin fotos Before/After no se puede finalizar
+                    const photoCheck = photoStatusFor(selectedHouse);
+                    const blockedByPhotos = !finished && !photoCheck.ok;
                     return (
                       <button
                         onClick={
                           finished ? handleUndoFinished : handleMarkAsFinished
                         }
                         disabled={
-                          isSaving || (!started && !finished) || finishLocked
+                          isSaving ||
+                          (!started && !finished) ||
+                          finishLocked ||
+                          blockedByPhotos
                         }
                         title={
                           finished
                             ? `Terminado por ${selectedHouse.employeeFinishedBy} · ${formatDateTime(selectedHouse.employeeFinishedAt)}${finishLocked ? " — solo esa persona (o un admin) puede deshacerlo" : " — clic para deshacer"}`
-                            : started
-                              ? "Marcar trabajo terminado"
-                              : "Primero se debe marcar Start Job"
+                            : blockedByPhotos
+                              ? `Faltan fotos ${photoCheck.missing.join(" y ")} — no se puede finalizar`
+                              : started
+                                ? "Marcar trabajo terminado"
+                                : "Primero se debe marcar Start Job"
                         }
                         className={`hv-action-btn finish${finished ? " done" : ""}`}
                       >
@@ -5116,6 +5145,57 @@ export default function HousesView({
                     )}
                 </div>
               )}
+
+              {/* ⭐ AVISO: faltan fotos para poder finalizar la casa */}
+              {isVisible("workflow") &&
+                isElementVisible("btn_markFinished") &&
+                !selectedHouse.employeeFinishedBy &&
+                (() => {
+                  const pc = photoStatusFor(selectedHouse);
+                  if (pc.ok) return null;
+                  return (
+                    <div className="hv-photos-required">
+                      <div className="hv-photos-required-icon">
+                        <AlertTriangle size={18} />
+                      </div>
+                      <div className="hv-photos-required-body">
+                        <div className="hv-photos-required-title">
+                          No se puede finalizar: faltan fotos
+                        </div>
+                        <div className="hv-photos-required-text">
+                          Para marcar esta casa como <b>Finished</b> se deben
+                          cargar fotos <b>Before</b> y <b>After</b>.
+                        </div>
+                        <div className="hv-photos-required-chips">
+                          <span
+                            className={`hv-photos-chip${pc.before > 0 ? " ok" : ""}`}
+                          >
+                            {pc.before > 0 ? (
+                              <Check size={12} />
+                            ) : (
+                              <X size={12} />
+                            )}{" "}
+                            Before: {pc.before}
+                          </span>
+                          <span
+                            className={`hv-photos-chip${pc.after > 0 ? " ok" : ""}`}
+                          >
+                            {pc.after > 0 ? <Check size={12} /> : <X size={12} />}{" "}
+                            After: {pc.after}
+                          </span>
+                        </div>
+                        {isElementVisible("btn_tabMedia") && (
+                          <button
+                            className="hv-photos-required-btn"
+                            onClick={() => setActiveDetailTab("media")}
+                          >
+                            <ImageIcon size={14} /> Ir a cargar fotos
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
               {/* ⭐ SELECTOR DE STATUS PROMINENTE — mover la casa de lugar fácilmente */}
               {isVisible("workflow") && isElementVisible("statusId") && (
