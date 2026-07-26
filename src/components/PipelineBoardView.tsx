@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Camera, Image as ImageIcon } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import { getRelationName, getRelationColor } from '../utils/relations';
@@ -39,6 +39,12 @@ interface PipelineBoardViewProps {
   isSaving?: boolean;
   /** Opcional: si tienes el monto facturado por propiedad, muéstralo y suma por columna */
   getAmount?: (p: Property) => number;
+  /** ⭐ Mostrar el botón "Before Photos" en cada tarjeta (controlado por rol) */
+  showBeforePhotos?: boolean;
+  /** ⭐ Mostrar el botón "After Photos" en cada tarjeta (controlado por rol) */
+  showAfterPhotos?: boolean;
+  /** ⭐ Abre el detalle de la casa en la pestaña de fotos */
+  onOpenPhotos?: (p: Property) => void;
 }
 
 /* Pastilla de estado en la tarjeta. Al tocarla YA NO abre un dropdown:
@@ -69,6 +75,7 @@ function StatusPill({ current, statuses, disabled, onOpen }: {
 export default function PipelineBoardView({
   properties, statuses, teams, priorities = [], getClientName,
   onOpenDetail, onQuickStatusChange, canEdit, isSaving, getAmount,
+  showBeforePhotos = false, showAfterPhotos = false, onOpenPhotos,
 }: PipelineBoardViewProps) {
 
   // Modal central de cambio de estado (null = cerrado)
@@ -192,6 +199,30 @@ export default function PipelineBoardView({
                           })}
                         />
                       </div>
+
+                      {/* ⭐ Botones Before / After Photos (visibilidad por rol) */}
+                      {(showBeforePhotos || showAfterPhotos) && (
+                        <div className="pb-photo-btns" onClick={(e) => e.stopPropagation()}>
+                          {showBeforePhotos && (
+                            <button
+                              className="pb-photo-btn before"
+                              onClick={() => onOpenPhotos?.(p)}
+                              title="Ver Before Photos"
+                            >
+                              <Camera size={13} /> Before
+                            </button>
+                          )}
+                          {showAfterPhotos && (
+                            <button
+                              className="pb-photo-btn after"
+                              onClick={() => onOpenPhotos?.(p)}
+                              title="Ver After Photos"
+                            >
+                              <ImageIcon size={13} /> After
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

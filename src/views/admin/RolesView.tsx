@@ -27,6 +27,7 @@ const DEFAULT_MODULES = [
   'Notice Board',
   'Calendar',
   'Quality Check',
+  'Checklist',
   'Status History',
   'Payroll',
   'Invoices',

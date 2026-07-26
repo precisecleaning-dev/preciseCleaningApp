@@ -9,6 +9,8 @@ import {
   Edit2,
   Trash2,
   Zap,
+  ClipboardCheck,
+  Check,
   Activity,
   FileText,
   CalendarDays,
@@ -213,6 +215,26 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     id: "btn_myHistory",
     label: "Mi historial (casas asignadas)",
     section: "Header",
+  },
+  {
+    id: "board_beforePhotos",
+    label: "Before Photos (tarjeta del Pipeline)",
+    section: "Pipeline",
+  },
+  {
+    id: "board_afterPhotos",
+    label: "After Photos (tarjeta del Pipeline)",
+    section: "Pipeline",
+  },
+  {
+    id: "card_activeTeams",
+    label: "Active Teams (panel del Overview)",
+    section: "Overview",
+  },
+  {
+    id: "card_checklist",
+    label: "Checklist (botón y visor en el detalle)",
+    section: "Sections",
   },
 ];
 
@@ -1272,6 +1294,22 @@ export default function HousesView({
   const anyVisible = (...elementIds: string[]): boolean =>
     elementIds.some((id) => isElementVisible(id));
 
+  // ⭐ ¿El rol activo puede VER esta columna/status en Pipeline y Overview?
+  //    Se configura por rol en Configure Fields con el elemento "status_<id>".
+  const isStatusVisibleForRole = (statusId: string): boolean =>
+    isElementVisible(`status_${statusId}`);
+
+  // ⭐ Filtra una lista de casas quitando las de status ocultos para el rol.
+  const filterByVisibleStatus = <T extends Property>(list: T[]): T[] =>
+    list.filter((prop) => {
+      const st = statuses.find(
+        (s) =>
+          String(s.id) === String(prop.statusId) ||
+          String(s.name) === String(prop.statusId),
+      );
+      return st ? isStatusVisibleForRole(st.id) : true;
+    });
+
   const toggleElementVisibilityForRole = (
     elementId: string,
     roleId: string,
@@ -1516,6 +1554,170 @@ export default function HousesView({
   const [editingDamageId, setEditingDamageId] = useState<string | null>(null);
   const [editDamageDesc, setEditDamageDesc] = useState("");
   const [editDamageNotes, setEditDamageNotes] = useState("");
+
+  // ============================================================================
+  // ⭐ CHECKLIST en el detalle: visor del último checklist de la casa.
+  //    - Visibilidad del botón/visor: elemento "card_checklist" del configurador.
+  //    - Editable si el elemento NO está en "solo lectura" para el rol.
+  //    Usa los mismos places/tasks del Quality Check (settings_places/_tasks).
+  // ============================================================================
+  const [isChecklistOpen, setIsChecklistOpen] = useState(false);
+  const [clPlaces, setClPlaces] = useState<{ id: string; name: string }[]>([]);
+  const [clTasks, setClTasks] = useState<
+    { id: string; name: string; placeId: string }[]
+  >([]);
+  const [clRecord, setClRecord] = useState<{
+    id?: string;
+    checked: Record<string, boolean>;
+    notes?: string;
+    date?: string;
+    inspector?: string;
+  } | null>(null);
+  const [clChecked, setClChecked] = useState<Record<string, boolean>>({});
+  const [clNotes, setClNotes] = useState("");
+  const [isSavingChecklist, setIsSavingChecklist] = useState(false);
+
+  const isChecklistReadOnly = isFieldRO("card_checklist");
+
+  // Carga places/tasks una vez (al montar)
+  useEffect(() => {
+    const loadCfg = async () => {
+      try {
+        const [pl, tk] = await Promise.all([
+          getDocs(collection(db, "settings_places")).catch(() => ({
+            docs: [] as never[],
+          })),
+          getDocs(collection(db, "settings_tasks")).catch(() => ({
+            docs: [] as never[],
+          })),
+        ]);
+        setClPlaces(
+          (pl.docs || [])
+            .map((d) => ({ id: d.id, ...(d.data() as object) }) as {
+              id: string;
+              name: string;
+            })
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+        setClTasks(
+          (tk.docs || []).map(
+            (d) =>
+              ({ id: d.id, ...(d.data() as object) }) as {
+                id: string;
+                name: string;
+                placeId: string;
+              },
+          ),
+        );
+      } catch (e) {
+        console.error("Error cargando places/tasks del checklist:", e);
+      }
+    };
+    loadCfg();
+  }, []);
+
+  // Carga el último checklist de la casa al abrir el detalle
+  useEffect(() => {
+    if (!selectedHouse?.id) {
+      setClRecord(null);
+      return;
+    }
+    const qCl = query(
+      collection(db, "checklists"),
+      where("houseId", "==", selectedHouse.id),
+    );
+    const unsub = onSnapshot(
+      qCl,
+      (snap) => {
+        const list = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as object) }) as {
+            id: string;
+            checked?: Record<string, boolean>;
+            notes?: string;
+            date?: string;
+            inspector?: string;
+            createdAt?: string;
+          })
+          .sort((a, b) =>
+            String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+          );
+        const latest = list[0] || null;
+        setClRecord(
+          latest
+            ? {
+                id: latest.id,
+                checked: latest.checked || {},
+                notes: latest.notes,
+                date: latest.date,
+                inspector: latest.inspector,
+              }
+            : null,
+        );
+      },
+      (err) => console.error("Error cargando checklist:", err),
+    );
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHouse?.id]);
+
+  const clActivePlaces = clPlaces.filter((pl) =>
+    clTasks.some((t) => t.placeId === pl.id),
+  );
+  const clTotalTasks = clActivePlaces.reduce(
+    (sum, pl) => sum + clTasks.filter((t) => t.placeId === pl.id).length,
+    0,
+  );
+
+  const openChecklistViewer = () => {
+    setClChecked(clRecord?.checked || {});
+    setClNotes(clRecord?.notes || "");
+    setIsChecklistOpen(true);
+  };
+
+  const toggleClTask = (taskId: string) => {
+    if (isChecklistReadOnly) return;
+    setClChecked((prev) => {
+      const next = { ...prev };
+      if (next[taskId]) delete next[taskId];
+      else next[taskId] = true;
+      return next;
+    });
+  };
+
+  const handleSaveChecklist = async () => {
+    if (!selectedHouse) return;
+    setIsSavingChecklist(true);
+    try {
+      if (clRecord?.id) {
+        await updateDoc(doc(db, "checklists", clRecord.id), {
+          checked: clChecked,
+          notes: clNotes.trim(),
+        });
+      } else {
+        await addDoc(collection(db, "checklists"), {
+          houseId: selectedHouse.id,
+          address: selectedHouse.address || "",
+          client: selectedHouse.client || "",
+          date: new Date().toISOString().slice(0, 10),
+          inspector: currentUser
+            ? `${currentUser.firstName} ${currentUser.lastName}`
+            : "Unknown",
+          checked: clChecked,
+          notes: clNotes.trim(),
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setIsChecklistOpen(false);
+    } catch (err) {
+      console.error("Error guardando checklist:", err);
+      const e = err as { code?: string; message?: string };
+      alert(
+        `Error al guardar el checklist.\n\nCódigo: ${e.code || "desconocido"}\nDetalle: ${e.message || String(err)}`,
+      );
+    } finally {
+      setIsSavingChecklist(false);
+    }
+  };
 
   // Cargar los daños en tiempo real al abrir el detalle de una casa
   useEffect(() => {
@@ -1798,17 +2000,22 @@ export default function HousesView({
     dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
 
   // Tabla / Daily Jobs: sin Invoice ni Quality Check (QC se gestiona en su vista)
-  const filteredProperties = propertiesWithScope
-    .filter((p) => !isHiddenPipelineStatus(p) && passesListFilters(p))
-    .sort(byDateDesc);
+  const filteredProperties = filterByVisibleStatus(
+    propertiesWithScope
+      .filter((p) => !isHiddenPipelineStatus(p) && passesListFilters(p))
+      .sort(byDateDesc),
+  );
 
   // ⭐ TABLERO (Pipeline): incluye Quality Check; solo oculta Invoice.
-  const boardProperties = propertiesWithScope
-    .filter((p) => !isHiddenPipelineStatus(p, true) && passesListFilters(p))
-    .sort(byDateDesc);
+  const boardProperties = filterByVisibleStatus(
+    propertiesWithScope
+      .filter((p) => !isHiddenPipelineStatus(p, true) && passesListFilters(p))
+      .sort(byDateDesc),
+  );
 
+  // ⭐ Los tabs/columnas del dashboard también respetan la visibilidad por rol.
   const dashboardTabs = statuses
-    .filter((st) => st.showInDashboard)
+    .filter((st) => st.showInDashboard && isStatusVisibleForRole(st.id))
     .sort(
       (a, b) => Number(a.dashboardOrder || 0) - Number(b.dashboardOrder || 0),
     );
@@ -3160,7 +3367,10 @@ export default function HousesView({
             {isLoading ? (
               <div className="hv-loading-text">Loading metrics...</div>
             ) : (
-              statuses.slice(0, 4).map((status, index) => {
+              statuses
+                .filter((s) => isStatusVisibleForRole(s.id))
+                .slice(0, 4)
+                .map((status, index) => {
                 const Icon = kpiIcons[index % kpiIcons.length];
                 const count = propertiesWithScope.filter(
                   (p) => p.statusId === status.id || p.statusId === status.name,
@@ -3203,7 +3413,7 @@ export default function HousesView({
           {viewMode === "board" ? (
             <PipelineBoardView
               properties={boardProperties}
-              statuses={statuses}
+              statuses={statuses.filter((s) => isStatusVisibleForRole(s.id))}
               teams={teams}
               priorities={priorities}
               getClientName={getClientName}
@@ -3211,6 +3421,12 @@ export default function HousesView({
               onQuickStatusChange={handleQuickStatusChange}
               canEdit={!!canEdit}
               isSaving={isSaving}
+              showBeforePhotos={isElementVisible("board_beforePhotos")}
+              showAfterPhotos={isElementVisible("board_afterPhotos")}
+              onOpenPhotos={(prop) => {
+                handleOpenDetail(prop);
+                setActiveDetailTab("media");
+              }}
             />
           ) : (
             <div className="main-columns">
@@ -3698,7 +3914,8 @@ export default function HousesView({
                 </div>
               </div>
 
-              {/* RIGHT COLUMN: ACTIVE TEAMS */}
+              {/* RIGHT COLUMN: ACTIVE TEAMS (visibilidad por rol) */}
+              {isElementVisible("card_activeTeams") && (
               <div className="right-col">
                 <div className="hv-panel-card">
                   <h3 className="hv-panel-heading">Active Teams</h3>
@@ -3881,6 +4098,7 @@ export default function HousesView({
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
         </>
@@ -5751,6 +5969,21 @@ export default function HousesView({
                     )}
                   </button>
                 )}
+                {/* ⭐ CHECKLIST: visor del checklist de la casa. Visible por
+                    "card_checklist"; editable si NO está en solo lectura. */}
+                {isElementVisible("card_checklist") && (
+                  <button
+                    onClick={openChecklistViewer}
+                    className="hv-btn-checklist-modal"
+                  >
+                    <ClipboardCheck size={16} /> Checklist
+                    {clRecord && (
+                      <span className="hv-checklist-footer-count">
+                        {Object.keys(clRecord.checked || {}).length}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => setIsDetailModalOpen(false)}
                   className="hv-btn-outline-modal"
@@ -6446,6 +6679,122 @@ export default function HousesView({
         </div>
       )}
 
+      {/* ⭐ MODAL CHECKLIST (visor en el detalle) — solo lectura o editable
+          según el estado de "card_checklist" para el rol. */}
+      {isChecklistOpen && selectedHouse && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => !isSavingChecklist && setIsChecklistOpen(false)}
+        >
+          <div className="hv-checklist-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-checklist-header">
+              <div>
+                <h3 className="hv-checklist-title">
+                  <ClipboardCheck size={18} /> Checklist
+                  {isChecklistReadOnly && (
+                    <span className="hv-checklist-ro-badge">Solo lectura</span>
+                  )}
+                </h3>
+                <p className="hv-checklist-sub">
+                  {getClientName(selectedHouse.client)} ·{" "}
+                  {selectedHouse.address || "—"}
+                  {clRecord?.date ? ` · ${clRecord.date}` : ""}
+                </p>
+              </div>
+              <button
+                className="hv-checklist-close"
+                onClick={() => setIsChecklistOpen(false)}
+                disabled={isSavingChecklist}
+              >
+                <X size={22} />
+              </button>
+            </header>
+
+            <div className="hv-checklist-progress-row">
+              <span className="hv-checklist-progress-text">
+                {Object.keys(clChecked).length} de {clTotalTasks} marcados
+              </span>
+            </div>
+
+            <div className="hv-checklist-body">
+              {clActivePlaces.length === 0 ? (
+                <div className="hv-checklist-empty">
+                  No hay lugares/tareas configurados (settings_places /
+                  settings_tasks).
+                </div>
+              ) : (
+                clActivePlaces.map((place) => {
+                  const placeTasks = clTasks.filter(
+                    (t) => t.placeId === place.id,
+                  );
+                  return (
+                    <div key={place.id} className="hv-checklist-place">
+                      <span className="hv-checklist-place-name">
+                        {place.name}
+                      </span>
+                      <div className="hv-checklist-tasks">
+                        {placeTasks.map((task) => {
+                          const on = !!clChecked[task.id];
+                          return (
+                            <button
+                              key={task.id}
+                              className={`hv-checklist-task${on ? " on" : ""}${isChecklistReadOnly ? " ro" : ""}`}
+                              onClick={() => toggleClTask(task.id)}
+                              disabled={isChecklistReadOnly}
+                            >
+                              <span className="hv-checklist-check">
+                                {on && <Check size={14} />}
+                              </span>
+                              <span className="hv-checklist-task-name">
+                                {task.name}
+                              </span>
+                              <span className="hv-checklist-yes">Yes</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              <div className="hv-checklist-notes">
+                <label className="hv-checklist-notes-label">
+                  <StickyNote size={13} /> Notas
+                </label>
+                <textarea
+                  className="hv-checklist-notes-input"
+                  value={clNotes}
+                  onChange={(e) => setClNotes(e.target.value)}
+                  placeholder="Observaciones del checklist…"
+                  disabled={isChecklistReadOnly}
+                />
+              </div>
+            </div>
+
+            <footer className="hv-checklist-footer">
+              <button
+                className="hv-btn-outline-modal"
+                onClick={() => setIsChecklistOpen(false)}
+                disabled={isSavingChecklist}
+              >
+                Cerrar
+              </button>
+              {!isChecklistReadOnly && (
+                <button
+                  className="hv-btn-primary-modal"
+                  onClick={handleSaveChecklist}
+                  disabled={isSavingChecklist}
+                >
+                  <Save size={15} />{" "}
+                  {isSavingChecklist ? "Guardando…" : "Guardar Checklist"}
+                </button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
+
       {/* ⭐ MODAL DAMAGES — daños reportados de la casa (colección 'damages').
           Permisos SOLO por configurador: card_damages visible = ver;
           NO solo-lectura = agregar/editar/eliminar. */}
@@ -6834,6 +7183,58 @@ export default function HousesView({
                                     : state === "readonly"
                                       ? "Solo lectura"
                                       : "Oculto"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ⭐ VISIBILIDAD DE STATUS por rol (Pipeline y Overview).
+                      Cada status genera un elemento "status_<id>"; oculto = el
+                      rol no ve esa columna/KPI ni las casas en ese status. */}
+                  <h4 className="hv-fieldconfig-section-title">
+                    Status Visibility (Pipeline & Overview)
+                  </h4>
+                  <p className="hv-fieldconfig-hint">
+                    Controla qué columnas de status ve cada rol. Oculto = esa
+                    columna y sus casas no aparecen para ese rol. (Visible u
+                    Oculto.)
+                  </p>
+                  <div className="hv-fieldconfig-list">
+                    {statuses.map((st) => (
+                      <div key={st.id} className="hv-fieldconfig-row">
+                        <div className="hv-fieldconfig-row-label">
+                          {st.name}{" "}
+                          <span className="hv-fieldconfig-section-tag">
+                            · Status
+                          </span>
+                        </div>
+                        <div className="hv-fieldconfig-roles-wrap">
+                          {rolesList.map((role) => {
+                            const elId = `status_${st.id}`;
+                            const state = getButtonStateForRole(elId, role.id);
+                            return (
+                              <button
+                                key={role.id}
+                                onClick={() =>
+                                  toggleElementVisibilityForRole(elId, role.id)
+                                }
+                                className={`hv-role-state ${state}`}
+                                title="Clic para alternar: Visible ↔ Oculto"
+                              >
+                                {state === "visible" ? (
+                                  <Eye size={13} />
+                                ) : (
+                                  <EyeOff size={13} />
+                                )}
+                                <span className="hv-role-state-name">
+                                  {role.name}
+                                </span>
+                                <span className="hv-role-state-label">
+                                  {state === "visible" ? "Visible" : "Oculto"}
                                 </span>
                               </button>
                             );

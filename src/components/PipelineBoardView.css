@@ -60,3 +60,11 @@
     max-height: none !important;
   }
 }
+
+/* ⭐ Botones Before / After Photos en la tarjeta del board */
+.pb-photo-btns { display: flex; gap: 6px; margin-top: 8px; }
+.pb-photo-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; border: 1px solid; }
+.pb-photo-btn.before { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.pb-photo-btn.before:hover { background: #dbeafe; }
+.pb-photo-btn.after { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.pb-photo-btn.after:hover { background: #dcfce7; }
