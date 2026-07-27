@@ -411,9 +411,39 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
       case 'boolean':
         return ['true', 'yes', '1', 'sí', 'si'].includes(str.toLowerCase());
       case 'date': {
-        const date = new Date(str);
-        if (isNaN(date.getTime())) return str;
-        return date.toISOString().split('T')[0];
+        // ⭐ CONVERSIÓN DE FECHAS SIN ZONA HORARIA.
+        //    Antes se hacía `new Date(str).toISOString()`, y eso RESTABA UN DÍA:
+        //    toISOString() pasa a UTC, así que la medianoche local del 26 en un
+        //    navegador en UTC+2 se convertía en las 22:00 UTC del 25.
+        //    Ahora el texto se descompone y se rearma tal cual, sin pasar nunca
+        //    por Date, así que la fecha guardada es exactamente la del CSV.
+        const pad = (n: number) => String(n).padStart(2, '0');
+
+        // Ya viene en ISO (YYYY-MM-DD): solo se normalizan los ceros.
+        const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (isoMatch) {
+          const y = +isoMatch[1], mon = +isoMatch[2], day = +isoMatch[3];
+          if (mon < 1 || mon > 12 || day < 1 || day > 31) return str;
+          return `${y}-${pad(mon)}-${pad(day)}`;
+        }
+
+        // Con barras o guiones. MISMA regla que Payroll, Invoices y Houses:
+        //   · primer número > 12 y segundo <= 12  → única lectura posible: DD/MM
+        //   · cualquier otro caso                 → se lee MM/DD
+        const slashMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+        if (slashMatch) {
+          const a = +slashMatch[1], b = +slashMatch[2], y = +slashMatch[3];
+          const mon = a > 12 && b <= 12 ? b : a;
+          const day = a > 12 && b <= 12 ? a : b;
+          if (mon < 1 || mon > 12 || day < 1 || day > 31) return str;
+          return `${y}-${pad(mon)}-${pad(day)}`;
+        }
+
+        // Último recurso (formatos raros): se usa Date pero se formatea con los
+        // getters LOCALES, nunca con toISOString(), para no desfasar el día.
+        const d = new Date(str);
+        if (isNaN(d.getTime())) return str;
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       }
       case 'array':
         return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
