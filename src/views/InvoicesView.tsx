@@ -52,11 +52,20 @@ const parseDateForSort = (dateStr?: string | null): number => {
   const str = String(dateStr).trim();
   const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
+  // ⭐ MISMA regla que PayrollView (antes cada vista leía distinto y la misma casa
+  //    mostraba dos fechas diferentes):
+  //    · Primer número > 12 y segundo <= 12  →  única lectura posible: DD/MM.
+  //    · Cualquier otro caso                 →  se lee MM/DD (regla del negocio).
+  //    Si AMBOS son <= 12 la fecha es AMBIGUA: se lee MM/DD y aparece en la
+  //    herramienta "Revisar fechas" de Payroll para corregirla y guardarla en ISO.
   const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (slash) {
     const a = +slash[1], b = +slash[2], y = +slash[3];
-    let day: number, mon: number;
-    if (a > 12 && b <= 12) { day = a; mon = b; } else { mon = a; day = b; }
+    const mon = a > 12 && b <= 12 ? b : a;
+    const day = a > 12 && b <= 12 ? a : b;
+    // Guarda contra fechas imposibles (p. ej. "27/27/2026"): sin esto, el
+    // constructor Date desborda el mes y devuelve una fecha equivocada.
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) return Number.MAX_SAFE_INTEGER;
     return new Date(y, mon - 1, day).getTime();
   }
   const t = new Date(str).getTime();
@@ -1076,4 +1085,4 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
     </div>
   );
-} 
+}

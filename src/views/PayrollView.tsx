@@ -53,18 +53,63 @@ const toTime = (val: unknown): number => {
   const str = String(val).trim();
   const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]).getTime();
-  // ⭐ Regla de negocio: TODAS las fechas con / se capturan como MM/DD/YYYY. Sin
-  //    heurística de intercambio día/mes: si el "mes" queda fuera de 1-12, el dato
-  //    está mal capturado y se trata como inválido (NaN) para que no contamine el
-  //    orden ni los filtros (esos registros caen al final de la tabla).
+  // ⭐ Lectura de fechas con barras — MISMA regla que InvoicesView (antes cada
+  //    vista interpretaba distinto y la misma casa mostraba dos fechas):
+  //    · Si el primer número es > 12 y el segundo <= 12, la única lectura posible
+  //      es DD/MM (p. ej. "27/07/2026" = 27 de julio) y así se lee.
+  //    · En cualquier otro caso se lee MM/DD (regla por defecto del negocio).
+  //    Cuando AMBOS números son <= 12 la fecha es AMBIGUA y no hay forma de
+  //    saberlo por el texto: se lee como MM/DD y se marca en la herramienta
+  //    "Revisar fechas" para que una persona decida y se guarde en ISO.
   const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
   if (slash) {
-    const mon = +slash[1], day = +slash[2], y = +slash[3];
+    const a = +slash[1], b = +slash[2], y = +slash[3];
+    const mon = a > 12 && b <= 12 ? b : a;
+    const day = a > 12 && b <= 12 ? a : b;
     if (mon < 1 || mon > 12 || day < 1 || day > 31) return NaN;
     return new Date(y, mon - 1, day).getTime();
   }
   const t = new Date(str).getTime();
   return isNaN(t) ? NaN : t;
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⭐ ANÁLISIS DE FECHAS GUARDADAS (herramienta "Revisar fechas").
+//    El problema: en Firestore conviven fechas escritas como MM/DD/YYYY y como
+//    DD/MM/YYYY. Cuando ambas partes son <= 12 (p. ej. "08/12/2026") NO hay forma
+//    de saber cuál es cuál leyendo el texto: puede ser 12 de agosto o 8 de
+//    diciembre. Por eso la corrección necesita una decisión humana.
+//    La solución definitiva es guardar todo en ISO (YYYY-MM-DD), que no es
+//    ambiguo nunca. Este analizador clasifica cada fecha para la herramienta.
+type DateKind = 'iso' | 'ambiguous' | 'mmdd' | 'ddmm' | 'invalid' | 'empty';
+type DateAnalysis = {
+  kind: DateKind;
+  raw: string;
+  a?: number; // primer número tal como está guardado
+  b?: number; // segundo número
+  y?: number;
+  asMMDD?: string; // ISO si se lee MM/DD
+  asDDMM?: string; // ISO si se lee DD/MM
+};
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const isoOf = (y: number, mon: number, day: number) => `${y}-${pad2(mon)}-${pad2(day)}`;
+
+const analyzeDate = (val: unknown): DateAnalysis => {
+  const raw = val === null || val === undefined ? '' : String(val).trim();
+  if (!raw) return { kind: 'empty', raw };
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(raw)) return { kind: 'iso', raw };
+  const m = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (!m) return { kind: 'invalid', raw };
+  const a = +m[1], b = +m[2], y = +m[3];
+  const mmddOk = a >= 1 && a <= 12 && b >= 1 && b <= 31;
+  const ddmmOk = b >= 1 && b <= 12 && a >= 1 && a <= 31;
+  const asMMDD = mmddOk ? isoOf(y, a, b) : undefined;
+  const asDDMM = ddmmOk ? isoOf(y, b, a) : undefined;
+  if (mmddOk && ddmmOk && a !== b) return { kind: 'ambiguous', raw, a, b, y, asMMDD, asDDMM };
+  if (mmddOk) return { kind: 'mmdd', raw, a, b, y, asMMDD, asDDMM };
+  if (ddmmOk) return { kind: 'ddmm', raw, a, b, y, asMMDD, asDDMM };
+  return { kind: 'invalid', raw, a, b, y };
 };
 
 // Nombre del empleado sin "undefined" cuando falta el apellido.
@@ -81,10 +126,17 @@ const fmtDate = (val: unknown): string => {
   const str = String(val).trim();
   const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return `${pad(+iso[2])}/${pad(+iso[3])}/${iso[1]}`;
-  // ⭐ MM/DD/YYYY estricto; si el mes es inválido se muestra el valor CRUDO tal cual
-  //    está guardado, para detectarlo a simple vista y corregirlo con el lápiz de editar.
+  // ⭐ Misma lectura que toTime (si no, la fecha mostrada y la ordenada difieren).
+  //    Si ninguna lectura es válida se muestra el valor CRUDO para detectarlo a
+  //    simple vista y corregirlo con la herramienta "Revisar fechas".
   const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-  if (slash) { const mon = +slash[1], day = +slash[2]; if (mon < 1 || mon > 12 || day < 1 || day > 31) return str; return `${pad(mon)}/${pad(day)}/${slash[3]}`; }
+  if (slash) {
+    const a = +slash[1], b = +slash[2];
+    const mon = a > 12 && b <= 12 ? b : a;
+    const day = a > 12 && b <= 12 ? a : b;
+    if (mon < 1 || mon > 12 || day < 1 || day > 31) return str;
+    return `${pad(mon)}/${pad(day)}/${slash[3]}`;
+  }
   const d = new Date(str); return isNaN(d.getTime()) ? str : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 };
 
@@ -107,6 +159,28 @@ const weekLabel = (mondayT: number): string => {
 };
 
 export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⭐ ALCANCE POR ROL (scope del módulo Payroll en Roles & Permissions):
+  //    · 'All'  → ve la nómina de TODOS los empleados y el filtro de empleado.
+  //    · 'Own'  → ve SOLO su propia nómina; el filtro de empleado se OCULTA
+  //               (si no, vería el sueldo de sus compañeros).
+  //    El Super Admin siempre tiene alcance 'All'.
+  // ══════════════════════════════════════════════════════════════════════════
+  const payrollPermission = activeRole?.permissions?.find(
+    (perm) => perm.module === 'Payroll',
+  );
+  const payrollScope: 'Own' | 'All' = isSuperAdmin
+    ? 'All'
+    : ((payrollPermission?.scope as 'Own' | 'All') || 'Own');
+  const canSeeAllPayroll = payrollScope === 'All';
+
+  // ⭐ Herramienta de corrección de fechas (solo alcance 'All' / Super Admin)
+  const [isDateFixOpen, setIsDateFixOpen] = useState(false);
+  const [dateFixTab, setDateFixTab] = useState<'ambiguous' | 'ddmm' | 'all'>('ambiguous');
+  const [savingDateId, setSavingDateId] = useState<string | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [dateFixSearch, setDateFixSearch] = useState('');
+
   const [records, setRecords] = useState<PayrollRecordExt[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [employees, setEmployees] = useState<SystemUser[]>([]);
@@ -179,6 +253,87 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     if (!r) return 0;
     if (r.totalAmount != null && Number(r.totalAmount) !== 0) return Number(r.totalAmount);
     return Number(r.baseAmount || 0) + Number(r.extraAmount || 0) - Number(r.discountAmount || 0);
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⭐ HERRAMIENTA "REVISAR FECHAS": lista las casas cuyo scheduleDate NO está
+  //    en ISO y permite convertirlo con un clic eligiendo la lectura correcta.
+  //    Al guardar en ISO (YYYY-MM-DD) la ambigüedad desaparece para siempre y
+  //    todas las vistas (Payroll, Invoices, Houses) leen la misma fecha.
+  // ══════════════════════════════════════════════════════════════════════════
+  const dateFixRows = useMemo(() => {
+    const q = dateFixSearch.toLowerCase().trim();
+    return properties
+      .map(prop => ({ prop, an: analyzeDate(prop.scheduleDate) }))
+      .filter(({ an }) => an.kind !== 'iso' && an.kind !== 'empty')
+      .filter(({ an }) =>
+        dateFixTab === 'all' ? true
+          : dateFixTab === 'ambiguous' ? an.kind === 'ambiguous'
+            : an.kind === 'ddmm' || an.kind === 'invalid')
+      .filter(({ prop }) => !q
+        || String(prop.address || '').toLowerCase().includes(q)
+        || getClientName(prop.client).toLowerCase().includes(q))
+      .sort((x, y) => String(x.prop.address || '').localeCompare(String(y.prop.address || '')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties, dateFixTab, dateFixSearch, customers]);
+
+  const dateFixCounts = useMemo(() => {
+    let ambiguous = 0, ddmm = 0, total = 0;
+    properties.forEach(prop => {
+      const an = analyzeDate(prop.scheduleDate);
+      if (an.kind === 'iso' || an.kind === 'empty') return;
+      total++;
+      if (an.kind === 'ambiguous') ambiguous++;
+      if (an.kind === 'ddmm' || an.kind === 'invalid') ddmm++;
+    });
+    return { ambiguous, ddmm, total };
+  }, [properties]);
+
+  // Guarda UNA fecha ya normalizada a ISO
+  const applyDateFix = async (propertyId: string, iso?: string) => {
+    if (!iso) return;
+    setSavingDateId(propertyId);
+    try {
+      await updateDoc(doc(db, 'properties', propertyId), { scheduleDate: iso });
+      setProperties(prev => prev.map(pr => (pr.id === propertyId ? { ...pr, scheduleDate: iso } : pr)));
+    } catch (err) {
+      console.error('Error corrigiendo la fecha:', err);
+      const e = err as { code?: string; message?: string };
+      alert(`No se pudo guardar la fecha.\n\nCódigo: ${e.code || 'desconocido'}\nDetalle: ${e.message || String(err)}`);
+    } finally {
+      setSavingDateId(null);
+    }
+  };
+
+  // Aplica la MISMA lectura a todas las filas visibles (en lotes)
+  const applyBulkDateFix = async (reading: 'mmdd' | 'ddmm') => {
+    const rows = dateFixRows
+      .map(({ prop, an }) => ({ id: prop.id, iso: reading === 'mmdd' ? an.asMMDD : an.asDDMM }))
+      .filter(r => !!r.iso) as { id: string; iso: string }[];
+    if (rows.length === 0) {
+      alert('No hay filas visibles que se puedan convertir con esa lectura.');
+      return;
+    }
+    if (!window.confirm(
+      `Se convertirán ${rows.length} fecha(s) leyéndolas como ${reading === 'mmdd' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'} y se guardarán en formato ISO (YYYY-MM-DD).\n\n¿Continuar?`,
+    )) return;
+    setBulkSaving(true);
+    let ok = 0, fail = 0;
+    for (const r of rows) {
+      try {
+        await updateDoc(doc(db, 'properties', r.id), { scheduleDate: r.iso });
+        ok++;
+      } catch (err) {
+        console.error('Error en fila', r.id, err);
+        fail++;
+      }
+    }
+    setProperties(prev => prev.map(pr => {
+      const hit = rows.find(r => r.id === pr.id);
+      return hit ? { ...pr, scheduleDate: hit.iso } : pr;
+    }));
+    setBulkSaving(false);
+    alert(`Listo.\n\nCorregidas: ${ok}${fail ? `\nFallidas: ${fail} (revisa la consola)` : ''}`);
   };
 
   // ⭐ Fecha efectiva de un registro para filtros y semanas: el SCHEDULE DATE de la casa
@@ -376,6 +531,8 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
 
     return records.filter(record => {
       if (!record.propertyId) return false;
+      // ⭐ Alcance 'Own': el usuario solo ve SUS propios registros de nómina.
+      if (!canSeeAllPayroll && record.employeeId !== currentUser?.id) return false;
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
       if (startT !== null || endT !== null) {
         const recT = recScheduleTime(record);
@@ -397,7 +554,8 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, properties, startDate, endDate, selectedEmployee]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, properties, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
 
   const viewCounts = {
     pending: baseFiltered.filter(r => classifyRecord(r) === 'pending').length,
@@ -656,6 +814,19 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
             <p className="pv-subtitle">Manage employee payments and debts</p>
           </div>
         </div>
+        {/* ⭐ Corrección de fechas mal capturadas (solo alcance 'All') */}
+        {canSeeAllPayroll && (
+          <button
+            className={`pv-btn-datefix${dateFixCounts.total > 0 ? ' warn' : ''}`}
+            onClick={() => setIsDateFixOpen(true)}
+            title="Revisar y corregir las fechas guardadas en formato ambiguo"
+          >
+            <CalendarDays size={16} /> Revisar fechas
+            {dateFixCounts.total > 0 && (
+              <span className="pv-datefix-count">{dateFixCounts.total}</span>
+            )}
+          </button>
+        )}
       </header>
 
       {/* PESTAÑAS: Asignar nómina (registros de Pay) | Nóminas (semanal por empleado) */}
@@ -687,6 +858,9 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
             <input type="date" className="pv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
         </div>
+        {/* ⭐ El filtro de empleado SOLO existe con alcance 'All'. Con 'Own' se
+            oculta para que nadie vea la nómina de sus compañeros. */}
+        {canSeeAllPayroll && (
         <div className="pv-filter-item employee">
           <label className="pv-label">Employee</label>
           <div className="pv-input-wrap">
@@ -709,6 +883,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
             </datalist>
           </div>
         </div>
+        )}
       </div>
 
       {/* ⭐ SUB-PESTAÑAS (sustituyen al filtro de Status): estado de cada casa
@@ -1480,6 +1655,126 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
             <footer className="pv-modal-footer alt-bg">
               <button className="pv-btn-close-plain" onClick={() => setSelectedHouse(null)}>Close</button>
             </footer>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ MODAL: REVISAR Y CORREGIR FECHAS ══════════ */}
+      {isDateFixOpen && (
+        <div className="modal-overlay-centered" onClick={() => !bulkSaving && setIsDateFixOpen(false)}>
+          <div className="pv-datefix-modal" onClick={e => e.stopPropagation()}>
+            <header className="pv-datefix-header">
+              <div>
+                <h3 className="pv-datefix-title">
+                  <CalendarDays size={18} /> Revisar y corregir fechas
+                </h3>
+                <p className="pv-datefix-sub">
+                  Estas casas tienen el Schedule Date guardado con barras (MM/DD o DD/MM).
+                  Al corregirlas se guardan en formato ISO (YYYY-MM-DD), que ya no es ambiguo
+                  y se lee igual en Payroll, Invoices y Houses.
+                </p>
+              </div>
+              <button className="pv-datefix-close" onClick={() => setIsDateFixOpen(false)} disabled={bulkSaving}>
+                <X size={22} />
+              </button>
+            </header>
+
+            <div className="pv-datefix-toolbar">
+              <div className="pv-datefix-tabs">
+                <button className={`pv-datefix-tab${dateFixTab === 'ambiguous' ? ' active' : ''}`} onClick={() => setDateFixTab('ambiguous')}>
+                  Ambiguas ({dateFixCounts.ambiguous})
+                </button>
+                <button className={`pv-datefix-tab${dateFixTab === 'ddmm' ? ' active' : ''}`} onClick={() => setDateFixTab('ddmm')}>
+                  Solo DD/MM ({dateFixCounts.ddmm})
+                </button>
+                <button className={`pv-datefix-tab${dateFixTab === 'all' ? ' active' : ''}`} onClick={() => setDateFixTab('all')}>
+                  Todas ({dateFixCounts.total})
+                </button>
+              </div>
+              <div className="pv-datefix-search">
+                <Search size={15} color="#94a3b8" />
+                <input
+                  type="text"
+                  value={dateFixSearch}
+                  onChange={e => setDateFixSearch(e.target.value)}
+                  placeholder="Buscar por cliente o dirección..."
+                />
+              </div>
+            </div>
+
+            <div className="pv-datefix-bulk">
+              <span className="pv-datefix-bulk-label">
+                Aplicar a las {dateFixRows.length} fila(s) visibles:
+              </span>
+              <button className="pv-datefix-bulk-btn mmdd" disabled={bulkSaving || dateFixRows.length === 0} onClick={() => applyBulkDateFix('mmdd')}>
+                {bulkSaving ? 'Guardando…' : 'Leer todas como MM/DD'}
+              </button>
+              <button className="pv-datefix-bulk-btn ddmm" disabled={bulkSaving || dateFixRows.length === 0} onClick={() => applyBulkDateFix('ddmm')}>
+                {bulkSaving ? 'Guardando…' : 'Leer todas como DD/MM'}
+              </button>
+            </div>
+
+            <div className="pv-datefix-body">
+              {dateFixRows.length === 0 ? (
+                <div className="pv-datefix-empty">
+                  {dateFixCounts.total === 0
+                    ? '✅ Todas las fechas ya están en formato ISO. No hay nada que corregir.'
+                    : 'No hay filas en esta pestaña con el filtro actual.'}
+                </div>
+              ) : (
+                <table className="pv-datefix-table">
+                  <thead>
+                    <tr>
+                      <th className="pv-datefix-th">Cliente / Dirección</th>
+                      <th className="pv-datefix-th">Guardado</th>
+                      <th className="pv-datefix-th">Si es MM/DD</th>
+                      <th className="pv-datefix-th">Si es DD/MM</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dateFixRows.map(({ prop, an }) => (
+                      <tr key={prop.id}>
+                        <td className="pv-datefix-td">
+                          <div className="pv-datefix-client">{getClientName(prop.client)}</div>
+                          <div className="pv-datefix-address">{prop.address || '—'}</div>
+                        </td>
+                        <td className="pv-datefix-td">
+                          <span className={`pv-datefix-raw ${an.kind}`}>{an.raw}</span>
+                        </td>
+                        <td className="pv-datefix-td">
+                          {an.asMMDD ? (
+                            <button
+                              className="pv-datefix-opt"
+                              disabled={savingDateId === prop.id || bulkSaving}
+                              onClick={() => applyDateFix(prop.id, an.asMMDD)}
+                              title="Guardar con esta lectura"
+                            >
+                              {an.asMMDD}
+                            </button>
+                          ) : (
+                            <span className="pv-datefix-na">no válido</span>
+                          )}
+                        </td>
+                        <td className="pv-datefix-td">
+                          {an.asDDMM ? (
+                            <button
+                              className="pv-datefix-opt"
+                              disabled={savingDateId === prop.id || bulkSaving}
+                              onClick={() => applyDateFix(prop.id, an.asDDMM)}
+                              title="Guardar con esta lectura"
+                            >
+                              {an.asDDMM}
+                            </button>
+                          ) : (
+                            <span className="pv-datefix-na">no válido</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}
