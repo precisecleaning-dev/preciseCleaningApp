@@ -54,6 +54,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  // ⭐ Valor especial para filtrar las casas SIN status asignado
+  const NO_STATUS = '__NO_STATUS__';
   const [sortBy, setSortBy] = useState<'client' | 'address' | 'schedule'>('client');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -178,7 +180,13 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     const q = search.trim().toLowerCase();
     return (properties || [])
       .filter(p => {
-        if (statusFilter) {
+        if (statusFilter === NO_STATUS) {
+          // ⭐ Sin status: el statusId está vacío o apunta a un status que ya
+          //    no existe en el catálogo.
+          const match = statuses.some(s =>
+            String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId));
+          if (match) return false;
+        } else if (statusFilter) {
           const sid = String(p.statusId || '').toLowerCase().trim();
           const sName = statusName(p.statusId).toLowerCase().trim();
           if (sid !== statusFilter.toLowerCase() && sName !== statusFilter.toLowerCase()) return false;
@@ -283,6 +291,14 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, statuses]);
 
+  // ⭐ Casas SIN status: statusId vacío o apuntando a un status inexistente.
+  const noStatusCount = useMemo(
+    () => (properties || []).filter(p =>
+      !statuses.some(s => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId)),
+    ).length,
+    [properties, statuses],
+  );
+
   return (
     <div className="fade-in shv-page">
 
@@ -318,6 +334,9 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="shv-input-base shv-select">
               <option value="">Todos los status</option>
               {statuses.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              {noStatusCount > 0 && (
+                <option value={NO_STATUS}>No Status ({noStatusCount})</option>
+              )}
             </select>
           </div>
           <div className="shv-select-wrap">
@@ -330,7 +349,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
           </div>
         </div>
 
-        {statusSummary.length > 0 && (
+        {(statusSummary.length > 0 || noStatusCount > 0) && (
           <div className="shv-status-summary-row">
             <span className="shv-status-summary-label">Status:</span>
             {statusSummary.map(s => {
@@ -346,6 +365,22 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 </button>
               );
             })}
+            {/* ⭐ Chip "No Status": casas sin estado asignado */}
+            {noStatusCount > 0 && (() => {
+              const active = statusFilter === NO_STATUS;
+              const color = '#94a3b8';
+              return (
+                <button className={`sh-chip${active ? ' active-tinted' : ' tinted'}`}
+                  onClick={() => setStatusFilter(active ? '' : NO_STATUS)}
+                  title="Casas sin status asignado"
+                  style={{ '--chip-border': `${color}55`, '--chip-color': color, '--chip-shadow': `${color}33` } as CSSProperties}>
+                  <span className="shv-chip-dot" style={{ '--dot-color': color } as CSSProperties} />
+                  No Status
+                  <span className="shv-chip-count" style={{ '--dot-color': color, '--on-solid': onSolid(color) } as CSSProperties}>{noStatusCount}</span>
+                  {active && <X size={12} />}
+                </button>
+              );
+            })()}
           </div>
         )}
 
@@ -358,9 +393,11 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
               </span>
             )}
             {statusFilter && (
-              <span className="sh-chip tinted" style={{ '--chip-border': `${statusColor(statusFilter)}55` } as CSSProperties}>
-                <span className="shv-chip-dot" style={{ '--dot-color': statusColor(statusFilter) } as CSSProperties} />
-                {statusFilter} <X size={13} className="shv-chip-x" onClick={() => setStatusFilter('')} />
+              <span className="sh-chip tinted" style={{ '--chip-border': `${statusFilter === NO_STATUS ? '#94a3b8' : statusColor(statusFilter)}55` } as CSSProperties}>
+                <span className="shv-chip-dot" style={{ '--dot-color': statusFilter === NO_STATUS ? '#94a3b8' : statusColor(statusFilter) } as CSSProperties} />
+                {/* ⭐ Etiqueta legible para el filtro de casas sin status */}
+                {statusFilter === NO_STATUS ? 'No Status' : statusFilter}{' '}
+                <X size={13} className="shv-chip-x" onClick={() => setStatusFilter('')} />
               </span>
             )}
             <button onClick={clearAll} className="shv-clear-filters-btn">Limpiar filtros</button>

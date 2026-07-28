@@ -10,6 +10,7 @@ import {
   Trash2,
   Zap,
   ClipboardCheck,
+  HelpCircle,
   Check,
   Activity,
   FileText,
@@ -254,6 +255,9 @@ type DamageRecord = {
   createdAt?: string;
   createdBy?: string;
 };
+
+// ⭐ Valor del filtro para "casas sin status" (no choca con ningún nombre real)
+const NO_STATUS_FILTER = "__NO_STATUS__";
 
 type FormVisibilityConfig = {
   visibility: Record<string, string[]>;
@@ -1294,6 +1298,13 @@ export default function HousesView({
   const anyVisible = (...elementIds: string[]): boolean =>
     elementIds.some((id) => isElementVisible(id));
 
+  // ⭐ CASAS SIN STATUS: statusId vacío o apuntando a un status que ya no
+  //    existe en el catálogo. Se pueden ver y filtrar en Overview y Pipeline.
+  const hasNoStatus = (p: Property) =>
+    !statuses.some(
+      (s) => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId),
+    );
+
   // ⭐ ¿El rol activo puede VER esta columna/status en Pipeline y Overview?
   //    Se configura por rol en Configure Fields con el elemento "status_<id>".
   const isStatusVisibleForRole = (statusId: string): boolean =>
@@ -1906,6 +1917,10 @@ export default function HousesView({
     return true;
   });
 
+  // ⭐ Cuántas casas del alcance del usuario NO tienen status asignado.
+  //    Debe ir DESPUÉS de propertiesWithScope (si no, se usa antes de existir).
+  const noStatusCount = propertiesWithScope.filter(hasNoStatus).length;
+
   const teamsWithScope = teams.filter((team) => {
     if (userScope === "All") return true;
     if (!currentUser) return false;
@@ -1933,7 +1948,8 @@ export default function HousesView({
     );
 
     let passStatus = true;
-    if (activeFilter !== "All") passStatus = st?.name === activeFilter;
+    if (activeFilter === NO_STATUS_FILTER) passStatus = !st;
+    else if (activeFilter !== "All") passStatus = st?.name === activeFilter;
 
     let passHouse = true;
     if (houseFilter !== "All")
@@ -3428,6 +3444,37 @@ export default function HousesView({
                 );
               })
             )}
+            {/* ⭐ KPI "No Status": casas sin estado asignado. Solo aparece si hay. */}
+            {!isLoading && noStatusCount > 0 && (
+              <div
+                className={`hv-kpi-card${activeFilter === NO_STATUS_FILTER ? " active" : ""}`}
+                style={
+                  {
+                    "--kpi-color": "#94a3b8",
+                    "--kpi-color-30": "#94a3b830",
+                    "--kpi-icon-bg": "#94a3b815",
+                  } as CSSProperties
+                }
+                onClick={() =>
+                  setActiveFilter(
+                    activeFilter === NO_STATUS_FILTER ? "All" : NO_STATUS_FILTER,
+                  )
+                }
+                title={
+                  activeFilter === NO_STATUS_FILTER
+                    ? "Click para limpiar filtro"
+                    : "Filtrar casas sin status asignado"
+                }
+              >
+                <div className="hv-kpi-icon-box">
+                  <HelpCircle size={18} />
+                </div>
+                <div className="hv-min-w-0">
+                  <div className="hv-kpi-label">No Status</div>
+                  <div className="hv-kpi-count">{noStatusCount}</div>
+                </div>
+              </div>
+            )}
           </div>
           )}
 
@@ -3477,6 +3524,16 @@ export default function HousesView({
                             {st.name}
                           </button>
                         ))}
+                        {/* ⭐ Pestaña "No Status" (solo si hay casas sin estado) */}
+                        {noStatusCount > 0 && (
+                          <button
+                            onClick={() => setActiveFilter(NO_STATUS_FILTER)}
+                            className={`hv-pill-btn${activeFilter === NO_STATUS_FILTER ? " active" : ""}`}
+                            title="Casas sin status asignado"
+                          >
+                            No Status ({noStatusCount})
+                          </button>
+                        )}
                       </div>
 
                       <div className="property-select-container">
