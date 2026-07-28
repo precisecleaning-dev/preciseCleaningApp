@@ -244,7 +244,15 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
 // ⭐ Property con el campo `unit` (Unit/Apto). Se declara aquí para no tener
 //    que modificar types/index.ts; si prefieres, agrega `unit?: string;` al
 //    tipo Property y este alias sigue funcionando igual.
-type PropertyU = Property & { unit?: string };
+type PropertyU = Property & { unit?: string; qcPlaces?: string[] };
+
+// ⭐ Hora corta (p. ej. "11:46 p.m.") para la cabecera del checklist,
+//    igual que la "Entrada" del modal de Quality Check.
+const fmtClockTime = (iso: string): string =>
+  new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 type DamageRecord = {
   id: string;
@@ -1587,6 +1595,11 @@ export default function HousesView({
   const [clChecked, setClChecked] = useState<Record<string, boolean>>({});
   const [clNotes, setClNotes] = useState("");
   const [isSavingChecklist, setIsSavingChecklist] = useState(false);
+  // ⭐ Formato "Iniciar Inspección": buscador de áreas + chips de selección
+  //    + hora de entrada, exactamente como en el modal de Quality Check.
+  const [clPlaceSearch, setClPlaceSearch] = useState("");
+  const [clSelectedPlaceIds, setClSelectedPlaceIds] = useState<string[]>([]);
+  const [clOpenedAt, setClOpenedAt] = useState<string | null>(null);
 
   const isChecklistReadOnly = isFieldRO("card_checklist");
 
@@ -1674,15 +1687,55 @@ export default function HousesView({
   const clActivePlaces = clPlaces.filter((pl) =>
     clTasks.some((t) => t.placeId === pl.id),
   );
-  const clTotalTasks = clActivePlaces.reduce(
-    (sum, pl) => sum + clTasks.filter((t) => t.placeId === pl.id).length,
-    0,
+
+  // ⭐ Áreas disponibles para el checklist: si la casa define sus propias áreas
+  //    (qcPlaces) se respetan; si no, todas las que tengan tareas configuradas.
+  //    Mismo criterio que usa el modal de Quality Check.
+  const clHouseAreaIds = (selectedHouse as PropertyU | null)?.qcPlaces;
+  const clAvailablePlaces = clActivePlaces.filter(
+    (pl) =>
+      !Array.isArray(clHouseAreaIds) ||
+      clHouseAreaIds.length === 0 ||
+      clHouseAreaIds.includes(pl.id),
   );
+  const clPlaceQuery = clPlaceSearch.trim().toLowerCase();
+  const clSearchablePlaces = clAvailablePlaces.filter(
+    (pl) => !clPlaceQuery || pl.name.toLowerCase().includes(clPlaceQuery),
+  );
+  const clRenderPlaces = clAvailablePlaces.filter((pl) =>
+    clSelectedPlaceIds.includes(pl.id),
+  );
+  // Avance: solo sobre las tareas de las áreas seleccionadas
+  const clSelectedTasks = clTasks.filter((t) =>
+    clSelectedPlaceIds.includes(t.placeId),
+  );
+  const clSelectedTotal = clSelectedTasks.length;
+  const clSelectedDone = clSelectedTasks.filter((t) => !!clChecked[t.id]).length;
 
   const openChecklistViewer = () => {
-    setClChecked(clRecord?.checked || {});
+    const checked = clRecord?.checked || {};
+    setClChecked(checked);
     setClNotes(clRecord?.notes || "");
+    setClPlaceSearch("");
+    // Preselecciona las áreas que ya traen tareas marcadas; si el checklist es
+    // nuevo, el empleado elige las áreas con los chips (igual que en QC).
+    setClSelectedPlaceIds(
+      clAvailablePlaces
+        .filter((pl) =>
+          clTasks.some((t) => t.placeId === pl.id && checked[t.id]),
+        )
+        .map((pl) => pl.id),
+    );
+    setClOpenedAt(new Date().toISOString());
     setIsChecklistOpen(true);
+  };
+
+  const toggleClPlace = (placeId: string) => {
+    setClSelectedPlaceIds((prev) =>
+      prev.includes(placeId)
+        ? prev.filter((x) => x !== placeId)
+        : [...prev, placeId],
+    );
   };
 
   const toggleClTask = (taskId: string) => {
@@ -6816,91 +6869,155 @@ export default function HousesView({
         </div>
       )}
 
-      {/* ⭐ MODAL CHECKLIST (visor en el detalle) — solo lectura o editable
-          según el estado de "card_checklist" para el rol. */}
+      {/* ⭐ MODAL CHECKLIST del empleado — MISMO FORMATO que "Iniciar Inspección"
+          de Quality Check (cabecera azul, buscador de áreas, chips y una tarjeta
+          por área), con dos diferencias de negocio:
+            1) cada tarea solo tiene el botón "Yes" (no existe "No"), y
+            2) no hay "DID NOT PASS": el empleado no puede mandar a Recall.
+          Sigue guardando en la colección 'checklists' con el mismo modelo
+          (checked + notes), así que los registros previos siguen sirviendo. */}
       {isChecklistOpen && selectedHouse && (
         <div
-          className="modal-overlay-centered"
+          className="modal-overlay-centered hv-cl-overlay"
           onClick={() => !isSavingChecklist && setIsChecklistOpen(false)}
         >
-          <div className="hv-checklist-modal" onClick={(e) => e.stopPropagation()}>
-            <header className="hv-checklist-header">
-              <div>
-                <h3 className="hv-checklist-title">
-                  <ClipboardCheck size={18} /> Checklist
+          <div className="hv-cl-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-cl-header">
+              <div className="hv-cl-header-title-wrap">
+                <h2 className="hv-cl-title">
+                  <ClipboardCheck size={20} /> Checklist
                   {isChecklistReadOnly && (
                     <span className="hv-checklist-ro-badge">Solo lectura</span>
                   )}
-                </h3>
-                <p className="hv-checklist-sub">
+                </h2>
+                <p className="hv-cl-prop">
                   {getClientName(selectedHouse.client)} ·{" "}
                   {selectedHouse.address || "—"}
-                  {clRecord?.date ? ` · ${clRecord.date}` : ""}
+                </p>
+                <p className="hv-cl-insp">
+                  <User size={13} />{" "}
+                  {currentUser
+                    ? `${currentUser.firstName} ${currentUser.lastName}`
+                    : clRecord?.inspector || "Unknown"}
+                  {clOpenedAt && (
+                    <>
+                      {" · "}
+                      <Clock size={13} /> Entrada {fmtClockTime(clOpenedAt)}
+                    </>
+                  )}
                 </p>
               </div>
               <button
-                className="hv-checklist-close"
+                className="hv-cl-close-btn"
                 onClick={() => setIsChecklistOpen(false)}
                 disabled={isSavingChecklist}
+                aria-label="Cerrar"
               >
                 <X size={22} />
               </button>
             </header>
 
-            <div className="hv-checklist-progress-row">
-              <span className="hv-checklist-progress-text">
-                {Object.keys(clChecked).length} de {clTotalTasks} marcados
-              </span>
+            {/* Buscador de áreas */}
+            <div className="hv-cl-search-bar">
+              <div className="hv-cl-search">
+                <Search size={18} className="hv-cl-search-icon" />
+                <input
+                  type="text"
+                  value={clPlaceSearch}
+                  onChange={(e) => setClPlaceSearch(e.target.value)}
+                  placeholder="Buscar área del checklist..."
+                />
+                {clPlaceSearch && (
+                  <button
+                    onClick={() => setClPlaceSearch("")}
+                    aria-label="Limpiar"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="hv-checklist-body">
-              {clActivePlaces.length === 0 ? (
-                <div className="hv-checklist-empty">
-                  No hay lugares/tareas configurados (settings_places /
-                  settings_tasks).
+            <div className="hv-cl-body">
+              {/* Selector de áreas (chips) */}
+              <div className="hv-cl-picker">
+                <div className="hv-cl-picker-title">
+                  <span>
+                    Áreas del checklist ({clSelectedPlaceIds.length}{" "}
+                    seleccionada(s))
+                  </span>
+                  {clSelectedTotal > 0 && (
+                    <span className="hv-cl-picker-progress">
+                      {clSelectedDone} de {clSelectedTotal} marcados
+                    </span>
+                  )}
                 </div>
-              ) : (
-                clActivePlaces.map((place) => {
-                  const placeTasks = clTasks.filter(
-                    (t) => t.placeId === place.id,
-                  );
-                  return (
-                    <div key={place.id} className="hv-checklist-place">
-                      <span className="hv-checklist-place-name">
-                        {place.name}
-                      </span>
-                      <div className="hv-checklist-tasks">
-                        {placeTasks.map((task) => {
-                          const on = !!clChecked[task.id];
-                          return (
+                {clSearchablePlaces.length === 0 ? (
+                  <div className="hv-cl-picker-empty">
+                    No hay áreas con tareas configuradas.
+                  </div>
+                ) : (
+                  <div className="hv-cl-chip-list">
+                    {clSearchablePlaces.map((pl) => {
+                      const sel = clSelectedPlaceIds.includes(pl.id);
+                      return (
+                        <button
+                          key={pl.id}
+                          className={`hv-cl-chip${sel ? " selected" : ""}`}
+                          onClick={() => toggleClPlace(pl.id)}
+                        >
+                          {sel ? <Check size={14} /> : <Plus size={14} />}{" "}
+                          {pl.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Una tarjeta por área seleccionada — SOLO "Yes" */}
+              {clRenderPlaces.map((pl) => {
+                const placeTasks = clTasks.filter((t) => t.placeId === pl.id);
+                return (
+                  <div key={pl.id} className="hv-cl-card">
+                    <h3 className="hv-cl-card-title">{pl.name}</h3>
+                    {placeTasks.map((task) => {
+                      const on = !!clChecked[task.id];
+                      return (
+                        <div key={task.id} className="hv-cl-task-item">
+                          <span className="hv-cl-task-name">{task.name}</span>
+                          <div className="hv-cl-task-buttons">
                             <button
-                              key={task.id}
-                              className={`hv-checklist-task${on ? " on" : ""}${isChecklistReadOnly ? " ro" : ""}`}
+                              className={`hv-cl-toggle yes${on ? " active" : ""}`}
                               onClick={() => toggleClTask(task.id)}
                               disabled={isChecklistReadOnly}
+                              title={
+                                on ? "Quitar la marca" : "Marcar como hecho"
+                              }
                             >
-                              <span className="hv-checklist-check">
-                                {on && <Check size={14} />}
-                              </span>
-                              <span className="hv-checklist-task-name">
-                                {task.name}
-                              </span>
-                              <span className="hv-checklist-yes">Yes</span>
+                              <Check size={15} /> Yes
                             </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {clRenderPlaces.length === 0 && clSearchablePlaces.length > 0 && (
+                <div className="hv-cl-no-places">
+                  Selecciona al menos un área arriba para comenzar el checklist.
+                </div>
               )}
 
-              <div className="hv-checklist-notes">
-                <label className="hv-checklist-notes-label">
+              {/* Notas generales del checklist */}
+              <div className="hv-cl-notes-card">
+                <label className="hv-cl-label">
                   <StickyNote size={13} /> Notas
                 </label>
                 <textarea
-                  className="hv-checklist-notes-input"
+                  className="hv-cl-textarea"
                   value={clNotes}
                   onChange={(e) => setClNotes(e.target.value)}
                   placeholder="Observaciones del checklist…"
@@ -6909,25 +7026,26 @@ export default function HousesView({
               </div>
             </div>
 
-            <footer className="hv-checklist-footer">
-              <button
-                className="hv-btn-outline-modal"
-                onClick={() => setIsChecklistOpen(false)}
-                disabled={isSavingChecklist}
-              >
-                Cerrar
-              </button>
-              {!isChecklistReadOnly && (
+            {/* Barra de guardado: solo "Guardar Checklist" (sin DID NOT PASS) */}
+            <div className="hv-cl-savebar">
+              {isChecklistReadOnly ? (
                 <button
-                  className="hv-btn-primary-modal"
+                  className="hv-cl-btn-save"
+                  onClick={() => setIsChecklistOpen(false)}
+                >
+                  Cerrar
+                </button>
+              ) : (
+                <button
+                  className="hv-cl-btn-save"
                   onClick={handleSaveChecklist}
                   disabled={isSavingChecklist}
                 >
-                  <Save size={15} />{" "}
+                  <Save size={18} />{" "}
                   {isSavingChecklist ? "Guardando…" : "Guardar Checklist"}
                 </button>
               )}
-            </footer>
+            </div>
           </div>
         </div>
       )}

@@ -681,35 +681,84 @@
 .hv-btn-checklist-modal:hover { background-color: #d1fae5; }
 .hv-checklist-footer-count { background: #10b981; color: #ffffff; font-weight: 800; font-size: 0.72rem; padding: 1px 8px; border-radius: 10px; }
 
-.hv-checklist-modal { background-color: #ffffff; width: 100%; max-width: 620px; border-radius: 16px; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-.hv-checklist-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #f1f5f9; }
-.hv-checklist-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #047857; display: flex; align-items: center; gap: 8px; }
+/* ============================================================
+   CHECKLIST del empleado — mismo formato visual que el modal
+   "Iniciar Inspeccion" de Quality Check (cabecera azul, buscador,
+   chips de areas y tarjeta por area), pero con un solo boton "Yes"
+   por tarea y sin la accion "DID NOT PASS".
+   ============================================================ */
 .hv-checklist-ro-badge { background: #f1f5f9; color: #64748b; font-size: 0.68rem; font-weight: 800; padding: 2px 10px; border-radius: 12px; text-transform: uppercase; }
-.hv-checklist-sub { margin: 6px 0 0 0; color: #64748b; font-size: 0.82rem; }
-.hv-checklist-close { background: none; border: none; cursor: pointer; color: #64748b; display: flex; padding: 4px; }
-.hv-checklist-close:disabled { opacity: 0.4; cursor: wait; }
-.hv-checklist-progress-row { padding: 10px 22px 0 22px; }
-.hv-checklist-progress-text { font-size: 0.78rem; font-weight: 700; color: #047857; }
-.hv-checklist-body { padding: 14px 22px 22px 22px; overflow-y: auto; }
-.hv-checklist-empty { text-align: center; color: #94a3b8; font-style: italic; padding: 24px 10px; }
-.hv-checklist-place { margin-bottom: 14px; }
-.hv-checklist-place-name { font-weight: 800; color: #0f172a; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; display: block; margin-bottom: 7px; }
-.hv-checklist-tasks { display: flex; flex-direction: column; gap: 6px; }
-.hv-checklist-task { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid #e5e7eb; background: #ffffff; cursor: pointer; }
-.hv-checklist-task:hover:not(.ro) { background: #f8fafc; }
-.hv-checklist-task.on { background: #ecfdf5; border-color: #a7f3d0; }
-.hv-checklist-task.ro { cursor: default; }
-.hv-checklist-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #ffffff; }
-.hv-checklist-task.on .hv-checklist-check { background: #10b981; border-color: #10b981; }
-.hv-checklist-task-name { flex: 1; font-size: 0.88rem; color: #1e293b; font-weight: 600; }
-.hv-checklist-yes { font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; }
-.hv-checklist-task.on .hv-checklist-yes { color: #047857; }
-.hv-checklist-notes { margin-top: 12px; }
-.hv-checklist-notes-label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 700; color: #64748b; margin-bottom: 6px; }
-.hv-checklist-notes-input { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-family: inherit; font-size: 0.88rem; outline: none; }
-.hv-checklist-notes-input:focus { border-color: #10b981; }
-.hv-checklist-notes-input:disabled { background: #f8fafc; color: #64748b; }
-.hv-checklist-footer { padding: 14px 22px; background: #f8fafc; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 12px; border-radius: 0 0 16px 16px; }
+
+.hv-cl-overlay { padding: 24px; overflow: hidden; }
+.hv-cl-modal { background-color: #eaeff2; width: 80vw; max-width: 1400px; height: 82vh; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); display: flex; flex-direction: column; overflow: hidden; }
+
+.hv-cl-header { background-color: #3b82f6; color: #ffffff; padding: 18px 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-shrink: 0; }
+.hv-cl-header-title-wrap { min-width: 0; }
+.hv-cl-title { margin: 0; font-size: 1.3rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hv-cl-prop { margin: 8px 0 0; font-size: 0.95rem; opacity: 0.9; }
+.hv-cl-insp { margin: 4px 0 0; font-size: 0.85rem; opacity: 0.8; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.hv-cl-close-btn { background: none; border: none; color: #ffffff; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.hv-cl-close-btn:disabled { opacity: 0.5; cursor: wait; }
+
+.hv-cl-search-bar { flex-shrink: 0; padding: 12px 20px; background: #eaeff2; border-bottom: 1px solid #d8dee4; }
+.hv-cl-search { display: flex; align-items: center; gap: 8px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0 12px; height: 44px; }
+.hv-cl-search input { flex: 1; border: none; outline: none; background: transparent; color: #111827; font-size: 0.95rem; height: 100%; min-width: 0; }
+.hv-cl-search button { background: none; border: none; color: #94a3b8; cursor: pointer; display: flex; align-items: center; padding: 4px; }
+.hv-cl-search-icon { color: #94a3b8; flex-shrink: 0; }
+
+.hv-cl-body { padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; flex: 1; align-content: start; }
+
+.hv-cl-picker { grid-column: 1 / -1; background: #ffffff; border: 1px solid #e1e4e8; border-radius: 10px; padding: 16px; }
+.hv-cl-picker-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.78rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+.hv-cl-picker-progress { color: #16a34a; }
+.hv-cl-picker-empty { color: #94a3b8; font-style: italic; font-size: 0.85rem; }
+.hv-cl-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.hv-cl-chip { padding: 8px 14px; border-radius: 20px; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; background: #ffffff; color: #334155; border: 1px solid #e1e4e8; -webkit-tap-highlight-color: transparent; }
+.hv-cl-chip:hover { border-color: #bfdbfe; }
+.hv-cl-chip.selected { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }
+.hv-cl-chip svg { flex-shrink: 0; }
+
+.hv-cl-card { background: #ffffff; border-radius: 10px; border: 1px solid #e1e4e8; padding: 20px; }
+.hv-cl-card-title { color: #3b82f6; font-size: 1.1rem; border-bottom: 2px solid #3b82f6; padding-bottom: 8px; margin-top: 0; font-weight: 600; }
+.hv-cl-task-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eeeeee; }
+.hv-cl-task-name { font-size: 0.92rem; color: #111827; }
+.hv-cl-task-buttons { display: flex; gap: 8px; flex-shrink: 0; }
+.hv-cl-toggle { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 0.9rem; transition: all 0.2s; min-width: 78px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
+.hv-cl-toggle svg { flex-shrink: 0; stroke: currentColor; }
+.hv-cl-toggle.yes { border: 1px solid #e1e4e8; background-color: #ffffff; color: #111827; }
+.hv-cl-toggle.yes:hover:not(:disabled) { border-color: #86efac; background-color: #f0fdf4; }
+.hv-cl-toggle.yes.active { border-color: #22c55e; background-color: #22c55e; color: #ffffff; }
+.hv-cl-toggle:disabled { cursor: default; opacity: 0.7; }
+
+.hv-cl-no-places { grid-column: 1 / -1; text-align: center; color: #94a3b8; font-style: italic; padding: 30px; }
+
+.hv-cl-notes-card { grid-column: 1 / -1; background-color: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px dashed #cccccc; }
+.hv-cl-label { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 11px; margin: 0 0 6px; color: #555555; text-transform: uppercase; }
+.hv-cl-textarea { width: 100%; height: 70px; border: 1px solid #e1e4e8; border-radius: 6px; padding: 10px; box-sizing: border-box; outline: none; font-family: inherit; background-color: #ffffff; color: #111827; font-size: 0.9rem; resize: vertical; }
+.hv-cl-textarea:focus { border-color: #3b82f6; }
+.hv-cl-textarea:disabled { background-color: #f1f5f9; color: #64748b; }
+
+.hv-cl-savebar { padding: 14px; display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; border-top: 3px solid #22c55e; background-color: #ffffff; flex-shrink: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+.hv-cl-btn-save { background-color: #22c55e; color: #ffffff; padding: 15px 50px; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; }
+.hv-cl-btn-save:hover:not(:disabled) { background-color: #16a34a; }
+.hv-cl-btn-save:disabled { opacity: 0.7; cursor: wait; }
+.hv-cl-btn-save svg { flex-shrink: 0; stroke: currentColor; }
+
+@media (max-width: 768px) {
+  .hv-cl-overlay { padding: 0; }
+  .hv-cl-modal { width: 100vw; max-width: none; height: 100vh; height: 100dvh; border-radius: 0; }
+  .hv-cl-header { padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); }
+  .hv-cl-title { font-size: 1.05rem; }
+  .hv-cl-prop { font-size: 0.8rem; }
+  .hv-cl-insp { font-size: 0.72rem; }
+  .hv-cl-search-bar { padding: 10px 12px; }
+  .hv-cl-search { height: 46px; }
+  .hv-cl-body { grid-template-columns: 1fr; padding: 12px; gap: 14px; }
+  .hv-cl-card { padding: 14px; }
+  .hv-cl-toggle { padding: 12px 18px; font-size: 0.95rem; min-width: 92px; }
+  .hv-cl-chip { padding: 10px 16px; font-size: 0.95rem; }
+  .hv-cl-savebar button { width: 100%; }
+}
 
 /* ⭐ Aviso: faltan fotos Before/After para poder marcar Finished */
 .hv-photos-required { display: flex; gap: 12px; align-items: flex-start; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
