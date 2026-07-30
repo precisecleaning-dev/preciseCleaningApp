@@ -18,17 +18,20 @@
 .inv-header {
   margin-bottom: 20px;
 }
+
 .inv-title {
   margin: 0;
   color: #111827;
   font-size: 1.8rem;
   font-weight: 700;
 }
+
 .inv-subtitle {
   margin: 4px 0 0 0;
   color: #6b7280;
   font-size: 0.95rem;
 }
+
 .inv-hamburger-btn {
   background: white;
   border: 1px solid #e5e7eb;
@@ -44,9 +47,11 @@
 .inv-shrink-0 {
   flex-shrink: 0;
 }
+
 .inv-mt-4 {
   margin-top: 4px;
 }
+
 .inv-label-icon-inline {
   display: inline;
   margin-right: 6px;
@@ -60,6 +65,7 @@
   gap: 8px;
   margin-bottom: 14px;
 }
+
 .inv-secondary-filters {
   display: flex;
   flex-wrap: wrap;
@@ -87,15 +93,18 @@
     border-color 0.15s,
     color 0.15s;
 }
+
 .inv-filter-pill:hover {
   background: var(--pill-color-15, #f8fafc);
   border-color: #cbd5e1;
 }
+
 .inv-filter-pill.active {
   background: var(--pill-color-15, #eff6ff);
   border-color: var(--pill-color, #3b82f6);
   color: var(--pill-color, #1d4ed8);
 }
+
 .inv-filter-dot {
   width: 9px;
   height: 9px;
@@ -103,6 +112,7 @@
   background: var(--dot-color, #64748b);
   flex-shrink: 0;
 }
+
 .inv-filter-count-badge {
   background: #f1f5f9;
   color: #64748b;
@@ -111,6 +121,7 @@
   font-size: 0.75rem;
   font-weight: 800;
 }
+
 .inv-filter-count-badge.active {
   background: var(--pill-color-20, #dbeafe);
   color: var(--pill-color, #1d4ed8);
@@ -121,6 +132,7 @@
   flex: 1;
   min-width: 220px;
 }
+
 .inv-input-icon {
   position: absolute;
   left: 12px;
@@ -129,6 +141,7 @@
   color: #9ca3af;
   pointer-events: none;
 }
+
 .inv-input {
   width: 100%;
   box-sizing: border-box;
@@ -140,9 +153,11 @@
   color: #111827;
   outline: none;
 }
+
 .inv-input:focus {
   border-color: #3b82f6;
 }
+
 .inv-label {
   font-size: 0.78rem;
   color: #6b7280;
@@ -159,6 +174,7 @@
   display: inline-block;
   outline: none;
 }
+
 .inv-pill-wrap.full {
   display: block;
   width: 100%;
@@ -183,20 +199,25 @@
     background-color 0.15s,
     border-color 0.15s;
 }
+
 .inv-status-pill.full {
   width: 100%;
 }
+
 .inv-status-pill.dynamic {
   border-color: var(--pill-border, #e5e7eb);
   background: var(--pill-bg, #ffffff);
 }
+
 .inv-status-pill.dynamic:hover:not(.disabled) {
   background: var(--pill-bg-hover, #f8fafc);
 }
+
 .inv-status-pill.static:hover:not(.disabled) {
   background: #f8fafc;
   border-color: #cbd5e1;
 }
+
 .inv-status-pill.disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -208,6 +229,7 @@
   gap: 8px;
   min-width: 0;
 }
+
 .inv-pill-dot {
   width: 9px;
   height: 9px;
@@ -215,18 +237,22 @@
   background: var(--dot-color, #64748b);
   flex-shrink: 0;
 }
+
 .inv-pill-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .inv-pill-text.colored {
   color: inherit;
 }
+
 .inv-pill-chevron {
   flex-shrink: 0;
   transition: transform 0.18s;
 }
+
 .inv-pill-chevron.open {
   transform: rotate(180deg);
 }
@@ -246,9 +272,11 @@
   flex-direction: column;
   gap: 2px;
 }
+
 .inv-pill-dropdown.full {
   width: 100%;
 }
+
 .inv-pill-option {
   display: flex;
   align-items: center;
@@ -260,9 +288,11 @@
   font-weight: 600;
   color: #1e293b;
 }
+
 .inv-pill-option:hover {
   background: #f1f5f9;
 }
+
 .inv-pill-option.current {
   background: #eff6ff;
   color: #1d4ed8;
@@ -279,6 +309,7 @@
   font-size: 0.78rem;
   font-weight: 700;
 }
+
 .inv-dot-12 {
   width: 12px;
   height: 12px;
@@ -287,6 +318,7 @@
   display: inline-block;
   flex-shrink: 0;
 }
+
 .inv-dot-row {
   display: inline-flex;
   align-items: center;
@@ -300,11 +332,13 @@
   border: 1px solid #e5e7eb;
   overflow-x: auto;
 }
+
 .inv-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 1100px;
 }
+
 .inv-th {
   padding: 12px 16px;
   text-align: left;
@@ -317,12 +351,15 @@
   background: #f8fafc;
   white-space: nowrap;
 }
+
 .inv-th.right {
   text-align: right;
 }
+
 .inv-th.center {
   text-align: center;
 }
+
 .inv-td {
   padding: 14px 16px;
   border-bottom: 1px solid #f1f5f9;
@@ -330,25 +367,32 @@
   color: #111827;
   vertical-align: middle;
 }
+
 .inv-td.right {
   text-align: right;
 }
+
 .inv-td.center {
   text-align: center;
 }
+
 .inv-td.strong {
   font-weight: 700;
 }
+
 .inv-td.muted {
   color: #64748b;
 }
+
 .inv-row {
   cursor: pointer;
   transition: background-color 0.12s;
 }
+
 .inv-row:hover {
   background-color: #f8fafc;
 }
+
 .inv-empty-row {
   text-align: center;
   padding: 40px;
@@ -359,22 +403,27 @@
   font-weight: 700;
   color: #0f172a;
 }
+
 .inv-client-address {
   font-size: 0.8rem;
   color: #64748b;
   margin-top: 2px;
 }
+
 .inv-address-value {
   color: #475569;
 }
+
 .inv-team-cell {
   display: inline-flex;
   align-items: center;
   gap: 7px;
 }
+
 .inv-search-cell {
   min-width: 240px;
 }
+
 .inv-card-profit {
   font-weight: 800;
   color: #0f172a;
@@ -385,6 +434,7 @@
   gap: 6px;
   justify-content: center;
 }
+
 .inv-icon-btn {
   background: none;
   border: 1px solid transparent;
@@ -395,30 +445,38 @@
   align-items: center;
   justify-content: center;
 }
+
 .inv-icon-btn.view {
   color: #3b82f6;
 }
+
 .inv-icon-btn.view:hover {
   background: #eff6ff;
   border-color: #bfdbfe;
 }
+
 .inv-icon-btn.photos {
   color: #7c3aed;
 }
+
 .inv-icon-btn.photos:hover {
   background: #f5f3ff;
   border-color: #ddd6fe;
 }
+
 .inv-icon-btn.edit {
   color: #0f766e;
 }
+
 .inv-icon-btn.edit:hover {
   background: #f0fdfa;
   border-color: #99f6e4;
 }
+
 .inv-icon-btn.delete {
   color: #ef4444;
 }
+
 .inv-icon-btn.delete:hover {
   background: #fef2f2;
   border-color: #fecaca;
@@ -429,6 +487,7 @@
   justify-content: center;
   padding: 16px;
 }
+
 .inv-load-more-btn {
   background: #ffffff;
   border: 1px solid #cbd5e1;
@@ -439,6 +498,7 @@
   font-size: 0.86rem;
   cursor: pointer;
 }
+
 .inv-load-more-btn:hover {
   background: #f8fafc;
 }
@@ -449,6 +509,7 @@
   flex-direction: column;
   gap: 14px;
 }
+
 .inv-job-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -456,6 +517,7 @@
   padding: 14px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 }
+
 .inv-card-top-row {
   display: flex;
   justify-content: space-between;
@@ -463,17 +525,20 @@
   gap: 10px;
   margin-bottom: 10px;
 }
+
 .inv-card-client-name {
   font-weight: 800;
   color: #0f172a;
   font-size: 0.95rem;
 }
+
 .inv-card-info-col {
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
 }
+
 .inv-card-info-row {
   display: flex;
   align-items: center;
@@ -481,11 +546,13 @@
   font-size: 0.82rem;
   color: #64748b;
 }
+
 .inv-card-info-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .inv-card-pills-col {
   display: flex;
   flex-direction: column;
@@ -499,6 +566,7 @@
   gap: 8px;
   margin-top: 10px;
 }
+
 .inv-card-mini-box {
   background: #f8fafc;
   border: 1px solid #eef2f7;
@@ -506,6 +574,7 @@
   padding: 8px;
   text-align: center;
 }
+
 .inv-card-mini-label {
   font-size: 0.65rem;
   font-weight: 800;
@@ -513,6 +582,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
 .inv-card-mini-value {
   font-size: 0.9rem;
   font-weight: 800;
@@ -526,6 +596,7 @@
   margin-top: 12px;
   flex-wrap: wrap;
 }
+
 .inv-card-btn {
   display: inline-flex;
   align-items: center;
@@ -538,35 +609,43 @@
   font-size: 0.8rem;
   cursor: pointer;
 }
+
 .inv-card-btn.view {
   background: #eff6ff;
   border: 1px solid #bfdbfe;
   color: #1d4ed8;
 }
+
 .inv-card-btn.view:hover {
   background: #dbeafe;
 }
+
 .inv-card-btn.photos {
   background: #f5f3ff;
   border: 1px solid #ddd6fe;
   color: #6d28d9;
 }
+
 .inv-card-btn.photos:hover {
   background: #ede9fe;
 }
+
 .inv-card-btn.edit {
   background: #f0fdfa;
   border: 1px solid #99f6e4;
   color: #0f766e;
 }
+
 .inv-card-btn.edit:hover {
   background: #ccfbf1;
 }
+
 .inv-card-btn.delete {
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #dc2626;
 }
+
 .inv-card-btn.delete:hover {
   background: #fee2e2;
 }
@@ -580,12 +659,14 @@
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
+
 .inv-modal-title {
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
   color: #0f172a;
 }
+
 .inv-modal-close {
   background: none;
   border: none;
@@ -594,10 +675,12 @@
   display: flex;
   padding: 4px;
 }
+
 .inv-modal-body {
   padding: 22px 24px;
   overflow-y: auto;
 }
+
 .inv-modal-footer {
   padding: 16px 24px;
   background-color: #f8fafc;
@@ -622,17 +705,21 @@
   font-size: 0.86rem;
   cursor: pointer;
 }
+
 .inv-btn-outline-modal:hover {
   background-color: #f8fafc;
 }
+
 .inv-btn-outline-modal.photos {
   background-color: #f5f3ff;
   border-color: #ddd6fe;
   color: #6d28d9;
 }
+
 .inv-btn-outline-modal.photos:hover {
   background-color: #ede9fe;
 }
+
 .inv-btn-primary-modal {
   display: inline-flex;
   align-items: center;
@@ -646,9 +733,11 @@
   font-size: 0.86rem;
   cursor: pointer;
 }
+
 .inv-btn-primary-modal:hover {
   background-color: #2563eb;
 }
+
 .inv-btn-primary-modal:disabled {
   opacity: 0.6;
   cursor: wait;
@@ -661,11 +750,13 @@
   padding: 14px 18px;
   margin-bottom: 18px;
 }
+
 .inv-detail-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+
 .inv-detail-label {
   font-size: 0.7rem;
   font-weight: 800;
@@ -676,6 +767,7 @@
   align-items: center;
   gap: 5px;
 }
+
 .inv-detail-value {
   font-size: 0.92rem;
   font-weight: 700;
@@ -692,6 +784,7 @@
   gap: 12px;
   margin: 18px 0;
 }
+
 .inv-fin-summary-box {
   background: #f8fafc;
   border: 1px solid #e5e7eb;
@@ -699,6 +792,7 @@
   padding: 14px;
   text-align: center;
 }
+
 .inv-fin-summary-label {
   font-size: 0.68rem;
   font-weight: 800;
@@ -706,18 +800,22 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
 .inv-fin-summary-value {
   font-size: 1.35rem;
   font-weight: 800;
   margin-top: 4px;
   color: #0f172a;
 }
+
 .inv-fin-summary-value.cost {
   color: #1d4ed8;
 }
+
 .inv-fin-summary-value.payroll {
   color: #b45309;
 }
+
 .inv-fin-summary-value.profit {
   color: #15803d;
 }
@@ -730,20 +828,24 @@
   padding: 14px 16px;
   margin-bottom: 14px;
 }
+
 .inv-note-box.orange {
   background: #fff7ed;
   border-color: #fed7aa;
 }
+
 .inv-note {
   display: flex;
   gap: 8px;
   align-items: flex-start;
 }
+
 .inv-note-icon {
   flex-shrink: 0;
   margin-top: 2px;
   color: #94a3b8;
 }
+
 .inv-note-text {
   font-size: 0.88rem;
   color: #334155;
@@ -760,6 +862,7 @@
   padding: 14px 16px;
   margin-bottom: 14px;
 }
+
 .inv-workers-header {
   display: flex;
   align-items: center;
@@ -767,11 +870,13 @@
   gap: 8px;
   margin-bottom: 10px;
 }
+
 .inv-worker-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
+
 .inv-worker-chip {
   display: inline-flex;
   align-items: center;
@@ -784,6 +889,7 @@
   font-size: 0.8rem;
   font-weight: 700;
 }
+
 .inv-workers-none-text {
   color: #94a3b8;
   font-style: italic;
@@ -795,30 +901,293 @@
   .inv-page {
     padding: 14px;
   }
+
   .inv-table-wrap {
     display: none;
   }
+
   .inv-cards-wrap {
     display: flex;
   }
+
   .inv-fin-summary-grid {
     grid-template-columns: 1fr;
   }
+
   .inv-secondary-filters {
     flex-direction: column;
     align-items: stretch;
   }
+
   .inv-input-wrap {
     min-width: 0;
     width: 100%;
   }
+
   .inv-modal-footer {
     flex-wrap: wrap;
   }
+
   .inv-modal-footer .inv-btn-outline-modal,
   .inv-modal-footer .inv-btn-primary-modal {
     flex: 1 1 45%;
     justify-content: center;
     min-height: 44px;
+  }
+}
+
+/* ⭐ PAGOS DE EMPLEADOS en el detalle de la casa (ver y editar) */
+.inv-payroll-box {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.inv-payroll-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.inv-payroll-total-chip {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.inv-payroll-empty {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 0.85rem;
+  padding: 10px 0;
+}
+
+.inv-payroll-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inv-payroll-item {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.inv-payroll-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inv-payroll-emp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.inv-payroll-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inv-payroll-status {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.inv-payroll-status.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.inv-payroll-status.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.inv-payroll-amount {
+  font-weight: 800;
+  color: #0f766e;
+  font-size: 0.95rem;
+}
+
+.inv-payroll-edit-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #2563eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.inv-payroll-edit-btn:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.inv-payroll-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 7px;
+  font-size: 0.79rem;
+  color: #64748b;
+}
+
+.inv-payroll-breakdown .extra {
+  color: #047857;
+}
+
+.inv-payroll-breakdown .discount {
+  color: #b91c1c;
+}
+
+.inv-payroll-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.inv-payroll-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.inv-payroll-form-wide {
+  grid-column: span 2;
+}
+
+.inv-payroll-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.inv-payroll-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #0f172a;
+  background: #ffffff;
+  outline: none;
+  font-family: inherit;
+}
+
+.inv-payroll-input:focus {
+  border-color: #3b82f6;
+}
+
+.inv-payroll-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.inv-payroll-new-total {
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.inv-payroll-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.inv-payroll-cancel {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.inv-payroll-cancel:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.inv-payroll-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #10b981;
+  border: none;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.inv-payroll-save:hover:not(:disabled) {
+  background: #059669;
+}
+
+.inv-payroll-cancel:disabled,
+.inv-payroll-save:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@media (max-width: 700px) {
+  .inv-payroll-form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .inv-payroll-form-wide {
+    grid-column: span 2;
+  }
+
+  .inv-payroll-form-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-payroll-form-actions .inv-payroll-cancel,
+  .inv-payroll-form-actions .inv-payroll-save {
+    flex: 1;
+    justify-content: center;
   }
 }
