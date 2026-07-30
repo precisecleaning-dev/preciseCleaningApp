@@ -12,6 +12,7 @@ import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import HousesView from './HousesView';
+import RegisteredPaymentsPanel from '../components/RegisteredPaymentsPanel';
 import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
@@ -902,6 +903,18 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </div>
       )}
 
+      {/* --- ⭐ PAGOS A EMPLEADOS (PAY) — panel global de la vista Invoices.
+          Se acota a las casas que están pasando los filtros actuales, para que
+          el total del chip verde cuadre con lo que se ve en la tabla. --- */}
+      <RegisteredPaymentsPanel
+        payrolls={payrolls}
+        employees={employees}
+        properties={allProps}
+        propertyIds={filteredProperties.map(p => p.id)}
+        canEdit={canEdit}
+        actionLabel="Pay"
+      />
+
       {/* --- ⭐ MODAL DETALLE DE PROPIEDAD (READ ONLY) — igual al de House view --- */}
       {detailHouse && (
         <div className="modal-overlay-centered" onClick={() => setDetailHouse(null)}>
@@ -1029,6 +1042,18 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
                 <div className="col-span-full"><div className="inv-note-box"><span className="inv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span><span className="inv-detail-value small">{detailHouse.note || 'No notes.'}</span></div></div>
                 <div className="col-span-full"><div className="inv-note-box orange"><span className="inv-detail-label orange spaced"><PenTool size={14} /> EMPLOYEE'S NOTE</span><span className="inv-detail-value small">{detailHouse.employeeNote || 'No employee notes.'}</span></div></div>
+
+                {/* ⭐ PAGOS A EMPLEADOS de ESTA casa — mismo apartado que House view */}
+                <div className="col-span-full">
+                  <RegisteredPaymentsPanel
+                    payrolls={payrolls}
+                    employees={employees}
+                    properties={allProps}
+                    propertyId={detailHouse.id}
+                    canEdit={canEdit}
+                    actionLabel="Pay"
+                  />
+                </div>
 
               </div>
             </div>
