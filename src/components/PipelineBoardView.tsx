@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Camera, Image as ImageIcon, HelpCircle } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Camera, Image as ImageIcon } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import { getRelationName, getRelationColor } from '../utils/relations';
@@ -19,9 +19,6 @@ import './PipelineBoardView.css';
    Sin filtro de fechas: el tablero muestra todos los trabajos de cada
    columna, ordenados por fecha descendente (más reciente primero).
    ------------------------------------------------------------------ */
-
-// ⭐ Id de la columna sintética "No Status" (casas sin estado asignado)
-const NO_STATUS_ID = '__no_status__';
 
 type Property = BaseProperty & {
   scheduleDate?: string | null;
@@ -48,8 +45,6 @@ interface PipelineBoardViewProps {
   showAfterPhotos?: boolean;
   /** ⭐ Abre el detalle de la casa en la pestaña de fotos */
   onOpenPhotos?: (p: Property) => void;
-  /** ⭐ Mostrar la columna "No Status" con las casas sin estado asignado */
-  showNoStatus?: boolean;
 }
 
 /* Pastilla de estado en la tarjeta. Al tocarla YA NO abre un dropdown:
@@ -81,7 +76,6 @@ export default function PipelineBoardView({
   properties, statuses, teams, priorities = [], getClientName,
   onOpenDetail, onQuickStatusChange, canEdit, isSaving, getAmount,
   showBeforePhotos = false, showAfterPhotos = false, onOpenPhotos,
-  showNoStatus = true,
 }: PipelineBoardViewProps) {
 
   // Modal central de cambio de estado (null = cerrado)
@@ -94,28 +88,15 @@ export default function PipelineBoardView({
     dateSortValue(b.scheduleDate || b.receiveDate) - dateSortValue(a.scheduleDate || a.receiveDate);
 
   const propsForStatus = (st: Status) =>
-    st.id === NO_STATUS_ID
-      ? noStatusItems
-      : properties
-        .filter(p => p.statusId === st.id || p.statusId === st.name)
-        // ⭐ Orden por fecha descendente (más reciente primero). Usa scheduleDate, si no receiveDate.
-        .sort(byDateDesc);
+    properties
+      .filter(p => p.statusId === st.id || p.statusId === st.name)
+      // ⭐ Orden por fecha descendente (más reciente primero). Usa scheduleDate, si no receiveDate.
+      .sort(byDateDesc);
 
-  // ⭐ CASAS SIN STATUS: el statusId está vacío o apunta a un status que ya no
-  //    existe en el catálogo. Antes desaparecían del tablero (ninguna columna
-  //    las reclamaba); ahora tienen su propia columna al final.
-  const noStatusItems = properties
-    .filter(p => !statuses.some(s => p.statusId === s.id || p.statusId === s.name))
-    .sort(byDateDesc);
-
-  // La columna "No Status" se agrega como una columna más (sintética), así el
-  // render de las tarjetas se reutiliza sin duplicar nada.
-  const columns: Status[] = [
-    ...statusColumns,
-    ...(showNoStatus && noStatusItems.length > 0
-      ? [{ id: NO_STATUS_ID, name: 'No Status', color: '#94a3b8' } as Status]
-      : []),
-  ];
+  // ⭐ Las casas SIN status ya no salen aquí: viven en su propio módulo
+  //    ("No Status"), donde se les asigna estado. Antes ocupaban una columna
+  //    con miles de tarjetas que no aportaba nada al flujo del tablero.
+  const columns: Status[] = statusColumns;
 
   return (
     <div className="pipeline-board-wrap">
@@ -131,9 +112,6 @@ export default function PipelineBoardView({
               <div className="pb-column-head" style={{ '--col-color': st.color || '#e5e7eb' } as CSSProperties}>
                 <div className="pb-column-head-row">
                   <h3 className="pb-column-title">
-                    {st.id === NO_STATUS_ID && (
-                      <HelpCircle size={14} className="pb-nostatus-icon" />
-                    )}
                     {st.name}
                   </h3>
                   <span className="pb-column-count">

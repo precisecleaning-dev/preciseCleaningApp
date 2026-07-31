@@ -1,0 +1,144 @@
+/* ============================================================================
+   NoStatusView.css — Modulo "No Status"
+   Mismo lenguaje visual que Overview e Invoices: fondo #f7f9fc, tarjetas
+   blancas de 16px, bordes #e9eef5, azul #1d4ed8. Sin banderas de prioridad.
+   ========================================================================== */
+
+.ns-page {
+  padding: 24px;
+  box-sizing: border-box;
+  background-color: #f7f9fc;
+  min-height: 100%;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* ---------- Encabezado ---------- */
+.ns-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.ns-hamburger-btn {
+  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; color: #334155;
+  width: 44px; height: 44px; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  align-self: flex-start; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.ns-hamburger-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.ns-title { margin: 0; font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; }
+.ns-subtitle { margin: 5px 0 0 0; font-size: 0.875rem; color: #64748b; font-weight: 500; }
+
+/* ---------- Barra superior ---------- */
+.ns-toolbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 18px; }
+.ns-kpi-card {
+  background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px;
+  padding: 16px 20px; display: flex; align-items: center; gap: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); min-width: 220px;
+}
+.ns-kpi-icon-box {
+  width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0;
+  background-color: #94a3b815; color: #64748b;
+  display: flex; align-items: center; justify-content: center;
+}
+.ns-min-w-0 { min-width: 0; }
+.ns-kpi-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+.ns-kpi-count { font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; margin-top: 2px; }
+
+.ns-search-box {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px;
+  background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 999px;
+  padding: 0 18px; height: 44px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.ns-search-box:focus-within { border-color: #bfdbfe; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10); }
+.ns-search-icon { color: #94a3b8; flex-shrink: 0; }
+.ns-search-input { background: transparent; border: none; outline: none; width: 100%; min-width: 0; font-size: 0.9rem; color: #0f172a; }
+.ns-search-input::placeholder { color: #94a3b8; }
+
+/* ---------- Panel ---------- */
+.ns-panel-card {
+  background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.ns-panel-head { padding: 20px 22px 16px 22px; border-bottom: 1px solid #f1f5f9; }
+.ns-panel-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+.ns-panel-sub { margin: 4px 0 0 0; font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+
+/* ---------- Tabla ---------- */
+.ns-table-wrap { overflow-x: auto; }
+.ns-table { width: 100%; border-collapse: collapse; }
+.ns-th {
+  padding: 14px 22px; text-align: left; font-size: 0.7rem; font-weight: 700;
+  color: #94a3b8; text-transform: uppercase; letter-spacing: 0.07em;
+  border-bottom: 1px solid #eef2f7; background-color: #fbfcfe; white-space: nowrap;
+}
+.ns-th.center { text-align: center; }
+.ns-td { padding: 16px 22px; border-bottom: 1px solid #f4f7fa; font-size: 0.875rem; color: #0f172a; vertical-align: middle; }
+.ns-td.muted { color: #64748b; white-space: nowrap; }
+.ns-td.center { text-align: center; }
+.ns-row { cursor: pointer; transition: background-color 0.15s; }
+.ns-row:hover { background-color: #f6f9fe; }
+.ns-row:last-child .ns-td { border-bottom: none; }
+.ns-client-name { font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 3px; }
+.ns-client-address { font-size: 0.775rem; color: #94a3b8; }
+.ns-empty-row { text-align: center; padding: 40px; color: #94a3b8; }
+
+/* ---------- Botones ---------- */
+.ns-actions-cell { display: inline-flex; gap: 8px; justify-content: center; }
+.ns-btn-assign {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px;
+  border-radius: 999px; border: none; background-color: #1d4ed8; color: #ffffff;
+  font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background-color 0.18s ease;
+}
+.ns-btn-assign:hover:not(:disabled) { background-color: #1e40af; }
+.ns-btn-assign:disabled { opacity: 0.6; cursor: not-allowed; }
+.ns-btn-edit {
+  height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #e2e8f0;
+  background-color: #ffffff; color: #334155; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.ns-btn-edit:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+.ns-loadmore-wrap { display: flex; justify-content: center; padding: 16px; border-top: 1px solid #f4f7fa; background-color: #fbfcfe; }
+.ns-btn-loadmore {
+  height: 40px; padding: 0 22px; border-radius: 999px; border: 1px solid #e2e8f0;
+  background-color: #ffffff; color: #334155; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.ns-btn-loadmore:hover { background-color: #f1f5f9; border-color: #cbd5e1; }
+
+/* ---------- Tarjetas (móvil) ---------- */
+.ns-cards-wrap { display: none; flex-direction: column; gap: 12px; padding: 14px; background-color: #f7f9fc; }
+.ns-cards-empty { text-align: center; padding: 32px; color: #94a3b8; font-size: 0.9rem; }
+.ns-job-card {
+  background: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  -webkit-tap-highlight-color: transparent;
+}
+.ns-job-card:active { transform: scale(0.995); }
+.ns-card-name { font-size: 1.05rem; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+.ns-card-info-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #64748b; }
+.ns-shrink-0 { flex-shrink: 0; color: #94a3b8; }
+.ns-card-actions { display: flex; gap: 10px; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: 2px; }
+.ns-btn-assign.full, .ns-btn-edit.full { flex: 1; height: 44px; justify-content: center; display: inline-flex; align-items: center; }
+
+@media (max-width: 900px) {
+  .ns-page { padding: 16px; }
+  .ns-title { font-size: 1.45rem; }
+  .ns-subtitle { font-size: 0.82rem; }
+  .ns-toolbar { gap: 10px; }
+  .ns-kpi-card { flex: 1 1 100%; min-width: 0; padding: 14px 16px; }
+  .ns-search-box { flex: 1 1 100%; height: 48px; }
+
+  .ns-table-wrap { display: none; }
+  .ns-cards-wrap { display: flex; }
+  .ns-panel-head { padding: 16px 16px 14px 16px; }
+  .ns-panel-card { border-radius: 14px; }
+  .ns-loadmore-wrap { border-top: none; background-color: transparent; padding: 14px; }
+  .ns-btn-loadmore { width: 100%; height: 46px; }
+}
+
+@media (max-width: 480px) {
+  .ns-page { padding: 12px; }
+  .ns-cards-wrap { padding: 12px; gap: 10px; }
+  .ns-job-card { padding: 14px; border-radius: 14px; }
+}

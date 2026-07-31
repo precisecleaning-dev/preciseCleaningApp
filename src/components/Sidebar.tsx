@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -69,6 +69,10 @@ export default function Sidebar({
     // ⭐ HOUSES — check propio
     { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
     { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canView('Houses') },
+    // ⭐ NO STATUS — casas sin estado asignado. Usa el permiso de Houses para
+    //    que funcione sin tocar el catalogo de Roles; si mas adelante quieres un
+    //    permiso propio, agrega el modulo "No Status" y cambia el canView de aqui.
+    { tab: 'no_status', label: 'No Status', icon: HelpCircle, visible: canView('Houses') },
     // ⭐ INVOICES — check INDEPENDIENTE de Houses
     { tab: 'invoices', label: 'Invoices', icon: FileText, visible: canView('Invoices') },
     // ⭐ CALENDAR
@@ -133,7 +137,7 @@ export default function Sidebar({
         <div className="sidebar-header">
           <div className="sidebar-header-spacer" />
           <button className="mobile-close-btn" onClick={() => setIsSidebarOpen(false)} aria-label="Close menu">
-            <X size={22} />
+            <X size={32} />
           </button>
         </div>
 

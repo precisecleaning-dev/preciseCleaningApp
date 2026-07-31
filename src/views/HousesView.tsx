@@ -1964,6 +1964,11 @@ export default function HousesView({
           if (!isAssigned && !isSameTeam) return false;
         }
 
+        // ⭐ Las casas SIN status asignado ya no aparecen en Overview ni en el
+        //    tablero: tienen su propio modulo ("No Status"). Antes se colaban en
+        //    la lista de "All" y en el board sin aportar nada.
+        if (!findStatusOf(prop)) return false;
+
         if (!isSuperAdmin && allowedStatusIds.length > 0) {
           const matchById = allowedStatusIds.includes(prop.statusId);
           const propStatus = findStatusOf(prop);
