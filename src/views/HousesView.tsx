@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -10,7 +10,6 @@ import {
   Trash2,
   Zap,
   ClipboardCheck,
-  HelpCircle,
   Check,
   Activity,
   FileText,
@@ -266,6 +265,10 @@ type DamageRecord = {
 
 // ⭐ Valor del filtro para "casas sin status" (no choca con ningún nombre real)
 const NO_STATUS_FILTER = "__NO_STATUS__";
+
+// ⭐ PERF: la lista de trabajos se pinta por bloques. Renderizar miles de
+//    filas de golpe era lo que hacia sentir la vista lenta al abrir.
+const JOBS_PAGE_SIZE = 50;
 
 type FormVisibilityConfig = {
   visibility: Record<string, string[]>;
@@ -537,6 +540,7 @@ export default function HousesView({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [visibleJobs, setVisibleJobs] = useState(JOBS_PAGE_SIZE);
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
   const [workerSearch, setWorkerSearch] = useState(""); // ⭐ buscador de empleados
@@ -764,13 +768,37 @@ export default function HousesView({
     return subtotal;
   };
 
+  // ⭐ PERF: indice de statuses por id y por nombre. Antes cada fila hacia
+  //    statuses.find() en cada render; con miles de casas eso era el cuello
+  //    de botella principal de la vista.
+  const statusIndex = useMemo(() => {
+    const index = new Map<string, Status>();
+    statuses.forEach((s) => {
+      index.set(String(s.id), s);
+      index.set(String(s.name), s);
+    });
+    return index;
+  }, [statuses]);
+
+  const findStatusOf = (p: { statusId?: string | null }): Status | undefined =>
+    statusIndex.get(String(p.statusId ?? ""));
+
+  // ⭐ PERF: cache de nombres de cliente. getRelationName recorria toda la
+  //    lista de clientes por cada fila; ahora cada id se resuelve una sola vez.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const clientNameCache = useMemo(
+    () => new Map<string, string>(),
+    [customersList],
+  );
+
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return "Unknown";
-    return getRelationName(
-      customersList,
-      clientIdOrName,
-      String(clientIdOrName),
-    );
+    const key = String(clientIdOrName);
+    const cached = clientNameCache.get(key);
+    if (cached !== undefined) return cached;
+    const name = getRelationName(customersList, key, key);
+    clientNameCache.set(key, name);
+    return name;
   };
 
   // ⭐ Resuelve el nombre del serviceId desde settings_products (con respaldo a settings_services)
@@ -794,11 +822,7 @@ export default function HousesView({
   // Estados que NO se muestran en las listas. `allowQC=true` (tablero Pipeline)
   // solo oculta Invoice, para que Quality Check SÍ aparezca en el tablero.
   const isHiddenPipelineStatus = (p: Property, allowQC = false) => {
-    const st = statuses.find(
-      (s) =>
-        String(s.id) === String(p.statusId) ||
-        String(s.name) === String(p.statusId),
-    );
+    const st = findStatusOf(p);
     const name = String(st?.name || p.statusId || "")
       .toLowerCase()
       .trim();
@@ -971,10 +995,15 @@ export default function HousesView({
     setIsLoading(true);
 
     const loadedCollections = new Set<string>();
-    const TOTAL_COLLECTIONS = 10;
+    // ⭐ PERF: la vista se pinta en cuanto llegan properties + statuses, que es
+    //    lo unico que necesita la tabla. Los demas catalogos siguen cargando en
+    //    segundo plano en vez de dejar la pantalla en "Loading database...".
     const markLoaded = (name: string) => {
       loadedCollections.add(name);
-      if (loadedCollections.size >= TOTAL_COLLECTIONS) {
+      if (
+        loadedCollections.has("properties") &&
+        loadedCollections.has("statuses")
+      ) {
         setIsLoading(false);
       }
     };
@@ -1270,6 +1299,8 @@ export default function HousesView({
   ) as PermissionExt | undefined;
   const userScope = isSuperAdmin ? "All" : housePermission?.scope || "Own";
   const allowedStatusIds: string[] = housePermission?.allowedStatusIds || [];
+  // ⭐ PERF: clave estable del arreglo para las dependencias de los useMemo.
+  const allowedStatusKey = allowedStatusIds.join(",");
   const hiddenGroups: string[] = housePermission?.hiddenGroups || [];
 
   // ⭐ CAMPOS DEL FORMULARIO EN SOLO LECTURA para el rol activo, configurados por el
@@ -1306,13 +1337,6 @@ export default function HousesView({
   const anyVisible = (...elementIds: string[]): boolean =>
     elementIds.some((id) => isElementVisible(id));
 
-  // ⭐ CASAS SIN STATUS: statusId vacío o apuntando a un status que ya no
-  //    existe en el catálogo. Se pueden ver y filtrar en Overview y Pipeline.
-  const hasNoStatus = (p: Property) =>
-    !statuses.some(
-      (s) => String(s.id) === String(p.statusId) || String(s.name) === String(p.statusId),
-    );
-
   // ⭐ ¿El rol activo puede VER esta columna/status en Pipeline y Overview?
   //    Se configura por rol en Configure Fields con el elemento "status_<id>".
   const isStatusVisibleForRole = (statusId: string): boolean =>
@@ -1321,11 +1345,7 @@ export default function HousesView({
   // ⭐ Filtra una lista de casas quitando las de status ocultos para el rol.
   const filterByVisibleStatus = <T extends Property>(list: T[]): T[] =>
     list.filter((prop) => {
-      const st = statuses.find(
-        (s) =>
-          String(s.id) === String(prop.statusId) ||
-          String(s.name) === String(prop.statusId),
-      );
+      const st = findStatusOf(prop);
       return st ? isStatusVisibleForRole(st.id) : true;
     });
 
@@ -1934,45 +1954,49 @@ export default function HousesView({
   //    elemento "btn_myHistory" del configurador (Configure Fields).
   // ============================================================================
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const myHistoryHouses = properties
-    .filter((p) => {
-      if (!currentUser) return false;
-      const assigned = p.assignedWorkers?.includes(currentUser.id);
-      const sameTeam = !!currentUser.teamId && p.teamId === currentUser.teamId;
-      return !!assigned || sameTeam;
-    })
-    .sort(
-      (a, b) =>
-        dateSortValue(b.scheduleDate || b.receiveDate) -
-        dateSortValue(a.scheduleDate || a.receiveDate),
-    );
+  const myHistoryHouses = useMemo(
+    () =>
+      properties
+        .filter((p) => {
+          if (!currentUser) return false;
+          const assigned = p.assignedWorkers?.includes(currentUser.id);
+          const sameTeam =
+            !!currentUser.teamId && p.teamId === currentUser.teamId;
+          return !!assigned || sameTeam;
+        })
+        .sort(
+          (a, b) =>
+            dateSortValue(b.scheduleDate || b.receiveDate) -
+            dateSortValue(a.scheduleDate || a.receiveDate),
+        ),
+    [properties, currentUser],
+  );
 
-  const propertiesWithScope = properties.filter((prop) => {
-    if (userScope !== "All") {
-      if (!currentUser) return false;
-      const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
-      const isSameTeam =
-        currentUser.teamId && prop.teamId === currentUser.teamId;
-      if (!isAssigned && !isSameTeam) return false;
-    }
+  const propertiesWithScope = useMemo(
+    () =>
+      properties.filter((prop) => {
+        if (userScope !== "All") {
+          if (!currentUser) return false;
+          const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
+          const isSameTeam =
+            currentUser.teamId && prop.teamId === currentUser.teamId;
+          if (!isAssigned && !isSameTeam) return false;
+        }
 
-    if (!isSuperAdmin && allowedStatusIds.length > 0) {
-      const matchById = allowedStatusIds.includes(prop.statusId);
-      const propStatus = statuses.find(
-        (st) => st.id === prop.statusId || st.name === prop.statusId,
-      );
-      const matchByName = propStatus
-        ? allowedStatusIds.includes(propStatus.id)
-        : false;
-      if (!matchById && !matchByName) return false;
-    }
+        if (!isSuperAdmin && allowedStatusIds.length > 0) {
+          const matchById = allowedStatusIds.includes(prop.statusId);
+          const propStatus = findStatusOf(prop);
+          const matchByName = propStatus
+            ? allowedStatusIds.includes(propStatus.id)
+            : false;
+          if (!matchById && !matchByName) return false;
+        }
 
-    return true;
-  });
-
-  // ⭐ Cuántas casas del alcance del usuario NO tienen status asignado.
-  //    Debe ir DESPUÉS de propertiesWithScope (si no, se usa antes de existir).
-  const noStatusCount = propertiesWithScope.filter(hasNoStatus).length;
+        return true;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex],
+  );
 
   const teamsWithScope = teams.filter((team) => {
     if (userScope === "All") return true;
@@ -1980,18 +2004,23 @@ export default function HousesView({
     return team.id === currentUser.teamId;
   });
 
-  const uniqueHouses = Array.from(
-    new Set(
-      propertiesWithScope
-        .filter((p) => !isHiddenPipelineStatus(p))
-        .map((p) => `${p.client || "Unknown"}|${p.address || "Unknown"}`),
-    ),
-  )
-    .map((str) => {
-      const [client, address] = str.split("|");
-      return { client, address };
-    })
-    .sort((a, b) => a.client.localeCompare(b.client));
+  const uniqueHouses = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          propertiesWithScope
+            .filter((p) => !isHiddenPipelineStatus(p))
+            .map((p) => `${p.client || "Unknown"}|${p.address || "Unknown"}`),
+        ),
+      )
+        .map((str) => {
+          const [client, address] = str.split("|");
+          return { client, address };
+        })
+        .sort((a, b) => a.client.localeCompare(b.client)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [propertiesWithScope, statusIndex],
+  );
 
   // ⭐ Filtros compartidos (status, casa, invoice, prioridad, búsqueda) para
   //    la tabla y el tablero.
@@ -2069,17 +2098,74 @@ export default function HousesView({
     dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
 
   // Tabla / Daily Jobs: sin Invoice ni Quality Check (QC se gestiona en su vista)
-  const filteredProperties = filterByVisibleStatus(
-    propertiesWithScope
-      .filter((p) => !isHiddenPipelineStatus(p) && passesListFilters(p))
-      .sort(byDateDesc),
+  const filteredProperties = useMemo(
+    () =>
+      filterByVisibleStatus(
+        propertiesWithScope
+          .filter((p) => !isHiddenPipelineStatus(p) && passesListFilters(p))
+          .sort(byDateDesc),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      propertiesWithScope,
+      statusIndex,
+      activeFilter,
+      houseFilter,
+      invoiceFilter,
+      statusFilter,
+      priorityFilter,
+      searchTerm,
+      customersList,
+      priorities,
+      formConfig,
+      currentUser,
+      isSuperAdmin,
+    ],
   );
 
+  // ⭐ PERF: solo se pinta el primer bloque de resultados; el resto se agrega
+  //    con "Load more". Al cambiar filtros o busqueda se vuelve al inicio.
+  useEffect(() => {
+    setVisibleJobs(JOBS_PAGE_SIZE);
+  }, [
+    activeFilter,
+    houseFilter,
+    invoiceFilter,
+    statusFilter,
+    priorityFilter,
+    searchTerm,
+  ]);
+
+  const visibleProperties = useMemo(
+    () => filteredProperties.slice(0, visibleJobs),
+    [filteredProperties, visibleJobs],
+  );
+  const remainingJobs = filteredProperties.length - visibleProperties.length;
+
   // ⭐ TABLERO (Pipeline): incluye Quality Check; solo oculta Invoice.
-  const boardProperties = filterByVisibleStatus(
-    propertiesWithScope
-      .filter((p) => !isHiddenPipelineStatus(p, true) && passesListFilters(p))
-      .sort(byDateDesc),
+  const boardProperties = useMemo(
+    () =>
+      filterByVisibleStatus(
+        propertiesWithScope
+          .filter((p) => !isHiddenPipelineStatus(p, true) && passesListFilters(p))
+          .sort(byDateDesc),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      propertiesWithScope,
+      statusIndex,
+      activeFilter,
+      houseFilter,
+      invoiceFilter,
+      statusFilter,
+      priorityFilter,
+      searchTerm,
+      customersList,
+      priorities,
+      formConfig,
+      currentUser,
+      isSuperAdmin,
+    ],
   );
 
   // ⭐ Los tabs/columnas del dashboard también respetan la visibilidad por rol.
@@ -3497,37 +3583,6 @@ export default function HousesView({
                 );
               })
             )}
-            {/* ⭐ KPI "No Status": casas sin estado asignado. Solo aparece si hay. */}
-            {!isLoading && noStatusCount > 0 && (
-              <div
-                className={`hv-kpi-card${activeFilter === NO_STATUS_FILTER ? " active" : ""}`}
-                style={
-                  {
-                    "--kpi-color": "#94a3b8",
-                    "--kpi-color-30": "#94a3b830",
-                    "--kpi-icon-bg": "#94a3b815",
-                  } as CSSProperties
-                }
-                onClick={() =>
-                  setActiveFilter(
-                    activeFilter === NO_STATUS_FILTER ? "All" : NO_STATUS_FILTER,
-                  )
-                }
-                title={
-                  activeFilter === NO_STATUS_FILTER
-                    ? "Click para limpiar filtro"
-                    : "Filtrar casas sin status asignado"
-                }
-              >
-                <div className="hv-kpi-icon-box">
-                  <HelpCircle size={18} />
-                </div>
-                <div className="hv-min-w-0">
-                  <div className="hv-kpi-label">No Status</div>
-                  <div className="hv-kpi-count">{noStatusCount}</div>
-                </div>
-              </div>
-            )}
           </div>
           )}
 
@@ -3577,16 +3632,6 @@ export default function HousesView({
                             {st.name}
                           </button>
                         ))}
-                        {/* ⭐ Pestaña "No Status" (solo si hay casas sin estado) */}
-                        {noStatusCount > 0 && (
-                          <button
-                            onClick={() => setActiveFilter(NO_STATUS_FILTER)}
-                            className={`hv-pill-btn${activeFilter === NO_STATUS_FILTER ? " active" : ""}`}
-                            title="Casas sin status asignado"
-                          >
-                            No Status ({noStatusCount})
-                          </button>
-                        )}
                       </div>
 
                       <div className="property-select-container">
@@ -3720,7 +3765,7 @@ export default function HousesView({
                             </td>
                           </tr>
                         ) : (
-                          filteredProperties.map((prop) => {
+                          visibleProperties.map((prop) => {
                             const teamName = getRelationName(
                               teams,
                               prop.teamId,
@@ -3750,10 +3795,6 @@ export default function HousesView({
                                   data-label="Schedule"
                                   className="hv-td muted"
                                 >
-                                  <CalendarDays
-                                    size={14}
-                                    className="hv-icon-inline"
-                                  />{" "}
                                   {prop.scheduleDate
                                     ? formatDate(prop.scheduleDate)
                                     : "-"}
@@ -3783,12 +3824,11 @@ export default function HousesView({
                                       )}
                                     </div>
                                     <div className="hv-client-address">
-                                      <MapPin size={12} /> {prop.address}
+                                      {prop.address}
                                     </div>
                                   </div>
                                 </td>
                                 <td data-label="Time" className="hv-td muted">
-                                  <Clock size={14} className="hv-icon-inline" />{" "}
                                   {prop.timeIn || "08:00 AM"}
                                 </td>
                                 <td data-label="Type" className="hv-td strong">
@@ -3862,6 +3902,18 @@ export default function HousesView({
                         )}
                       </tbody>
                     </table>
+                    {remainingJobs > 0 && (
+                      <div className="hv-loadmore-wrap">
+                        <button
+                          className="hv-btn-loadmore"
+                          onClick={() =>
+                            setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
+                          }
+                        >
+                          Load more ({remainingJobs})
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
@@ -3873,7 +3925,7 @@ export default function HousesView({
                         No jobs to display for your team.
                       </div>
                     ) : (
-                      filteredProperties.map((prop) => {
+                      visibleProperties.map((prop) => {
                         const teamName = getRelationName(
                           teams,
                           prop.teamId,
@@ -4040,6 +4092,18 @@ export default function HousesView({
                           </div>
                         );
                       })
+                    )}
+                    {remainingJobs > 0 && (
+                      <div className="hv-loadmore-wrap">
+                        <button
+                          className="hv-btn-loadmore"
+                          onClick={() =>
+                            setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
+                          }
+                        >
+                          Load more ({remainingJobs})
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

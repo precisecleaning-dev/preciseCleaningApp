@@ -910,3 +910,92 @@
   .houses-view .hv-job-card { padding: 14px; border-radius: 14px; }
   .houses-view .jobs-cards-wrap { padding: 12px; gap: 10px; }
 }
+
+
+/* ============================================================================
+   ====== AJUSTES DE LAYOUT — tabla que respira, sin scroll horizontal ======
+   Anclado a .houses-view (0-2-0 / 0-3-0), sin banderas de prioridad.
+   ========================================================================== */
+
+/* ---------- 1. La columna de equipos baja debajo hasta 1400px ----------
+   Con la barra lateral + 300px de "Active Teams", la tabla quedaba en ~690px
+   y por eso la fecha y la hora se partian en dos lineas. Debajo de 1400px la
+   tabla toma el ancho completo, como en el disenio de referencia. */
+@media (max-width: 1400px) {
+  .houses-view.fade-in { height: auto; min-height: 100%; }
+  .houses-view .main-columns { overflow: visible; align-items: stretch; }
+  .houses-view .left-col,
+  .houses-view .right-col { flex: 1 1 100%; width: 100%; max-width: 100%; height: auto; }
+  .houses-view .left-col > div,
+  .houses-view .right-col > div { height: auto; }
+  .houses-view .hv-jobs-table-wrap { max-height: 62vh; }
+  .houses-view .hv-teams-list { max-height: 320px; }
+}
+
+/* ---------- 2. Anchos de columna fijos: nada se parte en dos lineas ---------- */
+.houses-view .hv-table { table-layout: fixed; }
+.houses-view .hv-table th,
+.houses-view .hv-table td { overflow: hidden; text-overflow: ellipsis; }
+
+.houses-view .hv-table th:nth-child(1),
+.houses-view .hv-table td:nth-child(1) { width: 120px; white-space: nowrap; }
+.houses-view .hv-table th:nth-child(3),
+.houses-view .hv-table td:nth-child(3) { width: 104px; white-space: nowrap; }
+.houses-view .hv-table th:nth-child(4),
+.houses-view .hv-table td:nth-child(4) { width: 130px; white-space: nowrap; }
+.houses-view .hv-table th:nth-child(5),
+.houses-view .hv-table td:nth-child(5) { width: 132px; white-space: nowrap; }
+.houses-view .hv-table th:nth-child(6),
+.houses-view .hv-table td:nth-child(6) { width: 168px; }
+.houses-view .hv-table th:nth-child(7),
+.houses-view .hv-table td:nth-child(7) { width: 84px; }
+
+/* La celda de cliente ocupa el resto y trunca con elipsis */
+.houses-view .hv-table td:nth-child(2) { min-width: 0; }
+.houses-view .mobile-client-cell { min-width: 0; }
+.houses-view .hv-client-name-row { flex-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.houses-view .hv-client-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+
+/* Filas mas altas y con mejor aire (densidad del disenio de referencia) */
+.houses-view .hv-td { padding: 18px 22px; }
+.houses-view .hv-th { padding: 13px 22px; }
+.houses-view .hv-jobs-table-wrap { overflow-x: hidden; }
+
+/* La pildora de status dentro de la tabla no fuerza ancho extra */
+.houses-view .hv-table .hv-statuspill { max-width: 100%; font-size: 0.78rem; padding: 6px 12px; font-weight: 600; }
+.houses-view .hv-table .hv-statuspill-text { max-width: 108px; }
+
+/* ---------- 3. Boton "Load more" ---------- */
+.houses-view .hv-loadmore-wrap { display: flex; justify-content: center; padding: 16px; border-top: 1px solid #f4f7fa; background-color: #fbfcfe; }
+.houses-view .hv-btn-loadmore { height: 40px; padding: 0 22px; border-radius: 999px; border: 1px solid #e2e8f0; background-color: #ffffff; color: #334155; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: background-color 0.18s ease, border-color 0.18s ease; }
+.houses-view .hv-btn-loadmore:hover { background-color: #f1f5f9; border-color: #cbd5e1; }
+
+/* ---------- 4. Active Teams mas sobrio ----------
+   El borde de color completo en cada tarjeta se veia ruidoso; ahora el color
+   del equipo vive en una barra lateral y el resto es neutro. */
+.houses-view .hv-teams-list { padding: 14px; gap: 8px; }
+.houses-view .hv-team-item { border: 1px solid #e9eef5; border-left: 3px solid var(--team-color, #cbd5e1); border-radius: 10px; background-color: #ffffff; padding: 12px 14px; }
+.houses-view .hv-team-item:hover { border-color: #cbd5e1; border-left-color: var(--team-color, #cbd5e1); background-color: #f8fafc; box-shadow: none; }
+.houses-view .hv-team-item.expanded { background-color: #f8fafc; }
+.houses-view .hv-team-name { font-size: 0.9rem; font-weight: 600; color: #0f172a; }
+.houses-view .hv-team-job-count { font-size: 0.75rem; color: #94a3b8; }
+.houses-view .hv-team-progress-track { margin-top: 10px; }
+
+/* ---------- 5. MOVIL: tarjetas mas compactas y legibles ---------- */
+@media (max-width: 768px) {
+  .houses-view .hv-loadmore-wrap { padding: 14px; background-color: transparent; border-top: none; }
+  .houses-view .hv-btn-loadmore { width: 100%; height: 46px; }
+
+  /* La pildora de status de la tarjeta ocupaba mucho alto */
+  .houses-view .hv-job-card .hv-statuspill.full { padding: 11px 14px; border-radius: 10px; font-size: 0.85rem; }
+
+  /* Direccion y fecha con menos peso visual que el nombre del cliente */
+  .houses-view .hv-card-info-row { color: #64748b; }
+  .houses-view .hv-card-client-name { font-size: 1rem; }
+
+  /* Botones de accion al mismo alto que los de fotos */
+  .houses-view .hv-card-actions-row { border-top: 1px solid #f1f5f9; }
+
+  /* Equipos: una sola columna comoda debajo de la lista */
+  .houses-view .hv-teams-list { max-height: none; padding: 12px; }
+}
