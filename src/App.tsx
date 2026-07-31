@@ -1,23 +1,39 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
-import HousesView from './views/HousesView';
-import CustomersView from './views/CustomersView';
-import SettingsView from './views/SettingsView';
-import CalendarView from './views/CalendarView';
-import QualityCheckHub from './views/QualityCheckHub';
-import PayrollView from './views/PayrollView'; 
-import InvoicesView from './views/InvoicesView';
-import NoticeBoardView from './views/NoticeBoardView';
 import LoginView from './views/auth/LoginView';
-import RolesView from './views/admin/RolesView';
-import UsersView from './views/admin/UsersView';
-import DataImportView from './views/DataImportView'; // ⭐ Vista de importación de CSV (solo SuperAdmin)
-import RecallsView from './views/RecallsView'; // ⭐ Vista de Recalls (ranking de equipos)
-import StatusHistoryView from './views/StatusHistoryView'; // ⭐ Vista de historial de status por casa
-import CompanySettingsView from './views/CompanySettingsView'; // ⭐ Módulo de empresa (logo, nombre, correo, dirección)
-import PhotoSettingsView from './views/PhotoSettingsView'; // ⭐ Configuración de compresión/captura de fotos
-import QCRouteView from './views/QCRouteView'; // ⭐ Hoja de ruta para casas con QC pendiente
-import { MigrarPayroll } from './views/MigrarPayroll'; // ⭐ TEMPORAL — migración única payroll_records → payroll (quitar al terminar)
+
+// ⭐ PERF: CODE SPLITTING. Antes las 19 vistas se empaquetaban en un solo
+//    bundle que el navegador tenia que descargar y parsear ANTES de pintar
+//    nada, aunque el usuario solo fuera a abrir una. Con lazy() cada vista
+//    se descarga en su propio archivo, la primera vez que se abre.
+//    LoginView y Sidebar se quedan estaticos porque se necesitan de entrada.
+const HousesView = lazy(() => import('./views/HousesView'));
+const CustomersView = lazy(() => import('./views/CustomersView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
+const CalendarView = lazy(() => import('./views/CalendarView'));
+const QualityCheckHub = lazy(() => import('./views/QualityCheckHub'));
+const PayrollView = lazy(() => import('./views/PayrollView'));
+const InvoicesView = lazy(() => import('./views/InvoicesView'));
+const NoticeBoardView = lazy(() => import('./views/NoticeBoardView'));
+const RolesView = lazy(() => import('./views/admin/RolesView'));
+const UsersView = lazy(() => import('./views/admin/UsersView'));
+// ⭐ Vista de importacion de CSV (solo SuperAdmin)
+const DataImportView = lazy(() => import('./views/DataImportView'));
+// ⭐ Vista de Recalls (ranking de equipos)
+const RecallsView = lazy(() => import('./views/RecallsView'));
+// ⭐ Vista de historial de status por casa
+const StatusHistoryView = lazy(() => import('./views/StatusHistoryView'));
+// ⭐ Modulo de empresa (logo, nombre, correo, direccion)
+const CompanySettingsView = lazy(() => import('./views/CompanySettingsView'));
+// ⭐ Configuracion de compresion/captura de fotos
+const PhotoSettingsView = lazy(() => import('./views/PhotoSettingsView'));
+// ⭐ Hoja de ruta para casas con QC pendiente
+const QCRouteView = lazy(() => import('./views/QCRouteView'));
+// ⭐ TEMPORAL — migracion unica payroll_records → payroll (quitar al terminar)
+//    Export nombrado: lazy() necesita un default, por eso el .then().
+const MigrarPayroll = lazy(() =>
+  import('./views/MigrarPayroll').then(m => ({ default: m.MigrarPayroll }))
+);
 
 import type { Property, Role, SystemUser } from './types/index';
 import './App.css';
@@ -319,6 +335,10 @@ export default function App() {
       />
 
       <main className="main-content">
+        {/* ⭐ Suspense: mientras se descarga el archivo de la vista se muestra
+            el mismo loader de siempre. Solo ocurre la primera vez que se abre
+            cada modulo; despues queda en cache del navegador. */}
+        <Suspense fallback={<LoadingScreen text="Cargando módulo..." />}>
         {activeTab === 'houses' && (
           <HousesView
             properties={visibleProperties as any}
@@ -469,6 +489,7 @@ export default function App() {
             <p className="app-under-construction-text">The {activeTab.replace('_', ' ')} view is currently being developed.</p>
           </div>
         )}
+        </Suspense>
       </main>
     </div>
   );

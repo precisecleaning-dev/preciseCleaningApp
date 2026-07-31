@@ -995,38 +995,19 @@ export default function HousesView({
     setIsLoading(true);
 
     const loadedCollections = new Set<string>();
-    // ⭐ PERF: la vista se pinta en cuanto llegan properties + statuses, que es
-    //    lo unico que necesita la tabla. Los demas catalogos siguen cargando en
-    //    segundo plano en vez de dejar la pantalla en "Loading database...".
+    // ⭐ PERF: 'properties' YA NO se carga aqui — llega por props desde App.tsx,
+    //    que mantiene el unico listener global de la coleccion. Antes esta vista
+    //    descargaba los ~3,600 documentos una segunda vez.
+    //    La tabla se pinta en cuanto llegan los statuses; el resto de los
+    //    catalogos sigue cargando en segundo plano.
     const markLoaded = (name: string) => {
       loadedCollections.add(name);
-      if (
-        loadedCollections.has("properties") &&
-        loadedCollections.has("statuses")
-      ) {
+      if (loadedCollections.has("statuses")) {
         setIsLoading(false);
       }
     };
 
     const unsubscribes: (() => void)[] = [];
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, "properties"),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Property[];
-          setProperties(data);
-          markLoaded("properties");
-        },
-        (err) => {
-          console.error("Error Properties:", err);
-          markLoaded("properties");
-        },
-      ),
-    );
 
     unsubscribes.push(
       onSnapshot(

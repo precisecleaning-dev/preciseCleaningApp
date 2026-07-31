@@ -278,9 +278,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filterStatus, searchClient, startDate, endDate]);
-  // ⭐ Copia LOCAL de properties (cargada por esta vista). Renderizamos desde aquí
-  //    para no depender de cómo el padre derive/filtre su lista.
-  const [allProps, setAllProps] = useState<Property[]>([]);
+  // ⭐ PERF: esta vista YA NO descarga 'properties'. App.tsx mantiene el unico
+  //    listener global de la coleccion y le pasa la lista completa por props
+  //    (visibleProperties, sin filtrar), que es exactamente lo que se usaba aqui.
+  //    Antes se bajaban los ~3,600 documentos una tercera vez.
+  const allProps = properties;
 
   // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
   //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
@@ -335,22 +337,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsLoading(true);
     const unsubscribes: (() => void)[] = [];
     let loaded = 0;
-    // ⭐ priorities y services ya no se cargan aqui: el modal de detalle es el
-    //    de HousesView, que trae sus propios catalogos.
-    const TOTAL = 7;
+    // ⭐ Ya no se cargan aqui: 'properties' (llega por props desde App.tsx) ni
+    //    priorities/services (el modal de detalle es el de HousesView, que trae
+    //    sus propios catalogos).
+    const TOTAL = 6;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
-
-    // ⭐ cargar properties acá también, no sólo en HousesView.
-    unsubscribes.push(onSnapshot(
-      collection(db, 'properties'),
-      (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
-        setAllProps(data);      // fuente de esta vista
-        setProperties(data);    // mantener al padre sincronizado
-        tick();
-      },
-      (err) => { console.error("Error properties:", err); tick(); }
-    ));
 
     unsubscribes.push(onSnapshot(
       collection(db, 'settings_teams'),
@@ -402,7 +393,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { invoiceStatus: newStatus });
-      setAllProps(prev => prev.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
       setProperties(properties.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
     } catch (error) {
       console.error("Error updating invoice status:", error);
@@ -417,7 +407,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { statusId: newStatusId });
-      setAllProps(prev => prev.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
       setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
     } catch (error) {
       console.error("Error updating job status:", error);
@@ -432,7 +421,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.delete(propertyId);
-      setAllProps(prev => prev.filter(p => p.id !== propertyId));
       setProperties(properties.filter(p => p.id !== propertyId));
     } catch (error) {
       console.error("Error deleting property:", error);
