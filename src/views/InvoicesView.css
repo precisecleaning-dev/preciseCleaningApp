@@ -1191,3 +1191,81 @@
     justify-content: center;
   }
 }
+
+
+/* ============================================================================
+   ====== CAPA DE DISENO — Invoices ======
+   Anclado a .inv-page (especificidad 0-2-0) para ganarle a las reglas de una
+   sola clase de App.css / index.css sin banderas de prioridad.
+   Mismo lenguaje visual que Overview: gris #f7f9fc, tarjetas blancas de 16px,
+   bordes #e9eef5 y azul #1d4ed8. No cambia ningun nombre existente.
+   ========================================================================== */
+
+/* ---------- 1. Lienzo y encabezado ---------- */
+.inv-page.invoices-view { background-color: #f7f9fc; padding: 24px; }
+.inv-page .inv-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.inv-page .inv-title { font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; }
+.inv-page .inv-subtitle { font-size: 0.875rem; color: #64748b; font-weight: 500; margin-top: 5px; }
+/* El boton de menu quedaba como un recuadro blanco vacio encima del titulo */
+.inv-page .inv-hamburger-btn { color: #334155; border: 1px solid #e2e8f0; border-radius: 12px; width: 44px; height: 44px; padding: 0; flex-shrink: 0; align-self: flex-start; }
+.inv-page .inv-hamburger-btn:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+/* ---------- 2. Tarjetas de resumen ---------- */
+.inv-page .inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin-bottom: 18px; }
+.inv-page .inv-kpi-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.inv-page .inv-kpi-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+.inv-page .inv-kpi-value { font-size: 1.75rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; margin-top: 6px; line-height: 1.15; }
+.inv-page .inv-kpi-value.profit { color: #059669; }
+.inv-page .inv-kpi-value.profit.negative { color: #dc2626; }
+
+/* ---------- 3. Filtros dentro de una sola tarjeta ---------- */
+.inv-page .inv-filters-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.inv-page .inv-filters-card .inv-status-filters-row { margin-bottom: 16px; gap: 8px; }
+.inv-page .inv-filters-card .inv-secondary-filters { margin-bottom: 0; gap: 14px; align-items: flex-end; }
+.inv-page .inv-filter-pill { border-radius: 999px; font-size: 0.82rem; font-weight: 600; padding: 7px 14px; }
+.inv-page .inv-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+.inv-page .inv-input { border-radius: 10px; border-color: #e2e8f0; font-size: 0.875rem; }
+.inv-page .inv-input:focus { border-color: #bfdbfe; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10); }
+.inv-page .inv-search-cell { flex: 1 1 260px; }
+
+/* ---------- 4. Tabla ---------- */
+.inv-page .inv-table-wrap { border: 1px solid #e9eef5; border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.inv-page .inv-table { min-width: 1020px; }
+.inv-page .inv-th { padding: 14px 18px; font-size: 0.7rem; color: #94a3b8; letter-spacing: 0.07em; background-color: #fbfcfe; border-bottom: 1px solid #eef2f7; }
+.inv-page .inv-td { padding: 18px; font-size: 0.875rem; border-bottom: 1px solid #f4f7fa; }
+.inv-page .inv-row:hover { background-color: #f6f9fe; }
+.inv-page .inv-row:last-child .inv-td { border-bottom: none; }
+.inv-page .inv-client-name { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
+.inv-page .inv-client-address { font-size: 0.8rem; color: #64748b; margin-top: 3px; line-height: 1.45; }
+.inv-page .inv-td.strong { font-weight: 700; color: #0f172a; }
+.inv-page .inv-td.muted { color: #64748b; }
+
+/* Acciones mas compactas y con area tactil pareja */
+.inv-page .inv-actions-cell { gap: 4px; }
+.inv-page .inv-icon-btn { width: 32px; height: 32px; padding: 0; border-radius: 9px; }
+
+/* Pildoras de status mas discretas dentro de la tabla */
+.inv-page .inv-table .inv-status-pill { font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; }
+
+/* ---------- 5. Movil ---------- */
+@media (max-width: 900px) {
+  .inv-page.invoices-view { padding: 16px; }
+  .inv-page .inv-kpi-grid { grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px; }
+  .inv-page .inv-kpi-card { padding: 14px 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .inv-page .inv-kpi-value { font-size: 1.4rem; margin-top: 0; }
+  .inv-page .inv-filters-card { padding: 14px; border-radius: 14px; margin-bottom: 14px; }
+  .inv-page .inv-filters-card .inv-status-filters-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .inv-page .inv-filters-card .inv-status-filters-row::-webkit-scrollbar { display: none; }
+  .inv-page .inv-filter-pill { flex-shrink: 0; }
+  .inv-page .inv-filters-card .inv-secondary-filters { flex-direction: column; align-items: stretch; gap: 12px; }
+  .inv-page .inv-search-cell { min-width: 0; }
+  .inv-page .inv-title { font-size: 1.45rem; }
+  .inv-page .inv-subtitle { font-size: 0.82rem; }
+}
+
+@media (max-width: 700px) {
+  .inv-page.invoices-view { padding: 12px; }
+  .inv-page .inv-cards-wrap { gap: 12px; }
+  .inv-page .inv-card-client-name { font-size: 1rem; letter-spacing: -0.01em; }
+  .inv-page .inv-card-btn { height: 44px; border-radius: 12px; }
+}

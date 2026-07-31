@@ -3,14 +3,14 @@ import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
-  X, Home, Activity, FileText, Clock, Wrench, Hash, Flag, StickyNote, PenTool, User, Menu, CheckCircle, FileImage
+  X, Activity, StickyNote, Menu, CheckCircle, FileImage
 } from 'lucide-react';
 
-import type { Property, Team, SystemUser, Role, Status, Customer, Priority, Service, PayrollRecord } from '../types/index';
+import type { Property, Team, SystemUser, Role, Status, Customer, PayrollRecord } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { getRelationName, getRelationColor } from '../utils/relations';
+import { getRelationName } from '../utils/relations';
 import HousesView from './HousesView';
 import RegisteredPaymentsPanel from '../components/RegisteredPaymentsPanel';
 import './InvoicesView.css';
@@ -249,7 +249,10 @@ interface InvoicesViewProps {
   onEditProperty?: (property: Property) => void;
 }
 
-export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin, onEditProperty }: InvoicesViewProps) {
+// ⭐ onEditProperty se mantiene en la interfaz por compatibilidad con App.tsx,
+//    pero ya no se usa: el formulario de edicion SIEMPRE es el de HousesView
+//    incrustado aqui, para que sea exactamente el mismo en las dos vistas.
+export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: InvoicesViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -258,13 +261,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [customers, setCustomers] = useState<Customer[]>([]);   // ⭐ Para resolver nombre del cliente
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [billedServices, setBilledServices] = useState<BilledServiceRecord[]>([]);
-  // ⭐ NUEVO: catálogos necesarios para el modal de detalle (igual que House view)
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
+  // ⭐ system_users: nombres de los empleados en el panel de pagos.
   const [employees, setEmployees] = useState<SystemUser[]>([]);
-
-  // ⭐ NUEVO: estado del modal de detalle interno (no depende del padre)
-  const [detailHouse, setDetailHouse] = useState<Property | null>(null);
 
   // Filtros UI
   const [startDate, setStartDate] = useState('');
@@ -284,9 +282,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    para no depender de cómo el padre derive/filtre su lista.
   const [allProps, setAllProps] = useState<Property[]>([]);
 
-  // ⭐ Edición de la casa SIN salir de Invoices: si App.tsx pasa `onEditProperty`
-  //    se usa esa vía (cableado externo); si no, esta vista incrusta HousesView en
-  //    modo 'modals-only' y abre su formulario de edición aquí mismo.
+  // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
+  //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
+  //    exactamente el mismo que en Overview.
   //    ⚠ houseToEdit es solo el DISPARADOR: HousesView lo consume y lo limpia al
   //    instante (así funciona su houseToOpenEdit). Por eso el montaje del editor va
   //    en una bandera aparte que queda encendida — si se condicionara al disparador,
@@ -294,7 +292,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
   const [editorMounted, setEditorMounted] = useState(false);
   const openEdit = (house: Property) => {
-    if (onEditProperty) { onEditProperty(house); return; }
     setEditorMounted(true);
     setHouseToEdit(house);
   };
@@ -304,8 +301,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    botones Export PDF de Before/After — misma UI y permisos que el resto de
   //    las vistas. Siempre usa el incrustado propio (no delega al padre).
   const [houseToView, setHouseToView] = useState<Property | null>(null);
+  // ⭐ Tab con el que abre el detalle: "media" para el boton de fotos/PDF y
+  //    "overview" cuando se abre el detalle completo desde la fila o el ojo.
+  const [detailTab, setDetailTab] = useState<'overview' | 'financials' | 'media'>('media');
   const openPhotosPdf = (house: Property) => {
     setEditorMounted(true);
+    setDetailTab('media');
     setHouseToView(house);
   };
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
@@ -321,16 +322,22 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
-  // Siempre usamos el modal interno propio, no delegamos al padre.
+  // ⭐ DETALLE: es el MISMO modal de HousesView (con todas sus pestanias, fotos,
+  //    danios, checklist y acciones), no una copia reducida. Se abre encima de
+  //    Invoices gracias al modo 'modals-only'.
   const openDetail = (prop: Property) => {
-    setDetailHouse(prop);
+    setEditorMounted(true);
+    setDetailTab('overview');
+    setHouseToView(prop);
   };
 
   useEffect(() => {
     setIsLoading(true);
     const unsubscribes: (() => void)[] = [];
     let loaded = 0;
-    const TOTAL = 9; // ⭐ ahora cargamos 9 colecciones
+    // ⭐ priorities y services ya no se cargan aqui: el modal de detalle es el
+    //    de HousesView, que trae sus propios catalogos.
+    const TOTAL = 7;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
     // ⭐ cargar properties acá también, no sólo en HousesView.
@@ -377,20 +384,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       collection(db, 'billing_services'),
       (snap) => { setBilledServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as BilledServiceRecord))); tick(); },
       (err) => { console.error("Error services:", err); tick(); }
-    ));
-
-    // ⭐ NUEVO: priorities
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_priorities'),
-      (snap) => { setPriorities(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Priority[]); tick(); },
-      (err) => { console.error("Error priorities:", err); tick(); }
-    ));
-
-    // ⭐ NUEVO: services (catálogo)
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_services'),
-      (snap) => { setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Service[]); tick(); },
-      (err) => { console.error("Error services catalog:", err); tick(); }
     ));
 
     // ⭐ NUEVO: system_users (para nombres de workers en el detalle)
@@ -581,6 +574,18 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return { totalCost, payrollTotal, profit: totalCost - payrollTotal };
   };
 
+  // ⭐ Totales del rango que se esta viendo (respeta chips, fechas y busqueda).
+  const filteredTotals = useMemo(() => {
+    let billed = 0;
+    let payroll = 0;
+    filteredProperties.forEach(p => {
+      const e = financialsByProp.get(p.id);
+      billed += e?.totalCost || 0;
+      payroll += e?.payrollTotal || 0;
+    });
+    return { billed, payroll, profit: billed - payroll };
+  }, [filteredProperties, financialsByProp]);
+
   return (
     <div className="fade-in invoices-view inv-page">
 
@@ -595,6 +600,27 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </div>
       </header>
 
+
+      {/* ⭐ RESUMEN del rango filtrado: mismos numeros que ya calcula la tabla. */}
+      <div className="inv-kpi-grid">
+        <div className="inv-kpi-card">
+          <div className="inv-kpi-label">Billed (filtered)</div>
+          <div className="inv-kpi-value">${filteredTotals.billed.toFixed(2)}</div>
+        </div>
+        <div className="inv-kpi-card">
+          <div className="inv-kpi-label">Payroll</div>
+          <div className="inv-kpi-value">${filteredTotals.payroll.toFixed(2)}</div>
+        </div>
+        <div className="inv-kpi-card">
+          <div className="inv-kpi-label">Net Profit</div>
+          <div className={`inv-kpi-value profit${filteredTotals.profit < 0 ? " negative" : ""}`}>
+            ${filteredTotals.profit.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      {/* ⭐ Filtros agrupados en una sola tarjeta (chips + fechas + busqueda) */}
+      <div className="inv-filters-card">
 
       {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
       <div className="inv-status-filters-row">
@@ -642,6 +668,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           </div>
         </div>
       </div>
+
+      </div>{/* /inv-filters-card */}
 
       {/* TABLA PRINCIPAL (escritorio) */}
       <div className="inv-table-wrap">
@@ -915,170 +943,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         actionLabel="Pay"
       />
 
-      {/* --- ⭐ MODAL DETALLE DE PROPIEDAD (READ ONLY) — igual al de House view --- */}
-      {detailHouse && (
-        <div className="modal-overlay-centered" onClick={() => setDetailHouse(null)}>
-          <div className="modal-70" onClick={e => e.stopPropagation()}>
-            <header className="inv-modal-header">
-              <h3 className="inv-modal-title">Property Overview</h3>
-              <button className="inv-modal-close" onClick={() => setDetailHouse(null)}><X size={24} /></button>
-            </header>
-
-            <div className="inv-modal-body">
-              <dl className="inv-detail-banner">
-                <div className="inv-detail-item">
-                  <dt className="inv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
-                  <dd className="inv-address-value">{detailHouse.address || '-'}</dd>
-                </div>
-              </dl>
-
-              <div className="grid-3-cols">
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Activity size={14} /> STATUS</span>
-                  <div className="inv-mt-4">
-                    <span className="inv-status-chip">
-                      {getRelationName(statuses, detailHouse.statusId, detailHouse.statusId)}
-                    </span>
-                  </div>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><FileText size={14} /> INVOICE STATUS</span>
-                  <span className="inv-detail-value">{detailHouse.invoiceStatus || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><User size={14} /> CLIENT</span>
-                  <span className="inv-detail-value">{getClientName(detailHouse.client)}</span>
-                </div>
-
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span className="inv-detail-value">{detailHouse.receiveDate || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span className="inv-detail-value">{detailHouse.scheduleDate ? formatDate(detailHouse.scheduleDate) : '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Wrench size={14} /> SERVICE</span>
-                  <span className="inv-detail-value">{getRelationName(services, detailHouse.serviceId)}</span>
-                </div>
-
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Clock size={14} /> TIME IN</span>
-                  <span className="inv-detail-value">{detailHouse.timeIn || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Clock size={14} /> TIME OUT</span>
-                  <span className="inv-detail-value">{detailHouse.timeOut || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Flag size={14} /> PRIORITY</span>
-                  <div className="inv-dot-row">
-                    {getRelationColor(priorities, detailHouse.priorityId) && <span className="inv-dot-12" style={{ '--dot-color': getRelationColor(priorities, detailHouse.priorityId) } as CSSProperties}></span>}
-                    <span className="inv-detail-value">{getRelationName(priorities, detailHouse.priorityId)}</span>
-                  </div>
-                </div>
-
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Hash size={14} /> ROOMS</span>
-                  <span className="inv-detail-value">{detailHouse.rooms || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Hash size={14} /> BATHROOMS</span>
-                  <span className="inv-detail-value">{detailHouse.bathrooms || '-'}</span>
-                </div>
-                <div className="inv-detail-item">
-                  <span className="inv-detail-label"><Users size={14} /> TEAM</span>
-                  <div className="inv-dot-row">
-                    {getRelationColor(teams, detailHouse.teamId) && <span className="inv-dot-12" style={{ '--dot-color': getRelationColor(teams, detailHouse.teamId) } as CSSProperties}></span>}
-                    <span className="inv-detail-value">{getRelationName(teams, detailHouse.teamId, 'Unassigned')}</span>
-                  </div>
-                </div>
-
-                {/* Resumen financiero del job dentro del detalle */}
-                <div className="col-span-full inv-fin-summary-grid">
-                  {(() => {
-                    const { totalCost, payrollTotal, profit } = calcFinancials(detailHouse);
-                    return (
-                      <>
-                        <div className="inv-fin-summary-box cost">
-                          <div className="inv-fin-summary-label cost">Total Cost</div>
-                          <div className="inv-fin-summary-value cost">${totalCost.toFixed(2)}</div>
-                        </div>
-                        <div className="inv-fin-summary-box payroll">
-                          <div className="inv-fin-summary-label payroll">Payroll Total</div>
-                          <div className="inv-fin-summary-value payroll">${payrollTotal.toFixed(2)}</div>
-                        </div>
-                        <div className={`inv-fin-summary-box profit ${profit >= 0 ? 'positive' : 'negative'}`}>
-                          <div className={`inv-fin-summary-label profit ${profit >= 0 ? 'positive' : 'negative'}`}>Net Profit</div>
-                          <div className={`inv-fin-summary-value profit ${profit >= 0 ? 'positive' : 'negative'}`}>${profit.toFixed(2)}</div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                <div className="col-span-full inv-workers-box">
-                  <div className="inv-workers-header">
-                    <span className="inv-detail-label"><User size={14} className="inv-label-icon-inline"/> ASSIGNED WORKERS</span>
-                  </div>
-                  <div className="inv-worker-chips">
-                    {!(detailHouse.assignedWorkers && detailHouse.assignedWorkers.length > 0) ? (
-                      <span className="inv-workers-none-text">No workers assigned.</span>
-                    ) : (
-                      detailHouse.assignedWorkers.map(workerId => {
-                        const emp = employees.find(e => e.id === workerId);
-                        if (!emp) return null;
-                        return (
-                          <div key={workerId} className="inv-worker-chip">
-                            <User size={12} color="#64748b" />
-                            {emp.firstName} {emp.lastName}
-                          </div>
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
-
-                <div className="col-span-full"><div className="inv-note-box"><span className="inv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</span><span className="inv-detail-value small">{detailHouse.note || 'No notes.'}</span></div></div>
-                <div className="col-span-full"><div className="inv-note-box orange"><span className="inv-detail-label orange spaced"><PenTool size={14} /> EMPLOYEE'S NOTE</span><span className="inv-detail-value small">{detailHouse.employeeNote || 'No employee notes.'}</span></div></div>
-
-                {/* ⭐ PAGOS A EMPLEADOS de ESTA casa — mismo apartado que House view */}
-                <div className="col-span-full">
-                  <RegisteredPaymentsPanel
-                    payrolls={payrolls}
-                    employees={employees}
-                    properties={allProps}
-                    propertyId={detailHouse.id}
-                    canEdit={canEdit}
-                    actionLabel="Pay"
-                  />
-                </div>
-
-              </div>
-            </div>
-
-            <footer className="inv-modal-footer">
-              <button
-                onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) openPhotosPdf(p); }}
-                className="inv-btn-outline-modal photos"
-              >
-                <FileImage size={16} /> Photos / PDF
-              </button>
-              {canEdit && (
-                <button
-                  onClick={() => { const p = detailHouse; setDetailHouse(null); if (p) openEdit(p); }}
-                  className="inv-btn-primary-modal"
-                >
-                  <Edit2 size={16} /> Edit Details
-                </button>
-              )}
-              <button className="inv-btn-outline-modal" onClick={() => setDetailHouse(null)}>Close</button>
-            </footer>
-          </div>
-        </div>
-      )}
-
       {/* ⭐ MODAL CENTRAL DE CAMBIO DE ESTADO (mismo que Houses/QC) */}
       {statusModal && (
         <StatusChangeModal
@@ -1104,7 +968,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           clearHouseToOpenEdit={() => setHouseToEdit(null)}
           houseToOpenDetail={houseToView}
           clearHouseToOpenDetail={() => setHouseToView(null)}
-          detailInitialTab="media"
+          detailInitialTab={detailTab}
         />
       )}
 
