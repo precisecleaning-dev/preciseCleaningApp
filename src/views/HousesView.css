@@ -51,7 +51,6 @@
 @media (max-width: 768px) {
   .add-btn-mobile { height: 48px !important; font-size: 0.95rem !important; padding: 0 22px !important; border-radius: 999px !important; }
   .search-box-container { height: 48px !important; }
-  .hv-btn-history { height: 48px; flex: 1 1 auto; justify-content: center; }
   .filters-section { flex-direction: column; align-items: stretch; }
   .property-select-container { width: 100%; }
   .property-select-container > button { width: 100%; justify-content: center; height: 46px; border-radius: 12px; }
@@ -785,54 +784,129 @@
 
 
 /* ============================================================================
-   REFRESH VISUAL — Overview / Daily Jobs (escritorio + movil)
-   Solo estilos: no cambia nombres, estructura ni clases del TSX.
+   ====== CAPA DE DISENO — Overview (Daily Jobs) ======
+   Todas las reglas van ancladas a .houses-view (especificidad 0-2-0 / 0-3-0)
+   para ganarle a las reglas de una sola clase de App.css / index.css sin
+   recurrir a banderas de prioridad. No cambia nombres, clases ni estructura.
+   Los botones Before/After Photos NO se tocan a proposito.
    ========================================================================== */
 
-/* --- Escritorio: boton Filtros anclado arriba a la derecha del panel --- */
+/* ---------- 1. Lienzo ---------- */
+.houses-view.fade-in { background-color: #f7f9fc; }
+
+/* ---------- 2. Encabezado de la vista ---------- */
+.houses-view .hv-header.main-header { margin-bottom: 22px; align-items: flex-start; }
+.houses-view .hv-title { font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; }
+.houses-view .hv-subtitle { font-size: 0.875rem; color: #64748b; font-weight: 500; }
+.houses-view .hv-header-actions.dashboard-actions-wrapper { gap: 10px; }
+
+.houses-view .hv-search-box.search-box-container { height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; background-color: #ffffff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); transition: border-color 0.18s ease, box-shadow 0.18s ease; }
+.houses-view .hv-search-box.search-box-container:focus-within { border-color: #bfdbfe; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10); }
+.houses-view .hv-search-input::placeholder { color: #94a3b8; }
+
+.houses-view .hv-btn-history { height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; color: #334155; background-color: #ffffff; font-weight: 600; transition: background-color 0.18s ease, border-color 0.18s ease; }
+.houses-view .hv-btn-history:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+.houses-view .hv-btn-add.add-btn-mobile { height: 44px; border-radius: 999px; background-color: #1d4ed8; color: #ffffff; border: none; font-weight: 600; padding: 0 22px; box-shadow: 0 4px 12px rgba(29, 78, 216, 0.24); transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease; }
+.houses-view .hv-btn-add.add-btn-mobile:hover { background-color: #1e40af; box-shadow: 0 6px 16px rgba(29, 78, 216, 0.30); }
+.houses-view .hv-btn-add.add-btn-mobile:active { transform: translateY(1px); }
+
+.houses-view .hv-sync-badge { height: 44px; border-radius: 999px; }
+
+/* ---------- 3. Tarjetas KPI ---------- */
+.houses-view .hv-kpi-grid.dash-grid { gap: 14px; margin-bottom: 22px; }
+.houses-view .hv-kpi-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 18px 20px; gap: 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
+.houses-view .hv-kpi-card:hover:not(.active) { border-color: var(--kpi-color); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07); }
+.houses-view .hv-kpi-card.active { border-color: var(--kpi-color); box-shadow: 0 0 0 3px var(--kpi-color-30), 0 4px 12px rgba(15, 23, 42, 0.06); }
+.houses-view .hv-kpi-icon-box { width: 44px; height: 44px; border-radius: 13px; }
+.houses-view .hv-kpi-label { font-size: 0.7rem; font-weight: 700; color: #64748b; letter-spacing: 0.06em; }
+.houses-view .hv-kpi-count { font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; margin-top: 2px; }
+
+/* ---------- 4. Panel blanco ---------- */
+.houses-view .hv-panel-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.houses-view .hv-table-header { padding: 20px 22px 16px 22px; border-bottom: 1px solid #f1f5f9; position: relative; gap: 12px; }
+.houses-view .hv-panel-title { font-size: 1.15rem; color: #0f172a; font-weight: 700; letter-spacing: -0.01em; }
+.houses-view .hv-panel-date { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+.houses-view .hv-panel-heading { padding: 18px 20px; font-size: 1rem; color: #0f172a; font-weight: 700; letter-spacing: -0.01em; }
+
+/* ---------- 5. Chips de filtro y boton Filters ---------- */
+.houses-view .filters-section { margin-top: 14px; gap: 12px; }
+.houses-view .hv-pill-btn { background-color: #f1f5f9; color: #475569; border-radius: 999px; padding: 7px 16px; font-size: 0.82rem; font-weight: 600; border: none; transition: background-color 0.18s ease, color 0.18s ease; }
+.houses-view .hv-pill-btn:hover:not(.active) { background-color: #e2e8f0; color: #1e293b; }
+.houses-view .hv-pill-btn.active { background-color: #1d4ed8; color: #ffffff; box-shadow: 0 2px 8px rgba(29, 78, 216, 0.24); }
+.houses-view .hv-btn-filters { height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; background-color: #ffffff; color: #475569; font-size: 0.85rem; font-weight: 600; transition: background-color 0.18s ease, border-color 0.18s ease; }
+.houses-view .hv-btn-filters:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+/* Escritorio: Filters anclado arriba a la derecha; los chips quedan en su fila */
 @media (min-width: 769px) {
-  .hv-table-header .filters-section { padding-right: 130px; }
-  .hv-table-header .property-select-container { position: absolute; top: 20px; right: 22px; }
+  .houses-view .hv-table-header .filters-section { padding-right: 130px; }
+  .houses-view .hv-table-header .property-select-container { position: absolute; top: 20px; right: 22px; }
 }
 
-/* --- Cabecera de tabla: separacion visual del cuerpo --- */
-.hv-jobs-table-wrap { background-color: #ffffff; }
-.hv-table thead tr { box-shadow: inset 0 -1px 0 0 #eef2f7; }
-.hv-job-row:last-child .hv-td { border-bottom: none; }
-.hv-icon-inline { color: #94a3b8; }
+/* ---------- 6. Tabla (escritorio) ---------- */
+.houses-view .hv-jobs-table-wrap { background-color: #ffffff; }
+.houses-view .hv-th { padding: 14px 22px; font-size: 0.7rem; font-weight: 700; color: #94a3b8; letter-spacing: 0.07em; border-bottom: 1px solid #eef2f7; }
+.houses-view .hv-th.sticky { background-color: #fbfcfe; }
+.houses-view .hv-table thead tr { box-shadow: inset 0 -1px 0 0 #eef2f7; }
+.houses-view .hv-td { padding: 16px 22px; font-size: 0.875rem; color: #0f172a; border-bottom: 1px solid #f4f7fa; }
+.houses-view .hv-td.muted { color: #64748b; }
+.houses-view .hv-td.strong { font-weight: 600; color: #1e293b; }
+.houses-view .hv-job-row:hover { background-color: #f6f9fe; }
+.houses-view .hv-job-row.high-priority .hv-td:first-child { box-shadow: inset 3px 0 0 0 #ef4444; }
+.houses-view .hv-job-row:last-child .hv-td { border-bottom: none; }
+.houses-view .hv-client-name-row { font-size: 0.9rem; font-weight: 600; color: #0f172a; margin-bottom: 3px; }
+.houses-view .hv-client-address { font-size: 0.775rem; color: #94a3b8; }
+.houses-view .hv-icon-inline { color: #94a3b8; }
+.houses-view .action-btn-edit, .houses-view .action-btn-delete { padding: 7px; border-radius: 9px; transition: background-color 0.18s ease; }
+.houses-view .action-btn-edit:hover { background-color: #eff6ff; }
+.houses-view .action-btn-delete:hover { background-color: #fef2f2; }
 
-/* --- Chips de filtro: scroll horizontal en pantallas chicas --- */
+/* ---------- 7. Equipos activos (columna derecha) ---------- */
+.houses-view .hv-team-item { border-radius: 12px; padding: 12px 14px; background-color: #f8fafc; }
+
+/* ---------- 8. Chips con scroll horizontal en pantallas medianas y chicas ---------- */
 @media (max-width: 900px) {
-  .tabs-container { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
-  .tabs-container::-webkit-scrollbar { display: none; }
-  .hv-pill-btn { flex-shrink: 0; }
+  .houses-view .tabs-container { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+  .houses-view .tabs-container::-webkit-scrollbar { display: none; }
+  .houses-view .hv-pill-btn { flex-shrink: 0; }
 }
 
-/* --- Movil: KPIs en carrusel horizontal (como el mockup) --- */
+/* ---------- 9. MOVIL ---------- */
 @media (max-width: 768px) {
-  .hv-kpi-grid.dash-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px; margin-bottom: 18px; padding-bottom: 4px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .hv-kpi-grid.dash-grid::-webkit-scrollbar { display: none; }
-  .hv-kpi-card { flex: 0 0 auto; min-width: 178px; scroll-snap-align: start; padding: 16px; }
-  .hv-kpi-card:hover:not(.active) { transform: none; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-  .hv-kpi-icon-box { width: 40px; height: 40px; border-radius: 12px; }
-  .hv-kpi-count { font-size: 1.45rem; }
+  .houses-view .hv-title { font-size: 1.45rem; }
+  .houses-view .hv-subtitle { font-size: 0.82rem; }
+  .houses-view .hv-header.main-header { margin-bottom: 16px; }
+  .houses-view .hv-btn-add.add-btn-mobile { flex: 1 1 auto; }
+  .houses-view .hv-btn-history { height: 48px; flex: 1 1 auto; justify-content: center; }
 
-  .hv-title { font-size: 1.45rem; }
-  .hv-subtitle { font-size: 0.82rem; }
-  .hv-header.main-header { margin-bottom: 18px; }
+  /* KPIs en carrusel horizontal, como el mockup */
+  .houses-view .hv-kpi-grid.dash-grid { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 12px; margin-bottom: 18px; padding-bottom: 4px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .houses-view .hv-kpi-grid.dash-grid::-webkit-scrollbar { display: none; }
+  .houses-view .hv-kpi-card { flex: 0 0 auto; min-width: 178px; padding: 16px; scroll-snap-align: start; }
+  .houses-view .hv-kpi-card:hover:not(.active) { transform: none; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+  .houses-view .hv-kpi-icon-box { width: 40px; height: 40px; border-radius: 12px; }
+  .houses-view .hv-kpi-count { font-size: 1.45rem; }
 
-  .hv-table-header { padding: 16px 16px 14px 16px; }
-  .hv-panel-title { font-size: 1.05rem; }
-  .hv-panel-card { border-radius: 14px; }
+  .houses-view .hv-panel-card { border-radius: 14px; }
+  .houses-view .hv-table-header { padding: 16px 16px 14px 16px; }
+  .houses-view .hv-panel-title { font-size: 1.05rem; }
 
-  .hv-card-top-row { align-items: center; }
-  .hv-card-info-text { font-size: 0.85rem; }
-  .hv-card-btn-edit, .hv-card-btn-delete { height: 44px; }
+  /* Tarjetas de trabajos: mas compactas y con mejor jerarquia */
+  .houses-view .jobs-cards-wrap { padding: 14px; gap: 12px; background-color: #f7f9fc; }
+  .houses-view .hv-job-card { padding: 16px; border-radius: 16px; border: 1px solid #e9eef5; gap: 12px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); transition: box-shadow 0.18s ease, transform 0.12s ease; -webkit-tap-highlight-color: transparent; }
+  .houses-view .hv-job-card:active { transform: scale(0.995); }
+  .houses-view .hv-card-top-row { align-items: center; }
+  .houses-view .hv-card-client-name { font-size: 1.05rem; letter-spacing: -0.01em; }
+  .houses-view .hv-card-info-col { gap: 8px; }
+  .houses-view .hv-card-info-row { gap: 10px; font-size: 0.85rem; color: #64748b; }
+  .houses-view .hv-card-team-row { gap: 10px; font-size: 0.85rem; }
+  .houses-view .hv-card-team-avatar { width: 26px; height: 26px; }
+  .houses-view .hv-card-actions-row { gap: 10px; padding-top: 12px; margin-top: 2px; }
+  .houses-view .hv-card-btn-edit, .houses-view .hv-card-btn-delete { height: 44px; }
 }
 
-/* --- Pantallas muy chicas --- */
 @media (max-width: 480px) {
-  .hv-kpi-card { min-width: 165px; }
-  .hv-job-card { padding: 14px; border-radius: 14px; }
-  .jobs-cards-wrap { padding: 12px; gap: 10px; }
+  .houses-view .hv-kpi-card { min-width: 165px; }
+  .houses-view .hv-job-card { padding: 14px; border-radius: 14px; }
+  .houses-view .jobs-cards-wrap { padding: 12px; gap: 10px; }
 }
