@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
-  Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2, Eye,
+  Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2,
   X, Activity, StickyNote, Menu, CheckCircle, FileImage
 } from 'lucide-react';
 
@@ -12,7 +12,6 @@ import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import HousesView from './HousesView';
-import RegisteredPaymentsPanel from '../components/RegisteredPaymentsPanel';
 import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
@@ -261,8 +260,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [customers, setCustomers] = useState<Customer[]>([]);   // ⭐ Para resolver nombre del cliente
   const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
   const [billedServices, setBilledServices] = useState<BilledServiceRecord[]>([]);
-  // ⭐ system_users: nombres de los empleados en el panel de pagos.
-  const [employees, setEmployees] = useState<SystemUser[]>([]);
 
   // Filtros UI
   const [startDate, setStartDate] = useState('');
@@ -278,11 +275,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const PAGE_SIZE = 50;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filterStatus, searchClient, startDate, endDate]);
-  // ⭐ PERF: esta vista YA NO descarga 'properties'. App.tsx mantiene el unico
-  //    listener global de la coleccion y le pasa la lista completa por props
-  //    (visibleProperties, sin filtrar), que es exactamente lo que se usaba aqui.
-  //    Antes se bajaban los ~3,600 documentos una tercera vez.
-  const allProps = properties;
 
   // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
   //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
@@ -311,6 +303,34 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setDetailTab('media');
     setHouseToView(house);
   };
+  // ⭐ NOTA en modal: antes se pintaba dentro de la celda de cliente y hacia
+  //    que las filas crecieran mucho. Ahora se abre desde el boton de notas y
+  //    se puede editar. Se guarda en el campo `note` de la casa.
+  const [noteHouse, setNoteHouse] = useState<Property | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
+  const openNote = (prop: Property) => {
+    setNoteHouse(prop);
+    setNoteDraft(houseNote(prop));
+  };
+
+  const saveNote = async () => {
+    if (!noteHouse) return;
+    setIsSavingNote(true);
+    try {
+      const value = noteDraft.trim();
+      await propertiesService.update(noteHouse.id, { note: value });
+      setProperties(properties.map(p => p.id === noteHouse.id ? { ...p, note: value } : p));
+      setNoteHouse(null);
+    } catch (error) {
+      console.error("Error saving note:", error);
+      alert("Failed to save the note.");
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
@@ -340,7 +360,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     // ⭐ Ya no se cargan aqui: 'properties' (llega por props desde App.tsx) ni
     //    priorities/services (el modal de detalle es el de HousesView, que trae
     //    sus propios catalogos).
-    const TOTAL = 6;
+    const TOTAL = 5;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
     unsubscribes.push(onSnapshot(
@@ -375,13 +395,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       collection(db, 'billing_services'),
       (snap) => { setBilledServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as BilledServiceRecord))); tick(); },
       (err) => { console.error("Error services:", err); tick(); }
-    ));
-
-    // ⭐ NUEVO: system_users (para nombres de workers en el detalle)
-    unsubscribes.push(onSnapshot(
-      collection(db, 'system_users'),
-      (snap) => { setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })) as SystemUser[]); tick(); },
-      (err) => { console.error("Error users:", err); tick(); }
     ));
 
     return () => unsubscribes.forEach(u => u());
@@ -455,7 +468,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return keys;
   }, [statuses]);
 
-  const baseProps = (properties && properties.length > 0) ? properties : allProps;
+  // ⭐ PERF: esta vista YA NO descarga 'properties'. App.tsx mantiene el unico
+  //    listener global de la coleccion y le pasa la lista completa por props
+  //    (visibleProperties, sin filtrar). Antes se bajaban los ~3,600 documentos
+  //    una tercera vez.
+  const baseProps = properties;
 
   const invoiceProps = useMemo(
     () => (baseProps || []).filter(p => invoiceStatusKeys.has(String(p.statusId || '').toLowerCase().trim())),
@@ -664,8 +681,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         <table className="inv-table">
           <thead>
             <tr>
-              {/* ⭐ Actions movido a la primera columna */}
-              <th className="inv-th center">Actions</th>
               <th className="inv-th">Invoice Status</th>
               <th className="inv-th">Job Status</th>
               <th className="inv-th">Client / Address</th>
@@ -674,6 +689,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <th className="inv-th right">Total Cost</th>
               <th className="inv-th right">Payroll Total</th>
               <th className="inv-th right">Profit</th>
+              {/* ⭐ Actions al final de la tabla */}
+              <th className="inv-th center">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -694,44 +711,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   onClick={() => openDetail(prop)}
                   className="inv-row"
                 >
-
-                  {/* ⭐ ACTIONS — ahora en la primera columna */}
-                  <td className="inv-td center" onClick={(e) => e.stopPropagation()}>
-                    <div className="inv-actions-cell">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openDetail(prop); }}
-                        title="View Details"
-                        className="inv-icon-btn view"
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
-                        title="Photos / Export PDF"
-                        className="inv-icon-btn photos"
-                      >
-                        <FileImage size={16} />
-                      </button>
-                      {canEdit && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
-                          title="Edit Job"
-                          className="inv-icon-btn edit"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
-                          title="Delete Job"
-                          className="inv-icon-btn delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
 
                   <td className="inv-td" onClick={(e) => e.stopPropagation()}>
                     <InvoiceStatusPill
@@ -759,12 +738,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                     <div className="inv-client-address">
                       <MapPin size={12} /> {prop.address || '-'}
                     </div>
-                    {houseNote(prop) !== '' && (
-                      <div className="inv-note">
-                        <StickyNote size={12} className="inv-note-icon" />
-                        <span className="inv-note-text">{houseNote(prop)}</span>
-                      </div>
-                    )}
                   </td>
 
                   <td className="inv-td strong">
@@ -787,6 +760,45 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
                   <td className={`inv-td right profit ${profit >= 0 ? 'positive' : 'negative'}`}>
                     ${profit.toFixed(2)}
+                  </td>
+
+                  {/* ⭐ ACTIONS al final. Sin el ojo: el detalle se abre haciendo
+                      click en la fila. La nota se edita en su propio modal. */}
+                  <td className="inv-td center" onClick={(e) => e.stopPropagation()}>
+                    <div className="inv-actions-cell">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openNote(prop); }}
+                        title={houseNote(prop) !== '' ? houseNote(prop) : "Add note"}
+                        className={`inv-icon-btn note${houseNote(prop) !== '' ? ' has-note' : ''}`}
+                      >
+                        <StickyNote size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
+                        title="Photos / Export PDF"
+                        className="inv-icon-btn photos"
+                      >
+                        <FileImage size={16} />
+                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
+                          title="Edit Job"
+                          className="inv-icon-btn edit"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+                          title="Delete Job"
+                          className="inv-icon-btn delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -838,12 +850,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   <Users size={16} color="#94a3b8" className="inv-shrink-0" />
                   <span>{getTeamName(prop.teamId)}</span>
                 </div>
-                {houseNote(prop) !== '' && (
-                  <div className="inv-note">
-                    <StickyNote size={12} className="inv-note-icon" />
-                    <span className="inv-note-text">{houseNote(prop)}</span>
-                  </div>
-                )}
               </div>
 
               {/* Pills de estado (ancho completo) */}
@@ -881,9 +887,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               {/* Acciones */}
               <div className="inv-card-actions-row" onClick={(e) => e.stopPropagation()}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); openDetail(prop); }}
-                  className="inv-card-btn view">
-                  <Eye size={16} /> Ver
+                  onClick={(e) => { e.stopPropagation(); openNote(prop); }}
+                  className={`inv-card-btn note${houseNote(prop) !== '' ? ' has-note' : ''}`}>
+                  <StickyNote size={16} /> Nota
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
@@ -919,17 +925,44 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </div>
       )}
 
-      {/* --- ⭐ PAGOS A EMPLEADOS (PAY) — panel global de la vista Invoices.
-          Se acota a las casas que están pasando los filtros actuales, para que
-          el total del chip verde cuadre con lo que se ve en la tabla. --- */}
-      <RegisteredPaymentsPanel
-        payrolls={payrolls}
-        employees={employees}
-        properties={allProps}
-        propertyIds={filteredProperties.map(p => p.id)}
-        canEdit={canEdit}
-        actionLabel="Pay"
-      />
+      {/* ⭐ MODAL DE NOTA — ver y editar la nota de la casa sin abrir el detalle */}
+      {noteHouse && (
+        <div className="modal-overlay-centered" onClick={() => setNoteHouse(null)}>
+          <div className="modal-70 inv-note-modal" onClick={e => e.stopPropagation()}>
+            <header className="inv-modal-header">
+              <div>
+                <h3 className="inv-modal-title">Note</h3>
+                <p className="inv-note-modal-sub">{getClientName(noteHouse.client)} · {noteHouse.address || '-'}</p>
+              </div>
+              <button className="inv-modal-close" onClick={() => setNoteHouse(null)}><X size={24} /></button>
+            </header>
+
+            <div className="inv-note-modal-body">
+              <textarea
+                className="inv-note-textarea"
+                value={noteDraft}
+                onChange={e => setNoteDraft(e.target.value)}
+                disabled={!canEdit || isSavingNote}
+                placeholder={canEdit ? "Escribe la nota de esta casa..." : "Sin nota"}
+                rows={8}
+              />
+            </div>
+
+            <footer className="inv-note-modal-footer">
+              {canEdit && (
+                <button
+                  className="inv-btn-primary-modal"
+                  onClick={saveNote}
+                  disabled={isSavingNote}
+                >
+                  {isSavingNote ? 'Saving...' : 'Save'}
+                </button>
+              )}
+              <button className="inv-btn-outline-modal" onClick={() => setNoteHouse(null)}>Close</button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {/* ⭐ MODAL CENTRAL DE CAMBIO DE ESTADO (mismo que Houses/QC) */}
       {statusModal && (

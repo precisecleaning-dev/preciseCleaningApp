@@ -1269,3 +1269,62 @@
   .inv-page .inv-card-client-name { font-size: 1rem; letter-spacing: -0.01em; }
   .inv-page .inv-card-btn { height: 44px; border-radius: 12px; }
 }
+
+
+/* ============================================================================
+   ====== NOTAS EN MODAL + FILAS COMPACTAS ======
+   La nota salio de la celda de cliente (era lo que estiraba las filas) y ahora
+   vive en su propio modal editable. Anclado a .inv-page, sin banderas.
+   ========================================================================== */
+
+/* ---------- Filas compactas ---------- */
+.inv-page .inv-td { padding: 14px 18px; }
+.inv-page .inv-client-address { margin-top: 2px; }
+.inv-page .inv-table td:last-child,
+.inv-page .inv-table th:last-child { width: 156px; }
+
+/* ---------- Boton de nota ---------- */
+.inv-page .inv-icon-btn.note { color: #94a3b8; }
+.inv-page .inv-icon-btn.note:hover { background: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+/* Con nota cargada se pinta ambar, para distinguir de un vistazo */
+.inv-page .inv-icon-btn.note.has-note { color: #d97706; background: #fffbeb; border-color: #fde68a; }
+.inv-page .inv-icon-btn.note.has-note:hover { background: #fef3c7; border-color: #fcd34d; }
+.inv-page .inv-card-btn.note.has-note { color: #d97706; background: #fffbeb; border-color: #fde68a; }
+
+/* ---------- Modal de nota ---------- */
+.inv-note-modal { max-width: 620px; }
+.inv-note-modal .inv-note-modal-sub { margin: 4px 0 0 0; font-size: 0.82rem; color: #64748b; }
+.inv-note-modal .inv-note-modal-body { padding: 20px; }
+.inv-note-modal .inv-note-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 160px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #0f172a;
+  background-color: #ffffff;
+}
+.inv-note-modal .inv-note-textarea:focus {
+  outline: none;
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+}
+.inv-note-modal .inv-note-textarea:disabled { background-color: #f8fafc; color: #64748b; }
+.inv-note-modal .inv-note-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid #f1f5f9;
+}
+
+@media (max-width: 700px) {
+  .inv-note-modal .inv-note-modal-body { padding: 14px; }
+  .inv-note-modal .inv-note-modal-footer { padding: 14px; }
+  .inv-note-modal .inv-note-textarea { min-height: 200px; }
+}
