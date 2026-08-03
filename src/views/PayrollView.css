@@ -1462,3 +1462,43 @@ dl.pv-detail-banner {
     flex: 1 1 45%;
   }
 }
+
+
+/* ============================================================================
+   ====== NOMINA AGRUPADA POR EQUIPO ======
+   El equipo se toma de la casa (property.teamId), no del registro de nomina.
+   ========================================================================== */
+
+.pv-group-row { background: #f8fafc; }
+.pv-group-row:hover { background: #f1f5f9; }
+.pv-group-cell { padding: 0; border-bottom: 1px solid #e2e8f0; cursor: pointer; user-select: none; }
+.pv-group-inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px;
+  border-left: 3px solid var(--team-color, #cbd5e1);
+}
+.pv-group-chevron { display: flex; align-items: center; color: #94a3b8; flex-shrink: 0; }
+.pv-group-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background-color: var(--team-color, #cbd5e1);
+}
+.pv-group-name { font-size: 0.88rem; font-weight: 700; color: #0f172a; }
+.pv-group-count {
+  font-size: 0.72rem; font-weight: 600; color: #64748b;
+  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 999px; padding: 2px 10px;
+  white-space: nowrap;
+}
+.pv-group-total {
+  margin-left: auto; font-size: 0.9rem; font-weight: 800; color: #0f172a;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* Las filas del grupo se sangran un poco para que se lea la jerarquia */
+.pv-group-row + .pv-row .pv-td:first-child,
+.pv-row .pv-td:first-child { position: relative; }
+
+@media (max-width: 768px) {
+  .pv-group-inner { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .pv-group-total { margin-left: auto; }
+  .pv-group-count { order: 3; }
+}

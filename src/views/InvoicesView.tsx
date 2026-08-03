@@ -738,6 +738,19 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                     <div className="inv-client-address">
                       <MapPin size={12} /> {prop.address || '-'}
                     </div>
+                    {/* ⭐ Nota en UNA sola linea truncada. Antes ocupaba varias
+                        lineas y estiraba la fila; ahora el alto es fijo y el
+                        texto completo se ve en el tooltip o en el modal. */}
+                    {houseNote(prop) !== '' && (
+                      <div
+                        className="inv-note-line"
+                        title={houseNote(prop)}
+                        onClick={(e) => { e.stopPropagation(); openNote(prop); }}
+                      >
+                        <StickyNote size={11} className="inv-note-line-icon" />
+                        <span className="inv-note-line-text">{houseNote(prop)}</span>
+                      </div>
+                    )}
                   </td>
 
                   <td className="inv-td strong">
@@ -850,6 +863,17 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                   <Users size={16} color="#94a3b8" className="inv-shrink-0" />
                   <span>{getTeamName(prop.teamId)}</span>
                 </div>
+                {/* ⭐ Nota: maximo 2 lineas, para que la tarjeta no crezca sin
+                    control. El texto completo se abre con el boton "Nota". */}
+                {houseNote(prop) !== '' && (
+                  <div
+                    className="inv-card-note"
+                    onClick={(e) => { e.stopPropagation(); openNote(prop); }}
+                  >
+                    <StickyNote size={14} className="inv-shrink-0 inv-card-note-icon" />
+                    <span className="inv-card-note-text">{houseNote(prop)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Pills de estado (ancho completo) */}

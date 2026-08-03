@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, Menu,
-  Search, Wallet, ClipboardList
+  Search, Wallet, ClipboardList, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
@@ -222,6 +222,8 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
   //    ennomina = casas asignadas a una nómina pero sin pagar
   //    paid     = casas en nómina y marcadas como pagadas
   const [assignView, setAssignView] = useState<'pending' | 'ennomina' | 'paid'>('pending');
+  // ⭐ Agrupacion por equipo: que grupos estan colapsados (por teamId).
+  const [collapsedTeams, setCollapsedTeams] = useState<string[]>([]);
 
   // ⭐ Pestañas del módulo: 'asignar' = registros de Pay (tabla de siempre);
   //    'nominas' = tarjetas semanales por empleado.
@@ -567,6 +569,57 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
   // ⭐ Selección de casas para el pago consolidado (solo registros pendientes)
   // La selección para pagar solo aplica en la vista de pendientes
   const selectableRecords = assignView === 'pending' ? filteredRecords.filter(r => r.id) : [];
+
+  // ⭐ NOMINA AGRUPADA POR EQUIPO
+  //    El equipo NO vive en el registro de nomina: se captura en la casa
+  //    (property.teamId). Por eso se resuelve via la propiedad de cada
+  //    registro. Las casas sin equipo caen en un grupo "Sin equipo" al final
+  //    en vez de desaparecer.
+  const groupedByTeam = useMemo(() => {
+    const propById = new Map(properties.map(p => [p.id, p]));
+    const groups = new Map<string, { teamId: string; teamName: string; teamColor: string; records: PayrollRecordExt[]; subtotal: number }>();
+
+    filteredRecords.forEach(record => {
+      const prop = propById.get(record.propertyId as string);
+      const teamId = String(prop?.teamId || '');
+      const key = teamId || '__sin_equipo__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          teamId: key,
+          teamName: teamId ? getRelationName(teams, teamId, teamId) : 'Sin equipo',
+          teamColor: teamId ? (getRelationColor(teams, teamId) || '#64748b') : '#94a3b8',
+          records: [],
+          subtotal: 0,
+        });
+      }
+      const g = groups.get(key)!;
+      g.records.push(record);
+      g.subtotal += getTotal(record);
+    });
+
+    // Equipos por nombre; "Sin equipo" siempre al final.
+    return [...groups.values()].sort((a, b) => {
+      if (a.teamId === '__sin_equipo__') return 1;
+      if (b.teamId === '__sin_equipo__') return -1;
+      return a.teamName.localeCompare(b.teamName);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredRecords, properties, teams]);
+
+  const toggleTeamCollapsed = (teamId: string) =>
+    setCollapsedTeams(prev =>
+      prev.includes(teamId) ? prev.filter(t => t !== teamId) : [...prev, teamId],
+    );
+
+  // ⭐ Seleccionar/deseleccionar todas las casas pendientes de UN equipo.
+  const toggleTeamSelected = (records: PayrollRecordExt[]) => {
+    const ids = records.filter(r => r.id && r.status !== 'Paid').map(r => r.id as string);
+    if (ids.length === 0) return;
+    const allIn = ids.every(id => selectedRecordIds.includes(id));
+    setSelectedRecordIds(prev =>
+      allIn ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])],
+    );
+  };
   const selectedRecords = records.filter(r => r.id && selectedRecordIds.includes(r.id as string));
   const selectedSubtotal = selectedRecords.reduce((s, r) => s + getTotal(r), 0);
   const allPendingSelected = selectableRecords.length > 0 && selectableRecords.every(r => selectedRecordIds.includes(r.id as string));
@@ -979,7 +1032,54 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                     : 'No hay casas pagadas con los filtros actuales.'}
               </td></tr>
             ) : (
-              filteredRecords.map(record => {
+              // ⭐ AGRUPADO POR EQUIPO: cada equipo abre con una fila de cabecera
+              //    (nombre, numero de casas y subtotal) y se puede colapsar.
+              groupedByTeam.map(group => {
+                const isCollapsed = collapsedTeams.includes(group.teamId);
+                const groupPendingIds = group.records
+                  .filter(r => r.id && r.status !== 'Paid')
+                  .map(r => r.id as string);
+                const groupAllSelected =
+                  groupPendingIds.length > 0 &&
+                  groupPendingIds.every(id => selectedRecordIds.includes(id));
+
+                return (
+                  <Fragment key={group.teamId}>
+                    <tr className="pv-group-row">
+                      {selectedEmployee && assignView === 'pending' && (
+                        <td className="pv-td check" onClick={(e) => e.stopPropagation()}>
+                          {groupPendingIds.length > 0 && (
+                            <input
+                              type="checkbox"
+                              className="pv-row-check"
+                              checked={groupAllSelected}
+                              onChange={() => toggleTeamSelected(group.records)}
+                              aria-label={`Seleccionar las casas de ${group.teamName}`}
+                            />
+                          )}
+                        </td>
+                      )}
+                      <td
+                        className="pv-group-cell"
+                        colSpan={selectedEmployee && assignView === 'pending' ? 5 : 5}
+                        onClick={() => toggleTeamCollapsed(group.teamId)}
+                      >
+                        <div className="pv-group-inner">
+                          <span className="pv-group-chevron">
+                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                          </span>
+                          <span
+                            className="pv-group-dot"
+                            style={{ '--team-color': group.teamColor } as CSSProperties}
+                          />
+                          <span className="pv-group-name">{group.teamName}</span>
+                          <span className="pv-group-count">{group.records.length} casa(s)</span>
+                          <span className="pv-group-total">${group.subtotal.toFixed(2)}</span>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {!isCollapsed && group.records.map(record => {
                 const emp = employees.find(e => e.id === record.employeeId);
                 const prop = properties.find(p => p.id === record.propertyId);
                 const isSelected = record.id ? selectedRecordIds.includes(record.id as string) : false;
@@ -1032,6 +1132,9 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
 
                   </tr>
                 )
+              })}
+                  </Fragment>
+                );
               })
             )}
           </tbody>
