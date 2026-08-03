@@ -1964,10 +1964,16 @@ export default function HousesView({
           if (!isAssigned && !isSameTeam) return false;
         }
 
-        // ⭐ Las casas SIN status asignado ya no aparecen en Overview ni en el
-        //    tablero: tienen su propio modulo ("No Status"). Antes se colaban en
-        //    la lista de "All" y en el board sin aportar nada.
-        if (!findStatusOf(prop)) return false;
+        // ⭐ Las casas SIN status asignado viven en su propio modulo ("No
+        //    Status") y no aparecen en Overview ni en el tablero.
+        //
+        //    IMPORTANTE (bug de casas "desaparecidas"): esta exclusion SOLO se
+        //    aplica si el catalogo de statuses ya cargo. Mientras `statuses`
+        //    esta vacio —primer render, o si el onSnapshot falla por permisos—
+        //    ninguna casa resuelve su status y la vista entera se vaciaba.
+        //    Ante la duda se MUESTRA la casa: es preferible ver una casa de mas
+        //    que perder trabajo agendado.
+        if (statuses.length > 0 && !findStatusOf(prop)) return false;
 
         if (!isSuperAdmin && allowedStatusIds.length > 0) {
           const matchById = allowedStatusIds.includes(prop.statusId);
@@ -1981,8 +1987,25 @@ export default function HousesView({
         return true;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex],
+    [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex, statuses.length],
   );
+
+  // ⭐ Cuantas casas del alcance del usuario quedan fuera de Overview por no
+  //    tener status. Alimenta el aviso de arriba de la lista.
+  const hiddenNoStatusCount = useMemo(() => {
+    if (statuses.length === 0) return 0;
+    return properties.filter((prop) => {
+      if (userScope !== "All") {
+        if (!currentUser) return false;
+        const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
+        const isSameTeam =
+          currentUser.teamId && prop.teamId === currentUser.teamId;
+        if (!isAssigned && !isSameTeam) return false;
+      }
+      return !findStatusOf(prop);
+    }).length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties, userScope, currentUser, statusIndex, statuses.length]);
 
   const teamsWithScope = teams.filter((team) => {
     if (userScope === "All") return true;
@@ -2675,6 +2698,9 @@ export default function HousesView({
         setFormServices([]);
       }
     } else {
+      // ⭐ Default del formulario nuevo. Si el catalogo aun no cargo queda
+      //    vacio a proposito: handleSave bloquea el guardado hasta que el
+      //    usuario elija un status real, en vez de crear una casa huerfana.
       const defaultStatus = statuses.length > 0 ? statuses[0].id : "";
       setFormData({
         id: "",
@@ -2815,8 +2841,31 @@ export default function HousesView({
   };
 
   const handleSave = async () => {
-    if (!formData.client) return alert("Client is required.");
-    if (!formData.address) return alert("Address is required.");
+    // ⭐ OBLIGATORIOS. Sin estas validaciones se podia guardar una casa sin
+    //    cliente o sin status; las que quedaban sin status desaparecian de
+    //    Overview y del tablero (se iban al modulo "No Status") y el equipo
+    //    las daba por borradas.
+    if (!String(formData.client || "").trim())
+      return alert("Client is required.");
+    if (!String(formData.address || "").trim())
+      return alert("Address is required.");
+
+    // El catalogo de statuses tiene que estar cargado para poder validar.
+    if (statuses.length === 0)
+      return alert(
+        "Statuses are still loading. Wait a moment and try again.",
+      );
+
+    const chosenStatus = String(formData.statusId || "").trim();
+    if (!chosenStatus) return alert("Status is required.");
+
+    // ⭐ Ademas de no estar vacio, el status tiene que EXISTIR en el catalogo.
+    //    Una referencia huerfana (status renombrado o borrado) tiene el mismo
+    //    efecto que no tener status: la casa se vuelve invisible.
+    if (!statusIndex.get(chosenStatus))
+      return alert(
+        "The selected status no longer exists. Choose a valid status.",
+      );
 
     setIsSaving(true);
     try {
@@ -3592,6 +3641,19 @@ export default function HousesView({
             />
           ) : (
             <div className="main-columns">
+              {/* ⭐ AVISO: casas fuera de esta lista por no tener status.
+                  Sin este aviso desaparecian en silencio y el equipo las daba
+                  por borradas. */}
+              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
+                <div className="hv-nostatus-banner">
+                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
+                  <span>
+                    {hiddenNoStatusCount} job(s) are not shown here because they
+                    have no status assigned. They are in the "No Status" module.
+                  </span>
+                </div>
+              )}
+
               {/* LEFT COLUMN: DAILY JOBS */}
               <div className="left-col">
                 <div className="hv-panel-card">
