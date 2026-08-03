@@ -4,10 +4,13 @@
 .sidebar-header { padding: 6px 20px 0 20px; display: flex; align-items: center; justify-content: flex-end; min-height: 0; }
 .sidebar-header-spacer { flex: 1; }
 /* overflow-x: hidden mata el scroll horizontal cuando una etiqueta es larga.
-   La barra vertical se oculta visualmente pero el nav sigue siendo scrollable
-   en pantallas muy bajas, para no dejar items inalcanzables. */
-.sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding-top: 2px; scrollbar-width: none; -ms-overflow-style: none; }
-.sidebar-nav::-webkit-scrollbar { width: 0; height: 0; display: none; }
+   La barra vertical SI se ve: ocultarla dejaba items (Settings, Migrar Payroll,
+   Activity Log) fuera de pantalla sin ninguna pista de que estaban ahi. */
+.sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding-top: 2px; scrollbar-width: thin; scrollbar-color: rgba(148,163,184,0.45) transparent; }
+.sidebar-nav::-webkit-scrollbar { width: 8px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.35); border-radius: 999px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.6); }
 .nav-list { list-style: none; margin: 0; padding: 0; }
 .nav-item { display: flex; align-items: center; gap: 14px; padding: 8px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.9rem; font-weight: 500; white-space: nowrap; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .nav-item:hover { color: white; background-color: rgba(255,255,255,0.05); }
@@ -65,8 +68,6 @@
   .mobile-close-btn:active { background: rgba(255,255,255,0.22); }
 
   .sidebar-nav { padding-top: 6px !important; }
-  /* En movil si tiene sentido ver la barra: la lista es larga a proposito. */
-  .sidebar-nav { scrollbar-width: thin; }
 
   /* ===== Items de navegación: grandes y fáciles de tocar ===== */
   .nav-item {

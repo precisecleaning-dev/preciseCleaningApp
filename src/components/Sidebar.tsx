@@ -96,10 +96,15 @@ export default function Sidebar({
     // ⭐ DATA IMPORT — SuperAdmin siempre; además cualquier rol con el permiso
     //    "Data Import" marcado en Roles & Permissions (casilla View).
     { tab: 'data_import', label: 'Data Import', icon: Database, visible: isSuperAdmin || canViewDataImport },
-    // ⭐ ACTIVITY LOG — bitacora de la app. Va en Admin y por ahora se limita a
-    //    SuperAdmin: muestra actividad de TODOS los usuarios. Si quieres abrirlo
-    //    a otros roles, crea el modulo "Activity Log" en Roles y usa canView.
-    { tab: 'activity_log', label: 'Activity Log', icon: ScrollText, visible: isSuperAdmin },
+    // ⭐ ACTIVITY LOG — bitacora de la app (muestra actividad de TODOS los
+    //    usuarios, por eso vive en la seccion Admin).
+    //    Visible para: SuperAdmin, quien tenga el permiso propio "Activity Log"
+    //    (crealo en Roles & Permissions cuando quieras control fino), o quien
+    //    ya administre la configuracion — el mismo permiso que Empresa y Fotos.
+    {
+      tab: 'activity_log', label: 'Activity Log', icon: ScrollText,
+      visible: isSuperAdmin || canView('Activity Log') || canViewSettings,
+    },
     // ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en documentos, login y menú)
     { tab: 'company', label: 'Empresa', icon: Building2, visible: canViewSettings },
     // ⭐ FOTOS — compresión/opciones de captura de fotos (mismo permiso que Empresa/Settings)
