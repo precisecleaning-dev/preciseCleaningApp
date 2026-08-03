@@ -126,7 +126,7 @@ export default function Sidebar({
         className={`nav-item ${activeTab === item.tab ? 'active' : ''}`}
         onClick={item.onClick ?? (() => handleNavClick(item.tab))}
       >
-        <item.icon size={20} className="nav-icon" />
+        <item.icon size={18} className="nav-icon" />
         {isSidebarOpen && <span className="nav-text">{item.label}</span>}
       </button>
     </li>
@@ -168,7 +168,7 @@ export default function Sidebar({
             className="logout-btn"
             onClick={handleLogout}
           >
-            <LogOut size={20} /> {isSidebarOpen && "Log Out"}
+            <LogOut size={18} /> {isSidebarOpen && "Log Out"}
           </button>
         </div>
       </aside>

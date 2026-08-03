@@ -1,7 +1,7 @@
 .sidebar-container { background-color: #0f172a; color: white; display: flex; flex-direction: column; height: 100vh; width: 260px; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow-x: hidden; flex-shrink: 0; border-right: 1px solid rgba(255,255,255,0.05); }
 .sidebar-container.closed { width: 80px; }
 .mobile-close-btn { display: none; }
-.sidebar-header { padding: 6px 20px 0 20px; display: flex; align-items: center; justify-content: flex-end; min-height: 0; }
+.sidebar-header { padding: 4px 20px 0 20px; display: flex; align-items: center; justify-content: flex-end; min-height: 0; }
 .sidebar-header-spacer { flex: 1; }
 /* overflow-x: hidden mata el scroll horizontal cuando una etiqueta es larga.
    La barra vertical SI se ve: ocultarla dejaba items (Settings, Migrar Payroll,
@@ -12,16 +12,18 @@
 .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.35); border-radius: 999px; }
 .sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.6); }
 .nav-list { list-style: none; margin: 0; padding: 0; }
-.nav-item { display: flex; align-items: center; gap: 14px; padding: 8px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.9rem; font-weight: 500; white-space: nowrap; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+/* Compacto a proposito: con 18 items + la etiqueta ADMIN, esta altura hace
+   que el menu entre completo sin scroll en una ventana normal. */
+.nav-item { display: flex; align-items: center; gap: 13px; padding: 6px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.86rem; font-weight: 500; line-height: 1.2; white-space: nowrap; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .nav-item:hover { color: white; background-color: rgba(255,255,255,0.05); }
 .nav-item.active { color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); border-right: 3px solid #3b82f6; }
-.menu-label { color: #475569; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; padding: 0 20px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; }
-.menu-label.spaced { margin-top: 12px; }
+.menu-label { color: #475569; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; padding: 0 20px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; }
+.menu-label.spaced { margin-top: 10px; }
 
-.sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
+.sidebar-footer { padding: 8px 14px; border-top: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
 .logout-btn {
-  display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 8px;
-  border: none; cursor: pointer; font-size: 0.9rem; background-color: transparent; color: #ef4444;
+  display: flex; align-items: center; gap: 13px; padding: 8px 16px; border-radius: 8px;
+  border: none; cursor: pointer; font-size: 0.86rem; background-color: transparent; color: #ef4444;
   width: 100%; font-weight: 600; white-space: nowrap; transition: background 0.2s;
 }
 .logout-btn:hover { background-color: rgba(239, 68, 68, 0.1); }
