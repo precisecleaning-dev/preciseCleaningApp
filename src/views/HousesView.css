@@ -999,3 +999,22 @@
   /* Equipos: una sola columna comoda debajo de la lista */
   .houses-view .hv-teams-list { max-height: none; padding: 12px; }
 }
+
+
+/* ---------- Aviso de casas sin status (Overview) ---------- */
+.houses-view .hv-nostatus-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+  border: 1px solid #fde68a;
+  background-color: #fffbeb;
+  border-radius: 12px;
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.houses-view .hv-nostatus-banner-icon { color: #d97706; flex-shrink: 0; }

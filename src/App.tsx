@@ -16,6 +16,8 @@ const PayrollView = lazy(() => import('./views/PayrollView'));
 const InvoicesView = lazy(() => import('./views/InvoicesView'));
 // ⭐ NO STATUS — casas sin estado asignado (salieron de Overview y Pipeline)
 const NoStatusView = lazy(() => import('./views/NoStatusView'));
+// ⭐ ACTIVITY LOG — bitacora de todo lo que se hace en la app
+const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
 const NoticeBoardView = lazy(() => import('./views/NoticeBoardView'));
 const RolesView = lazy(() => import('./views/admin/RolesView'));
 const UsersView = lazy(() => import('./views/admin/UsersView'));
@@ -44,12 +46,12 @@ import { auth, db } from './config/firebase';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -374,6 +376,15 @@ export default function App() {
           <NoStatusView
             properties={visibleProperties}
             setProperties={setProperties}
+            onOpenMenu={toggleMenu}
+            currentUser={currentUser}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
+
+        {activeTab === 'activity_log' && (
+          <ActivityLogView
             onOpenMenu={toggleMenu}
             currentUser={currentUser}
             activeRole={activeRole}

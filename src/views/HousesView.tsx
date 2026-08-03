@@ -94,6 +94,11 @@ import StatusChangeModal, {
 
 import PhotoSection from "../components/PhotoSection";
 import PipelineBoardView from "../components/PipelineBoardView";
+// ⭐ Bitacora de actividad: quien hizo que y sobre que registro.
+import {
+  logActivity,
+  diffObjects,
+} from "../services/activityLogService";
 import {
   enqueuePhotos,
   getAllPending,
@@ -2184,6 +2189,13 @@ export default function HousesView({
       (a, b) => Number(a.dashboardOrder || 0) - Number(b.dashboardOrder || 0),
     );
 
+  // ⭐ Etiqueta legible del registro para la bitacora (cliente + direccion).
+  const logLabel = (p?: Property | null): string => {
+    if (!p) return "";
+    const cli = getClientName(p.client);
+    return p.address ? `${cli} — ${p.address}` : cli;
+  };
+
   const handleQuickStatusChange = async (
     propertyId: string,
     newStatusId: string,
@@ -2196,7 +2208,23 @@ export default function HousesView({
     }
     setIsSaving(true);
     try {
+      const prev = properties.find((p) => p.id === propertyId);
       await propertiesService.update(propertyId, { statusId: newStatusId });
+      // ⭐ Bitacora: cambio de status, con el nombre legible de ambos estados.
+      logActivity({
+        action: "status_change",
+        module: "Houses",
+        user: currentUser,
+        targetId: propertyId,
+        targetLabel: logLabel(prev),
+        changes: [
+          {
+            field: "statusId",
+            before: statusIndex.get(String(prev?.statusId ?? ""))?.name || "(sin status)",
+            after: statusIndex.get(String(newStatusId))?.name || newStatusId,
+          },
+        ],
+      });
       setProperties(
         properties.map((p) =>
           p.id === propertyId ? { ...p, statusId: newStatusId } : p,
@@ -2425,6 +2453,15 @@ export default function HousesView({
         clientName: getClientName(selectedHouse.client),
       })) as { data?: { ok?: boolean; eventId?: string } };
       if (res?.data?.ok) {
+        // ⭐ Bitacora: envio a Google Calendar.
+        logActivity({
+          action: "calendar_sync",
+          module: "Houses",
+          user: currentUser,
+          targetId: selectedHouse.id,
+          targetLabel: logLabel(selectedHouse),
+          detail: `Evento sincronizado (${selectedHouse.scheduleDate} ${selectedHouse.timeIn})`,
+        });
         alert(
           "✅ Evento sincronizado con Google Calendar.\n\nSi lo editas en el calendario (fecha, horas, dirección o nota), el cambio regresará a la app automáticamente.",
         );
@@ -2894,6 +2931,15 @@ export default function HousesView({
         workingId = docRef;
         isNew = true;
         console.log("✅ New property created with ID:", workingId);
+        // ⭐ Bitacora: alta de casa.
+        logActivity({
+          action: "create",
+          module: "Houses",
+          user: currentUser,
+          targetId: workingId,
+          targetLabel: logLabel(formData as Property),
+          detail: `Status inicial: ${statusIndex.get(chosenStatus)?.name || chosenStatus}`,
+        });
       }
 
       const beforeRes = await uploadOrQueue(
@@ -2927,6 +2973,36 @@ export default function HousesView({
       // archivo (URLs que no van al PDF), no forman parte de Property en types/index.ts.
       await propertiesService.update(workingId, dataForFirestore as any);
       console.log("✅ Property updated in Firestore with photo URLs");
+
+      // ⭐ Bitacora: en una edicion se guarda SOLO lo que cambio, campo por
+      //    campo (antes -> despues). En un alta el diff no aporta: ya se
+      //    registro arriba como 'create'.
+      if (!isNew) {
+        const original = properties.find((p) => p.id === workingId);
+        logActivity({
+          action: "update",
+          module: "Houses",
+          user: currentUser,
+          targetId: workingId,
+          targetLabel: logLabel(formData as Property),
+          changes: diffObjects(
+            original as unknown as Record<string, unknown>,
+            finalDataToUpdate as unknown as Record<string, unknown>,
+          ),
+        });
+      }
+
+      // ⭐ Bitacora: subida de fotos (va aparte porque el diff las ignora).
+      if (uploadedBeforeUrls.length > 0 || uploadedAfterUrls.length > 0) {
+        logActivity({
+          action: "photo_upload",
+          module: "Houses",
+          user: currentUser,
+          targetId: workingId,
+          targetLabel: logLabel(formData as Property),
+          detail: `${uploadedBeforeUrls.length} foto(s) Before, ${uploadedAfterUrls.length} foto(s) After`,
+        });
+      }
 
       for (const srvId of servicesToDelete) {
         await deleteDoc(doc(db, "billing_services", srvId)).catch((e) =>
@@ -3111,6 +3187,16 @@ export default function HousesView({
         );
       }
       await propertiesService.delete(target.id);
+      // ⭐ Bitacora: borrado. Se guarda la etiqueta legible porque el registro
+      //    ya no va a existir para poder consultarlo despues.
+      logActivity({
+        action: "delete",
+        module: "Houses",
+        user: currentUser,
+        targetId: target.id,
+        targetLabel: logLabel(target),
+        detail: `Se borraron tambien ${relatedPayrolls.length} registro(s) de payroll y ${relatedServicesSnap.size} servicio(s) facturado(s)`,
+      });
       setProperties(properties.filter((p) => p.id !== target.id));
       setIsDetailModalOpen(false);
     } catch (error) {
@@ -3640,20 +3726,21 @@ export default function HousesView({
               }}
             />
           ) : (
-            <div className="main-columns">
-              {/* ⭐ AVISO: casas fuera de esta lista por no tener status.
-                  Sin este aviso desaparecian en silencio y el equipo las daba
-                  por borradas. */}
-              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
-                <div className="hv-nostatus-banner">
-                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
-                  <span>
-                    {hiddenNoStatusCount} job(s) are not shown here because they
-                    have no status assigned. They are in the "No Status" module.
-                  </span>
-                </div>
-              )}
+            <>
+            {/* ⭐ AVISO: casas fuera de la lista por no tener status. Va FUERA
+                de .main-columns: ese contenedor es flex y meter aqui un item
+                extra descuadraba las columnas. */}
+            {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
+              <div className="hv-nostatus-banner">
+                <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
+                <span>
+                  {hiddenNoStatusCount} job(s) are not shown here because they
+                  have no status assigned. They are in the "No Status" module.
+                </span>
+              </div>
+            )}
 
+            <div className="main-columns">
               {/* LEFT COLUMN: DAILY JOBS */}
               <div className="left-col">
                 <div className="hv-panel-card">
@@ -4343,6 +4430,7 @@ export default function HousesView({
               </div>
               )}
             </div>
+            </>
           )}
         </>
       )}

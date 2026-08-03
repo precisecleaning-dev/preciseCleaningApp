@@ -7,6 +7,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
+import { logActivity } from '../services/activityLogService';
 import HousesView from './HousesView';
 import './NoStatusView.css';
 
@@ -133,7 +134,21 @@ export default function NoStatusView({
   const assignStatus = async (propertyId: string, newStatusId: string) => {
     setIsSaving(true);
     try {
+      const prev = properties.find(p => p.id === propertyId);
       await propertiesService.update(propertyId, { statusId: newStatusId });
+      // ⭐ Bitacora: asignacion de status desde el modulo No Status.
+      logActivity({
+        action: 'status_change',
+        module: 'No Status',
+        user: currentUser,
+        targetId: propertyId,
+        targetLabel: prev ? `${getClientName(prev.client)} — ${prev.address || ''}`.trim() : propertyId,
+        changes: [{
+          field: 'statusId',
+          before: '(sin status)',
+          after: statuses.find(s => s.id === newStatusId)?.name || newStatusId,
+        }],
+      });
       setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
     } catch (error) {
       console.error('Error assigning status:', error);
