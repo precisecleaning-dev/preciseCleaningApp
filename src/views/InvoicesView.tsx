@@ -84,7 +84,7 @@ const InvoiceStatusPill = ({ currentStatus, onChange, disabled, fullWidth = fals
   return (
     <div tabIndex={0} onBlur={() => setTimeout(() => setIsOpen(false), 200)} className={`inv-pill-wrap${fullWidth ? ' full' : ''}`}>
       <div
-        onClick={(e) => { e.stopPropagation(); if (!disabled) setIsOpen(!isOpen); }}
+        onClick={(e) => { e.stopPropagation(); if(!disabled) setIsOpen(!isOpen); }}
         className={`inv-status-pill dynamic${fullWidth ? ' full' : ''}${disabled ? ' disabled' : ''}`}
         style={{
           '--pill-border': `${statusObj.color}40`,
@@ -107,7 +107,7 @@ const InvoiceStatusPill = ({ currentStatus, onChange, disabled, fullWidth = fals
               key={s.id}
               onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
-                if (s.id !== currentStatus) onChange(s.id);
+                if(s.id !== currentStatus) onChange(s.id);
                 setIsOpen(false);
               }}
               className={`inv-pill-option${currentStatus === s.id ? ' current' : ''}`}
@@ -623,52 +623,52 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       {/* ⭐ Filtros agrupados en una sola tarjeta (chips + fechas + busqueda) */}
       <div className="inv-filters-card">
 
-        {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
-        <div className="inv-status-filters-row">
+      {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
+      <div className="inv-status-filters-row">
+        <button
+          onClick={() => setFilterStatus('All')}
+          className={`inv-filter-pill${filterStatus === 'All' ? ' active' : ''}`}
+          style={{ '--pill-color': '#64748b', '--pill-color-15': '#64748b15', '--pill-color-20': '#64748b20' } as CSSProperties}
+        >
+          All <span className={`inv-filter-count-badge${filterStatus === 'All' ? ' active' : ''}`}>{totalScopedCount}</span>
+        </button>
+        {INVOICE_STATUSES.map(st => (
           <button
-            onClick={() => setFilterStatus('All')}
-            className={`inv-filter-pill${filterStatus === 'All' ? ' active' : ''}`}
-            style={{ '--pill-color': '#64748b', '--pill-color-15': '#64748b15', '--pill-color-20': '#64748b20' } as CSSProperties}
+            key={st.id}
+            onClick={() => setFilterStatus(st.id)}
+            className={`inv-filter-pill${filterStatus === st.id ? ' active' : ''}`}
+            style={{ '--pill-color': st.color, '--pill-color-15': `${st.color}15`, '--pill-color-20': `${st.color}20`, '--dot-color': st.color } as CSSProperties}
           >
-            All <span className={`inv-filter-count-badge${filterStatus === 'All' ? ' active' : ''}`}>{totalScopedCount}</span>
+            <span className="inv-filter-dot"></span>
+            {st.name} <span className={`inv-filter-count-badge${filterStatus === st.id ? ' active' : ''}`}>{invoiceCounts[st.id] || 0}</span>
           </button>
-          {INVOICE_STATUSES.map(st => (
-            <button
-              key={st.id}
-              onClick={() => setFilterStatus(st.id)}
-              className={`inv-filter-pill${filterStatus === st.id ? ' active' : ''}`}
-              style={{ '--pill-color': st.color, '--pill-color-15': `${st.color}15`, '--pill-color-20': `${st.color}20`, '--dot-color': st.color } as CSSProperties}
-            >
-              <span className="inv-filter-dot"></span>
-              {st.name} <span className={`inv-filter-count-badge${filterStatus === st.id ? ' active' : ''}`}>{invoiceCounts[st.id] || 0}</span>
-            </button>
-          ))}
-        </div>
+        ))}
+      </div>
 
-        {/* Filtros secundarios */}
-        <div className="inv-secondary-filters">
-          <div>
-            <label className="inv-label">Start Date</label>
-            <div className="inv-input-wrap">
-              <CalendarDays className="inv-input-icon" size={16} />
-              <input type="date" className="inv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="inv-label">End Date</label>
-            <div className="inv-input-wrap">
-              <CalendarDays className="inv-input-icon" size={16} />
-              <input type="date" className="inv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-          </div>
-          <div className="inv-search-cell">
-            <label className="inv-label">Search (client or address)</label>
-            <div className="inv-input-wrap">
-              <Search className="inv-input-icon" size={16} />
-              <input type="text" className="inv-input" placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
-            </div>
+      {/* Filtros secundarios */}
+      <div className="inv-secondary-filters">
+        <div>
+          <label className="inv-label">Start Date</label>
+          <div className="inv-input-wrap">
+            <CalendarDays className="inv-input-icon" size={16} />
+            <input type="date" className="inv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
           </div>
         </div>
+        <div>
+          <label className="inv-label">End Date</label>
+          <div className="inv-input-wrap">
+            <CalendarDays className="inv-input-icon" size={16} />
+            <input type="date" className="inv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="inv-search-cell">
+          <label className="inv-label">Search (client or address)</label>
+          <div className="inv-input-wrap">
+            <Search className="inv-input-icon" size={16} />
+            <input type="text" className="inv-input" placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
+          </div>
+        </div>
+      </div>
 
       </div>{/* /inv-filters-card */}
 

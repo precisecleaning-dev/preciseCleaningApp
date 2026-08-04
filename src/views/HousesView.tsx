@@ -629,6 +629,12 @@ export default function HousesView({
     cityStateZip: "",
   });
   const [isServiceFromForm, setIsServiceFromForm] = useState(false);
+  // ⭐ Igual que los servicios: los pagos capturados DESDE EL FORMULARIO se
+  //    guardan en un buffer local y se persisten al presionar Save. Asi se puede
+  //    registrar un pago en una casa NUEVA (o recien duplicada), que todavia no
+  //    tiene id al cual asociar el documento de payroll.
+  const [isPayrollFromForm, setIsPayrollFromForm] = useState(false);
+  const [payrollsToDelete, setPayrollsToDelete] = useState<string[]>([]);
   const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
   const [formServices, setFormServices] = useState<ServiceRecord[]>([]);
   const [servicesToDelete, setServicesToDelete] = useState<string[]>([]);
@@ -2611,8 +2617,11 @@ export default function HousesView({
     setFormData({ ...formData, assignedWorkers: newWorkersList });
   };
 
-  const handleOpenPayrollForm = (houseId: string) => {
-    if (!houseId) return alert("Must save the house first.");
+  const handleOpenPayrollForm = (houseId: string, fromForm = false) => {
+    // ⭐ Desde el FORMULARIO no se exige que la casa exista todavia: el pago
+    //    queda en el buffer local y recibe su propertyId real al guardar.
+    if (!houseId && !fromForm) return alert("Must save the house first.");
+    setIsPayrollFromForm(fromForm);
     setPayrollForm({
       propertyId: houseId,
       date: new Date().toISOString().split("T")[0],
@@ -2631,17 +2640,30 @@ export default function HousesView({
     if (!payrollForm.employeeId) return alert("Please select an employee.");
     if (Number(payrollForm.baseAmount) <= 0)
       return alert("Base amount must be greater than 0.");
+    const total =
+      Number(payrollForm.baseAmount) +
+      Number(payrollForm.extraAmount) -
+      Number(payrollForm.discountAmount);
+    const dataToSave = {
+      ...payrollForm,
+      totalAmount: total,
+      status: "Pending" as const,
+    };
+
+    // ⭐ Capturado desde el FORMULARIO: al buffer local, se persiste en Save.
+    if (isPayrollFromForm) {
+      setHousePayrollRecords(
+        [
+          ...housePayrollRecords,
+          { ...dataToSave, id: `temp-${Date.now()}` },
+        ].sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
+      );
+      setIsPayrollModalOpen(false);
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const total =
-        Number(payrollForm.baseAmount) +
-        Number(payrollForm.extraAmount) -
-        Number(payrollForm.discountAmount);
-      const dataToSave = {
-        ...payrollForm,
-        totalAmount: total,
-        status: "Pending" as const,
-      };
       const newId = await payrollService.create(dataToSave);
       setHousePayrollRecords(
         [...housePayrollRecords, { ...dataToSave, id: newId }].sort(
@@ -2656,6 +2678,15 @@ export default function HousesView({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // ⭐ Borrado DESDE EL FORMULARIO: solo saca el registro del buffer. Los que ya
+  //    existen en Firestore se marcan y se borran de verdad al presionar Save,
+  //    para que cancelar el formulario no destruya nada (igual que los servicios).
+  const handleDeletePayrollLocal = (id: string) => {
+    if (!window.confirm("Remove this payment from the list?")) return;
+    if (!id.startsWith("temp-")) setPayrollsToDelete((prev) => [...prev, id]);
+    setHousePayrollRecords((prev) => prev.filter((r) => r.id !== id));
   };
 
   const handleDeletePayroll = async (id: string) => {
@@ -2760,6 +2791,7 @@ export default function HousesView({
   const handleOpenForm = async (house?: Property) => {
     setIsAssigningWorkerForm(false);
     setServicesToDelete([]);
+    setPayrollsToDelete([]);
 
     if (house) {
       setFormData(house);
@@ -2858,8 +2890,9 @@ export default function HousesView({
     );
     setServicesToDelete([]);
     // ⭐ La copia es una casa NUEVA: los pagos pertenecen a la casa original y
-    //    NO se heredan (se registran cuando la copia ya tenga su propio id).
+    //    NO se heredan. Se pueden capturar de cero en la card Payroll.
     setHousePayrollRecords([]);
+    setPayrollsToDelete([]);
     setIsDetailModalOpen(false);
     setIsFormModalOpen(true);
   };
@@ -3104,6 +3137,25 @@ export default function HousesView({
           );
         }
       }
+
+      // ⭐ PAGOS capturados en la card Payroll del formulario. Mismo ciclo que los
+      //    servicios: los marcados para borrar se eliminan, y los `temp-` se crean
+      //    ya con el propertyId real (por eso funciona en una casa nueva).
+      for (const payId of payrollsToDelete) {
+        await payrollService.delete(payId).catch((e) => console.error(e));
+      }
+      for (const pay of housePayrollRecords) {
+        if (pay.id && !String(pay.id).startsWith("temp-")) continue;
+        const createData: Omit<PayrollRecord, "id"> = {
+          ...pay,
+          propertyId: workingId,
+        };
+        delete (createData as Partial<PayrollRecord>).id;
+        await payrollService
+          .create(createData)
+          .catch((e) => console.error(e));
+      }
+      setPayrollsToDelete([]);
 
       if (isNew) {
         const fullNewData = {
@@ -5159,23 +5211,17 @@ export default function HousesView({
                       <h3 className="hv-form-card-title hv-no-mb">
                         <DollarSign size={20} color="#10B981" /> Payroll
                       </h3>
-                      {canEdit &&
-                        (formData.id ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenPayrollForm(formData.id)}
-                            disabled={isSaving}
-                            className="btn btn-primary hv-btn-add-service green"
-                          >
-                            <Plus size={16} /> Register Payment
-                          </button>
-                        ) : (
-                          // ⭐ Una casa nueva (o una copia recien duplicada) todavia no
-                          //    tiene id: el pago necesita a que propiedad pertenecer.
-                          <span className="hv-payroll-locked-hint">
-                            Save the house first to register payments
-                          </span>
-                        ))}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOpenPayrollForm(formData.id, true)
+                          }
+                          className="btn btn-primary hv-btn-add-service green"
+                        >
+                          <Plus size={16} /> Register Payment
+                        </button>
+                      )}
                     </div>
 
                     <div className="hv-service-table-wrap">
@@ -5241,11 +5287,10 @@ export default function HousesView({
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          handleDeletePayroll(
+                                          handleDeletePayrollLocal(
                                             record.id as string,
                                           )
                                         }
-                                        disabled={isSaving}
                                         className="hv-service-action-btn delete"
                                       >
                                         <Trash2 size={14} />

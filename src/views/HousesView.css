@@ -429,7 +429,6 @@
 .hv-btn-add-service.green { background-color: #10b981; }
 .hv-btn-add-service.green:hover:not(:disabled) { background-color: #059669; }
 .hv-btn-add-service:disabled { opacity: 0.6; cursor: not-allowed; }
-.hv-payroll-locked-hint { font-size: 0.8rem; color: #94a3b8; font-style: italic; }
 .hv-payroll-form-total { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding: 12px 20px; border: 1px solid #a7f3d0; border-radius: 8px; background-color: #ecfdf5; }
 .hv-payroll-form-total-label { font-size: 0.8rem; font-weight: 600; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; }
 .hv-payroll-form-total-value { font-size: 1.15rem; font-weight: 800; color: #047857; }
