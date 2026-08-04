@@ -16,6 +16,7 @@ import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
+import { isInvoiceStatus } from '../utils/invoiceEntry';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil } from '../utils/qcReportPdf';
@@ -625,11 +626,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (String(statusModalSelected) === String(prevStatusId)) { setStatusModalHouse(null); return; }
     setSavingStatus(true);
     try {
-      // ⭐ ¿El destino es el status "Invoice"? (resuelve por id o nombre contra
-      //    settings_statuses; '748aad00' es el id legacy de AppSheet para Invoice)
-      const targetSt = statuses.find((s: any) => String(s.id) === String(statusModalSelected) || String(s.name) === String(statusModalSelected));
-      const targetName = String(targetSt?.name || statusModalSelected || '').toLowerCase().trim();
-      const isInvoiceTarget = targetName === 'invoice' || String(statusModalSelected) === '748aad00';
+      // ⭐ ¿El destino es el status "Invoice"? Resuelto por el helper compartido
+      //    (src/utils/invoiceEntry.ts), el mismo que usan Houses, Recalls y No Status.
+      const isInvoiceTarget = isInvoiceStatus(statuses, statusModalSelected);
 
       // ⭐ Marca de ENVÍO A INVOICES desde QC: InvoicesView usa este timestamp
       //    para poner estas casas DE PRIMERAS en su lista (más reciente arriba).

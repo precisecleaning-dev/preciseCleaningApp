@@ -88,6 +88,7 @@ import {
 import { formatDate, dateSortValue } from "../utils/dateFormat";
 import { escapeHtml } from "../utils/escapeHtml";
 import { getRelationName, getRelationColor } from "../utils/relations";
+import { stampInvoiceEntry } from "../utils/invoiceEntry";
 import StatusChangeModal, {
   type StatusModalConfig,
 } from "../components/StatusChangeModal";
@@ -183,6 +184,11 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   {
     id: "card_billedServices",
     label: "Billed Services (entire section)",
+    section: "Sections",
+  },
+  {
+    id: "card_payroll",
+    label: "Payroll / Registered Payments (entire section)",
     section: "Sections",
   },
   { id: "card_photos", label: "Photos (entire section)", section: "Sections" },
@@ -301,6 +307,8 @@ function SearchableSelect<T extends SelectOption>({
   icon: Icon,
   returnKey = "id" as keyof T,
   disabled = false,
+  allowClear = false,
+  clearLabel = "— None —",
 }: {
   options: T[];
   value?: string;
@@ -309,6 +317,11 @@ function SearchableSelect<T extends SelectOption>({
   icon: LucideIcon;
   returnKey?: keyof T;
   disabled?: boolean;
+  // ⭐ Permite DEJAR EL CAMPO VACIO despues de haber elegido algo. Sin esto el
+  //    control no tiene forma de volver a "", que era el bug al duplicar una casa:
+  //    el Team se heredaba de la casa original y no se podia quitar.
+  allowClear?: boolean;
+  clearLabel?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -343,6 +356,22 @@ function SearchableSelect<T extends SelectOption>({
           }}
           disabled={disabled}
         />
+        {allowClear && !disabled && String(value || "") !== "" && (
+          <button
+            type="button"
+            className="hv-searchsel-clear"
+            title={clearLabel}
+            aria-label={clearLabel}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onChange("");
+              setSearch("");
+              setIsOpen(false);
+            }}
+          >
+            <X size={14} />
+          </button>
+        )}
         <ChevronDown
           size={16}
           color="#9ca3af"
@@ -354,6 +383,19 @@ function SearchableSelect<T extends SelectOption>({
       </div>
       {isOpen && (
         <div className="hv-searchsel-dropdown">
+          {allowClear && (
+            <div
+              className="hv-searchsel-option clear"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange("");
+                setIsOpen(false);
+                setSearch("");
+              }}
+            >
+              {clearLabel}
+            </div>
+          )}
           {filteredOptions.length === 0 ? (
             <div className="hv-searchsel-empty">No results found</div>
           ) : null}
@@ -2209,7 +2251,14 @@ export default function HousesView({
     setIsSaving(true);
     try {
       const prev = properties.find((p) => p.id === propertyId);
-      await propertiesService.update(propertyId, { statusId: newStatusId });
+      // ⭐ Si el destino es "Invoice", estampa la marca de entrada para que la
+      //    casa quede ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts).
+      const statusPayload = stampInvoiceEntry(
+        { statusId: newStatusId },
+        statuses,
+        newStatusId,
+      );
+      await propertiesService.update(propertyId, statusPayload);
       // ⭐ Bitacora: cambio de status, con el nombre legible de ambos estados.
       logActivity({
         action: "status_change",
@@ -2227,11 +2276,11 @@ export default function HousesView({
       });
       setProperties(
         properties.map((p) =>
-          p.id === propertyId ? { ...p, statusId: newStatusId } : p,
+          p.id === propertyId ? { ...p, ...statusPayload } : p,
         ),
       );
       if (selectedHouse && selectedHouse.id === propertyId) {
-        setSelectedHouse({ ...selectedHouse, statusId: newStatusId });
+        setSelectedHouse({ ...selectedHouse, ...statusPayload });
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -2734,6 +2783,17 @@ export default function HousesView({
         console.error("Error fetching form services:", error);
         setFormServices([]);
       }
+      // ⭐ El formulario ahora tambien muestra y registra PAGOS (card Payroll),
+      //    antes solo disponibles en el modal de detalle. Se cargan aparte de
+      //    los servicios para que un fallo en una consulta no tumbe la otra.
+      try {
+        const pRecords = await payrollService.getByPropertyId(house.id);
+        pRecords.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
+        setHousePayrollRecords(pRecords);
+      } catch (error) {
+        console.error("Error fetching form payroll:", error);
+        setHousePayrollRecords([]);
+      }
     } else {
       // ⭐ Default del formulario nuevo. Si el catalogo aun no cargo queda
       //    vacio a proposito: handleSave bloquea el guardado hasta que el
@@ -2763,6 +2823,7 @@ export default function HousesView({
         assignedWorkers: [],
       });
       setFormServices([]);
+      setHousePayrollRecords([]);
       setBeforePhotoURLs([]);
       setAfterPhotoURLs([]);
       setBeforeFiles([]);
@@ -2796,6 +2857,9 @@ export default function HousesView({
       })),
     );
     setServicesToDelete([]);
+    // ⭐ La copia es una casa NUEVA: los pagos pertenecen a la casa original y
+    //    NO se heredan (se registran cuando la copia ya tenga su propio id).
+    setHousePayrollRecords([]);
     setIsDetailModalOpen(false);
     setIsFormModalOpen(true);
   };
@@ -2959,6 +3023,18 @@ export default function HousesView({
       const uploadedBeforeUrls = beforeRes.urls;
       const uploadedAfterUrls = afterRes.urls;
 
+      // ⭐ Si la casa ENTRA a "Invoice" con este guardado (alta nueva, o edicion
+      //    que cambia el status), estampa la marca de entrada para que quede
+      //    ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts). Si ya estaba
+      //    en Invoice antes, se conserva la marca original: guardar otros campos
+      //    no debe reordenar la lista.
+      const prevStatusId = isNew
+        ? ""
+        : String(
+            properties.find((p) => p.id === workingId)?.statusId || "",
+          );
+      const enteredInvoiceNow = String(formData.statusId || "") !== prevStatusId;
+
       const finalDataToUpdate = {
         ...formData,
         assignedWorkers: finalAssignedWorkers,
@@ -2966,6 +3042,9 @@ export default function HousesView({
         afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls],
         beforePhotosExcluded: beforeExcluded,
         afterPhotosExcluded: afterExcluded,
+        ...(enteredInvoiceNow
+          ? stampInvoiceEntry({}, statuses, formData.statusId)
+          : {}),
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
@@ -4809,9 +4888,14 @@ export default function HousesView({
                           options={teams}
                           value={formData.teamId}
                           onChange={(val: string) => {
-                            const teamWorkers = employees
-                              .filter((emp) => emp.teamId === val)
-                              .map((emp) => emp.id);
+                            // ⭐ Al LIMPIAR el equipo (val vacio) tambien se vacia la
+                            //    lista de trabajadores: si no, quedaban asignados los
+                            //    del equipo anterior sin equipo visible.
+                            const teamWorkers = val
+                              ? employees
+                                  .filter((emp) => emp.teamId === val)
+                                  .map((emp) => emp.id)
+                              : [];
                             setFormData({
                               ...formData,
                               teamId: val,
@@ -4822,6 +4906,8 @@ export default function HousesView({
                           icon={Users}
                           returnKey="id"
                           disabled={isFieldRO("teamId")}
+                          allowClear
+                          clearLabel="— Sin equipo —"
                         />
                       </div>
                     )}
@@ -5059,6 +5145,133 @@ export default function HousesView({
                       </div>
                     </div>
                   )}
+
+                {/* CARD 4.5: PAYROLL — registrar pagos SIN salir del formulario.
+                    Antes esto solo existia en el modal de DETALLE, asi que para
+                    pagarle a alguien habia que guardar, cerrar, y reabrir la casa
+                    en modo detalle. Reusa los mismos handlers y el mismo modal
+                    "Register Payment" que el detalle: una sola fuente de verdad.
+                    Como InvoicesView monta HousesView en modo 'modals-only', esta
+                    card queda disponible tambien desde Invoices. */}
+                {isVisible("financial") && isElementVisible("card_payroll") && (
+                  <div className="hv-form-card">
+                    <div className="hv-card-header-row">
+                      <h3 className="hv-form-card-title hv-no-mb">
+                        <DollarSign size={20} color="#10B981" /> Payroll
+                      </h3>
+                      {canEdit &&
+                        (formData.id ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPayrollForm(formData.id)}
+                            disabled={isSaving}
+                            className="btn btn-primary hv-btn-add-service green"
+                          >
+                            <Plus size={16} /> Register Payment
+                          </button>
+                        ) : (
+                          // ⭐ Una casa nueva (o una copia recien duplicada) todavia no
+                          //    tiene id: el pago necesita a que propiedad pertenecer.
+                          <span className="hv-payroll-locked-hint">
+                            Save the house first to register payments
+                          </span>
+                        ))}
+                    </div>
+
+                    <div className="hv-service-table-wrap">
+                      <table className="hv-service-table">
+                        <thead>
+                          <tr>
+                            <th className="hv-service-th">Date</th>
+                            <th className="hv-service-th">Employee</th>
+                            <th className="hv-service-th right">Base</th>
+                            <th className="hv-service-th right">Extra</th>
+                            <th className="hv-service-th right">Discount</th>
+                            <th className="hv-service-th right">Total</th>
+                            {canEdit && (
+                              <th className="hv-service-th right">Act</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {housePayrollRecords.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={canEdit ? 7 : 6}
+                                className="hv-service-empty-row"
+                              >
+                                No payments registered yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            housePayrollRecords.map((record) => {
+                              const emp = employees.find(
+                                (e) => e.id === record.employeeId,
+                              );
+                              return (
+                                <tr key={record.id}>
+                                  <td className="hv-service-td muted">
+                                    {formatDate(record.date)}
+                                  </td>
+                                  <td className="hv-service-td strong">
+                                    {emp
+                                      ? [emp.firstName, emp.lastName]
+                                          .filter(Boolean)
+                                          .join(" ")
+                                      : "Unknown"}
+                                  </td>
+                                  <td className="hv-service-td right">
+                                    ${Number(record.baseAmount || 0).toFixed(2)}
+                                  </td>
+                                  <td className="hv-service-td right extra">
+                                    +$
+                                    {Number(record.extraAmount || 0).toFixed(2)}
+                                  </td>
+                                  <td className="hv-service-td right discount">
+                                    -$
+                                    {Number(
+                                      record.discountAmount || 0,
+                                    ).toFixed(2)}
+                                  </td>
+                                  <td className="hv-service-td right total">
+                                    ${Number(record.totalAmount || 0).toFixed(2)}
+                                  </td>
+                                  {canEdit && (
+                                    <td className="hv-service-td right">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeletePayroll(
+                                            record.id as string,
+                                          )
+                                        }
+                                        disabled={isSaving}
+                                        className="hv-service-action-btn delete"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {housePayrollRecords.length > 0 && (
+                      <div className="hv-payroll-form-total">
+                        <span className="hv-payroll-form-total-label">
+                          Total Payroll
+                        </span>
+                        <span className="hv-payroll-form-total-value">
+                          ${totalPayroll.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* CARD 5: NOTES */}
                 <div className="hv-form-card">

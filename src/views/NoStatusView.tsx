@@ -5,6 +5,7 @@ import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
+import { stampInvoiceEntry } from '../utils/invoiceEntry';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import { logActivity } from '../services/activityLogService';
@@ -135,7 +136,10 @@ export default function NoStatusView({
     setIsSaving(true);
     try {
       const prev = properties.find(p => p.id === propertyId);
-      await propertiesService.update(propertyId, { statusId: newStatusId });
+      // ⭐ Si el destino es "Invoice", estampa la marca de entrada para que la
+      //    casa quede ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts).
+      const payload = stampInvoiceEntry({ statusId: newStatusId }, statuses, newStatusId);
+      await propertiesService.update(propertyId, payload);
       // ⭐ Bitacora: asignacion de status desde el modulo No Status.
       logActivity({
         action: 'status_change',
@@ -149,7 +153,7 @@ export default function NoStatusView({
           after: statuses.find(s => s.id === newStatusId)?.name || newStatusId,
         }],
       });
-      setProperties(properties.map(p => p.id === propertyId ? { ...p, statusId: newStatusId } : p));
+      setProperties(properties.map(p => p.id === propertyId ? { ...p, ...payload } : p));
     } catch (error) {
       console.error('Error assigning status:', error);
       alert('Failed to assign the status.');

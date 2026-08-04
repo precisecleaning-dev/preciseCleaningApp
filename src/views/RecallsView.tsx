@@ -12,6 +12,7 @@ import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
 import type { StatusHistoryEntry } from '../services/statusHistoryService';
 import { getRelationName } from '../utils/relations';
+import { stampInvoiceEntry } from '../utils/invoiceEntry';
 import { RECALL_STATUS_HINTS, isRecallText } from '../utils/recallStatus';
 import PropertyDetailModal from '../components/PropertyDetailModal';
 import './RecallsView.css';
@@ -330,7 +331,9 @@ export default function RecallsView({ onOpenMenu, properties, currentUser }: Rec
   const changeStatus = async (houseId: string, prevStatusId: string | undefined, newId: string) => {
     if (!houseId || String(newId) === String(prevStatusId || '')) return;
     try {
-      await propertiesService.update(houseId, { statusId: newId });
+      // ⭐ Si el destino es "Invoice", estampa la marca de entrada para que la
+      //    casa quede ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts).
+      await propertiesService.update(houseId, stampInvoiceEntry({ statusId: newId }, statuses, newId));
       const toName = statusNameById(newId);
       await statusHistoryService.log({
         propertyId: houseId,

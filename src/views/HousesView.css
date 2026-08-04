@@ -337,6 +337,12 @@
 .hv-searchsel-empty { padding: 12px 14px; color: #9ca3af; font-size: 0.9rem; }
 .hv-searchsel-option { padding: 12px 14px; cursor: pointer; border-bottom: 1px solid #f9fafb; font-size: 0.95rem; color: #111827; font-weight: 500; }
 .hv-searchsel-option:hover { background-color: #f1f5f9; }
+/* ⭐ Opcion y boton para DEJAR EL CAMPO VACIO (allowClear). La regla :hover va
+   despues para que gane al pasar el mouse sobre la opcion de limpiar. */
+.hv-searchsel-option.clear { color: #64748b; font-style: italic; font-weight: 600; }
+.hv-searchsel-option.clear:hover { background-color: #fef2f2; color: #dc2626; }
+.hv-searchsel-clear { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-right: 4px; padding: 0; flex-shrink: 0; border: none; border-radius: 50%; background-color: transparent; color: #9ca3af; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.hv-searchsel-clear:hover { background-color: #fee2e2; color: #dc2626; }
 
 /* --- StatusPillSelector --- */
 .hv-statuspill-outer { display: inline-block; }
@@ -414,6 +420,19 @@
 .hv-service-action-btn { background: none; border: none; cursor: pointer; padding: 2px; }
 .hv-service-action-btn.edit { color: #3b82f6; }
 .hv-service-action-btn.delete { color: #ef4444; }
+/* ⭐ Card Payroll dentro del FORMULARIO (reusa la tabla de servicios).
+   `extra` en verde y `discount` en rojo: NO se reusa `.tax.positive` porque ahi
+   el rojo significa impuesto sumado, un significado distinto al de un extra. */
+.hv-service-td.muted { color: #64748b; }
+.hv-service-td.extra { color: #10b981; font-weight: 600; }
+.hv-service-td.discount { color: #ef4444; font-weight: 600; }
+.hv-btn-add-service.green { background-color: #10b981; }
+.hv-btn-add-service.green:hover:not(:disabled) { background-color: #059669; }
+.hv-btn-add-service:disabled { opacity: 0.6; cursor: not-allowed; }
+.hv-payroll-locked-hint { font-size: 0.8rem; color: #94a3b8; font-style: italic; }
+.hv-payroll-form-total { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding: 12px 20px; border: 1px solid #a7f3d0; border-radius: 8px; background-color: #ecfdf5; }
+.hv-payroll-form-total-label { font-size: 0.8rem; font-weight: 600; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; }
+.hv-payroll-form-total-value { font-size: 1.15rem; font-weight: 800; color: #047857; }
 
 .hv-notes-col { display: flex; flex-direction: column; gap: 1.5rem; }
 

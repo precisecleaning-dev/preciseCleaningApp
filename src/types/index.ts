@@ -80,6 +80,12 @@ export interface Property {
   employeeStartedAt?: string | null;
   employeeFinishedBy?: string | null;
   employeeFinishedAt?: string | null;
+
+  // ⭐ Momento en que la casa entró al status "Invoice". InvoicesView lo usa para
+  //    poner ARRIBA las casas agregadas más recientemente a esa vista. Lo escriben
+  //    todos los puntos que cambian el status (ver src/utils/invoiceEntry.ts).
+  //    Antes cada vista lo redeclaraba como extensión local del tipo.
+  sentToInvoiceAt?: string | null;
 }
 
 // ==========================================

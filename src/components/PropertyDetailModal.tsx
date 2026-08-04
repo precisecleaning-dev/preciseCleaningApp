@@ -10,6 +10,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { getRelationName, getRelationColor } from '../utils/relations';
+import { stampInvoiceEntry } from '../utils/invoiceEntry';
 import StatusHistoryPanel from './StatusHistoryPanel';
 import './PropertyDetailModal.css';
 
@@ -103,7 +104,9 @@ export default function PropertyDetailModal({ property, onClose, currentUser, ca
     setSaving(true);
     const prev = house.statusId;
     try {
-      await propertiesService.update(house.id, { statusId: newId });
+      // ⭐ Si el destino es "Invoice", estampa la marca de entrada para que la
+      //    casa quede ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts).
+      await propertiesService.update(house.id, stampInvoiceEntry({ statusId: newId }, statuses, newId));
       await statusHistoryService.log({
         propertyId: house.id,
         fromStatusId: prev || null,
