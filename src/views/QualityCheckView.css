@@ -17,8 +17,10 @@
 }
 .qc-modal {
   background-color: #eaeff2;
-  width: 80vw; max-width: 1400px;
-  height: 82vh;
+  /* ⭐ Mas grande: con 12+ areas y sus fotos, 80vw/82vh obligaba a hacer scroll
+     constante y desperdiciaba los margenes de pantallas grandes. */
+  width: 94vw; max-width: 1800px;
+  height: 93vh;
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
   display: flex; flex-direction: column; overflow: hidden;
@@ -41,9 +43,46 @@
 
 .qc-body {
   padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
   gap: 20px; flex: 1; align-content: start;
 }
+/* ===== ⭐ NAVEGADOR DE AREAS (tabs) =====
+   Fijo entre el cuerpo y los botones. En escritorio no hace falta (las areas se
+   ven lado a lado en la grilla), por eso se muestra solo en pantallas chicas. */
+.qc-areabar { display: none; }
+.qc-areabar-tabs {
+  flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-padding: 0 12px;
+}
+.qc-areabar-tabs::-webkit-scrollbar { display: none; }
+.qc-areabar-arrow {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px;
+  border: 1px solid #e1e4e8; background: #fff; color: #475569;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.qc-areabar-arrow:disabled { opacity: 0.35; cursor: default; }
+.qc-areatab {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #e1e4e8; background: #fff; color: #475569;
+  font-size: 0.88rem; font-weight: 600; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent; transition: all 0.15s;
+}
+.qc-areatab-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.qc-areatab-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: #f1f5f9; color: #64748b; font-size: 0.7rem; font-weight: 700;
+}
+/* Estados de avance: sin empezar (gris), a medias (ambar), completa (verde). */
+.qc-areatab.partial { border-color: #fcd34d; color: #b45309; }
+.qc-areatab.partial .qc-areatab-count { background: #fef3c7; color: #b45309; }
+.qc-areatab.complete { border-color: #86efac; color: #15803d; }
+.qc-areatab.complete .qc-areatab-count { background: #dcfce7; color: #15803d; }
+.qc-areatab.active { border-color: #3b82f6; background: #3b82f6; color: #fff; }
+.qc-areatab.active .qc-areatab-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
+
 .qc-savebar {
   padding: 14px; display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;
   border-top: 3px solid #22c55e; background-color: #fff;
@@ -178,6 +217,18 @@
   .qc-search { height: 46px; }
   .qc-body { grid-template-columns: 1fr; padding: 12px; gap: 14px; }
   .qc-card { padding: 14px; }
+  /* ⭐ UNA area a la vez: apilar 12 tarjetas en un movil daba un scroll
+     interminable. La navegacion entre ellas la da la barra de tabs de abajo. */
+  .qc-body .qc-card:not(.focused) { display: none; }
+  /* En movil el resalte ya no distingue nada (solo hay una tarjeta): sin borde
+     azul ni etiqueta, que solo roban espacio. */
+  .qc-card.focused { border-color: #e1e4e8; box-shadow: none; }
+  .qcv-im-card-current { display: none; }
+  .qc-areabar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; flex-shrink: 0;
+    background: #f8fafc; border-top: 1px solid #e1e4e8;
+  }
   .qc-toggle { padding: 12px 16px; font-size: 0.95rem; min-width: 60px; }
   .qc-photo-btn { min-height: 54px; font-size: 0.95rem; }
   .qc-photo-btn-primary { flex: 1.5; }

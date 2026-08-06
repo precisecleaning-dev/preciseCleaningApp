@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat,
+  Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, ChevronLeft, ChevronRight,
   Save, Clock, WifiOff, Plus, StickyNote,
   Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy
 } from 'lucide-react';
@@ -369,6 +369,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // ⭐ Tarjetas de area, para poder desplazar la vista a la que se acaba de elegir.
   const placeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // ⭐ Tabs del navegador de areas: al cambiar de area hay que traer su tab a la
+  //    vista, porque con muchas areas la barra se desplaza horizontalmente.
+  const areaTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const [qcData, setQcData] = useState<Record<string, any>>({});
 
@@ -961,6 +964,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   useEffect(() => {
     if (!focusPlaceId) return;
     scrollToPlaceCard(focusPlaceId);
+    areaTabRefs.current[focusPlaceId]?.scrollIntoView({
+      behavior: 'smooth', block: 'nearest', inline: 'center',
+    });
   }, [focusPlaceId, selectedPlaceIds]);
 
   // ⭐ Cierre REAL del modal. No pregunta nada: lo usan "Done" y el cierre con
@@ -1550,6 +1556,28 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ El buscador solo filtra las DISPONIBLES: ocultar un area ya seleccionada
   //    haria desaparecer su acceso de navegacion mientras se esta inspeccionando.
   const pickerSelected = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
+
+  // ⭐ Progreso de un area: cuantas tareas ya tienen respuesta Yes/No. Es el dato
+  //    que de verdad hace falta al saltar entre areas — sin el hay que entrar a
+  //    cada una para descubrir cual quedo a medias.
+  const placeProgress = (placeId: string): { done: number; total: number } => {
+    const placeTasks = tasks.filter(t => t.placeId === placeId);
+    const answers = qcData[placeId]?.tasks || {};
+    const done = placeTasks.filter(t => !!answers[t.id]).length;
+    return { done, total: placeTasks.length };
+  };
+
+  // ⭐ Area activa garantizada: en movil solo se pinta la tarjeta enfocada, asi que
+  //    si focusPlaceId quedara nulo (al editar un QC guardado, por ejemplo) no se
+  //    veria ninguna area. Se cae a la primera seleccionada.
+  const activePlaceId = (focusPlaceId && selectedPlaceIds.includes(focusPlaceId))
+    ? focusPlaceId
+    : (selectedRenderPlaces[0]?.id || null);
+  const activeIndex = selectedRenderPlaces.findIndex(p => p.id === activePlaceId);
+  const goToAdjacentPlace = (delta: number) => {
+    const next = selectedRenderPlaces[activeIndex + delta];
+    if (next) goToPlace(next.id);
+  };
   const pickerAvailable = searchablePlaces.filter(p => !selectedPlaceIds.includes(p.id));
 
   return (
@@ -2025,7 +2053,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                           {pickerSelected.map(p => (
                             <span
                               key={p.id}
-                              className={`qc-chip selected${focusPlaceId === p.id ? ' current' : ''}`}
+                              className={`qc-chip selected${activePlaceId === p.id ? ' current' : ''}`}
                             >
                               <button
                                 type="button"
@@ -2086,7 +2114,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 const savedPhotos: string[] = data.photos || [];
                 const pending = pendingPhotos[p.id] || [];
                 const queued = queuedByPlace[p.id] || [];
-                const isFocused = focusPlaceId === p.id;
+                const isFocused = activePlaceId === p.id;
                 return (
                   <div
                     key={p.id}
@@ -2181,6 +2209,62 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 </div>
               )}
             </div>
+
+            {/* ⭐ NAVEGADOR DE ÁREAS (móvil). En pantalla chica las tarjetas se
+                apilaban en un scroll larguísimo y no había forma de saltar entre
+                áreas sin volver arriba a los chips. Ahora:
+                  · en móvil se pinta SOLO el área activa (regla CSS), y
+                  · esta barra fija sobre los botones funciona como tabs.
+                Además de navegar, cada tab muestra el PROGRESO (respondidas/total)
+                y marca en ámbar las que quedaron incompletas, que es lo que de
+                verdad se necesita saber al ir y venir entre áreas. */}
+            {selectedRenderPlaces.length > 0 && (
+              <div className="qc-areabar">
+                <button
+                  type="button"
+                  className="qc-areabar-arrow"
+                  onClick={() => goToAdjacentPlace(-1)}
+                  disabled={activeIndex <= 0}
+                  aria-label="Área anterior"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+
+                <div className="qc-areabar-tabs">
+                  {selectedRenderPlaces.map(p => {
+                    const { done, total } = placeProgress(p.id);
+                    const complete = total > 0 && done === total;
+                    const started = done > 0;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        ref={el => { areaTabRefs.current[p.id] = el; }}
+                        className={`qc-areatab${activePlaceId === p.id ? ' active' : ''}${complete ? ' complete' : started ? ' partial' : ''}`}
+                        onClick={() => goToPlace(p.id)}
+                      >
+                        <span className="qc-areatab-name">{p.name}</span>
+                        {total > 0 && (
+                          <span className="qc-areatab-count">
+                            {complete ? <Check size={12} /> : `${done}/${total}`}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  className="qc-areabar-arrow"
+                  onClick={() => goToAdjacentPlace(1)}
+                  disabled={activeIndex < 0 || activeIndex >= selectedRenderPlaces.length - 1}
+                  aria-label="Área siguiente"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
 
             <div className="qc-savebar">
               {/* ⭐ Guardar mantiene la inspeccion ABIERTA para poder seguir
