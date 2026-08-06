@@ -86,6 +86,25 @@
   display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
+/* ⭐ El chip SELECCIONADO ya no es un boton suelto: es un contenedor con dos
+   acciones (ir al area / quitarla), por eso pierde su padding propio y lo
+   reparte entre los botones internos. */
+.qc-chip.selected { padding: 0 6px 0 0; gap: 0; }
+.qc-chip-goto {
+  padding: 8px 8px 8px 14px; border: none; background: transparent; color: inherit;
+  font-weight: 600; font-size: 0.85rem; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.qc-chip-remove {
+  padding: 4px; border: none; border-radius: 50%; background: transparent; color: inherit;
+  cursor: pointer; opacity: 0.75; display: inline-flex; align-items: center; justify-content: center;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.qc-chip-remove:hover { opacity: 1; background-color: rgba(255, 255, 255, 0.25); }
+/* ⭐ Area que se esta inspeccionando en este momento. */
+.qc-chip.current { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
+/* Grupos del selector: "Inspeccionando" arriba, "Disponibles" abajo. */
+.qcv-im-picker-group + .qcv-im-picker-group { margin-top: 14px; padding-top: 14px; border-top: 1px dashed #e1e4e8; }
 
 /* ===== Casas pendientes de Quality Check ===== */
 .qc-pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
@@ -165,6 +184,8 @@
   .qc-photo-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   .qc-savebar button { width: 100%; }
   .qc-chip { padding: 10px 16px; font-size: 0.95rem; }
+  .qc-chip.selected { padding: 0 8px 0 0; }
+  .qc-chip-goto { padding: 10px 8px 10px 16px; font-size: 0.95rem; }
 }
 
 @media (max-width: 480px) {
@@ -279,6 +300,7 @@
 .qcv-im-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .qc-chip.selected { background: #3b82f6; color: #fff; border: 1px solid #3b82f6; }
 .qc-chip:not(.selected) { background: #fff; color: #334155; border: 1px solid #e1e4e8; }
+.qc-chip:not(.selected):hover { border-color: #3b82f6; color: #1d4ed8; }
 
 .qcv-im-card-title { color: #3b82f6; font-size: 1.1rem; border-bottom: 2px solid #3b82f6; padding-bottom: 8px; margin-top: 0; font-weight: 600; }
 .qcv-im-task-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eee; }

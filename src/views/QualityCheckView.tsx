@@ -943,13 +943,24 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportToEdit]);
 
-  // ⭐ Desplaza la vista a la tarjeta del area recien seleccionada. Corre despues
-  //    del render para que la tarjeta ya exista en el DOM.
+  // ⭐ Lleva la vista a la tarjeta de un area. Se usa al AGREGAR un area nueva y
+  //    al tocar un chip ya seleccionado (navegacion). El scroll va aparte del
+  //    efecto porque tocar el chip del area YA enfocada no cambia el estado y por
+  //    lo tanto no dispararia el efecto: sin esto el chip pareceria no responder.
+  const scrollToPlaceCard = (placeId: string) => {
+    placeCardRefs.current[placeId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const goToPlace = (placeId: string) => {
+    setFocusPlaceId(placeId);
+    scrollToPlaceCard(placeId);
+  };
+
+  // ⭐ Para un area RECIEN agregada la tarjeta todavia no existe en el DOM, asi que
+  //    el scroll tiene que esperar al render: de eso se encarga este efecto.
   useEffect(() => {
     if (!focusPlaceId) return;
-    const el = placeCardRefs.current[focusPlaceId];
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollToPlaceCard(focusPlaceId);
   }, [focusPlaceId, selectedPlaceIds]);
 
   // ⭐ Cierre REAL del modal. No pregunta nada: lo usan "Done" y el cierre con
@@ -981,6 +992,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       ? '⚠ Tienes cambios SIN GUARDAR en esta inspeccion.\n\n¿Cerrar de todos modos? Se perderan los cambios no guardados.'
       : '¿Cerrar esta inspeccion?';
     if (!window.confirm(msg)) return;
+    handleCloseForm();
+  };
+
+  // ⭐ "Done": da por FINALIZADA la inspeccion y cierra. Siempre pide confirmacion.
+  //    Si quedan cambios sin guardar los guarda primero, para que terminar nunca
+  //    implique perder trabajo (handleSaveQC se encarga de cerrar despues).
+  const handleDoneInspection = async () => {
+    const msg = hasUnsavedChanges
+      ? '¿Dar por finalizada esta inspeccion?\n\nTienes cambios sin guardar: se guardaran antes de cerrar.'
+      : '¿Dar por finalizada esta inspeccion? Se cerrara el formulario.';
+    if (!window.confirm(msg)) return;
+    if (hasUnsavedChanges) {
+      await handleSaveQC(false, { silent: true, closeAfter: true });
+      return;
+    }
     handleCloseForm();
   };
 
@@ -1019,11 +1045,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  const handleSaveQC = async (forceFail = false) => {
+  // ⭐ opts.silent: no muestra el alert de exito (lo usa "Done", que ya confirmo).
+  //    opts.closeAfter: cierra el formulario al terminar. Por defecto NO cierra:
+  //    "Guardar Todo" deja la inspeccion abierta para seguir con mas areas.
+  const handleSaveQC = async (
+    forceFail = false,
+    opts: { silent?: boolean; closeAfter?: boolean } = {},
+  ) => {
     if (!selectedHouse) return;
 
     if (forceFail) {
-      const ok = window.confirm('¿Marcar este Quality Check como "DID NOT PASS"? La casa pasará a Recall para que el equipo la corrija y se vuelva a inspeccionar, y aparecerá en la vista de Recalls.');
+      const ok = window.confirm('¿Marcar este Quality Check como "DID NOT PASS"? La casa pasará a Recall para que el equipo la corrija y se vuelva a inspeccionar, y aparecerá en la vista de Recalls.\n\nSe cerrara la inspeccion.');
       if (!ok) return;
     }
 
@@ -1163,10 +1195,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
-      alert((forceFail
-        ? '⚠️ Quality Check marcado como DID NOT PASS. La casa pasó a Recall y aparecerá en la vista de Recalls para corregirse.'
-        : '✅ Quality Check Saved Successfully!') + emailNote
-        + '\n\nLa inspección sigue abierta. Presiona "Done" cuando termines.');
+      // ⭐ "DID NOT PASS" y "Done" terminan la inspeccion; "Guardar Todo" no.
+      const shouldClose = forceFail || opts.closeAfter === true;
+      if (!opts.silent) {
+        alert((forceFail
+          ? '⚠️ Quality Check marcado como DID NOT PASS. La casa pasó a Recall y aparecerá en la vista de Recalls para corregirse.'
+          : '✅ Quality Check Saved Successfully!') + emailNote
+          + (shouldClose ? '' : '\n\nLa inspección sigue abierta. Presiona "Done" cuando termines.'));
+      }
+      if (shouldClose) handleCloseForm();
     } catch (error) {
       console.error("Error saving Quality Check:", error);
       alert("Error trying to save the record.");
@@ -1510,6 +1547,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const availablePlaces = activePlaces.filter(p => tasks.some(t => t.placeId === p.id));
   const searchablePlaces = availablePlaces.filter(p => !placeQuery || p.name.toLowerCase().includes(placeQuery));
   const selectedRenderPlaces = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
+  // ⭐ El buscador solo filtra las DISPONIBLES: ocultar un area ya seleccionada
+  //    haria desaparecer su acceso de navegacion mientras se esta inspeccionando.
+  const pickerSelected = availablePlaces.filter(p => selectedPlaceIds.includes(p.id));
+  const pickerAvailable = searchablePlaces.filter(p => !selectedPlaceIds.includes(p.id));
 
   return (
     <div className="fade-in qc-view qcv-page">
@@ -1965,24 +2006,76 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </div>
 
             <div className="qc-body">
-              {/* Selector de áreas (chips) */}
+              {/* ⭐ Selector de áreas en DOS GRUPOS separados. Antes todo era una sola
+                  fila mezclada: con 12+ áreas, encontrar las que ya estabas
+                  inspeccionando obligaba a leer chip por chip. Ahora las
+                  seleccionadas suben a su propio grupo y funcionan como
+                  NAVEGACIÓN: al tocarlas la vista salta a su tarjeta. */}
               <div className="qc-picker">
-                <div className="qcv-im-picker-title">
-                  Áreas a inspeccionar ({selectedPlaceIds.length} seleccionada(s))
-                </div>
                 {searchablePlaces.length === 0 ? (
                   <div className="qcv-im-picker-empty">No hay áreas con tareas configuradas.</div>
                 ) : (
-                  <div className="qcv-im-chip-list">
-                    {searchablePlaces.map(p => {
-                      const sel = selectedPlaceIds.includes(p.id);
-                      return (
-                        <button key={p.id} className={`qc-chip${sel ? ' selected' : ''}`} onClick={() => togglePlaceSelection(p.id)}>
-                          {sel ? <Check size={14} /> : <Plus size={14} />} {p.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    {pickerSelected.length > 0 && (
+                      <div className="qcv-im-picker-group">
+                        <div className="qcv-im-picker-title">
+                          Inspeccionando ({selectedPlaceIds.length}) · toca para ir al área
+                        </div>
+                        <div className="qcv-im-chip-list">
+                          {pickerSelected.map(p => (
+                            <span
+                              key={p.id}
+                              className={`qc-chip selected${focusPlaceId === p.id ? ' current' : ''}`}
+                            >
+                              <button
+                                type="button"
+                                className="qc-chip-goto"
+                                onClick={() => goToPlace(p.id)}
+                                title={`Ir a ${p.name}`}
+                              >
+                                <Check size={14} /> {p.name}
+                              </button>
+                              <button
+                                type="button"
+                                className="qc-chip-remove"
+                                onClick={() => togglePlaceSelection(p.id)}
+                                title={`Quitar ${p.name}`}
+                                aria-label={`Quitar ${p.name}`}
+                              >
+                                <X size={13} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {pickerAvailable.length > 0 && (
+                      <div className="qcv-im-picker-group">
+                        <div className="qcv-im-picker-title">
+                          Áreas disponibles ({pickerAvailable.length})
+                        </div>
+                        <div className="qcv-im-chip-list">
+                          {pickerAvailable.map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="qc-chip"
+                              onClick={() => togglePlaceSelection(p.id)}
+                            >
+                              <Plus size={14} /> {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {pickerSelected.length === 0 && pickerAvailable.length === 0 && (
+                      <div className="qcv-im-picker-empty">
+                        Ningún área coincide con la búsqueda.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -2098,7 +2191,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <button className="qcv-im-btn-fail" disabled={isSaving} onClick={() => handleSaveQC(true)}>
                 <AlertTriangle size={18} /> DID NOT PASS
               </button>
-              <button className="qcv-im-btn-done" disabled={isSaving} onClick={handleRequestCloseForm}>
+              <button className="qcv-im-btn-done" disabled={isSaving} onClick={handleDoneInspection}>
                 <Check size={18} /> Done
               </button>
               <div className="qcv-im-save-state" aria-live="polite">
