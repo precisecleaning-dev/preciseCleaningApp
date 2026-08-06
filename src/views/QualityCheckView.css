@@ -53,6 +53,10 @@
 .qc-savebar button { box-sizing: border-box; }
 
 .qc-card { background: #fff; border-radius: 10px; border: 1px solid #e1e4e8; padding: 20px; }
+/* ⭐ Area que se esta inspeccionando AHORA: se resalta al elegirla desde los chips
+   y la vista se desplaza hasta ella (scrollIntoView). */
+.qc-card.focused { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16); }
+.qcv-im-card-current { margin-left: 10px; padding: 3px 10px; border-radius: 999px; background-color: #dbeafe; color: #1d4ed8; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
 
 .qc-toggle {
   padding: 8px 16px; border-radius: 6px; cursor: pointer;
@@ -115,6 +119,11 @@
 .qc-tab-recall { color: #7c3aed; }
 .qc-tab-recall:hover { color: #6d28d9; }
 .qc-tab-recall.active { color: #6d28d9; box-shadow: 0 1px 2px rgba(124, 58, 237, 0.18); }
+/* ⭐ Pestaña "Finished": inspecciones ya terminadas, en verde para distinguirlas
+   del morado de Recall. Mismo patron que .qc-tab-recall. */
+.qc-tab-finished { color: #166534; }
+.qc-tab-finished:hover { color: #14532d; }
+.qc-tab-finished.active { color: #14532d; box-shadow: 0 1px 2px rgba(22, 101, 52, 0.18); }
 
 /* ===== MÓVIL: tarjetas + modal nativo ===== */
 @media (max-width: 820px) {
@@ -304,6 +313,13 @@
 .qcv-im-btn-save:disabled { opacity: 0.7; }
 .qcv-im-btn-fail { background-color: #ef4444; color: white; padding: 15px 40px; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 6px rgba(239,68,68,0.25); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .qcv-im-btn-fail:disabled { opacity: 0.7; }
+/* ⭐ "Done": unico boton que cierra la inspeccion (Guardar ya no cierra). */
+.qcv-im-btn-done { background-color: #1e293b; color: white; padding: 15px 40px; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 6px rgba(30,41,59,0.2); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.qcv-im-btn-done:hover:not(:disabled) { background-color: #0f172a; }
+.qcv-im-btn-done:disabled { opacity: 0.7; }
+.qcv-im-save-state { flex-basis: 100%; text-align: center; font-size: 0.8rem; min-height: 18px; }
+.qcv-im-save-state-dirty { color: #b45309; font-weight: 600; }
+.qcv-im-save-state-ok { color: #166534; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
 
 /* ===== Cámara en ráfaga ===== */
 .qcv-cam-root { position: fixed; inset: 0; background: #000; z-index: 1200; display: flex; flex-direction: column; }

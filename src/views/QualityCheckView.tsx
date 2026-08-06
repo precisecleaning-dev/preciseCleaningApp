@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Image as ImageIcon, Search, Check, Mail, AlertTriangle, Repeat,
+  Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat,
   Save, Clock, WifiOff, Plus, StickyNote,
   Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy
 } from 'lucide-react';
@@ -291,7 +291,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Recall'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
 
   // ⭐ Ruta de inspección (drawer lateral): ids de casas agregadas + apertura del panel
@@ -347,6 +347,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Áreas seleccionadas para inspeccionar en el modal
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
+  // ⭐ Guardar ya NO cierra la inspeccion (se cierra con "Done"), asi que hace
+  //    falta saber si queda trabajo sin guardar para avisar antes de salir.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // ⭐ Area recien seleccionada: se desplaza a ella para que quede a la vista.
+  const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   // ⭐ Envío por email
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -361,7 +367,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Refs dinámicas para inputs file y camera (uno por cada place)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  // ⭐ Tarjetas de area, para poder desplazar la vista a la que se acaba de elegir.
+  const placeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [qcData, setQcData] = useState<Record<string, any>>({});
 
@@ -792,13 +799,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
   );
 
-  // ⭐ Registros para la TABLA inferior: SOLO Finished y Recall.
+  // ⭐ Registros para la TABLA inferior: Finished y Recall.
   //    (Las Pending no se listan aquí: se muestran como tarjetas de "casas
   //    pendientes". Así cada pestaña filtra exactamente lo que indica su nombre.)
+  //    ⭐ Las FINISHED antes solo existían en la pestaña "Reportes", asi que la
+  //    manager no podía revisar lo ya inspeccionado sin salir de esta vista. Ahora
+  //    se listan aqui con el mismo formato de tabla (sin ninguna columna de costos).
   const filteredQcList = qcList.filter(qc => {
     const cat = qcCategory(qc);
-    if (cat !== 'Recall') return false; // ⭐ aquí solo Recall: Finished vive en "Reportes"
+    if (cat === 'Pending') return false; // las pendientes van como tarjetas de casa
     if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
+    if (statusFilter === 'Finished' && cat !== 'Finished') return false;
+    if (statusFilter === 'Recall' && cat !== 'Recall') return false;
     return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId)), qc.inspector || '']);
   });
 
@@ -807,6 +819,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    Recall = casas actualmente en estado "Recall" (+ registros DID NOT PASS).
   const recallRecordsCount = qcList.filter(q => qcCategory(q) === 'Recall').length;
   const recallTotal = recallHouses.length + recallRecordsCount;
+  const finishedTotal = qcList.filter(q => qcCategory(q) === 'Finished').length;
 
   // ⭐ Copia al portapapeles SOLO las direcciones de las casas EN QC (la sección
   //    "Casas pendientes de Quality Check"), sin recalls. Respeta el buscador.
@@ -823,13 +836,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
   const groupCounts = {
-    All: pendingQCHouses.length + recallTotal,
+    All: pendingQCHouses.length + recallTotal + finishedTotal,
     Pending: pendingQCHouses.length,
+    Finished: finishedTotal,
     Recall: recallTotal,
   };
 
   // ⭐ ¿Mostrar cada bloque según la pestaña activa?
   const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
+  //  ⭐ En la pestaña Finished solo interesa la tabla de inspecciones terminadas.
   const showRecallBlock = statusFilter === 'All' || statusFilter === 'Recall';
   const showRecordsTable = statusFilter !== 'Pending';
 
@@ -854,6 +869,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       initialData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
     });
     setQcData(initialData);
+    // ⭐ Estado limpio de guardado: la barra inferior no debe heredar el aviso
+    //    de "cambios sin guardar" ni la hora de guardado de la inspeccion anterior.
+    setHasUnsavedChanges(false);
+    setLastSavedAt(null);
+    setFocusPlaceId(null);
     setIsFormModalOpen(true);
   };
 
@@ -904,6 +924,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       .map(p => p.id);
     setSelectedPlaceIds(qc.selectedPlaces && qc.selectedPlaces.length ? qc.selectedPlaces : derived);
 
+    // ⭐ Estado limpio de guardado: la barra inferior no debe heredar el aviso
+    //    de "cambios sin guardar" ni la hora de guardado de la inspeccion anterior.
+    setHasUnsavedChanges(false);
+    setLastSavedAt(null);
+    setFocusPlaceId(null);
+
     setIsFormModalOpen(true);
   };
 
@@ -917,6 +943,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportToEdit]);
 
+  // ⭐ Desplaza la vista a la tarjeta del area recien seleccionada. Corre despues
+  //    del render para que la tarjeta ya exista en el DOM.
+  useEffect(() => {
+    if (!focusPlaceId) return;
+    const el = placeCardRefs.current[focusPlaceId];
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focusPlaceId, selectedPlaceIds]);
+
+  // ⭐ Cierre REAL del modal. No pregunta nada: lo usan "Done" y el cierre con
+  //    confirmacion. Se mantiene separado para no repetir la limpieza de estado.
   const handleCloseForm = () => {
     // Si la cámara ráfaga quedó abierta, apagar el stream.
     const st = streamRef.current;
@@ -931,10 +968,35 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPendingPhotos({});
     setPlaceSearch('');
     setSelectedPlaceIds([]);
+    setHasUnsavedChanges(false);
+    setLastSavedAt(null);
+    setFocusPlaceId(null);
   };
 
+  // ⭐ Salida por la X o por el fondo del modal: SIEMPRE confirma, para que un
+  //    toque accidental no descarte una inspeccion a medio llenar. El mensaje
+  //    avisa explicitamente si hay cambios sin guardar.
+  const handleRequestCloseForm = () => {
+    const msg = hasUnsavedChanges
+      ? '⚠ Tienes cambios SIN GUARDAR en esta inspeccion.\n\n¿Cerrar de todos modos? Se perderan los cambios no guardados.'
+      : '¿Cerrar esta inspeccion?';
+    if (!window.confirm(msg)) return;
+    handleCloseForm();
+  };
+
+  // ⭐ Al AGREGAR un area, se enfoca para que se vea de inmediato cual se esta
+  //    inspeccionando: con varias areas abiertas la nueva quedaba fuera de
+  //    pantalla y parecia que el chip no habia hecho nada.
   const togglePlaceSelection = (placeId: string) => {
-    setSelectedPlaceIds(prev => prev.includes(placeId) ? prev.filter(x => x !== placeId) : [...prev, placeId]);
+    setSelectedPlaceIds(prev => {
+      if (prev.includes(placeId)) {
+        if (focusPlaceId === placeId) setFocusPlaceId(null);
+        return prev.filter(x => x !== placeId);
+      }
+      setFocusPlaceId(placeId);
+      return [...prev, placeId];
+    });
+    setHasUnsavedChanges(true);
   };
 
   // ⭐ Guardar QC. forceFail = true -> "DID NOT PASS": queda Finished+failed (grupo
@@ -1093,10 +1155,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         emailNote = '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").';
       }
 
+      // ⭐ La inspeccion NO se cierra al guardar: la manager suele guardar avances
+      //    y seguir con las demas areas. El cierre es explicito con "Done" o la X.
+      //    Se pasa a modo edicion del registro recien creado para que un segundo
+      //    "Guardar Todo" ACTUALICE ese documento en vez de crear un duplicado.
+      if (!editingQcId && savedId) setEditingQcId(savedId);
+      setHasUnsavedChanges(false);
+      setLastSavedAt(fmtTime(nowIso));
+
       alert((forceFail
         ? '⚠️ Quality Check marcado como DID NOT PASS. La casa pasó a Recall y aparecerá en la vista de Recalls para corregirse.'
-        : '✅ Quality Check Saved Successfully!') + emailNote);
-      handleCloseForm();
+        : '✅ Quality Check Saved Successfully!') + emailNote
+        + '\n\nLa inspección sigue abierta. Presiona "Done" cuando termines.');
     } catch (error) {
       console.error("Error saving Quality Check:", error);
       alert("Error trying to save the record.");
@@ -1228,7 +1298,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     (async () => {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setCameraError('Este navegador no permite la cámara dentro de la app. Usa "Tomar foto" o "Galería".');
+          setCameraError('Este navegador no permite la cámara dentro de la app. Usa "Galería".');
           return;
         }
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
@@ -1240,7 +1310,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         }
       } catch (e) {
         console.error('getUserMedia error:', e);
-        setCameraError('No se pudo acceder a la cámara. Revisa los permisos o usa "Tomar foto" / "Galería".');
+        setCameraError('No se pudo acceder a la cámara. Revisa los permisos o usa "Galería".');
       }
     })();
     return () => {
@@ -1421,14 +1491,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setQcData(prev => ({
       ...prev, [placeId]: { ...prev[placeId], tasks: { ...prev[placeId].tasks, [taskId]: value } }
     }));
+    setHasUnsavedChanges(true);
   };
 
   const setScoreValue = (placeId: string, value: number) => {
     setQcData(prev => ({ ...prev, [placeId]: { ...prev[placeId], score: value } }));
+    setHasUnsavedChanges(true);
   };
 
   const handleTextChange = (placeId: string, field: 'notes' | 'damage', value: string) => {
     setQcData(prev => ({ ...prev, [placeId]: { ...prev[placeId], [field]: value } }));
+    setHasUnsavedChanges(true);
   };
 
   // ⭐ Áreas disponibles (activas de la casa con tareas configuradas)
@@ -1475,6 +1548,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <div className="qc-status-pills">
           <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All ({groupCounts.All})</button>
           <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending ({groupCounts.Pending})</button>
+          <button className={`qc-tab qc-tab-finished ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished ({groupCounts.Finished})</button>
           <button className={`qc-tab qc-tab-recall ${statusFilter === 'Recall' ? 'active' : ''}`} onClick={() => setStatusFilter('Recall')}>Recall ({groupCounts.Recall})</button>
         </div>
       </div>
@@ -1860,7 +1934,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
       {/* ═══════════ MODAL DE INSPECCIÓN (Quality Check) ═══════════ */}
       {isFormModalOpen && selectedHouse && (
-        <div className="qc-overlay" onClick={handleCloseForm}>
+        <div className="qc-overlay" onClick={handleRequestCloseForm}>
           <div className="qc-modal" onClick={e => e.stopPropagation()}>
             <div className="qc-header">
               <div className="qcv-im-header-title-wrap">
@@ -1878,7 +1952,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 <button onClick={openEmailForCurrent} title="Enviar por email" className="qcv-im-header-btn">
                   <Mail size={16} /><span className="qc-export-label">Email</span>
                 </button>
-                <button onClick={handleCloseForm} className="qcv-im-close-btn" aria-label="Cerrar"><X size={22} /></button>
+                <button onClick={handleRequestCloseForm} className="qcv-im-close-btn" aria-label="Cerrar"><X size={22} /></button>
               </div>
             </div>
 
@@ -1919,9 +1993,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 const savedPhotos: string[] = data.photos || [];
                 const pending = pendingPhotos[p.id] || [];
                 const queued = queuedByPlace[p.id] || [];
+                const isFocused = focusPlaceId === p.id;
                 return (
-                  <div key={p.id} className="qc-card">
-                    <h3 className="qcv-im-card-title">{p.name}</h3>
+                  <div
+                    key={p.id}
+                    ref={el => { placeCardRefs.current[p.id] = el; }}
+                    className={`qc-card${isFocused ? ' focused' : ''}`}
+                  >
+                    <h3 className="qcv-im-card-title">
+                      {p.name}
+                      {isFocused && <span className="qcv-im-card-current">Inspeccionando ahora</span>}
+                    </h3>
 
                     {placeTasks.map(t => {
                       const val = data.tasks?.[t.id];
@@ -1957,14 +2039,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                         <button className="qc-photo-btn qc-photo-btn-primary" onClick={() => openBurstCamera(p)}>
                           <Camera size={16} /> Cámara
                         </button>
-                        <button className="qc-photo-btn" onClick={() => cameraInputRefs.current[p.id]?.click()}>
-                          <ImageIcon size={16} /> Tomar foto
-                        </button>
                         <button className="qc-photo-btn" onClick={() => fileInputRefs.current[p.id]?.click()}>
                           <Upload size={16} /> Galería
                         </button>
                       </div>
-                      <input ref={el => { cameraInputRefs.current[p.id] = el; }} type="file" accept="image/*" capture="environment" className="qcv-im-hidden-input" onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
                       <input ref={el => { fileInputRefs.current[p.id] = el; }} type="file" accept="image/*" multiple className="qcv-im-hidden-input" onChange={e => { handlePhotoUpload(p.id, p.name, e.target.files); e.target.value = ''; }} />
 
                       {(savedPhotos.length > 0 || pending.length > 0 || queued.length > 0) && (
@@ -2012,12 +2090,24 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             </div>
 
             <div className="qc-savebar">
+              {/* ⭐ Guardar mantiene la inspeccion ABIERTA para poder seguir
+                  llenando areas; el cierre es explicito con "Done". */}
               <button className="qcv-im-btn-save" disabled={isSaving} onClick={() => handleSaveQC(false)}>
                 {isSaving ? <Loader2 size={18} className="spin-qc" /> : <Save size={18} />} Guardar Todo
               </button>
               <button className="qcv-im-btn-fail" disabled={isSaving} onClick={() => handleSaveQC(true)}>
                 <AlertTriangle size={18} /> DID NOT PASS
               </button>
+              <button className="qcv-im-btn-done" disabled={isSaving} onClick={handleRequestCloseForm}>
+                <Check size={18} /> Done
+              </button>
+              <div className="qcv-im-save-state" aria-live="polite">
+                {hasUnsavedChanges
+                  ? <span className="qcv-im-save-state-dirty">Cambios sin guardar</span>
+                  : lastSavedAt
+                    ? <span className="qcv-im-save-state-ok"><Check size={13} /> Guardado {lastSavedAt}</span>
+                    : null}
+              </div>
             </div>
           </div>
         </div>
