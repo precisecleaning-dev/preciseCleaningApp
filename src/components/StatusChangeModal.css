@@ -21,6 +21,9 @@
 .scm-subtitle { margin: 2px 0 0; font-size: 0.82rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scm-close-btn { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 6px; display: flex; border-radius: 8px; flex-shrink: 0; }
 
+/* ⭐ Aviso de por que la lista de estados esta restringida (prop `note`). */
+.scm-note { margin: 0 22px; padding: 10px 14px; border-radius: 10px; background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; font-size: 0.8rem; line-height: 1.45; }
+.scm-note + .scm-grid { padding-top: 14px; }
 .scm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 22px; overflow-y: auto; }
 .scm-empty { grid-column: 1 / -1; text-align: center; color: #94a3b8; font-style: italic; padding: 24px; }
 .scm-option {

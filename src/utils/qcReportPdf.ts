@@ -1,4 +1,5 @@
 import { escapeHtml } from './escapeHtml';
+import { computeQCScore } from './qcScore';
 
 // ============================================================================
 // ⭐ GENERADOR DEL PDF DE QUALITY CHECK — extraído de QualityCheckView.tsx para
@@ -127,20 +128,11 @@ export const exportQCReportPDF = async (args: {
       // Resumen general del reporte
       const scoredVals = placesWithData.map(p => p.score).filter((v): v is number => typeof v === 'number' && v > 0);
       const avgScore = scoredVals.length ? (scoredVals.reduce((a, b) => a + b, 0) / scoredVals.length) : 0;
-      let yesCount = 0, noCount = 0;
-      placesWithData.forEach(pd => {
-        const ptasks = tasks.filter(t => t.placeId === pd.place.id);
-        ptasks.forEach(t => {
-          const v = pd.tasksData[t.id];
-          if (v === 'Yes') yesCount++;
-          else if (v === 'No') noCount++;
-        });
-      });
-      const totalAnswered = yesCount + noCount;
-      const passRate = totalAnswered ? Math.round((yesCount / totalAnswered) * 100) : 0;
-      const hasData = totalAnswered > 0;
-      const verdict = !hasData ? 'Inspection Recorded' : passRate >= 90 ? 'Excellent Result' : passRate >= 75 ? 'Satisfactory' : 'Needs Attention';
-      const verdictClass = !hasData ? 'mid' : passRate >= 90 ? 'pass' : passRate >= 75 ? 'mid' : 'low';
+      // ⭐ El % ahora se calcula en un util compartido (src/utils/qcScore.ts) para
+      //    que la vista pueda GUARDARLO en el registro y mostrarlo en la lista sin
+      //    tener que regenerar el PDF. La formula es la misma de siempre.
+      const { yesCount, noCount, passRate, hasData, verdict, verdictClass } =
+        computeQCScore(args.qcData, tasks);
 
       const placeSections = placesWithBase64.map(pd => {
         const placeTasks = tasks.filter(t => t.placeId === pd.place.id);

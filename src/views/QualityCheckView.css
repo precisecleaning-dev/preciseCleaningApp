@@ -422,7 +422,6 @@
 .qcv-sm-modal-body { padding: 20px; }
 .qcv-sm-modal-body.col { display: flex; flex-direction: column; gap: 14px; }
 .qcv-sm-field-label { display: block; font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px; }
-.qcv-sm-select { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 0.95rem; background: #fff; color: #111827; }
 .qcv-sm-input { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid #cbd5e1; box-sizing: border-box; }
 .qcv-sm-input.mb { font-size: 0.95rem; margin-bottom: 14px; }
 .qcv-sm-modal-footer { padding: 0 20px 20px; display: flex; gap: 10px; justify-content: flex-end; }

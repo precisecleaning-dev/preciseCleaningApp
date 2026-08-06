@@ -17,6 +17,9 @@ import { db } from '../config/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
 import { isInvoiceStatus } from '../utils/invoiceEntry';
+import { computeQCScore } from '../utils/qcScore';
+import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
+import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil } from '../utils/qcReportPdf';
@@ -313,7 +316,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Cambio de status de una casa DESDE esta vista (modal)
   const [statusModalHouse, setStatusModalHouse] = useState<Property | null>(null);
-  const [statusModalSelected, setStatusModalSelected] = useState<string>('');
+  // ⭐ El modal compartido maneja su propia seleccion y confirmacion, asi que ya
+  //    no hacen falta los estados intermedios que necesitaba el <select> anterior.
   const [savingStatus, setSavingStatus] = useState(false);
 
   // ⭐ Hora de ENTRADA a la inspección (se sella al abrir el formulario)
@@ -619,30 +623,33 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return { id: st?.id ?? sid ?? '', name: st?.name || (sid ? String(sid) : 'Sin estado'), color: st?.color || '#94a3b8' };
   };
 
+  // ⭐ Estados que ESTA vista permite asignar (ver src/utils/statusFilters.ts).
+  const allowedStatuses = qualityCheckAllowedStatuses(statuses);
+
   // ⭐ Abrir el modal de cambio de status para una casa
   const openHouseStatusModal = (house: Property) => {
-    const info = houseStatusInfo(house);
     setStatusModalHouse(house);
-    setStatusModalSelected(String(info.id || ''));
   };
 
   // ⭐ Aplicar el cambio de status: actualiza 'properties' en Firestore y registra
   //    la transición en el historial. Como 'properties' es tiempo real (listener
   //    global en App.tsx), las tarjetas de esta vista se reacomodan solas.
-  const applyHouseStatusChange = async () => {
-    if (!statusModalHouse || !statusModalSelected) return;
+  //    ⭐ Recibe el id elegido: el modal compartido ya confirma con "Aceptar",
+  //    asi que no hace falta un estado intermedio de seleccion.
+  const applyHouseStatusChange = async (newStatusId: string) => {
+    if (!statusModalHouse || !newStatusId) return;
     const house = statusModalHouse;
     const prevStatusId = (house as any).statusId;
-    if (String(statusModalSelected) === String(prevStatusId)) { setStatusModalHouse(null); return; }
+    if (String(newStatusId) === String(prevStatusId)) { setStatusModalHouse(null); return; }
     setSavingStatus(true);
     try {
       // ⭐ ¿El destino es el status "Invoice"? Resuelto por el helper compartido
       //    (src/utils/invoiceEntry.ts), el mismo que usan Houses, Recalls y No Status.
-      const isInvoiceTarget = isInvoiceStatus(statuses, statusModalSelected);
+      const isInvoiceTarget = isInvoiceStatus(statuses, newStatusId);
 
       // ⭐ Marca de ENVÍO A INVOICES desde QC: InvoicesView usa este timestamp
       //    para poner estas casas DE PRIMERAS en su lista (más reciente arriba).
-      const updatePayload: Record<string, string> = { statusId: statusModalSelected };
+      const updatePayload: Record<string, string> = { statusId: newStatusId };
       if (isInvoiceTarget) updatePayload.sentToInvoiceAt = new Date().toISOString();
 
       await updateDoc(doc(db, 'properties', house.id), updatePayload);
@@ -651,8 +658,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           propertyId: house.id,
           fromStatusId: prevStatusId || null,
           fromStatusName: resolveStatusName(prevStatusId) || null,
-          toStatusId: statusModalSelected,
-          toStatusName: resolveStatusName(statusModalSelected) || null,
+          toStatusId: newStatusId,
+          toStatusName: resolveStatusName(newStatusId) || null,
           changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
           source: 'quality_check',
         } as any);
@@ -1077,8 +1084,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       });
     });
 
-    const finalStatus: 'Pending' | 'Finished' = forceFail ? 'Finished' : (isPending ? 'Pending' : 'Finished');
-    const finalResult: 'passed' | 'failed' | null = forceFail ? 'failed' : (isPending ? null : 'passed');
+    // ⭐ "Done" y "DID NOT PASS" DAN POR TERMINADA la inspeccion, aunque queden
+    //    tareas sin responder: si no, presionar Done con areas a medias dejaba el
+    //    reporte en Pending y nunca llegaba a Quality Check Reports.
+    //    "Guardar Todo" conserva el comportamiento de siempre (Pending si falta algo).
+    const isFinishing = forceFail || opts.closeAfter === true;
+    const finalStatus: 'Pending' | 'Finished' =
+      isFinishing ? 'Finished' : (isPending ? 'Pending' : 'Finished');
+    const finalResult: 'passed' | 'failed' | null =
+      forceFail ? 'failed' : (finalStatus === 'Finished' ? 'passed' : null);
 
     // ⭐ Sellar la SALIDA y calcular la duración total de la inspección.
     const nowIso = new Date().toISOString();
@@ -1111,6 +1125,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       qcDataWithNoNotes[p.id] = { ...entry, notes: newNotes };
     });
 
+    // ⭐ Resultado de la inspeccion, calculado con el util compartido para que
+    //    coincida exactamente con el % impreso en el PDF.
+    const qcScore = computeQCScore(qcDataWithNoNotes, tasks);
+
     const recordData: any = {
       houseId: selectedHouse.id,
       date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
@@ -1125,6 +1143,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       durationMinutes: durationMinutes,
       selectedPlaces: selectedPlaceIds,
       qcData: qcDataWithNoNotes,
+      // ⭐ RESULTADO (%) de la inspeccion — el mismo numero que sale en el PDF.
+      //    Antes solo existia dentro del generador del PDF, asi que la lista de
+      //    reportes no podia mostrarlo sin regenerar el documento entero.
+      passRate: qcScore.passRate,
+      passRateAnswered: qcScore.totalAnswered,
+      passRateVerdict: qcScore.verdict,
       // ⭐ Punto 9 (pestaña Reportes): sello de creación para medir la demora entre
       //    crear el registro y abrir la inspección (checkInAt - createdAt).
       createdAt: editingQcId ? (qcList.find(q => q.id === editingQcId) as QCRecord & { createdAt?: string })?.createdAt || startIso : nowIso,
@@ -1152,6 +1176,27 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       // ⭐ Si NO pasó, mover la casa a "Recall" (con registro en status_history para
       //    que aparezca en la vista de Recalls con su fecha de entrada). Si no existe
       //    un status "Recall", como respaldo se deja en "Quality Check".
+      // ⭐ Al TERMINAR con "Done", la casa pasa al estado "Quality Check": es el
+      //    estado con el que debe aparecer en Quality Check Reports. (Con
+      //    "DID NOT PASS" manda el bloque de abajo, que la lleva a Recall.)
+      if (!forceFail && opts.closeAfter === true) {
+        const prevStatusId = (selectedHouse as any).statusId;
+        const qcStatusId = getQualityCheckStatusId();
+        if (qcStatusId && String(prevStatusId) !== String(qcStatusId)) {
+          try {
+            await updateDoc(doc(db, 'properties', selectedHouse.id), { statusId: qcStatusId });
+            await statusHistoryService.log({
+              propertyId: selectedHouse.id,
+              fromStatusId: prevStatusId || null,
+              fromStatusName: resolveStatusName(prevStatusId) || null,
+              toStatusId: qcStatusId,
+              toStatusName: resolveStatusName(qcStatusId) || 'Quality Check',
+              changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+            } as any);
+          } catch (e) { console.error('No se pudo mover la casa a Quality Check:', e); }
+        }
+      }
+
       if (forceFail) {
         const prevStatusId = (selectedHouse as any).statusId;
         const recallStatusId = getRecallStatusId();
@@ -2326,32 +2371,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       )}
 
       {/* ═══════════ MODAL: CAMBIAR STATUS DE LA CASA ═══════════ */}
+      {/* ⭐ Ahora usa el MISMO modal (grid de estados con colores) que Houses,
+          Pipeline e Invoices, en vez de un <select> propio. La lista se limita a
+          los cuatro estados que tienen sentido en el flujo de calidad. */}
       {statusModalHouse && (
-        <div className="qc-overlay" onClick={() => setStatusModalHouse(null)}>
-          <div onClick={e => e.stopPropagation()} className="qcv-sm-modal">
-            <div className="qcv-sm-modal-header">
-              <h3 className="qcv-sm-modal-title">Cambiar status</h3>
-              <button onClick={() => setStatusModalHouse(null)} className="qcv-sm-close-btn"><X size={20} /></button>
-            </div>
-            <div className="qcv-sm-modal-body">
-              <div className="qcv-house-name">{getClientName(statusModalHouse.client)}</div>
-              <div className="qcv-house-address">{statusModalHouse.address || '—'}</div>
-              <label className="qcv-sm-field-label">Nuevo status</label>
-              <select value={statusModalSelected} onChange={e => setStatusModalSelected(e.target.value)} className="qcv-sm-select">
-                <option value="">— Selecciona —</option>
-                {statuses.map(st => (
-                  <option key={st.id} value={st.id}>{st.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="qcv-sm-modal-footer">
-              <button onClick={() => setStatusModalHouse(null)} className="qcv-sm-btn-cancel">Cancelar</button>
-              <button onClick={applyHouseStatusChange} disabled={savingStatus || !statusModalSelected} className="qcv-sm-btn-primary">
-                {savingStatus ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Guardar
-              </button>
-            </div>
-          </div>
-        </div>
+        <StatusChangeModal
+          config={{
+            currentId: String(houseStatusInfo(statusModalHouse).id || ''),
+            onSelect: (id: string) => { if (!savingStatus) applyHouseStatusChange(id); },
+            title: getClientName(statusModalHouse.client),
+            subtitle: statusModalHouse.address || undefined,
+          }}
+          statuses={allowedStatuses}
+          note='Desde Quality Check una casa solo puede moverse a "In Progress", "Quality Check", "Recall" o "Invoice".'
+          onClose={() => setStatusModalHouse(null)}
+        />
       )}
 
       {/* ═══════════ MODAL: EMAIL ═══════════ */}

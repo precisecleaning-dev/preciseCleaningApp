@@ -14,14 +14,21 @@ export type StatusModalConfig = {
 
 interface StatusChangeModalProps {
   config: StatusModalConfig;
+  /** Lista YA filtrada: quien abre el modal decide que estados se pueden elegir. */
   statuses: Status[];
   onClose: () => void;
+  /**
+   * Aviso opcional bajo el titulo. Lo usan las vistas que RESTRINGEN la lista
+   * (Quality Check y Quality Check Reports): sin explicacion, ver solo tres
+   * estados parece que faltan por un error.
+   */
+  note?: string;
 }
 
 // Modal central de selección de estado, compartido entre PipelineBoardView y HousesView
 // (antes duplicado casi idéntico en ambos). Se elige un estado (queda resaltado) y se
 // confirma con "Aceptar".
-export default function StatusChangeModal({ config, statuses, onClose }: StatusChangeModalProps) {
+export default function StatusChangeModal({ config, statuses, onClose, note }: StatusChangeModalProps) {
   const cur = String(config.currentId || '').toLowerCase().trim();
   const resolveCurrentId = () => {
     const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
@@ -65,6 +72,8 @@ export default function StatusChangeModal({ config, statuses, onClose }: StatusC
             <X size={22} />
           </button>
         </div>
+
+        {note && <div className="scm-note">{note}</div>}
 
         <div className="scm-grid">
           {statuses.length === 0 ? (

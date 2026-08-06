@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
-  Printer, Loader2, ChevronDown, X, Activity, CheckCircle, ClipboardCheck, StickyNote,
+  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText,
 } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
@@ -12,6 +12,9 @@ import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import { formatDate } from '../utils/dateFormat';
+import { computeQCScore, passRateColors } from '../utils/qcScore';
+import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
+import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import './QCReportsTableView.css';
 
 // ============================================================================
@@ -33,14 +36,15 @@ import './QCReportsTableView.css';
 //   el flujo de facturación.
 // ============================================================================
 
-// ⭐ Los estados a los que esta vista permite mover una casa. Se resuelven por
-//    NOMBRE contra settings_statuses (los ids son generados, los nombres son los
-//    que el usuario configura), igual que el resto de la app.
-const ALLOWED_STATUS_NAMES = ['quality check', 'recall'];
+// ⭐ Pestañas de la vista: agrupan los reportes por el ESTADO ACTUAL de la casa,
+//    no por el resultado de la inspeccion. Asi la manager ve de un vistazo que
+//    casas siguen en calidad, cuales ya se facturan y cuales hay que corregir.
+type ReportTab = 'quality_check' | 'invoice' | 'recall';
 
-const isAllowedStatus = (st: Status): boolean => {
-  const n = String(st.name || '').toLowerCase().trim();
-  return ALLOWED_STATUS_NAMES.includes(n) || n === 'qc';
+const TAB_LABEL: Record<ReportTab, string> = {
+  quality_check: 'Quality Checks',
+  invoice: 'Invoice',
+  recall: 'Recall',
 };
 
 type QCReportRow = QCRecord & {
@@ -48,6 +52,10 @@ type QCReportRow = QCRecord & {
   createdAt?: string | null;
   correctionsDoneAt?: string | null;
   correctionsDoneBy?: string | null;
+  // ⭐ Resultado (%) guardado al cerrar la inspeccion. Los registros anteriores a
+  //    este cambio no lo tienen: se recalcula al vuelo desde qcData.
+  passRate?: number | null;
+  passRateAnswered?: number | null;
 };
 
 const toMs = (iso?: string | null): number => {
@@ -69,113 +77,6 @@ const fmtDuration = (mins?: number | null): string => {
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
   return m ? `${h} h ${m} min` : `${h} h`;
-};
-
-// ⭐ Modal de cambio de estado. Recibe YA FILTRADA la lista de estados permitidos,
-//    así la restricción vive en un solo sitio (quien lo invoca) y el modal no
-//    necesita conocer las reglas de negocio.
-type StatusModalConfig = {
-  currentId: string;
-  onSelect: (id: string) => void;
-  title?: string;
-  subtitle?: string;
-};
-
-const StatusChangeModal = ({
-  config, statuses, onClose,
-}: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
-  const cur = String(config.currentId || '').toLowerCase().trim();
-
-  const resolveCurrentId = () => {
-    const match = statuses.find(
-      st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur,
-    );
-    return match ? match.id : '';
-  };
-  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
-  useEffect(() => {
-    setSelectedId(resolveCurrentId());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]);
-
-  const selectedIsCurrent = (() => {
-    const selStatus = statuses.find(st => st.id === selectedId);
-    const selName = String(selStatus?.name || '').toLowerCase().trim();
-    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
-  })();
-
-  const handleAccept = () => {
-    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
-    onClose();
-  };
-
-  return (
-    <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
-      <div className="status-modal" onClick={e => e.stopPropagation()}>
-        <header className="status-modal-head">
-          <div className="hv-statuschange-head-info">
-            <div className="hv-statuschange-icon">
-              <Activity size={20} color="#2563eb" />
-            </div>
-            <div className="hv-min-w-0">
-              <h3 className="hv-statuschange-title">Cambiar estado</h3>
-              {config.title && (
-                <p className="hv-statuschange-subtitle">
-                  {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
-                </p>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Cerrar" className="hv-statuschange-close">
-            <X size={22} />
-          </button>
-        </header>
-
-        {/* ⭐ Aviso explícito de por qué hay solo dos opciones: sin esto parece que
-            faltan estados por un error. */}
-        <div className="qcrt-status-note">
-          Desde los reportes de calidad una casa solo puede moverse a
-          {' '}<strong>Quality Check</strong> (re-inspeccionar) o <strong>Recall</strong> (corregir).
-        </div>
-
-        <div className="status-modal-grid">
-          {statuses.length === 0 ? (
-            <div className="hv-statuschange-empty">
-              No se encontraron los estados "Quality Check" ni "Recall" en la configuración.
-            </div>
-          ) : statuses.map(st => {
-            const isCurrent = String(st.id).toLowerCase().trim() === cur
-              || String(st.name).toLowerCase().trim() === cur;
-            const isSelected = st.id === selectedId;
-            return (
-              <button
-                key={st.id}
-                className={`status-option${isSelected ? ' selected' : ''}`}
-                onClick={() => setSelectedId(st.id)}
-              >
-                <span
-                  className="hv-statuschange-dot"
-                  style={{ '--dot-color': st.color, '--dot-ring': `${st.color}1f` } as CSSProperties}
-                />
-                <span className="hv-statuschange-name">{st.name}</span>
-                {isCurrent && !isSelected && (
-                  <span className="hv-statuschange-current-badge">Actual</span>
-                )}
-                {isSelected && <CheckCircle size={18} color="#2563eb" className="hv-shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-
-        <footer className="status-modal-foot">
-          <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
-          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept">
-            <CheckCircle size={16} /> Aceptar
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
 };
 
 interface Props {
@@ -202,7 +103,7 @@ export default function QCReportsTableView({
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [resultFilter, setResultFilter] = useState<'All' | 'passed' | 'failed'>('All');
+  const [activeTab, setActiveTab] = useState<ReportTab>('quality_check');
 
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -262,8 +163,10 @@ export default function QCReportsTableView({
   const houseFor = (r: QCReportRow): Property | undefined =>
     properties.find(p => p.id === r.houseId);
 
-  // ⭐ Estados a los que ESTA vista deja mover una casa.
-  const allowedStatuses = useMemo(() => statuses.filter(isAllowedStatus), [statuses]);
+  // ⭐ Estados a los que ESTA vista deja mover una casa (ver statusFilters.ts):
+  //    Quality Check · Recall · Invoice. Sin "In Progress": un reporte terminado
+  //    no devuelve la casa a trabajo en curso.
+  const allowedStatuses = useMemo(() => qcReportsAllowedStatuses(statuses), [statuses]);
 
   const resolveStatusName = (statusId?: string | null): string => {
     const raw = String(statusId || '').trim();
@@ -275,9 +178,9 @@ export default function QCReportsTableView({
   const handleStatusChange = async (house: Property, newStatusId: string) => {
     // ⭐ Doble candado: el modal ya solo ofrece los permitidos, pero si en el futuro
     //    alguien invoca esto desde otro lado, la regla se sigue cumpliendo aquí.
-    const target = statuses.find(s => s.id === newStatusId);
-    if (!target || !isAllowedStatus(target)) {
-      alert('Desde esta vista una casa solo puede moverse a "Quality Check" o "Recall".');
+    const target = allowedStatuses.find(s => s.id === newStatusId);
+    if (!target) {
+      alert('Desde esta vista una casa solo puede moverse a "Quality Check", "Recall" o "Invoice".');
       return;
     }
     setIsSaving(true);
@@ -325,6 +228,31 @@ export default function QCReportsTableView({
     }
   };
 
+  // ⭐ Resultado (%) del reporte. Se prefiere el valor GUARDADO al cerrar la
+  //    inspeccion; los registros viejos no lo tienen, asi que se recalcula desde
+  //    qcData con el mismo util que usa el PDF (mismo numero, sin generarlo).
+  const reportScore = (r: QCReportRow) => {
+    if (typeof r.passRate === 'number' && (r.passRateAnswered ?? 1) > 0) {
+      return { passRate: r.passRate, hasData: true };
+    }
+    const s = computeQCScore(r.qcData || {}, tasks);
+    return { passRate: s.passRate, hasData: s.hasData };
+  };
+
+  // ⭐ ¿A que pestana pertenece un reporte? Se decide por el ESTADO ACTUAL de la
+  //    casa. Si la casa ya no existe o su estado es otro, cae en "Quality Checks",
+  //    que es donde la manager espera encontrar todo lo inspeccionado.
+  const tabForReport = (r: QCReportRow): ReportTab => {
+    const house = houseFor(r);
+    const raw = String(house?.statusId || '').trim();
+    const st = statuses.find(x => String(x.id) === raw || String(x.name) === raw);
+    const name = st?.name || raw;
+    if (isRecallName(name)) return 'recall';
+    if (isInvoiceName(name)) return 'invoice';
+    if (isQualityCheckName(name)) return 'quality_check';
+    return 'quality_check';
+  };
+
   // ⭐ Notas capturadas durante la inspección, resumidas para la fila.
   const reportNotes = (r: QCReportRow): string => {
     const data = r.qcData || {};
@@ -338,21 +266,30 @@ export default function QCReportsTableView({
   };
 
   // Solo FINALIZADOS, del más reciente al más antiguo.
+  // ⭐ ORDEN: lo mas RECIENTE arriba. Se usa la hora de cierre de la inspeccion;
+  //    si falta (registros viejos) se cae a createdAt y por ultimo a la fecha.
+  //    Antes `toMs(...) || toMs(...)` fallaba con NaN: NaN es falsy y arrastraba
+  //    al siguiente valor, pero un 0 valido tambien, y NaN acababa como 0 en la
+  //    comparacion, mandando esos reportes al fondo sin orden real.
+  const reportTimeMs = (r: QCReportRow): number => {
+    const candidates = [r.checkOutAt, r.createdAt, r.checkInAt, r.date ? `${r.date}T00:00:00` : null];
+    for (const c of candidates) {
+      const t = toMs(c);
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  };
+
   const finishedReports = useMemo(() => {
     return reports
       .filter(r => r.status === 'Finished')
-      .sort((a, b) => {
-        const ta = toMs(a.checkOutAt) || toMs(`${a.date}T00:00:00`);
-        const tb = toMs(b.checkOutAt) || toMs(`${b.date}T00:00:00`);
-        return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
-      });
+      .sort((a, b) => reportTimeMs(b) - reportTimeMs(a));
   }, [reports]);
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
     return finishedReports.filter(r => {
-      if (resultFilter === 'passed' && r.result === 'failed') return false;
-      if (resultFilter === 'failed' && r.result !== 'failed') return false;
+      if (tabForReport(r) !== activeTab) return false;
       if (startDate && r.date < startDate) return false;
       if (endDate && r.date > endDate) return false;
       if (!q) return true;
@@ -361,13 +298,14 @@ export default function QCReportsTableView({
     });
     // getClientName depende solo de customers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finishedReports, search, startDate, endDate, resultFilter, customers]);
+  }, [finishedReports, search, startDate, endDate, activeTab, customers, properties, statuses]);
 
-  const counts = useMemo(() => ({
-    All: finishedReports.length,
-    passed: finishedReports.filter(r => r.result !== 'failed').length,
-    failed: finishedReports.filter(r => r.result === 'failed').length,
-  }), [finishedReports]);
+  const counts = useMemo(() => {
+    const acc: Record<ReportTab, number> = { quality_check: 0, invoice: 0, recall: 0 };
+    finishedReports.forEach(r => { acc[tabForReport(r)] += 1; });
+    return acc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishedReports, properties, statuses]);
 
   const resultBadge = (r: QCReportRow) => (r.result === 'failed'
     ? { bg: '#f3e8ff', fg: '#7c3aed', label: 'Did Not Pass', Icon: Repeat }
@@ -418,25 +356,24 @@ export default function QCReportsTableView({
 
       {/* ===== FILTROS ===== */}
       <div className="qcrt-filters-card">
-        <div className="qcrt-filter-pills">
-          <button
-            className={`qcrt-filter-pill${resultFilter === 'All' ? ' active' : ''}`}
-            onClick={() => setResultFilter('All')}
-          >
-            All <span className="qcrt-filter-count">{counts.All}</span>
-          </button>
-          <button
-            className={`qcrt-filter-pill passed${resultFilter === 'passed' ? ' active' : ''}`}
-            onClick={() => setResultFilter('passed')}
-          >
-            <span className="qcrt-filter-dot" /> Passed <span className="qcrt-filter-count">{counts.passed}</span>
-          </button>
-          <button
-            className={`qcrt-filter-pill failed${resultFilter === 'failed' ? ' active' : ''}`}
-            onClick={() => setResultFilter('failed')}
-          >
-            <span className="qcrt-filter-dot" /> Did Not Pass <span className="qcrt-filter-count">{counts.failed}</span>
-          </button>
+        {/* ⭐ PESTAÑAS por estado ACTUAL de la casa: Quality Checks · Invoice · Recall.
+            Agrupan por dónde está la casa ahora, no por el resultado de la
+            inspección: una casa puede haber pasado y estar ya en facturación. */}
+        <div className="qcrt-tabs">
+          {(['quality_check', 'invoice', 'recall'] as ReportTab[]).map(tab => (
+            <button
+              key={tab}
+              type="button"
+              className={`qcrt-tab ${tab}${activeTab === tab ? ' active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab === 'quality_check' && <ClipboardCheck size={15} />}
+              {tab === 'invoice' && <FileText size={15} />}
+              {tab === 'recall' && <Repeat size={15} />}
+              {TAB_LABEL[tab]}
+              <span className="qcrt-tab-count">{counts[tab]}</span>
+            </button>
+          ))}
         </div>
 
         <div className="qcrt-secondary-filters">
@@ -476,6 +413,7 @@ export default function QCReportsTableView({
           <thead>
             <tr>
               <th className="qcrt-th">Result</th>
+              <th className="qcrt-th center">Score</th>
               <th className="qcrt-th">House Status</th>
               <th className="qcrt-th">Client / Address</th>
               <th className="qcrt-th">Inspection Date</th>
@@ -487,18 +425,20 @@ export default function QCReportsTableView({
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="qcrt-empty-row">Cargando reportes de calidad...</td></tr>
+              <tr><td colSpan={9} className="qcrt-empty-row">Cargando reportes de calidad...</td></tr>
             ) : finishedReports.length === 0 ? (
-              <tr><td colSpan={8} className="qcrt-empty-row">
+              <tr><td colSpan={9} className="qcrt-empty-row">
                 Todavía no hay inspecciones finalizadas. Al terminar una inspección en Quality Check aparecerá aquí.
               </td></tr>
             ) : filteredReports.length === 0 ? (
-              <tr><td colSpan={8} className="qcrt-empty-row">
-                Ningún reporte coincide con los filtros. Prueba con "All" o limpia la búsqueda.
+              <tr><td colSpan={9} className="qcrt-empty-row">
+                Ningún reporte en esta pestaña coincide con los filtros. Limpia la búsqueda o revisa las otras pestañas.
               </td></tr>
             ) : filteredReports.map(r => {
               const badge = resultBadge(r);
               const notes = reportNotes(r);
+              const score = reportScore(r);
+              const scoreColors = passRateColors(score.passRate, score.hasData);
               return (
                 <tr key={r.id} className="qcrt-row">
                   <td className="qcrt-td">
@@ -507,6 +447,16 @@ export default function QCReportsTableView({
                       style={{ '--badge-bg': badge.bg, '--badge-fg': badge.fg } as CSSProperties}
                     >
                       <badge.Icon size={12} /> {badge.label}
+                    </span>
+                  </td>
+                  <td className="qcrt-td center">
+                    {/* ⭐ El MISMO % que imprime el PDF (src/utils/qcScore.ts). */}
+                    <span
+                      className="qcrt-score"
+                      style={{ '--badge-bg': scoreColors.bg, '--badge-fg': scoreColors.fg } as CSSProperties}
+                      title="Tareas aprobadas sobre las respondidas"
+                    >
+                      {score.hasData ? `${score.passRate}%` : '—'}
                     </span>
                   </td>
                   <td className="qcrt-td">{renderStatusPill(r)}</td>
@@ -586,6 +536,15 @@ export default function QCReportsTableView({
                   <span className="qcrt-card-meta-value">{formatDate(r.date)}</span>
                 </div>
                 <div className="qcrt-card-meta-pair">
+                  <span className="qcrt-card-meta-label"><Check size={13} /> Resultado</span>
+                  <span className="qcrt-card-meta-value">
+                    {(() => {
+                      const sc = reportScore(r);
+                      return sc.hasData ? `${sc.passRate}%` : '—';
+                    })()}
+                  </span>
+                </div>
+                <div className="qcrt-card-meta-pair">
                   <span className="qcrt-card-meta-label"><Clock size={13} /> Duración</span>
                   <span className="qcrt-card-meta-value">{fmtDuration(r.durationMinutes)}</span>
                 </div>
@@ -620,6 +579,7 @@ export default function QCReportsTableView({
         <StatusChangeModal
           config={statusModal}
           statuses={allowedStatuses}
+          note='Desde los reportes de calidad una casa solo puede moverse a "Quality Check", "Recall" o "Invoice".'
           onClose={() => setStatusModal(null)}
         />
       )}
