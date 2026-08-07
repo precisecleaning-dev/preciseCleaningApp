@@ -4746,6 +4746,12 @@ export default function HousesView({
                     )}
                     {isElementVisible("serviceId") && (
                       <div>
+                        {/* ⭐ Services es OPCIONAL: no se valida en handleSave (solo
+                            Client, Address y Status son obligatorios). El campo no
+                            lleva asterisco y con allowClear se puede DEJAR VACIO.
+                            Sin allowClear, al duplicar una casa el servicio se
+                            heredaba y no habia forma de quitarlo, asi que en la
+                            practica se comportaba como obligatorio. */}
                         <label className="hv-label">Services</label>
                         <SearchableSelect
                           options={services}
@@ -4753,9 +4759,11 @@ export default function HousesView({
                           onChange={(val: string) =>
                             setFormData({ ...formData, serviceId: val })
                           }
-                          placeholder="Select Service..."
+                          placeholder="Select Service... (opcional)"
                           icon={Wrench}
                           disabled={isFieldRO("serviceId")}
+                          allowClear
+                          clearLabel="— Sin servicio —"
                         />
                       </div>
                     )}
