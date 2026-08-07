@@ -633,6 +633,11 @@ export default function HousesView({
   //    guardan en un buffer local y se persisten al presionar Save. Asi se puede
   //    registrar un pago en una casa NUEVA (o recien duplicada), que todavia no
   //    tiene id al cual asociar el documento de payroll.
+  // ⭐ ¿El usuario edito la lista de trabajadores a mano en este formulario?
+  //    Si la toco, handleSave NO debe autocompletarla con el equipo: dejar la
+  //    casa SIN trabajadores teniendo equipo es una decision valida y antes se
+  //    revertia sola al guardar.
+  const [workersTouched, setWorkersTouched] = useState(false);
   const [isPayrollFromForm, setIsPayrollFromForm] = useState(false);
   const [payrollsToDelete, setPayrollsToDelete] = useState<string[]>([]);
   const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
@@ -2611,9 +2616,10 @@ export default function HousesView({
   const toggleWorkerAssignmentForm = (workerId: string) => {
     const currentWorkers = formData.assignedWorkers || [];
     const isAssigned = currentWorkers.includes(workerId);
-    let newWorkersList = isAssigned
+    const newWorkersList = isAssigned
       ? currentWorkers.filter((id) => id !== workerId)
       : [...currentWorkers, workerId];
+    setWorkersTouched(true);
     setFormData({ ...formData, assignedWorkers: newWorkersList });
   };
 
@@ -2792,6 +2798,7 @@ export default function HousesView({
     setIsAssigningWorkerForm(false);
     setServicesToDelete([]);
     setPayrollsToDelete([]);
+    setWorkersTouched(false);
 
     if (house) {
       setFormData(house);
@@ -2889,6 +2896,7 @@ export default function HousesView({
       })),
     );
     setServicesToDelete([]);
+    setWorkersTouched(false);
     // ⭐ La copia es una casa NUEVA: los pagos pertenecen a la casa original y
     //    NO se heredan. Se pueden capturar de cero en la card Payroll.
     setHousePayrollRecords([]);
@@ -3006,8 +3014,15 @@ export default function HousesView({
       let workingId = formData.id;
       let isNew = false;
 
+      // ⭐ Autocompletar los trabajadores del equipo SOLO si el usuario no toco la
+      //    lista. Antes se rellenaba siempre que estuviera vacia, asi que quitar
+      //    todos los trabajadores a mano no servia de nada: al guardar volvian.
       let finalAssignedWorkers = formData.assignedWorkers || [];
-      if (formData.teamId && finalAssignedWorkers.length === 0) {
+      if (
+        !workersTouched &&
+        formData.teamId &&
+        finalAssignedWorkers.length === 0
+      ) {
         finalAssignedWorkers = employees
           .filter((emp) => emp.teamId === formData.teamId)
           .map((emp) => emp.id);
@@ -4614,6 +4629,8 @@ export default function HousesView({
                               icon={User}
                               returnKey="id"
                               disabled={isFieldRO("client")}
+                              allowClear
+                              clearLabel="— Sin cliente —"
                             />
                             {(() => {
                               // ⭐ Muestra el TIPO del cliente seleccionado (viene de la colección customers)
@@ -4726,6 +4743,8 @@ export default function HousesView({
                           placeholder="Select Status..."
                           icon={Activity}
                           disabled={isFieldRO("statusId")}
+                          allowClear
+                          clearLabel="— Sin status —"
                         />
                       </div>
                     )}
@@ -4741,6 +4760,8 @@ export default function HousesView({
                           placeholder="Select Invoice Status..."
                           icon={FileText}
                           disabled={isFieldRO("invoiceStatus")}
+                          allowClear
+                          clearLabel="— Sin invoice status —"
                         />
                       </div>
                     )}
@@ -4779,6 +4800,8 @@ export default function HousesView({
                           placeholder="Select Priority..."
                           icon={Flag}
                           disabled={isFieldRO("priorityId")}
+                          allowClear
+                          clearLabel="— Sin prioridad —"
                         />
                       </div>
                     )}
@@ -4794,6 +4817,8 @@ export default function HousesView({
                           placeholder="Rooms..."
                           icon={Hash}
                           disabled={isFieldRO("rooms")}
+                          allowClear
+                          clearLabel="— Sin especificar —"
                         />
                       </div>
                     )}
@@ -4809,6 +4834,8 @@ export default function HousesView({
                           placeholder="Bathrooms..."
                           icon={Hash}
                           disabled={isFieldRO("bathrooms")}
+                          allowClear
+                          clearLabel="— Sin especificar —"
                         />
                       </div>
                     )}
@@ -4956,6 +4983,9 @@ export default function HousesView({
                                   .filter((emp) => emp.teamId === val)
                                   .map((emp) => emp.id)
                               : [];
+                            // Quitar el equipo es una decision explicita: cuenta
+                            // como tocar la lista para que no se autocomplete.
+                            if (!val) setWorkersTouched(true);
                             setFormData({
                               ...formData,
                               teamId: val,
