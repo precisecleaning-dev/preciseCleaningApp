@@ -210,25 +210,30 @@
 }
 
 .calendar-event-month {
-  padding: var(--sp-3xs) var(--sp-2xs);
+  padding: var(--sp-2xs);
   border-radius: var(--radius-sm);
   font-size: var(--fs-2xs);
   font-weight: 600;
   cursor: pointer;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   display: flex;
-  align-items: center;
-  gap: var(--sp-3xs);
+  align-items: flex-start;
+  gap: var(--sp-2xs);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   border: 1px solid rgba(15, 23, 42, 0.05);
   color: #1e293b;
   background-color: var(--event-bg);
   border-left: 3px solid var(--event-color);
 }
-.cv-event-time { font-weight: 700; }
+/* ⭐ El evento ahora lleva DOS lineas: cliente y direccion. La hora queda a la
+   izquierda, fija, y el texto ocupa el resto. `align-items: flex-start` evita
+   que la hora se centre respecto a un bloque de dos renglones. */
+.cv-event-time { font-weight: 700; flex-shrink: 0; }
+.cv-event-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.cv-event-client { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-event-address { font-size: var(--fs-2xs); font-weight: 500; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-event-absolute .event-address { font-size: var(--fs-2xs); color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-event-month:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
@@ -661,6 +666,115 @@ dl.grid-3-cols { margin: 0; }
   white-space: nowrap;
 }
 
+
+/* ---------------------------------------------------------------------------
+   AGENDA (vista de mes en movil)
+   Reemplaza la cuadricula de 7 columnas, que en 360px dejaba celdas de ~45px:
+   ni la fecha entraba, y obligaba a scroll horizontal para leer una semana.
+   Solo se listan los dias CON trabajos.
+   --------------------------------------------------------------------------- */
+
+.cv-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-md);
+  padding: var(--sp-sm);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cv-agenda-empty {
+  padding: var(--sp-xl) var(--sp-md);
+  text-align: center;
+  color: #94a3b8;
+  font-size: var(--fs-sm);
+}
+
+.cv-agenda-day { display: flex; flex-direction: column; gap: var(--sp-2xs); }
+
+/* La cabecera de dia se queda pegada arriba al desplazar: en una lista larga
+   siempre se sabe que dia se esta viendo. */
+.cv-agenda-daybar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-xs);
+  padding: var(--sp-2xs) var(--sp-xs);
+  background: #f8fafc;
+  border-radius: var(--radius-md);
+  border: 1px solid #eef2f7;
+}
+.cv-agenda-daynum { font-size: var(--fs-md); font-weight: 800; color: #0f172a; }
+.cv-agenda-dayname {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: #64748b;
+  text-transform: capitalize;
+}
+.cv-agenda-daycount {
+  margin-left: auto;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  color: #94a3b8;
+}
+.cv-agenda-daybar.today { background: #eff6ff; border-color: #bfdbfe; }
+.cv-agenda-daybar.today .cv-agenda-daynum { color: #1d4ed8; }
+
+.cv-agenda-jobs { display: flex; flex-direction: column; gap: var(--sp-2xs); }
+
+/* Cada trabajo es una fila tocable de 56px con la hora, el cliente y la
+   direccion completos. */
+.cv-agenda-job {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-sm);
+  width: 100%;
+  min-height: var(--touch-comfortable);
+  padding: var(--sp-xs) var(--sp-sm);
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #eef2f7;
+  border-left: 4px solid var(--event-color, #cbd5e1);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-agenda-job:active { background: #f8fafc; transform: scale(0.995); }
+
+.cv-agenda-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.cv-agenda-info { display: flex; flex-direction: column; gap: var(--sp-3xs); min-width: 0; }
+.cv-agenda-client {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-agenda-address {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-agenda-chevron { color: #cbd5e1; flex-shrink: 0; }
+
 /* ============================================================================
    ADAPTACIONES POR ANCHO
    Solo quedan dos: los cambios que exigen REORGANIZAR el layout, no reescalar.
@@ -677,15 +791,12 @@ dl.grid-3-cols { margin: 0; }
 @media (max-width: 48rem) {
   .cv-page { gap: var(--sp-sm); }
 
-  /* La cuadricula de 7 columnas en 360px da celdas de 45px: ni la fecha cabe.
-     El patron correcto en telefono es una AGENDA vertical. La vista de mes
-     mantiene la cuadricula solo si hay ancho suficiente. */
+  /* La cuadricula de 7 columnas ya NO se usa en movil: el TSX monta la agenda
+     vertical (.cv-agenda) por debajo de 48rem. Estas reglas quedan como
+     respaldo por si se fuerza la cuadricula en una tablet angosta. */
   .month-scroll-container { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
   .month-grid-inner { min-width: min(100%, 44rem); }
-
   .calendar-day-cell { min-height: clamp(4rem, 2rem + 12vw, 6rem); }
-
-  /* Evento tocable con el pulgar: antes medía ~22px de alto. */
   .calendar-event-month { min-height: var(--touch-min); }
 
   .cv-modal-overlay { padding: 0; align-items: flex-end; }

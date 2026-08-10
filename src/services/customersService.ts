@@ -12,8 +12,11 @@ const COLLECTION_NAME = 'customers';
 //    completo), y ese id viejo pisaba al id real al leer, causando el error
 //    "not-found: No document to update".
 const stripId = <T extends { id?: string }>(data: T): Omit<T, 'id'> => {
-  const { id, ...rest } = data;
-  return rest;
+  // ⭐ `legacyId` es un campo derivado que solo existe en memoria (lo agrega
+  //    getAll para poder resolver referencias viejas). Nunca debe escribirse.
+  const { id, legacyId, ...rest } = data as T & { legacyId?: string };
+  void id; void legacyId;
+  return rest as Omit<T, 'id'>;
 };
 
 export const customersService = {
@@ -22,10 +25,22 @@ export const customersService = {
     // ⭐ FIX: `id: doc.id` va DESPUÉS del spread para que el ID real del
     //    documento SIEMPRE gane sobre cualquier campo `id` contaminado
     //    que exista dentro del documento.
-    return querySnapshot.docs.map(d => ({
-      ...d.data(),
-      id: d.id
-    } as Customer));
+    //
+    // ⭐ Pero ese `id` contaminado es el id LEGACY de AppSheet, y muchas casas
+    //    lo guardan en su campo `client`. Al pisarlo se perdia la unica clave
+    //    que permitia resolver el cliente, y las vistas mostraban el hex crudo
+    //    ("4ea3f7ae") en vez del nombre. Ahora se conserva aparte como
+    //    `legacyId`: el id real sigue mandando y ademas se puede resolver por
+    //    el viejo. No se escribe nunca a Firestore (stripId lo elimina).
+    return querySnapshot.docs.map(d => {
+      const data = d.data() as Record<string, unknown>;
+      const legacyId = typeof data.id === 'string' ? data.id : undefined;
+      return {
+        ...data,
+        id: d.id,
+        ...(legacyId && legacyId !== d.id ? { legacyId } : {}),
+      } as Customer;
+    });
   },
 
   async create(customer: Omit<Customer, 'id'>): Promise<string> {

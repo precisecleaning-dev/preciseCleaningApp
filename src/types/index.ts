@@ -113,6 +113,13 @@ export interface Service { id: string; name: string; estimatedTime?: string; bus
 
 export interface Customer { 
   id: string; 
+  /**
+   * ⭐ Id LEGACY de AppSheet, presente solo en documentos migrados. NO se
+   *    escribe a Firestore: lo agrega customersService.getAll() en memoria
+   *    porque muchas casas guardan ese valor en su campo `client` y es la
+   *    unica forma de resolver el nombre del cliente en esos registros.
+   */
+  legacyId?: string; 
   name: string; 
   email?: string; 
   phone?: string; 

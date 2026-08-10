@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, X, Edit2, Trash2,
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Menu
@@ -85,7 +85,10 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
         if (teamData) setTeams(teamData as Team[]);
         if (prioData) setPriorities(prioData as Priority[]);
         if (servData) setServices(servData as Service[]);
-        if (custData) setCustomersList(custData);
+        // ⭐ Se conserva el id LEGACY de AppSheet (el campo `id` interno del
+        //    documento) antes de que customersService lo pise con el id real
+        //    del documento. Muchas casas guardan ese legacy en `client`.
+        if (custData) setCustomersList(custData as Customer[]);
       } catch (error) {
         console.error("Error loading data:", error);
       } finally {
@@ -236,12 +239,62 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   const invoiceOptions = [{ id: 'Needs Invoice', name: 'Needs Invoice' }, { id: 'Pending', name: 'Pending' }, { id: 'Paid', name: 'Paid' }];
   const roomOptions = [1, 2, 3, 4, 5].map(n => ({ id: String(n), name: String(n) }));
 
-  // Resuelve el cliente por ID o por nombre. En registros viejos, job.client
-  // guarda el ID (ej. "4ea3f7ae"); en los nuevos guarda el nombre. Si no se
-  // encuentra, devuelve el valor original en vez de un ID opaco.
+  // ⭐ ¿Pantalla chica? La cuadricula de 7 columnas en un telefono de 360px da
+  //    celdas de ~45px: no cabe ni la fecha, y obligaba a scroll horizontal.
+  //    Por debajo de 48rem (768px) la vista de mes pasa a AGENDA vertical, que
+  //    es el patron que usan Google Calendar y Apple Calendar en telefono.
+  const [isCompact, setIsCompact] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 48rem)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 48rem)');
+    const onChange = (e: MediaQueryListEvent) => setIsCompact(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // ⭐ INDICE DE CLIENTES por TODAS sus claves posibles.
+  //
+  //    Aqui se veian IDs crudos ("4ea3f7ae") en vez del nombre. La causa:
+  //    `properties.client` guarda el id LEGACY de AppSheet, que en los
+  //    documentos de `customers` quedo como un campo interno `id`. Pero
+  //    customersService.getAll() hace `{ ...d.data(), id: d.id }`, o sea que
+  //    el id real del documento PISA al legacy y este se pierde: por eso
+  //    getRelationName no encontraba nada y caia al fallback (el id).
+  //    (InvoicesView si resolvia porque arma el objeto al reves y conserva
+  //    el legacy; el mismo dato se comportaba distinto en cada vista.)
+  //
+  //    El indice registra el id de documento, el legacy y el nombre, asi
+  //    resuelve sin importar cual de los tres tenga guardado la casa.
+  const customerIndex = useMemo(() => {
+    const map = new Map<string, Customer>();
+    const put = (key: unknown, cust: Customer) => {
+      const k = String(key ?? '').toLowerCase().trim();
+      if (k && !map.has(k)) map.set(k, cust);
+    };
+    customersList.forEach(c => {
+      put(c.id, c);
+      put((c as Customer & { legacyId?: string }).legacyId, c);
+      put(c.name, c);
+    });
+    return map;
+  }, [customersList]);
+
+  const findCustomer = (idOrName?: string | null): Customer | undefined => {
+    if (!idOrName) return undefined;
+    return customerIndex.get(String(idOrName).toLowerCase().trim());
+  };
+
+  // Nombre del cliente. Si el cliente fue borrado del catalogo, se muestra un
+  // texto explicito en vez del id opaco: un hex de 8 caracteres no le dice
+  // nada a quien usa la app.
   const getClientName = (idOrName?: string | null) => {
     if (!idOrName) return '-';
-    return getRelationName(customersList, idOrName, String(idOrName));
+    const cust = findCustomer(idOrName);
+    if (cust?.name) return cust.name;
+    const raw = String(idOrName).trim();
+    // Un valor que parece id (hex sin espacios) no sirve como etiqueta.
+    return /^[0-9a-f]{6,}$/i.test(raw) ? 'Cliente sin registrar' : raw;
   };
 
   // --- RENDER HELPERS ---
@@ -291,7 +344,13 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
                 style={{ '--event-bg': `${statusColor}15`, '--event-color': statusColor } as CSSProperties}
                 onClick={(e) => { e.stopPropagation(); openJobDetail(job); }}
               >
-                <span className="cv-event-time">{job.timeIn || '--:--'}</span> {getClientName(job.client)}
+                <span className="cv-event-time">{job.timeIn || '--:--'}</span>
+                <span className="cv-event-text">
+                  <span className="cv-event-client">{getClientName(job.client)}</span>
+                  {job.address && (
+                    <span className="cv-event-address">{job.address}</span>
+                  )}
+                </span>
               </div>
             );
           })}
@@ -333,6 +392,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
           onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
         >
           <div className="event-title">{getClientName(job.client)}</div>
+          {job.address && <div className="event-address">{job.address}</div>}
           <div className="event-time">{job.timeIn} - {job.timeOut || '?'}</div>
         </div>
       );
@@ -376,8 +436,8 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
       ) : (
         <div className="calendar-wrapper">
           
-          {/* === VISTA DE MES === */}
-          {viewMode === 'month' && (
+          {/* === VISTA DE MES — CUADRICULA (tablet / escritorio) === */}
+          {viewMode === 'month' && !isCompact && (
             <div className="month-scroll-container">
               <div className="month-grid-inner">
                 <div className="calendar-header-grid">
@@ -399,6 +459,77 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
               </div>
             </div>
           )}
+
+          {/* === VISTA DE MES — AGENDA (movil) ===
+              Solo se listan los dias CON trabajos: en un mes tipico eso reduce
+              31 bloques a 10-15, y cada trabajo se ve completo (hora, cliente y
+              direccion) sin scroll horizontal ni textos recortados. */}
+          {viewMode === 'month' && isCompact && (() => {
+            const daysWithJobs = calendarDays
+              .filter((d): d is Date => !!d)
+              .map(date => ({ date, jobs: getJobsForDate(date) }))
+              .filter(d => d.jobs.length > 0);
+
+            if (daysWithJobs.length === 0) {
+              return (
+                <div className="cv-agenda-empty">
+                  No hay trabajos programados este mes.
+                </div>
+              );
+            }
+
+            const today = new Date();
+            const isToday = (d: Date) =>
+              d.getDate() === today.getDate() &&
+              d.getMonth() === today.getMonth() &&
+              d.getFullYear() === today.getFullYear();
+
+            return (
+              <div className="cv-agenda">
+                {daysWithJobs.map(({ date, jobs }) => (
+                  <section key={date.toISOString()} className="cv-agenda-day">
+                    <header className={`cv-agenda-daybar${isToday(date) ? ' today' : ''}`}>
+                      <span className="cv-agenda-daynum">{date.getDate()}</span>
+                      <span className="cv-agenda-dayname">
+                        {date.toLocaleDateString('es-ES', { weekday: 'long' })}
+                      </span>
+                      <span className="cv-agenda-daycount">
+                        {jobs.length} {jobs.length === 1 ? 'trabajo' : 'trabajos'}
+                      </span>
+                    </header>
+
+                    <div className="cv-agenda-jobs">
+                      {jobs.map(job => {
+                        const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+                        return (
+                          <button
+                            key={job.id}
+                            type="button"
+                            className="cv-agenda-job"
+                            style={{ '--event-color': statusColor } as CSSProperties}
+                            onClick={() => openJobDetail(job)}
+                          >
+                            <span className="cv-agenda-time">
+                              <Clock size={13} /> {job.timeIn || '--:--'}
+                            </span>
+                            <span className="cv-agenda-info">
+                              <span className="cv-agenda-client">{getClientName(job.client)}</span>
+                              {job.address && (
+                                <span className="cv-agenda-address">
+                                  <MapPin size={12} /> {job.address}
+                                </span>
+                              )}
+                            </span>
+                            <ChevronRight size={16} className="cv-agenda-chevron" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* === VISTA DE SEMANA / DÍA (Estilo Google Calendar) === */}
           {(viewMode === 'week' || viewMode === 'day') && (
