@@ -1,100 +1,189 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* ============================================================================
+   index.css — CAPA BASE (Mobile-First)
+   ----------------------------------------------------------------------------
+   Antes este archivo era el boilerplate de Vite y trabajaba EN CONTRA de la app:
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+     · `color-scheme: light dark` + `background-color: #242424` metian un tema
+       oscuro que la app no usa. En un movil con modo oscuro del sistema, los
+       controles nativos (date, time, select) se pintaban oscuros sobre
+       tarjetas blancas.
+     · `body { display: flex; place-items: center; }` centraba el layout y hacia
+       que el contenedor encogiera a su contenido: la causa de que en pantallas
+       chicas la app no ocupara todo el ancho.
+     · `min-width: 320px` en body forzaba scroll horizontal por debajo de 320px.
+     · `h1 { font-size: 3.2em }` y los estilos globales de `button` pisaban a
+       todas las vistas.
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+   Ahora es solo la base: reset, tipografia fluida y areas tactiles globales.
+   ============================================================================ */
+
+@import './styles/tokens.css';
+
+/* --- Reset moderno --- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+html {
+  /* NO se fija font-size en px: eso rompe el zoom del navegador. El 100% deja
+     que mande la preferencia del usuario y los rem escalan con ella. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Alto real del viewport en movil: 100vh incluye la barra del navegador y
+     produce el clasico corte de contenido. dvh se ajusta cuando la barra se
+     oculta; el 100% previo es el respaldo para navegadores sin dvh. */
+  height: 100%;
+  height: 100dvh;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
+  min-height: 100dvh;
+  width: 100%;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  color: #0f172a;
+  background-color: #f7f9fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Evita el desplazamiento lateral accidental: si un hijo se desborda, se ve
+     el problema en esa seccion y no se desalinea la app entera. */
+  overflow-x: hidden;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+#root {
+  min-height: 100%;
+  min-height: 100dvh;
+  width: 100%;
+  isolation: isolate; /* contexto de apilamiento propio para modales */
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  line-height: var(--lh-tight);
+  font-weight: 700;
+  text-wrap: balance; /* evita titulos con una palabra huerfana en la ultima linea */
+}
+
+h1 { font-size: var(--fs-xl); }
+h2 { font-size: var(--fs-lg); }
+h3 { font-size: var(--fs-md); }
+h4, h5, h6 { font-size: var(--fs-base); }
+
+p { margin: 0; text-wrap: pretty; }
+
+/* Los medios nunca desbordan su contenedor. */
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* --- Controles: heredan tipografia y garantizan area tactil --- */
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button, [role='button'], a, label, summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+button:not(:disabled), [role='button']:not([aria-disabled='true']) {
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
+/* AREA TACTIL MINIMA GLOBAL (48x48).
+   Se aplica a todo control interactivo, asi ninguna vista queda fuera por
+   olvido. Las vistas pueden subir el valor, no bajarlo.
+   `:where()` mantiene especificidad 0: cualquier regla de una vista gana sin
+   necesidad de !important. */
+:where(button, [role='button'], input[type='button'],
+       input[type='submit'], input[type='reset']) {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+}
+
+/* Campos de formulario: 16px reales como minimo.
+   Por debajo de 16px, Safari en iOS hace ZOOM automatico al enfocar el campo y
+   deja la pagina descuadrada. Es la causa mas comun de "se desconfigura al
+   escribir" en iPhone. */
+:where(input:not([type='button']):not([type='submit']):not([type='reset']):not([type='checkbox']):not([type='radio']),
+       select, textarea) {
+  min-height: var(--touch-min);
+  font-size: max(1rem, var(--fs-base));
+}
+
+textarea {
+  min-height: calc(var(--touch-min) * 2);
+  resize: vertical;
+}
+
+/* Casillas y radios: el control nativo mide ~13px. Se agranda a un tamano
+   usable con el pulgar sin cambiar su apariencia. */
+:where(input[type='checkbox'], input[type='radio']) {
+  width: 1.35rem;
+  height: 1.35rem;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+/* --- Foco visible: accesibilidad de teclado --- */
+
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* --- Respeto por las preferencias del sistema --- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-/* Responsive View Headers */
+/* --- Cabeceras de vista --- */
+
 .view-header-title-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--sp-md);
 }
 
 .hamburger-btn {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  color: #111827;
-  display: flex;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  padding: var(--touch-icon-pad);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-md);
+  color: #111827;
+  box-shadow: var(--shadow-xs);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
+.hamburger-btn:hover { background-color: #f8fafc; }
+.hamburger-btn:active { background-color: #f1f5f9; }
 
-.hamburger-btn:hover {
-  background-color: #f8fafc;
-}
-
-@media (max-width: 768px) {
+@media (max-width: 48rem) {
   .view-header-title-group {
-    flex-direction: row-reverse; /* ESTO MUEVE EL BOTÓN A LA DERECHA EN MÓVILES */
+    flex-direction: row-reverse; /* boton de menu a la derecha en movil */
     justify-content: space-between;
     width: 100%;
   }

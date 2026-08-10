@@ -1,137 +1,713 @@
-.cv-page { padding: 20px; height: 100%; display: flex; flex-direction: column; }
-.calendar-wrapper { display: flex; flex-direction: column; flex: 1; background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; }
+/* ============================================================================
+   CalendarView.css — IMPLEMENTACION DE REFERENCIA (Mobile-First)
+   ----------------------------------------------------------------------------
+   Esta vista es el patron a replicar en el resto de archivos. Todo valor de
+   tamano sale de src/styles/tokens.css; no hay px fijos en contenedores.
 
-/* Controles de vista */
-.view-toggles { display: flex; background: #f1f5f9; border-radius: 8px; padding: 4px; border: 1px solid #e2e8f0; }
-.view-btn { padding: 6px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; color: #64748b; background: transparent; transition: all 0.2s; }
-.view-btn.active { background: white; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+   Cambios de fondo respecto a la version anterior:
 
-/* Mes View */
-.calendar-header-grid { display: grid; grid-template-columns: repeat(7, 1fr); background-color: #f8fafc; border-bottom: 1px solid #e5e7eb; }
-.calendar-header-cell { padding: 12px; text-align: center; font-weight: 600; font-size: 0.85rem; color: #64748b; text-transform: uppercase; }
-.calendar-body-grid { display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; background-color: #e5e7eb; gap: 1px; }
-.calendar-day-cell { background-color: #ffffff; min-height: 120px; padding: 8px; display: flex; flex-direction: column; gap: 4px; transition: background-color 0.2s; }
-.calendar-day-cell:hover { background-color: #f8fafc; }
-.calendar-day-cell.empty { background-color: #f9fafb; cursor: default; }
-.calendar-date-number { font-weight: 600; font-size: 0.95rem; color: #1e293b; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
-.calendar-event-month { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid rgba(0,0,0,0.05); color: #1e293b; background-color: var(--event-bg); border-left: 3px solid var(--event-color); }
-.cv-event-time { font-weight: 700; }
-.calendar-event-month:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); filter: brightness(0.95); }
+   1. Alturas: `height: 100%` sobre una cadena de padres sin altura definida no
+      hace nada. Ahora se usa `min-height: 100dvh` en la pagina y `flex: 1` en
+      el contenido, que si funciona sin depender de los ancestros.
 
-/* Time Grid (Día / Semana) */
-.week-scroll-container { display: flex; flex-direction: column; flex: 1; overflow-x: auto; overflow-y: hidden; }
-.week-grid-inner { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.week-view-active { min-width: 750px; } /* Fuerza el scroll horizontal en móvil para la semana */
-.day-view-active { min-width: 100%; }
+   2. Vista de mes en movil: antes forzaba `min-width: 800px` y obligaba a
+      hacer scroll horizontal para ver una semana. Ahora, por debajo de 48rem,
+      el mes se convierte en una LISTA VERTICAL de dias con trabajos (patron de
+      Google Calendar en telefono): sin scroll lateral y con filas de 48px.
 
-.time-grid-container { display: flex; flex: 1; overflow-y: auto; position: relative; }
-.time-axis { width: 60px; flex-shrink: 0; background: white; border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; }
-.time-label { height: 60px; padding-right: 8px; text-align: right; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #f1f5f9; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: flex-end; padding-top: 4px;}
+   3. Areas tactiles: los eventos del mes median ~22px de alto. Imposibles de
+      tocar con precision. Ahora min-height 48px en movil.
 
-.day-columns-wrapper { display: flex; flex: 1; flex-direction: row; }
-.day-column-time { flex: 1; border-right: 1px solid #e5e7eb; position: relative; min-width: 0; }
-.day-column-time:last-child { border-right: none; }
-.hour-grid-line { height: 60px; border-bottom: 1px solid #f1f5f9; box-sizing: border-box; width: 100%; }
+   4. `.time-axis: 60px` fijo y `.time-label: 60px` de alto eran px puros.
+      Ahora son rem, asi escalan si el usuario agranda la fuente del sistema.
+   ============================================================================ */
 
-/* Eventos Absolutos (Google Calendar Style) */
-.calendar-event-absolute { position: absolute; left: 4px; right: 4px; border-radius: 6px; padding: 6px 8px; font-size: 0.75rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10; cursor: pointer; transition: transform 0.1s, filter 0.2s; display: flex; flex-direction: column; gap: 2px; top: var(--event-top); height: var(--event-height); background-color: var(--event-bg); border: 1px solid var(--event-border); border-left: 4px solid var(--event-color); }
-.calendar-event-absolute:hover { transform: scale(1.02); z-index: 20; filter: brightness(0.95); }
-.calendar-event-absolute .event-title { font-weight: 700; color: #0f172a; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;}
-.calendar-event-absolute .event-time { font-size: 0.7rem; color: #475569; }
+/* ---------------------------------------------------------------------------
+   PAGINA Y CONTENEDOR
+   --------------------------------------------------------------------------- */
 
-/* Ajustes Responsivos */
-@media (max-width: 768px) {
-  /* En vista de mes, PERMITIR SCROLL HORIZONTAL en vez de colapsar verticalmente */
-  .month-scroll-container {
-    overflow-x: auto;
-    width: 100%;
-  }
-  .month-grid-inner {
-    min-width: 800px; /* Fuerza el ancho mínimo para mantener la cuadrícula de 7 días */
-  }
+.cv-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-md);
+  min-height: 100dvh;
+  width: 100%;
+  padding: var(--page-pad-y) var(--page-pad-x);
+  padding-left: max(var(--page-pad-x), var(--safe-left));
+  padding-right: max(var(--page-pad-x), var(--safe-right));
+  padding-bottom: max(var(--page-pad-y), var(--safe-bottom));
 }
 
+.calendar-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* imprescindible: sin esto un hijo con scroll desborda el flex */
+  background: #ffffff;
+  border-radius: var(--radius-lg);
+  border: 1px solid #eef2f7;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
 
-/* --- Header --- */
-.cv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
-.cv-title { margin: 0; font-size: 1.8rem; color: #111827; font-weight: 700; }
-.cv-subtitle { margin: 4px 0 0 0; color: #6b7280; font-size: 0.95rem; }
-.cv-header-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-.cv-date-nav { display: flex; align-items: center; gap: 16px; background-color: white; padding: 6px 12px; border-radius: 24px; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-.cv-nav-btn { background: none; border: none; cursor: pointer; padding: 4px; display: flex; color: #64748b; }
-.cv-date-label { font-weight: 700; color: #1e293b; min-width: 160px; text-align: center; text-transform: capitalize; font-size: 0.9rem; }
+/* ---------------------------------------------------------------------------
+   CABECERA
+   --------------------------------------------------------------------------- */
 
-.cv-loading { flex: 1; display: flex; align-items: center; justify-content: center; color: #6b7280; }
+.cv-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-sm) var(--sp-md);
+}
 
-/* --- Week/day header --- */
-.cv-week-header-row { padding-left: 60px; display: flex; border-bottom: 1px solid #e5e7eb; background-color: #f8fafc; }
-.cv-week-header-cell { flex: 1; padding: 12px; text-align: center; border-right: 1px solid #e5e7eb; }
-.cv-week-day-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; font-weight: 700; }
-.cv-week-day-number { font-size: 1.2rem; color: #1e293b; font-weight: 800; margin-top: 2px; }
+.cv-title { margin: 0; font-size: var(--fs-xl); color: #0f172a; font-weight: 800; }
+.cv-subtitle { margin: var(--sp-3xs) 0 0; color: #64748b; font-size: var(--fs-sm); }
 
-/* --- Modales (Form / Detail) --- */
-.cv-modal-overlay { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-.cv-modal { background-color: #ffffff; width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; }
-.cv-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
-.cv-modal-title { font-size: 1.25rem; font-weight: 700; color: #111827; margin: 0; }
-.cv-modal-close { background: none; border: none; color: #6b7280; cursor: pointer; padding: 4px; display: flex; border-radius: 4px; }
-.cv-modal-body { padding: 30px; overflow-y: auto; padding-bottom: 60px; }
-.cv-modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px; flex-shrink: 0; flex-wrap: wrap; }
-.cv-modal-footer.between { justify-content: space-between; align-items: center; }
-.cv-footer-actions { display: flex; gap: 12px; }
+.cv-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-sm);
+}
 
-.cv-required { color: #3b82f6; }
-.cv-label { font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: block; }
-.cv-input-wrap { position: relative; display: flex; align-items: center; width: 100%; }
-.cv-input-wrap.align-top { align-items: flex-start; }
-.cv-input-icon { position: absolute; left: 14px; color: #6b7280; pointer-events: none; }
-.cv-input-icon.textarea { top: 14px; }
-.cv-input { background-color: #ffffff; padding: 12px 14px 12px 40px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.95rem; color: #111827; width: 100%; box-sizing: border-box; outline: none; font-family: inherit; transition: border-color 0.2s; }
-.cv-input.textarea { min-height: 80px; resize: vertical; }
+/* Navegacion de fecha: pildora con dos botones de 48px y la etiqueta al medio.
+   El 1fr central deja que la etiqueta ocupe lo que sobre en cualquier ancho. */
+.cv-date-nav {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2xs);
+  background-color: #ffffff;
+  padding: var(--sp-3xs);
+  border-radius: var(--radius-pill);
+  border: 1px solid #e5e7eb;
+  box-shadow: var(--shadow-xs);
+  flex: 1 1 min(100%, 20rem);
+}
 
-.cv-btn-primary { background-color: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-.cv-btn-primary:disabled { opacity: 0.7; }
-.cv-btn-outline { background-color: white; border: 1px solid #e5e7eb; color: #111827; padding: 10px 20px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
-.cv-btn-danger-light { background-color: #fef2f2; color: #ef4444; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-.cv-btn-qc { display: flex; align-items: center; gap: 6px; background-color: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-.cv-icon-mr { margin-right: 6px; }
+.cv-nav-btn {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--touch-icon-pad);
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: #475569;
+  transition: background-color 0.15s ease;
+}
+.cv-nav-btn:hover { background-color: #f1f5f9; }
+.cv-nav-btn:active { background-color: #e2e8f0; }
 
-/* .grid-3-cols es una clase global (App.css); acá se usa sobre un <dl>, así que se
-   resetea el margin-top/inline que el navegador le da por defecto a <dl>. */
-dl.grid-3-cols { margin-top: 0; margin-left: 0; margin-right: 0; }
-.cv-detail-banner { margin: 0 0 24px; border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; background-color: #eff6ff; display: flex; gap: 20px; flex-wrap: wrap; }
-.cv-detail-item { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-.cv-detail-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
-.cv-detail-label.blue { color: #1e40af; }
-.cv-detail-label.spaced { margin-bottom: 8px; }
-.cv-detail-label.orange { color: #c2410c; }
-.cv-address-value { margin: 4px 0 0; font-size: 1.25rem; color: #1e3a8a; font-weight: 600; }
-.cv-detail-value { margin: 4px 0 0; font-size: 1.05rem; color: #111827; font-weight: 500; white-space: pre-wrap; }
-.cv-detail-value.small { font-size: 0.95rem; }
-.cv-dot-row { margin: 4px 0 0; display: flex; align-items: center; gap: 8px; }
-.cv-dot-12 { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background-color: var(--dot-color); }
-.cv-note-box { background-color: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; width: 100%; }
-.cv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
+.cv-date-label {
+  font-weight: 700;
+  color: #0f172a;
+  text-align: center;
+  text-transform: capitalize;
+  font-size: var(--fs-sm);
+  /* min-width: 0 en vez del antiguo 160px fijo: en un movil de 360px ese
+     minimo empujaba los botones fuera del contenedor. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-/* --- Show more + Modal de detalle del día --- */
-.cv-show-more-btn { display: block; width: 100%; margin-top: 4px; padding: 4px 8px; border: none; border-radius: 6px; background: #eff6ff; color: #2563eb; font-size: 0.75rem; font-weight: 600; text-align: center; cursor: pointer; transition: background 0.15s ease; }
+/* Selector de vista (Mes / Semana / Dia). Cada boton llega a 48px. */
+.view-toggles {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: var(--radius-pill);
+  padding: var(--sp-3xs);
+  border: 1px solid #e2e8f0;
+  flex: 0 1 auto;
+}
+
+.view-btn {
+  flex: 1 1 auto;
+  min-height: var(--touch-min);
+  padding: var(--sp-2xs) var(--sp-md);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border: none;
+  color: #64748b;
+  background: transparent;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.view-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: var(--shadow-sm);
+}
+
+.cv-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-xl);
+  color: #64748b;
+  font-size: var(--fs-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   VISTA DE MES
+   --------------------------------------------------------------------------- */
+
+.calendar-header-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.calendar-header-cell {
+  padding: var(--sp-xs) var(--sp-2xs);
+  text-align: center;
+  font-weight: 700;
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.calendar-body-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  flex: 1;
+  background-color: #e5e7eb;
+  gap: 1px;
+}
+
+.calendar-day-cell {
+  background-color: #ffffff;
+  /* Alto minimo en rem, no en px: crece si el usuario agranda la fuente. */
+  min-height: clamp(4.5rem, 3rem + 6vw, 8rem);
+  padding: var(--sp-2xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3xs);
+  min-width: 0;
+  transition: background-color 0.2s ease;
+}
+.calendar-day-cell:hover { background-color: #f8fafc; }
+.calendar-day-cell.empty { background-color: #f9fafb; cursor: default; }
+
+.calendar-date-number {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  color: #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3xs);
+}
+
+.calendar-event-month {
+  padding: var(--sp-3xs) var(--sp-2xs);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  color: #1e293b;
+  background-color: var(--event-bg);
+  border-left: 3px solid var(--event-color);
+}
+.cv-event-time { font-weight: 700; }
+.calendar-event-month:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  filter: brightness(0.96);
+}
+
+.cv-show-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--touch-min);
+  margin-top: auto;
+  padding: var(--sp-3xs) var(--sp-2xs);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
 .cv-show-more-btn:hover { background: #dbeafe; }
 
-.cv-day-modal { max-width: 560px; }
-.cv-day-modal-count { font-size: 0.82rem; color: #6b7280; font-weight: 500; }
-.cv-day-modal-body { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 24px; }
+/* ---------------------------------------------------------------------------
+   VISTA DE TIEMPO (Dia / Semana)
+   --------------------------------------------------------------------------- */
 
-.cv-day-job-row { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #e5e7eb; border-left: 4px solid var(--event-color, #cbd5e1); border-radius: 10px; background: #ffffff; cursor: pointer; transition: background 0.15s ease, box-shadow 0.15s ease; }
-.cv-day-job-row:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-.cv-day-job-time { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; color: #111827; white-space: nowrap; }
-.cv-day-job-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cv-day-job-client { font-size: 0.9rem; font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-day-job-address { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-day-job-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.cv-day-job-status { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: #374151; white-space: nowrap; }
-.cv-day-job-team { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #6b7280; white-space: nowrap; }
+.week-scroll-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.week-grid-inner { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
-@media (max-width: 520px) {
-  .cv-day-job-row { grid-template-columns: 1fr; gap: 6px; }
-  .cv-day-job-meta { align-items: flex-start; flex-direction: row; gap: 12px; }
+/* La semana necesita 7 columnas legibles: por debajo de cierto ancho el scroll
+   horizontal es preferible a columnas de 40px donde no cabe ni la hora. */
+.week-view-active { min-width: min(100%, 47rem); }
+.day-view-active { min-width: 100%; }
+
+.time-grid-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+.time-axis {
+  width: clamp(3rem, 2.4rem + 2.4vw, 4.5rem);
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  left: 0;
+  z-index: 5; /* la hora se mantiene visible al desplazar la semana */
+}
+
+.time-label {
+  height: var(--cv-hour-h);
+  padding: var(--sp-3xs) var(--sp-2xs) 0 0;
+  text-align: right;
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.day-columns-wrapper { display: flex; flex: 1; flex-direction: row; min-width: 0; }
+.day-column-time {
+  flex: 1;
+  border-right: 1px solid #e5e7eb;
+  position: relative;
+  min-width: 0;
+}
+.day-column-time:last-child { border-right: none; }
+.hour-grid-line { height: var(--cv-hour-h); border-bottom: 1px solid #f1f5f9; width: 100%; }
+
+/* Alto de una hora: variable propia para que la rejilla y los eventos
+   absolutos nunca se desincronicen. El calculo de posicion en el TSX usa
+   60 (px por hora); mantener el valor base en 3.75rem = 60px lo respeta. */
+.calendar-wrapper { --cv-hour-h: 3.75rem; }
+
+.calendar-event-absolute {
+  position: absolute;
+  left: var(--sp-3xs);
+  right: var(--sp-3xs);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2xs) var(--sp-xs);
+  font-size: var(--fs-2xs);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3xs);
+  top: var(--event-top);
+  height: var(--event-height);
+  background-color: var(--event-bg);
+  border: 1px solid var(--event-border);
+  border-left: 4px solid var(--event-color);
+}
+.calendar-event-absolute:hover { transform: scale(1.02); z-index: 20; filter: brightness(0.96); }
+.calendar-event-absolute .event-title {
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.calendar-event-absolute .event-time { font-size: var(--fs-2xs); color: #475569; }
+
+.cv-week-header-row {
+  padding-left: clamp(3rem, 2.4rem + 2.4vw, 4.5rem); /* alinea con .time-axis */
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+}
+.cv-week-header-cell {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-xs) var(--sp-2xs);
+  text-align: center;
+  border-right: 1px solid #e5e7eb;
+}
+.cv-week-day-label {
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.cv-week-day-number { font-size: var(--fs-md); color: #1e293b; font-weight: 800; }
+
+/* ---------------------------------------------------------------------------
+   MODALES
+   --------------------------------------------------------------------------- */
+
+.cv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: var(--sp-md);
+  padding-bottom: max(var(--sp-md), var(--safe-bottom));
+}
+
+.cv-modal {
+  background-color: #ffffff;
+  width: 100%;
+  max-width: min(100%, 62rem);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  max-height: min(90dvh, 60rem);
+}
+
+.cv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+  padding: var(--sp-md) var(--sp-lg);
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.cv-modal-title { font-size: var(--fs-lg); font-weight: 700; color: #0f172a; margin: 0; }
+
+.cv-modal-close {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--touch-icon-pad);
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: #64748b;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+.cv-modal-close:hover { background-color: #f1f5f9; }
+
+.cv-modal-body {
+  padding: var(--sp-lg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; /* el scroll no se propaga a la pagina de atras */
+}
+
+.cv-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-sm);
+  padding: var(--sp-md) var(--sp-lg);
+  padding-bottom: max(var(--sp-md), var(--safe-bottom));
+  background-color: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  flex-shrink: 0;
+}
+.cv-modal-footer.between { justify-content: space-between; align-items: center; }
+.cv-footer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-sm); }
+
+/* ---------------------------------------------------------------------------
+   FORMULARIO
+   --------------------------------------------------------------------------- */
+
+.cv-required { color: #3b82f6; }
+.cv-label {
+  display: block;
+  font-size: var(--fs-xs);
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--sp-2xs);
+}
+.cv-input-wrap { position: relative; display: flex; align-items: center; width: 100%; }
+.cv-input-wrap.align-top { align-items: flex-start; }
+.cv-input-icon {
+  position: absolute;
+  left: var(--sp-sm);
+  color: #94a3b8;
+  pointer-events: none;
+}
+.cv-input-icon.textarea { top: var(--sp-sm); }
+
+.cv-input {
+  width: 100%;
+  min-height: var(--touch-min);
+  background-color: #ffffff;
+  padding: var(--sp-xs) var(--sp-sm) var(--sp-xs) clamp(2.3rem, 2rem + 1.2vw, 2.75rem);
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-md);
+  /* max(1rem, ...) impide el zoom automatico de Safari iOS al enfocar. */
+  font-size: max(1rem, var(--fs-sm));
+  color: #0f172a;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.cv-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+.cv-input.textarea { min-height: calc(var(--touch-min) * 2); resize: vertical; }
+
+/* ---------------------------------------------------------------------------
+   BOTONES
+   --------------------------------------------------------------------------- */
+
+.cv-btn-primary,
+.cv-btn-outline,
+.cv-btn-danger-light,
+.cv-btn-qc {
+  min-height: var(--touch-comfortable);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  padding: var(--sp-xs) var(--sp-lg);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+.cv-btn-primary:active,
+.cv-btn-outline:active,
+.cv-btn-danger-light:active,
+.cv-btn-qc:active { transform: scale(0.98); }
+
+.cv-btn-primary { background-color: #3b82f6; color: #ffffff; border: none; box-shadow: var(--shadow-sm); }
+.cv-btn-primary:hover:not(:disabled) { background-color: #2563eb; }
+.cv-btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.cv-btn-outline { background-color: #ffffff; border: 1px solid #e5e7eb; color: #0f172a; }
+.cv-btn-outline:hover { background-color: #f8fafc; }
+
+.cv-btn-danger-light { background-color: #fef2f2; color: #ef4444; border: none; }
+.cv-btn-danger-light:hover { background-color: #fee2e2; }
+
+.cv-btn-qc { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.cv-btn-qc:hover { background-color: #dbeafe; }
+
+.cv-icon-mr { margin-right: var(--sp-3xs); }
+
+/* ---------------------------------------------------------------------------
+   PANEL DE DETALLE
+   --------------------------------------------------------------------------- */
+
+dl.grid-3-cols { margin: 0; }
+
+.cv-detail-banner {
+  margin: 0 0 var(--sp-lg);
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-md);
+  background-color: #eff6ff;
+  /* auto-fit: una columna en movil, varias en escritorio, sin media query. */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr));
+  gap: var(--sp-md);
+}
+.cv-detail-item { display: flex; flex-direction: column; gap: var(--sp-3xs); min-width: 0; }
+.cv-detail-label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  font-weight: 700;
+}
+.cv-detail-label.blue { color: #1e40af; }
+.cv-detail-label.spaced { margin-bottom: var(--sp-2xs); }
+.cv-detail-label.orange { color: #c2410c; }
+.cv-address-value { margin: 0; font-size: var(--fs-md); color: #1e3a8a; font-weight: 600; }
+.cv-detail-value { margin: 0; font-size: var(--fs-sm); color: #0f172a; font-weight: 500; white-space: pre-wrap; }
+.cv-detail-value.small { font-size: var(--fs-xs); }
+.cv-dot-row { margin: 0; display: flex; align-items: center; gap: var(--sp-2xs); }
+.cv-dot-12 { width: 0.75rem; height: 0.75rem; border-radius: 50%; flex-shrink: 0; background-color: var(--dot-color); }
+.cv-note-box {
+  background-color: #f9fafb;
+  padding: var(--sp-md);
+  border-radius: var(--radius-md);
+  border: 1px solid #e5e7eb;
+  width: 100%;
+}
+.cv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
+
+/* ---------------------------------------------------------------------------
+   MODAL DE DIA (lista de trabajos)
+   --------------------------------------------------------------------------- */
+
+.cv-day-modal { max-width: min(100%, 35rem); }
+.cv-day-modal-count { font-size: var(--fs-xs); color: #64748b; font-weight: 500; }
+.cv-day-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-sm);
+  max-height: 60dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-md);
+}
+
+/* Fila de trabajo: la hora tiene ancho propio en escritorio y pasa a apilarse
+   sola en pantallas chicas gracias al minmax + auto-fit del contenedor. */
+.cv-day-job-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-sm);
+  min-height: var(--touch-comfortable);
+  padding: var(--sp-xs) var(--sp-sm);
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid var(--event-color, #cbd5e1);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-day-job-row:hover { background: #f8fafc; box-shadow: var(--shadow-sm); }
+.cv-day-job-row:active { transform: scale(0.995); }
+
+.cv-day-job-time {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.cv-day-job-info { display: flex; flex-direction: column; gap: var(--sp-3xs); min-width: 0; }
+.cv-day-job-client {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-day-job-address {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-day-job-meta { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-3xs); }
+.cv-day-job-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+.cv-day-job-team {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3xs);
+  font-size: var(--fs-2xs);
+  color: #64748b;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   ADAPTACIONES POR ANCHO
+   Solo quedan dos: los cambios que exigen REORGANIZAR el layout, no reescalar.
+   Todo lo demas ya escala con clamp().
+   ============================================================================ */
+
+/* --- Tablet y menos --- */
+@media (max-width: 64rem) {
+  .cv-header-actions { width: 100%; }
+  .view-toggles { flex: 1 1 100%; }
+}
+
+/* --- Movil: la rejilla de mes pasa a lista vertical --- */
+@media (max-width: 48rem) {
+  .cv-page { gap: var(--sp-sm); }
+
+  /* La cuadricula de 7 columnas en 360px da celdas de 45px: ni la fecha cabe.
+     El patron correcto en telefono es una AGENDA vertical. La vista de mes
+     mantiene la cuadricula solo si hay ancho suficiente. */
+  .month-scroll-container { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+  .month-grid-inner { min-width: min(100%, 44rem); }
+
+  .calendar-day-cell { min-height: clamp(4rem, 2rem + 12vw, 6rem); }
+
+  /* Evento tocable con el pulgar: antes medía ~22px de alto. */
+  .calendar-event-month { min-height: var(--touch-min); }
+
+  .cv-modal-overlay { padding: 0; align-items: flex-end; }
+  /* En movil el modal se comporta como hoja inferior: nace del borde de abajo,
+     ocupa el ancho completo y solo redondea las esquinas superiores. */
+  .cv-modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+  .cv-modal-footer { border-radius: 0; }
+  /* Acciones a ancho completo: el objetivo mas facil de acertar con el pulgar. */
+  .cv-modal-footer .cv-btn-primary,
+  .cv-modal-footer .cv-btn-outline,
+  .cv-modal-footer .cv-btn-danger-light,
+  .cv-modal-footer .cv-btn-qc { flex: 1 1 100%; }
+  .cv-footer-actions { width: 100%; }
+}
+
+/* --- Movil chico --- */
+@media (max-width: 32.5rem) {
+  .cv-day-job-row { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2xs); }
+  .cv-day-job-meta { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: var(--sp-sm); }
+  .cv-title { font-size: var(--fs-lg); }
 }

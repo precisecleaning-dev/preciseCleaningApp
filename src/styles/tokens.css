@@ -1,0 +1,208 @@
+/* ============================================================================
+   tokens.css — SISTEMA DE DISEÑO FLUIDO (Mobile-First)
+   ----------------------------------------------------------------------------
+   Se importa ANTES que cualquier otro CSS (ver src/main.tsx). Define las
+   variables que el resto de la app consume para escalar de forma continua entre
+   360px y 1920px SIN media queries por breakpoint.
+
+   Por qué clamp() en vez de breakpoints:
+   los breakpoints producen saltos bruscos y obligan a mantener 3–4 valores por
+   propiedad. clamp(mínimo, preferido, máximo) escala en TODO el rango con un
+   solo valor, y garantiza que nunca baje del mínimo legible ni crezca sin
+   control en monitores anchos.
+
+   Cómo se leen los valores: clamp(MIN, BASE + VWvw, MAX)
+   El término en vw es el que produce el escalado; el rem de base evita que el
+   texto dependa SOLO del viewport (romperia el zoom del navegador, un problema
+   de accesibilidad real: un usuario con zoom al 200% no veria ningun cambio).
+   ============================================================================ */
+
+:root {
+  /* ---------------------------------------------------------------------
+     ESCALA TIPOGRÁFICA FLUIDA
+     Referencia: 360px (móvil chico) → 1440px (escritorio).
+     --------------------------------------------------------------------- */
+  --fs-2xs: clamp(0.65rem, 0.61rem + 0.18vw, 0.75rem);   /* etiquetas, chips */
+  --fs-xs:  clamp(0.72rem, 0.68rem + 0.20vw, 0.82rem);   /* metadatos */
+  --fs-sm:  clamp(0.82rem, 0.78rem + 0.22vw, 0.94rem);   /* texto secundario */
+  --fs-base: clamp(0.94rem, 0.90rem + 0.24vw, 1.06rem);  /* cuerpo */
+  --fs-md:  clamp(1.05rem, 0.99rem + 0.30vw, 1.20rem);   /* subtítulos */
+  --fs-lg:  clamp(1.20rem, 1.10rem + 0.50vw, 1.50rem);   /* títulos de tarjeta */
+  --fs-xl:  clamp(1.45rem, 1.25rem + 0.90vw, 2.00rem);   /* títulos de vista */
+  --fs-2xl: clamp(1.75rem, 1.40rem + 1.60vw, 2.75rem);   /* cifras destacadas */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-normal: 1.55;
+
+  /* ---------------------------------------------------------------------
+     ESPACIADO FLUIDO
+     Los paddings de contenedor crecen con la pantalla; los gaps internos
+     crecen menos, para que en móvil el contenido gane ancho útil.
+     --------------------------------------------------------------------- */
+  --sp-3xs: clamp(0.20rem, 0.18rem + 0.10vw, 0.30rem);
+  --sp-2xs: clamp(0.30rem, 0.26rem + 0.16vw, 0.45rem);
+  --sp-xs:  clamp(0.45rem, 0.40rem + 0.24vw, 0.65rem);
+  --sp-sm:  clamp(0.65rem, 0.58rem + 0.34vw, 0.95rem);
+  --sp-md:  clamp(0.95rem, 0.84rem + 0.50vw, 1.40rem);
+  --sp-lg:  clamp(1.30rem, 1.10rem + 0.90vw, 2.10rem);
+  --sp-xl:  clamp(1.80rem, 1.45rem + 1.55vw, 3.20rem);
+
+  /* Padding lateral de las vistas. En móvil deja el contenido casi a borde
+     completo (el espacio horizontal es el recurso escaso). */
+  --page-pad-x: clamp(0.75rem, 0.35rem + 1.80vw, 2.00rem);
+  --page-pad-y: clamp(0.85rem, 0.55rem + 1.30vw, 1.75rem);
+
+  /* ---------------------------------------------------------------------
+     ÁREAS TÁCTILES
+     48px es el mínimo de las guías de Material y de las WCAG 2.2 (2.5.8).
+     Se expresa en rem para que respete el tamaño de fuente del sistema:
+     un usuario con texto grande obtiene también botones más grandes.
+     --------------------------------------------------------------------- */
+  --touch-min: 3rem;        /* 48px con root de 16px */
+  --touch-comfortable: 3.5rem; /* 56px — acciones primarias, nav inferior */
+  --touch-icon-pad: clamp(0.70rem, 0.60rem + 0.35vw, 0.95rem);
+
+  /* ---------------------------------------------------------------------
+     RADIOS Y SOMBRAS — estética de app nativa
+     --------------------------------------------------------------------- */
+  --radius-sm: 0.75rem;   /* 12px — chips, inputs pequeños */
+  --radius-md: 1rem;      /* 16px — inputs, botones */
+  --radius-lg: 1.5rem;    /* 24px — tarjetas (el pedido explícito) */
+  --radius-xl: 2rem;      /* 32px — modales, hojas inferiores */
+  --radius-pill: 999px;
+
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.10), 0 4px 8px rgba(15, 23, 42, 0.05);
+  --shadow-xl: 0 24px 48px rgba(15, 23, 42, 0.16);
+
+  /* ---------------------------------------------------------------------
+     REJILLAS RESPONSIVAS
+     Ancho mínimo de tarjeta para auto-fit. El min() con 100% evita el
+     desbordamiento clásico: si la pantalla mide menos que el minmax, la
+     columna se sale y aparece scroll horizontal.
+     --------------------------------------------------------------------- */
+  --card-min: min(100%, 16rem);      /* tarjetas de estadística */
+  --card-min-wide: min(100%, 22rem); /* tarjetas de contenido */
+
+  /* Zonas seguras (notch / barra de gestos de iOS y Android). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* ============================================================================
+   UTILIDADES REUTILIZABLES
+   Clases genéricas para no repetir el mismo bloque en 38 archivos.
+   ============================================================================ */
+
+/* Contenedor de vista: padding fluido + respeto de zonas seguras. */
+.u-page {
+  padding: var(--page-pad-y) var(--page-pad-x);
+  padding-left: max(var(--page-pad-x), var(--safe-left));
+  padding-right: max(var(--page-pad-x), var(--safe-right));
+  padding-bottom: max(var(--page-pad-y), var(--safe-bottom));
+  width: 100%;
+  min-height: 100%;
+}
+
+/* Rejilla que se reacomoda sola. Sin media queries: auto-fit decide cuántas
+   columnas caben. En móvil da 1, en tablet 2–3, en escritorio las que quepan. */
+.u-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr));
+  gap: var(--sp-md);
+}
+.u-grid-cards.wide {
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min-wide), 1fr));
+}
+
+/* Tarjeta base: radio pronunciado + sombra suave. */
+.u-card {
+  background-color: #ffffff;
+  border: 1px solid #eef2f7;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-md);
+}
+
+/* Objetivo táctil mínimo garantizado. Se aplica a cualquier control.
+   min-height + min-width en vez de height fija: el contenido puede crecer
+   (dos líneas de texto) sin que el botón se recorte. */
+.u-touch {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  padding: var(--touch-icon-pad) var(--sp-md);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; /* elimina el retraso de 300ms al tocar */
+}
+
+/* Botón que solo lleva icono: cuadrado, sin padding lateral extra. */
+.u-touch-icon {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding: var(--touch-icon-pad);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Elemento pequeño (icono de 16px) que necesita área táctil grande SIN ocupar
+   más espacio visual: el pseudo-elemento extiende la zona de toque por fuera.
+   Resuelve el caso de las X de cerrar y los chevrons dentro de filas densas. */
+.u-touch-extend {
+  position: relative;
+}
+.u-touch-extend::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, var(--touch-min));
+  height: max(100%, var(--touch-min));
+  transform: translate(-50%, -50%);
+}
+
+/* Texto que nunca desborda su contenedor. */
+.u-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tabla que en pantallas chicas hace scroll horizontal con inercia, en lugar
+   de romper el layout de la página entera. */
+.u-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Oculta visualmente pero deja el texto para lectores de pantalla. */
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
