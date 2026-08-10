@@ -1,34 +1,178 @@
-.login-screen { position: fixed; inset: 0; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; z-index: 9999; font-family: inherit; padding: 20px; box-sizing: border-box; }
-.login-card { width: 100%; max-width: 400px; background-color: #ffffff; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); padding: 40px 32px; border: 1px solid #e2e8f0; box-sizing: border-box; }
-.login-header { text-align: center; margin-bottom: 32px; }
-.login-logo { background-color: #1e40af; padding: 0; border: none; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto; box-sizing: border-box; }
-.login-logo.has-logo { background-color: #ffffff; padding: 10px; }
-.login-logo img { width: 250px; max-width: 80%; height: auto; object-fit: contain; }
-.login-title { font-size: 1.6rem; }
-.login-title.recover { margin: 0; color: #0f172a; font-weight: 800; }
-.login-subtitle.recover { margin: 8px 0 0 0; color: #64748b; font-size: 0.95rem; }
-.login-subtitle.reset-sent { color: #475569; font-size: 0.9rem; line-height: 1.5; margin-top: 8px; }
-.login-subtitle.forgot-intro { color: #475569; font-size: 0.92rem; line-height: 1.5; margin: 0; }
+.login-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8fafc;
+  z-index: 9999;
+  font-family: inherit;
+  padding: 20px;
+  box-sizing: border-box;
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background-color: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 40px 32px;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.login-logo {
+  background-color: #1e40af;
+  padding: 0;
+  border: none;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px auto;
+  box-sizing: border-box;
+}
+.login-logo.has-logo {
+  background-color: #ffffff;
+  padding: 10px;
+}
+.login-logo img {
+  width: 250px;
+  max-width: 80%;
+  height: auto;
+  object-fit: contain;
+}
+.login-title {
+  font-size: 1.6rem;
+}
+.login-title.recover {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 800;
+}
+.login-subtitle.recover {
+  margin: 8px 0 0 0;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+.login-subtitle.reset-sent {
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.login-subtitle.forgot-intro {
+  color: #475569;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin: 0;
+}
 
-.login-form { display: flex; flex-direction: column; gap: 24px; }
-.login-forgot-form { display: flex; flex-direction: column; gap: 20px; }
-.login-label { font-size: 0.85rem; color: #334155; font-weight: 700; }
-.login-label.stacked { margin-bottom: 8px; display: block; }
-.login-label-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
-.login-forgot { background: none; border: none; color: #2563eb; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
-.login-input-wrap { position: relative; }
-.login-input { width: 100%; box-sizing: border-box; padding: 12px 14px 12px 42px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; font-size: 0.95rem; background-color: #ffffff; color: #0f172a; }
-.login-input-icon { position: absolute; left: 14px; top: 12px; }
-.login-submit { width: 100%; background-color: #2563eb; color: #ffffff; border: none; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color 0.2s; cursor: pointer; }
-.login-submit:disabled { cursor: wait; }
-.login-link-btn { background: none; border: none; color: #2563eb; font-weight: 700; cursor: pointer; font-size: 0.9rem; }
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.login-forgot-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.login-label {
+  font-size: 0.85rem;
+  color: #334155;
+  font-weight: 700;
+}
+.login-label.stacked {
+  margin-bottom: 8px;
+  display: block;
+}
+.login-label-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.login-forgot {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-input-wrap {
+  position: relative;
+}
+.login-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 12px 42px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  outline: none;
+  font-size: 0.95rem;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+.login-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+}
+.login-submit {
+  width: 100%;
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+.login-submit:disabled {
+  cursor: wait;
+}
+.login-link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
 
-.login-reset-sent { text-align: center; }
-.login-success-box { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
-.login-success-title { margin: 0; color: #047857; font-weight: 700; font-size: 0.95rem; }
+.login-reset-sent {
+  text-align: center;
+}
+.login-success-box {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.login-success-title {
+  margin: 0;
+  color: #047857;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
 
 /* El encabezado "Login to your Account" solo se muestra en móvil */
-.login-hero { display: none; }
+.login-hero {
+  display: none;
+}
 
 @media (max-width: 600px) {
   /* ===== ⭐ MÓVIL: PANTALLA COMPLETA, SIN TARJETA =====
@@ -42,12 +186,16 @@
        · `100dvh` en vez de `100vh`: al aparecer el teclado, 100vh mantiene la
          altura de la barra del navegador y empuja el contenido fuera de
          pantalla. dvh se ajusta al alto REAL disponible.
-       · `justify-content: flex-start` con padding superior: centrar
-         verticalmente hace que todo salte hacia arriba al abrir el teclado.
-         Anclado arriba, el formulario se queda quieto.
+       · CENTRADO VERTICAL sin el salto del teclado: en vez de
+         `justify-content: center` (que recalcula la posicion cuando el
+         teclado reduce el alto y hace saltar todo), se usa `margin: auto 0`
+         sobre la tarjeta. Con espacio de sobra queda centrada; cuando el
+         teclado lo consume, el auto se agota, el contenido llega al tope y
+         el contenedor simplemente hace scroll. Nunca se recorta.
        · Zonas seguras respetadas para el notch y la barra de gestos. */
   .login-screen {
     height: 100dvh;
+    flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
     padding: 0;
@@ -59,34 +207,62 @@
   .login-card {
     max-width: 100%;
     width: 100%;
-    min-height: 100dvh;
+    /* `auto` arriba y abajo = centrado vertical que cede ante el teclado. */
+    margin: auto 0;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
     background-color: #ffffff;
     border: none;
     border-radius: 0;
     box-shadow: none;
-    padding: calc(2.5rem + env(safe-area-inset-top, 0px))
-             clamp(1.25rem, 6vw, 2rem)
-             calc(2rem + env(safe-area-inset-bottom, 0px));
+    padding: calc(1.75rem + env(safe-area-inset-top, 0px))
+      clamp(1.25rem, 6vw, 2rem) calc(1.75rem + env(safe-area-inset-bottom, 0px));
   }
 
   /* Logo centrado y con aire, como en una pantalla de bienvenida nativa. */
-  .login-header { margin-bottom: 2rem; }
-  .login-logo { border-radius: 20px; }
-  .login-logo img { width: 210px; max-width: 62%; }
-  .login-logo svg { width: 44px; height: 44px; }
+  .login-header {
+    margin-bottom: 2rem;
+  }
+  .login-logo {
+    border-radius: 20px;
+  }
+  .login-logo img {
+    width: 210px;
+    max-width: 62%;
+  }
+  .login-logo svg {
+    width: 44px;
+    height: 44px;
+  }
 
   /* Encabezado tipo "Login to your Account": alineado a la izquierda, que es
      como lo presentan las apps nativas (centrado se lee como landing web). */
-  .login-hero { display: block; margin-top: 4px; text-align: left; }
-  .login-hero .login-title { font-size: 1.65rem; margin: 0; color: #0f172a; font-weight: 800; }
-  .login-hero .login-subtitle { margin: 8px 0 0 0; color: #64748b; font-size: 1rem; }
+  .login-hero {
+    display: block;
+    margin-top: 4px;
+    text-align: left;
+  }
+  .login-hero .login-title {
+    font-size: 1.65rem;
+    margin: 0;
+    color: #0f172a;
+    font-weight: 800;
+  }
+  .login-hero .login-subtitle {
+    margin: 8px 0 0 0;
+    color: #64748b;
+    font-size: 1rem;
+  }
 
-  .login-title { font-size: 1.75rem; }
-  .login-subtitle { font-size: 1.02rem; }
-  .login-label { font-size: 0.95rem !important; }
+  .login-title {
+    font-size: 1.75rem;
+  }
+  .login-subtitle {
+    font-size: 1.02rem;
+  }
+  .login-label {
+    font-size: 0.95rem !important;
+  }
 
   /* Campos altos y de esquinas suaves. El 1.05rem de fuente supera los 16px
      reales, así Safari iOS no hace zoom automático al enfocar. */
@@ -102,7 +278,9 @@
     border-color: #93c5fd;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
   }
-  .login-input-icon { top: 20px; }
+  .login-input-icon {
+    top: 20px;
+  }
 
   .login-submit {
     padding: 18px;
@@ -111,14 +289,24 @@
     min-height: 3.5rem;
     box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
   }
-  .login-forgot { font-size: 0.95rem !important; min-height: 2.75rem; }
+  .login-forgot {
+    font-size: 0.95rem !important;
+    min-height: 2.75rem;
+  }
 
   /* El enlace de "¿olvidaste tu contraseña?" / volver queda al final, pegado
      abajo: el pulgar llega sin estirar la mano. */
-  .login-form { gap: 1.35rem; }
+  .login-form {
+    gap: 1.35rem;
+  }
 }
 
 @media (max-width: 380px) {
-  .login-card { padding-left: 1.1rem; padding-right: 1.1rem; }
-  .login-hero .login-title { font-size: 1.45rem; }
+  .login-card {
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+  .login-hero .login-title {
+    font-size: 1.45rem;
+  }
 }
