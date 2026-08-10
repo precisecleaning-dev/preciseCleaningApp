@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { CSSProperties } from 'react';
-import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Activity, Menu } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Square, Activity, Menu } from 'lucide-react';
 import type { Role, Permission, Status } from '../../types/index';
 import { db } from '../../config/firebase';
 import { collection, getDocs, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -171,6 +171,53 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     }));
   };
 
+  // ⭐ SELECCIONAR TODO / NINGUNO.
+  //    Con 21 modulos x 4 permisos son 84 casillas: configurar un rol de
+  //    administrador a mano era tildar 84 veces. El scope se deja intacto: es
+  //    una decision aparte (Own vs All) y no un permiso que se "active".
+  const PERMISSION_FIELDS = ['canView', 'canAdd', 'canEdit', 'canDelete'] as const;
+  type PermissionField = typeof PERMISSION_FIELDS[number];
+
+  const allChecked = formData.permissions.length > 0
+    && formData.permissions.every((p: PermissionExt) =>
+         PERMISSION_FIELDS.every(f => !!p[f]));
+
+  const setAllPermissions = (value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.map((p: PermissionExt) => ({
+        ...p, canView: value, canAdd: value, canEdit: value, canDelete: value,
+      })),
+    }));
+  };
+
+  // ⭐ Maestro por COLUMNA: el caso mas frecuente no es "todo", es "que vean
+  //    todo pero no borren nada". Con esto se resuelve en dos clics.
+  const isColumnChecked = (field: PermissionField): boolean =>
+    formData.permissions.length > 0
+    && formData.permissions.every((p: PermissionExt) => !!p[field]);
+
+  const toggleColumn = (field: PermissionField, value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.map((p: PermissionExt) => ({ ...p, [field]: value })),
+    }));
+  };
+
+  // ⭐ Maestro por FILA: activa los 4 permisos de un modulo de una vez.
+  const isRowChecked = (perm: PermissionExt): boolean =>
+    PERMISSION_FIELDS.every(f => !!perm[f]);
+
+  const toggleRow = (moduleName: string, value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: prev.permissions.map((p: PermissionExt) =>
+        p.module === moduleName
+          ? { ...p, canView: value, canAdd: value, canEdit: value, canDelete: value }
+          : p),
+    }));
+  };
+
   // Toggle de un status específico en la lista permitida para Houses
   const toggleAllowedStatus = (statusId: string) => {
     setFormData(prev => ({
@@ -337,23 +384,62 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                 </div>
               </div>
 
-              <h4 className="rv-section-title">Permissions Matrix</h4>
+              {/* ⭐ Encabezado con el maestro global: 21 modulos x 4 permisos son
+                  84 casillas; sin esto, armar un rol de administrador era tildar
+                  84 veces a mano. */}
+              <div className="rv-matrix-head">
+                <h4 className="rv-section-title no-mb">Permissions Matrix</h4>
+                <button
+                  type="button"
+                  className={`rv-selectall-btn${allChecked ? ' active' : ''}`}
+                  onClick={() => setAllPermissions(!allChecked)}
+                >
+                  {allChecked ? <Square size={15} /> : <CheckSquare size={15} />}
+                  {allChecked ? 'Quitar todo' : 'Seleccionar todo'}
+                </button>
+              </div>
               <div className="rv-matrix-card">
                 <table className="rv-matrix-table">
                   <thead className="rv-matrix-thead">
                     <tr>
                       <th className="rv-th">Module</th>
-                      <th className="rv-th center">View</th>
-                      <th className="rv-th center">Add</th>
-                      <th className="rv-th center">Edit</th>
-                      <th className="rv-th center">Delete</th>
+                      {/* ⭐ Casilla maestra por columna. El caso mas frecuente no es
+                          "todo", sino "que vean todo pero no borren nada": asi se
+                          resuelve en dos clics. */}
+                      {(['canView', 'canAdd', 'canEdit', 'canDelete'] as const).map(field => (
+                        <th key={field} className="rv-th center">
+                          <span className="rv-th-label">
+                            {field === 'canView' ? 'View' : field === 'canAdd' ? 'Add' : field === 'canEdit' ? 'Edit' : 'Delete'}
+                          </span>
+                          <input
+                            type="checkbox"
+                            className="rv-checkbox master"
+                            checked={isColumnChecked(field)}
+                            onChange={e => toggleColumn(field, e.target.checked)}
+                            title={`Marcar o desmarcar esta columna en todos los módulos`}
+                            aria-label={`Seleccionar toda la columna ${field}`}
+                          />
+                        </th>
+                      ))}
                       <th className="rv-th center">Scope</th>
                     </tr>
                   </thead>
                   <tbody>
                     {formData.permissions.map((perm: PermissionExt, idx: number) => (
                       <tr key={idx}>
-                        <td className="rv-td strong">{perm.module}</td>
+                        <td className="rv-td strong">
+                          {/* ⭐ Maestro por fila: los 4 permisos del modulo de una vez. */}
+                          <label className="rv-module-cell">
+                            <input
+                              type="checkbox"
+                              className="rv-checkbox master"
+                              checked={isRowChecked(perm)}
+                              onChange={e => toggleRow(perm.module, e.target.checked)}
+                              aria-label={`Seleccionar todos los permisos de ${perm.module}`}
+                            />
+                            <span>{perm.module}</span>
+                          </label>
+                        </td>
                         <td className="rv-td center"><input type="checkbox" className="rv-checkbox" checked={perm.canView} onChange={e => handlePermissionChange(perm.module, 'canView', e.target.checked)} /></td>
                         <td className="rv-td center"><input type="checkbox" className="rv-checkbox" checked={perm.canAdd} onChange={e => handlePermissionChange(perm.module, 'canAdd', e.target.checked)} /></td>
                         <td className="rv-td center"><input type="checkbox" className="rv-checkbox" checked={perm.canEdit} onChange={e => handlePermissionChange(perm.module, 'canEdit', e.target.checked)} /></td>
