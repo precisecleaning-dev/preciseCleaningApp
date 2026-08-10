@@ -1,0 +1,271 @@
+/* ============================================================================
+   ViewAsUserModal.css
+   Modal de selección de usuario + barra de modo activo.
+   ============================================================================ */
+
+.vau-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050; /* por encima del drawer del menú (10000) */
+  background-color: rgba(15, 23, 42, 0.6);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-md, 1rem);
+}
+
+.vau-modal {
+  width: 100%;
+  max-width: min(100%, 34rem);
+  max-height: min(85dvh, 44rem);
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  border-radius: var(--radius-xl, 2rem);
+  box-shadow: var(--shadow-xl, 0 24px 48px rgba(15, 23, 42, 0.16));
+  overflow: hidden;
+}
+
+/* --- Cabecera --- */
+
+.vau-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-sm, 0.75rem);
+  padding: var(--sp-md, 1rem) var(--sp-lg, 1.5rem);
+  border-bottom: 1px solid #eef2f7;
+}
+.vau-header-info { display: flex; align-items: flex-start; gap: var(--sp-sm, 0.75rem); min-width: 0; }
+.vau-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-md, 1rem);
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+.vau-title { margin: 0; font-size: var(--fs-md, 1.1rem); font-weight: 700; color: #0f172a; }
+.vau-subtitle { margin: 0.25rem 0 0; font-size: var(--fs-xs, 0.8rem); color: #64748b; line-height: 1.4; }
+
+.vau-close {
+  min-height: var(--touch-min, 3rem);
+  min-width: var(--touch-min, 3rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.6rem;
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: #64748b;
+  transition: background-color 0.15s ease;
+}
+.vau-close:hover { background-color: #f1f5f9; }
+
+/* --- Aviso --- */
+
+.vau-note {
+  margin: var(--sp-md, 1rem) var(--sp-lg, 1.5rem) 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-md, 1rem);
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: var(--fs-xs, 0.8rem);
+  line-height: 1.45;
+}
+
+/* --- Búsqueda --- */
+
+.vau-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: var(--sp-md, 1rem) var(--sp-lg, 1.5rem);
+}
+.vau-search-icon { position: absolute; left: 0.85rem; color: #94a3b8; pointer-events: none; }
+.vau-search-input {
+  width: 100%;
+  min-height: var(--touch-min, 3rem);
+  padding: 0.7rem 0.9rem 0.7rem 2.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-md, 1rem);
+  /* 16px reales: evita el zoom automático de Safari iOS al enfocar. */
+  font-size: max(1rem, var(--fs-sm, 0.9rem));
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.vau-search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+
+/* --- Lista --- */
+
+.vau-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-lg, 1.5rem) var(--sp-lg, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2xs, 0.4rem);
+}
+
+.vau-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: #94a3b8;
+  font-size: var(--fs-sm, 0.9rem);
+}
+
+.vau-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-sm, 0.75rem);
+  width: 100%;
+  min-height: var(--touch-comfortable, 3.5rem);
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  background-color: #ffffff;
+  border: 1px solid #eef2f7;
+  border-radius: var(--radius-md, 1rem);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.vau-item:hover { background-color: #f8fafc; border-color: #cbd5e1; }
+
+.vau-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill, 999px);
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+.vau-item-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.vau-item-name {
+  font-size: var(--fs-sm, 0.9rem);
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vau-item-email {
+  font-size: var(--fs-2xs, 0.72rem);
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vau-item-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-pill, 999px);
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  font-size: var(--fs-2xs, 0.72rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* --- Barra de modo activo --- */
+
+.vau-banner {
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm, 0.75rem);
+  flex-wrap: wrap;
+  padding: 0.55rem clamp(0.75rem, 3vw, 1.5rem);
+  padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+  /* Ámbar, no azul: el azul es el color de la interfaz normal y la barra
+     pasaría desapercibida, que es justo lo contrario de lo que hace falta. */
+  background-color: #fef3c7;
+  border-bottom: 1px solid #fcd34d;
+  color: #92400e;
+}
+.vau-banner-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 600;
+  min-width: 0;
+}
+.vau-banner-role {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill, 999px);
+  background-color: rgba(146, 64, 14, 0.12);
+  font-size: var(--fs-2xs, 0.72rem);
+  font-weight: 700;
+}
+.vau-banner-exit {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #92400e;
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: #92400e;
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.vau-banner-exit:hover { background-color: #92400e; color: #fef3c7; }
+
+/* --- Botón del menú lateral --- */
+
+.vau-sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  min-height: var(--touch-min, 3rem);
+  padding: 8px 16px;
+  margin-bottom: 6px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #94a3b8;
+  font-size: 0.86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.vau-sidebar-btn:hover { background-color: rgba(255, 255, 255, 0.06); color: #ffffff; }
+.vau-sidebar-btn.active { background-color: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+
+@media (max-width: 48rem) {
+  .vau-overlay { padding: 0; align-items: flex-end; }
+  .vau-modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-xl, 2rem) var(--radius-xl, 2rem) 0 0;
+  }
+  .vau-sidebar-btn {
+    min-height: 54px;
+    margin: 3px 12px 8px;
+    width: auto;
+    border-radius: 14px;
+    font-size: 1.02rem;
+    padding: 14px 16px;
+  }
+}

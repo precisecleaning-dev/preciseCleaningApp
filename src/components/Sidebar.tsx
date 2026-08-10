@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, FileBarChart
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, FileBarChart, Eye
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -20,6 +20,11 @@ interface NavItemConfig {
 }
 
 interface SidebarProps {
+  /** ⭐ Abre el selector "Ver como otro usuario". Si no se pasa, el boton no
+   *  se renderiza (App decide si la funcion esta disponible). */
+  onViewAsUser?: () => void;
+  /** ⭐ Ya se esta viendo como otra persona: el boton pasa a "Salir". */
+  isViewingAsUser?: boolean;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeTab: TabOptions;
@@ -30,7 +35,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin
+  isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin,
+  onViewAsUser, isViewingAsUser = false,
 }: SidebarProps) {
 
   // ⭐ Helper centralizado para chequear permisos por módulo.
@@ -41,6 +47,26 @@ export default function Sidebar({
     if (!activeRole) return false;
     const permission = activeRole.permissions?.find((p: Permission) => p.module === moduleName);
     return permission ? !!permission.canView : false;
+  };
+
+  // ⭐ Permiso NUEVO con respaldo al anterior.
+  //
+  //    Varios items (Pipeline, No Status, Recalls, QC Reports, Empresa, Fotos,
+  //    Activity Log) no tenian modulo propio en Roles y se colgaban del permiso
+  //    de otro. Ahora cada uno tiene el suyo, pero los roles YA GUARDADOS no lo
+  //    tienen marcado: si se exigiera el permiso nuevo sin mas, al desplegar
+  //    esos items desaparecerian del menu de todos y pareceria que se rompio
+  //    la app.
+  //
+  //    Por eso: si el rol NO declara el modulo nuevo (nunca fue configurado),
+  //    manda la regla vieja. En cuanto alguien abra ese rol en Roles &
+  //    Permissions y lo guarde, el modulo queda declarado y pasa a mandar el
+  //    permiso propio.
+  const canViewOrLegacy = (moduleName: string, legacy: boolean): boolean => {
+    if (isSuperAdmin) return true;
+    if (!activeRole) return false;
+    const declared = activeRole.permissions?.find((p: Permission) => p.module === moduleName);
+    return declared ? !!declared.canView : legacy;
   };
 
   // ⭐ Helper para saber si mostrar el header "ADMIN" en el menú.
@@ -76,11 +102,11 @@ export default function Sidebar({
   const mainNavItems: NavItemConfig[] = [
     // ⭐ HOUSES — check propio
     { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
-    { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canView('Houses') },
+    { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canViewOrLegacy('Pipeline', canView('Houses')) },
     // ⭐ NO STATUS — casas sin estado asignado. Usa el permiso de Houses para
     //    que funcione sin tocar el catalogo de Roles; si mas adelante quieres un
     //    permiso propio, agrega el modulo "No Status" y cambia el canView de aqui.
-    { tab: 'no_status', label: 'No Status', icon: HelpCircle, visible: canView('Houses') },
+    { tab: 'no_status', label: 'No Status', icon: HelpCircle, visible: canViewOrLegacy('No Status', canView('Houses')) },
     // ⭐ INVOICES — check INDEPENDIENTE de Houses
     { tab: 'invoices', label: 'Invoices', icon: FileText, visible: canView('Invoices') },
     // ⭐ CALENDAR
@@ -90,7 +116,7 @@ export default function Sidebar({
     // ⭐ QUALITY CHECK REPORTS — inspecciones ya finalizadas, en formato tabla.
     //    Comparte el permiso "Quality Check": quien puede inspeccionar tambien
     //    puede revisar lo inspeccionado.
-    { tab: 'qc_reports_table', label: 'Quality Check Reports', icon: FileBarChart, visible: canView('Quality Check') },
+    { tab: 'qc_reports_table', label: 'Quality Check Reports', icon: FileBarChart, visible: canViewOrLegacy('Quality Check Reports', canView('Quality Check')) },
     // ⭐ STATUS HISTORY — historial de status por casa
     // ⭐ STATUS HISTORY — SOLO su propio permiso (el fallback a Houses se eliminó:
     //    existía de antes de que el módulo estuviera en Roles y hacía que roles sin
@@ -115,12 +141,12 @@ export default function Sidebar({
     //    ya administre la configuracion — el mismo permiso que Empresa y Fotos.
     {
       tab: 'activity_log', label: 'Activity Log', icon: ScrollText,
-      visible: isSuperAdmin || canView('Activity Log') || canViewSettings,
+      visible: canViewOrLegacy('Activity Log', canViewSettings),
     },
     // ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en documentos, login y menú)
-    { tab: 'company', label: 'Empresa', icon: Building2, visible: canViewSettings },
+    { tab: 'company', label: 'Empresa', icon: Building2, visible: canViewOrLegacy('Company Settings', canViewSettings) },
     // ⭐ FOTOS — compresión/opciones de captura de fotos (mismo permiso que Empresa/Settings)
-    { tab: 'photo_settings', label: 'Fotos', icon: Camera, visible: canViewSettings },
+    { tab: 'photo_settings', label: 'Fotos', icon: Camera, visible: canViewOrLegacy('Photo Settings', canViewSettings) },
     {
       tab: 'settings', label: 'Settings', icon: SettingsIcon, visible: canViewSettings,
       onClick: () => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); },
@@ -182,6 +208,22 @@ export default function Sidebar({
         </nav>
 
         <div className="sidebar-footer">
+          {/* ⭐ VER COMO OTRO USUARIO — se muestra solo si App habilito la funcion
+              (permiso "View As User" en Roles & Permissions). Vive en el pie, junto
+              a Log Out, porque es una accion sobre la SESION, no una vista mas. */}
+          {onViewAsUser && (
+            <button
+              type="button"
+              className={`vau-sidebar-btn${isViewingAsUser ? ' active' : ''}`}
+              onClick={() => {
+                onViewAsUser();
+                if (window.innerWidth <= 768) setIsSidebarOpen(false);
+              }}
+            >
+              <Eye size={18} />
+              {isSidebarOpen && (isViewingAsUser ? 'Salir de la vista' : 'Ver como otro usuario')}
+            </button>
+          )}
           <button
             className="logout-btn"
             onClick={handleLogout}

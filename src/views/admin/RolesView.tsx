@@ -23,19 +23,33 @@ type RoleExt = Omit<Role, 'permissions'> & { permissions: PermissionExt[]; descr
 
 // ⭐ TODOS los módulos del sistema (deben coincidir EXACTAMENTE con los nombres usados en cada View)
 const DEFAULT_MODULES = [
+  // --- Operacion diaria ---
   'Houses',
+  'Pipeline',
+  'No Status',
   'Notice Board',
   'Calendar',
-  'Quality Check',
   'Checklist',
+  // --- Calidad ---
+  'Quality Check',
+  'Quality Check Reports',
+  'Recalls',
+  // --- Administracion del negocio ---
   'Status History',
   'Payroll',
   'Invoices',
   'Customers',
+  // --- Sistema ---
+  'Activity Log',
   'Roles & Permissions',
   'System Users',
   'Data Import',
-  'Settings'
+  'Company Settings',
+  'Photo Settings',
+  'Settings',
+  // ⭐ Permiso especial, no es una vista: habilita el boton "Ver como otro
+  //    usuario" del menu lateral. Ver src/components/ViewAsUserModal.tsx.
+  'View As User',
 ];
 
 // ⭐ GRUPOS de elementos del módulo Houses que pueden ser mostrados u ocultos por rol.

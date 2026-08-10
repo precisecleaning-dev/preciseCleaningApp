@@ -31,41 +31,94 @@
 .login-hero { display: none; }
 
 @media (max-width: 600px) {
-  /* ===== Estilo móvil moderno: fondo lavanda + tarjeta limpia centrada ===== */
+  /* ===== ⭐ MÓVIL: PANTALLA COMPLETA, SIN TARJETA =====
+     Antes el login era una tarjeta flotante centrada sobre un fondo lavanda:
+     un patrón de escritorio encogido. Una app instalada no muestra tarjetas
+     al iniciar sesión — el formulario ES la pantalla.
+
+     Cambios:
+       · La tarjeta pierde fondo, sombra, borde y radio: se funde con la
+         pantalla y el formulario ocupa todo el ancho útil.
+       · `100dvh` en vez de `100vh`: al aparecer el teclado, 100vh mantiene la
+         altura de la barra del navegador y empuja el contenido fuera de
+         pantalla. dvh se ajusta al alto REAL disponible.
+       · `justify-content: flex-start` con padding superior: centrar
+         verticalmente hace que todo salte hacia arriba al abrir el teclado.
+         Anclado arriba, el formulario se queda quieto.
+       · Zonas seguras respetadas para el notch y la barra de gestos. */
   .login-screen {
-    padding: 20px;
-    align-items: center;
-    background: linear-gradient(160deg, #eef1fd 0%, #e2e6fb 100%) !important;
-  }
-  .login-card {
-    max-width: 460px;
-    border-radius: 26px;
-    padding: 34px 26px 30px;
-    border: none;
-    box-shadow: 0 22px 60px rgba(79, 70, 229, 0.18);
+    height: 100dvh;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+    background: #ffffff !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
-  /* Logo un poco más contenido para dejar aire al título */
+  .login-card {
+    max-width: 100%;
+    width: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    background-color: #ffffff;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: calc(2.5rem + env(safe-area-inset-top, 0px))
+             clamp(1.25rem, 6vw, 2rem)
+             calc(2rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Logo centrado y con aire, como en una pantalla de bienvenida nativa. */
+  .login-header { margin-bottom: 2rem; }
   .login-logo { border-radius: 20px; }
-  .login-logo img { width: 210px; max-width: 70%; }
+  .login-logo img { width: 210px; max-width: 62%; }
   .login-logo svg { width: 44px; height: 44px; }
 
-  /* Encabezado tipo "Login to your Account" */
-  .login-hero { display: block; margin-top: 4px; }
-  .login-hero .login-title { font-size: 1.7rem; margin: 0; color: #0f172a; font-weight: 800; }
+  /* Encabezado tipo "Login to your Account": alineado a la izquierda, que es
+     como lo presentan las apps nativas (centrado se lee como landing web). */
+  .login-hero { display: block; margin-top: 4px; text-align: left; }
+  .login-hero .login-title { font-size: 1.65rem; margin: 0; color: #0f172a; font-weight: 800; }
   .login-hero .login-subtitle { margin: 8px 0 0 0; color: #64748b; font-size: 1rem; }
 
-  .login-title { font-size: 1.95rem; }
-  .login-subtitle { font-size: 1.05rem; }
-  .login-label { font-size: 1rem !important; }
-  .login-input { padding: 16px 16px 16px 48px; font-size: 1.05rem; border-radius: 14px; background-color: #f8fafc; }
-  .login-input:focus { background-color: #ffffff; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
-  .login-input-icon { top: 17px; }
-  .login-submit { padding: 18px; font-size: 1.15rem; border-radius: 14px; box-shadow: 0 10px 22px rgba(37,99,235,0.28); }
-  .login-forgot { font-size: 0.95rem !important; }
+  .login-title { font-size: 1.75rem; }
+  .login-subtitle { font-size: 1.02rem; }
+  .login-label { font-size: 0.95rem !important; }
+
+  /* Campos altos y de esquinas suaves. El 1.05rem de fuente supera los 16px
+     reales, así Safari iOS no hace zoom automático al enfocar. */
+  .login-input {
+    padding: 17px 16px 17px 48px;
+    font-size: 1.05rem;
+    border-radius: 14px;
+    background-color: #f8fafc;
+    min-height: 3.5rem;
+  }
+  .login-input:focus {
+    background-color: #ffffff;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  }
+  .login-input-icon { top: 20px; }
+
+  .login-submit {
+    padding: 18px;
+    font-size: 1.1rem;
+    border-radius: 14px;
+    min-height: 3.5rem;
+    box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
+  }
+  .login-forgot { font-size: 0.95rem !important; min-height: 2.75rem; }
+
+  /* El enlace de "¿olvidaste tu contraseña?" / volver queda al final, pegado
+     abajo: el pulgar llega sin estirar la mano. */
+  .login-form { gap: 1.35rem; }
 }
 
 @media (max-width: 380px) {
-  .login-card { padding: 30px 20px 26px; }
-  .login-hero .login-title { font-size: 1.5rem; }
+  .login-card { padding-left: 1.1rem; padding-right: 1.1rem; }
+  .login-hero .login-title { font-size: 1.45rem; }
 }

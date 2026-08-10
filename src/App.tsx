@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import RouteTransition, { ViewSkeleton } from './components/RouteTransition';
 import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
+import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
 import LoginView from './views/auth/LoginView';
 
@@ -247,12 +248,39 @@ export default function App() {
     }
   };
 
-  const activeRole = useMemo(() => {
+  // ⭐ VER COMO OTRO USUARIO. Deliberadamente NO se persiste en localStorage:
+  //    es una herramienta de inspeccion momentanea. Si sobreviviera a un
+  //    refresco, seria facil olvidarse y trabajar dias creyendo tener menos
+  //    permisos de los reales.
+  const [viewAs, setViewAs] = useState<ViewAsSelection | null>(null);
+  const [isViewAsModalOpen, setIsViewAsModalOpen] = useState(false);
+
+  // Rol y usuario REALES (los de la sesion), antes de cualquier suplantacion.
+  const realRole = useMemo(() => {
     if (!currentUser || roles.length === 0) return null;
     return roles.find(r => r.id === currentUser.roleId) || null;
   }, [currentUser, roles]);
 
-  const isSuperAdmin = isBypass || activeRole?.name === 'Administrator';
+  const realIsSuperAdmin = isBypass || realRole?.name === 'Administrator';
+
+  // ⭐ A partir de aqui TODA la app usa activeRole / effectiveUser. Al suplantar,
+  //    estos apuntan al usuario elegido, asi que el menu, los botones por rol y
+  //    los filtros "solo mis casas" se comportan igual que para esa persona.
+  const activeRole = viewAs ? viewAs.role : realRole;
+  const effectiveUser = viewAs ? viewAs.user : currentUser;
+
+  // Mientras se suplanta NUNCA se hereda el superadmin del usuario real: si no,
+  // se veria todo igual y la funcion no serviria para nada.
+  const isSuperAdmin = viewAs
+    ? activeRole?.name === 'Administrator'
+    : realIsSuperAdmin;
+
+  // ⭐ ¿Puede usar la herramienta? Permiso propio "View As User", o ser admin.
+  const canUseViewAs = realIsSuperAdmin
+    || !!realRole?.permissions?.find((p: { module: string; canView?: boolean }) =>
+         p.module === 'View As User')?.canView;
+
+  const exitViewAs = () => setViewAs(null);
 
   // ⭐ CUMPLIMIENTO ESTRICTO DE PERMISOS POR MÓDULO: el Sidebar oculta los items,
   //    pero el tab activo puede llegar por localStorage (última pestaña usada) o
@@ -287,9 +315,11 @@ export default function App() {
   //    assignedWorkers (ids de system_users) o comparte teamId — exactamente la
   //    misma regla que HousesView aplica internamente (propertiesWithScope).
   const isOwnProperty = (prop: Property): boolean => {
-    if (!currentUser) return false;
-    if (prop.assignedWorkers?.includes(currentUser.id)) return true;
-    return !!(currentUser.teamId && prop.teamId === currentUser.teamId);
+    // ⭐ Se usa effectiveUser: al ver como otra persona, el filtro "solo mis
+    //    casas" debe aplicar SUS asignaciones, no las del admin que inspecciona.
+    if (!effectiveUser) return false;
+    if (prop.assignedWorkers?.includes(effectiveUser.id)) return true;
+    return !!(effectiveUser.teamId && prop.teamId === effectiveUser.teamId);
   };
   const moduleScope = (module: string): 'All' | 'Own' => {
     if (isSuperAdmin) return 'All';
@@ -354,6 +384,10 @@ export default function App() {
   return (
     <div className="app-container">
       <Sidebar 
+        onViewAsUser={canUseViewAs
+          ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
+          : undefined}
+        isViewingAsUser={!!viewAs}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         activeTab={activeTab}
@@ -366,6 +400,16 @@ export default function App() {
       {/* ⭐ `key` por pestaña: fuerza un contenedor nuevo en cada navegacion, que
           es lo que permite reiniciar el scroll y animar la entrada. */}
       <main className="main-content" ref={mainRef}>
+        {/* ⭐ Barra fija de modo inspeccion: sin algo asi es facil olvidar que se
+            esta viendo como otra persona, confundirse por los botones que faltan
+            y creer que la app tiene un error. */}
+        {viewAs && (
+          <ViewAsBanner
+            userName={[viewAs.user.firstName, viewAs.user.lastName].filter(Boolean).join(' ') || viewAs.user.email || 'Usuario'}
+            roleName={viewAs.role?.name || 'Sin rol'}
+            onExit={exitViewAs}
+          />
+        )}
         {/* ⭐ Esqueleto en vez del spinner de pantalla completa: dibuja la FORMA
             de lo que viene, reduce la espera percibida y evita el salto de
             layout. Con la precarga en reposo casi nunca llega a verse. */}
@@ -376,7 +420,7 @@ export default function App() {
             properties={visibleProperties as any}
             setProperties={setProperties as any}
             onOpenMenu={toggleMenu}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
             houseToOpenDetail={houseToOpenDetail as any}
@@ -392,7 +436,7 @@ export default function App() {
             properties={visibleProperties as any}
             setProperties={setProperties as any}
             onOpenMenu={toggleMenu}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
@@ -405,7 +449,7 @@ export default function App() {
             properties={visibleProperties}
             setProperties={setProperties}
             onOpenMenu={toggleMenu}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
@@ -414,7 +458,7 @@ export default function App() {
         {activeTab === 'activity_log' && (
           <ActivityLogView
             onOpenMenu={toggleMenu}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
@@ -425,7 +469,7 @@ export default function App() {
             properties={visibleProperties} 
             setProperties={setProperties} 
             onOpenMenu={toggleMenu} 
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
@@ -435,7 +479,7 @@ export default function App() {
         {activeTab === 'board' && (
           <NoticeBoardView 
             onOpenMenu={toggleMenu} 
-            currentUser={currentUser} 
+            currentUser={effectiveUser} 
             isSuperAdmin={isSuperAdmin}
           />
         )}
@@ -451,7 +495,7 @@ export default function App() {
         
         {/* ⭐ Payroll recibe contexto de usuario para poder abrir el formulario de
             edición de casa (HousesView modals-only) con los permisos correctos */}
-        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} currentUser={currentUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
+        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} currentUser={effectiveUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
 
         {activeTab === 'qc_report' && (
           <>
@@ -461,7 +505,7 @@ export default function App() {
               properties={visibleProperties as any}
               houseToInspect={houseToInspect as any}
               clearHouseToInspect={() => setHouseToInspect(null)}
-              currentUser={currentUser}
+              currentUser={effectiveUser}
               onOpenHouseDetail={(house) => setHouseToOpenDetail(house as any)}
               onOpenHouseEdit={(house) => setHouseToOpenEdit(house as any)}
             />
@@ -472,7 +516,7 @@ export default function App() {
               properties={visibleProperties as any}
               setProperties={setProperties as any}
               onOpenMenu={toggleMenu}
-              currentUser={currentUser}
+              currentUser={effectiveUser}
               activeRole={activeRole}
               isSuperAdmin={isSuperAdmin}
               houseToOpenDetail={houseToOpenDetail as any}
@@ -491,7 +535,7 @@ export default function App() {
             onOpenMenu={toggleMenu}
             properties={visibleProperties}
             setProperties={setProperties}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
@@ -502,7 +546,7 @@ export default function App() {
           <RecallsView 
             onOpenMenu={toggleMenu} 
             properties={visibleProperties}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
           />
         )}
 
@@ -547,7 +591,7 @@ export default function App() {
           <QCRouteView
             onOpenMenu={toggleMenu}
             properties={visibleProperties}
-            currentUser={currentUser}
+            currentUser={effectiveUser}
           />
         )}
 
@@ -560,6 +604,15 @@ export default function App() {
         </RouteTransition>
         </Suspense>
       </main>
+
+      {isViewAsModalOpen && (
+        <ViewAsUserModal
+          roles={roles}
+          currentUserId={currentUser?.id}
+          onSelect={(sel) => { setViewAs(sel); setIsViewAsModalOpen(false); }}
+          onClose={() => setIsViewAsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
