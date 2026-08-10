@@ -1,10 +1,57 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>precise-app</title>
+
+    <!--
+      ⭐ viewport-fit=cover: sin esto, env(safe-area-inset-*) devuelve 0 y el
+      contenido queda por debajo del notch y de la barra de gestos en iPhone.
+      Es requisito para que la app instalada ocupe la pantalla completa bien.
+
+      NO se usa user-scalable=no ni maximum-scale=1: bloquear el zoom es una
+      barrera de accesibilidad real para quien necesita ampliar, y iOS lo ignora
+      desde hace años. El zoom accidental al escribir ya se evita con el
+      font-size de 16px en los inputs (ver src/index.css).
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ⭐ Pinta la barra de estado del sistema con el color de la app: es lo que
+         hace que la ventana se vea como una app y no como un navegador. -->
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- ⭐ iOS: modo pantalla completa al abrir desde el ícono de inicio. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Precise" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ⭐ Evita que iOS convierta números en enlaces de teléfono y rompa el
+         estilo de tablas con importes y fechas. -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <title>Precise Cleaning</title>
+
+    <style>
+      /*
+        ⭐ Estas reglas viven en el HTML a propósito: se aplican ANTES de que
+        cargue el CSS de la app. Si estuvieran en un .css, durante los primeros
+        fotogramas el gesto de arrastre todavía dispararía el "pull to refresh"
+        del navegador, que en una PWA recarga todo y pierde el estado.
+      */
+      html, body {
+        overscroll-behavior-y: none;
+        background-color: #f7f9fc;
+      }
+      /* Pantalla de arranque: evita el destello blanco entre que carga el HTML
+         y que React monta. Se oculta sola cuando #root recibe contenido. */
+      #root:empty::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: #f7f9fc;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

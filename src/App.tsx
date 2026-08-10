@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import RouteTransition, { ViewSkeleton } from './components/RouteTransition';
+import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
+import { useScrollMemory } from './utils/useScrollMemory';
 import Sidebar from './components/Sidebar';
 import LoginView from './views/auth/LoginView';
 
@@ -87,6 +90,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   
   const [activeTab, setActiveTab] = useState<TabOptions>(getInitialTab); // ⭐ Restaura la última pestaña usada
+
+  // ⭐ El area de contenido recuerda su scroll por pestaña: volver a Overview
+  //    despues de abrir una casa deja la lista donde estaba, no arriba del todo.
+  const mainRef = useScrollMemory<HTMLElement>(activeTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth > 768;
     return true;
@@ -308,6 +315,19 @@ export default function App() {
 
   const toggleMenu = () => setIsSidebarOpen(!isSidebarOpen);
 
+  // ⭐ PRECARGA EN REPOSO de los modulos mas usados. Arranca solo cuando ya hay
+  //    sesion y datos: antes de eso el ancho de banda le pertenece a Firestore,
+  //    que es lo que el usuario esta esperando ver. Ver src/utils/viewPrefetch.ts.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    // La pestana ACTUAL primero: si el usuario recargo estando en Invoices,
+    // ese chunk es el unico que bloquea la pantalla ahora mismo.
+    prefetchView(activeTab);
+    return startIdlePrefetch();
+    // Solo debe arrancar al iniciar sesion, no en cada cambio de pestana.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
   // ⭐ ¿Está toda la data base lista para pintar las vistas?
   //    - En modo normal: properties + roles + perfil con su primer snapshot.
   //    - En modo bypass: solo properties (no hay perfil/roles de Firestore).
@@ -343,11 +363,14 @@ export default function App() {
         isSuperAdmin={isSuperAdmin}
       />
 
-      <main className="main-content">
-        {/* ⭐ Suspense: mientras se descarga el archivo de la vista se muestra
-            el mismo loader de siempre. Solo ocurre la primera vez que se abre
-            cada modulo; despues queda en cache del navegador. */}
-        <Suspense fallback={<LoadingScreen text="Cargando módulo..." />}>
+      {/* ⭐ `key` por pestaña: fuerza un contenedor nuevo en cada navegacion, que
+          es lo que permite reiniciar el scroll y animar la entrada. */}
+      <main className="main-content" ref={mainRef}>
+        {/* ⭐ Esqueleto en vez del spinner de pantalla completa: dibuja la FORMA
+            de lo que viene, reduce la espera percibida y evita el salto de
+            layout. Con la precarga en reposo casi nunca llega a verse. */}
+        <Suspense fallback={<ViewSkeleton />}>
+        <RouteTransition routeKey={activeTab}>
         {activeTab === 'houses' && (
           <HousesView
             properties={visibleProperties as any}
@@ -534,6 +557,7 @@ export default function App() {
             <p className="app-under-construction-text">The {activeTab.replace('_', ' ')} view is currently being developed.</p>
           </div>
         )}
+        </RouteTransition>
         </Suspense>
       </main>
     </div>

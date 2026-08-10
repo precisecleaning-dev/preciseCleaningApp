@@ -87,7 +87,50 @@ button, a, .nav-item, [role="button"] {
 .nav-item.active { background-color: var(--bg-sidebar-active); color: white; font-weight: 500; }
 
 /* --- Contenido Principal --- */
-.main-content { flex: 1; padding: 30px; overflow-y: auto; width: 100%; }
+/* ⭐ SENSACION NATIVA DEL AREA DE CONTENIDO.
+   - `-webkit-overflow-scrolling: touch`: scroll con inercia en iOS. Sin esto
+     el desplazamiento se detiene en seco al soltar y se lee como una web.
+   - `overscroll-behavior: contain`: al llegar al final de la lista, el gesto
+     NO arrastra la pagina de atras ni dispara el "pull to refresh" del
+     navegador. En una PWA instalada ese refresco accidental recarga la app
+     entera y pierde el estado: es de los tropiezos mas molestos.
+   - `scrollbar-gutter: stable`: reserva el ancho de la barra de scroll, asi el
+     contenido no se desplaza lateralmente al pasar de una vista corta a una
+     larga. */
+.main-content {
+  flex: 1;
+  padding: 30px;
+  width: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+/* ⭐ RESPUESTA INMEDIATA AL TOQUE.
+   Una app nativa reacciona en el momento en que el dedo baja, no cuando se
+   levanta. `:active` con una escala minima da esa confirmacion instantanea sin
+   esperar a que la vista termine de montar. La transicion de salida es mas
+   lenta que la de entrada para que el rebote se sienta fisico. */
+button:active:not(:disabled),
+[role='button']:active {
+  transform: scale(0.97);
+}
+button, [role='button'] {
+  transition: transform 140ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ⭐ Sin seleccion de texto accidental al mantener pulsado un control: en movil
+   un toque largo sobre un boton mostraba la lupa de seleccion del sistema. */
+button, [role='button'], .nav-item {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled),
+  [role='button']:active { transform: none; }
+}
 
 /* Cabecera Principal */
 .main-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; gap: 16px; flex-wrap: wrap; }

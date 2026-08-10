@@ -7,6 +7,7 @@ import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
 import type { TabOptions } from '../App';
+import { prefetchHandlers } from '../utils/viewPrefetch';
 import './Sidebar.css';
 
 interface NavItemConfig {
@@ -59,10 +60,17 @@ export default function Sidebar({
   };
 
   const handleNavClick = (tab: TabOptions) => {
-    setActiveTab(tab);
+    // ⭐ En movil el menu se cierra PRIMERO y el cambio de vista se aplica en el
+    //    siguiente fotograma. Hacer las dos cosas en el mismo tick obligaba al
+    //    navegador a animar el cierre del drawer MIENTRAS monta la vista nueva:
+    //    la animacion perdia fotogramas y se veia un tiron. Separandolas, el
+    //    cierre corre limpio y el montaje ocurre detras del menu que se va.
     if (window.innerWidth <= 768) {
       setIsSidebarOpen(false);
+      requestAnimationFrame(() => setActiveTab(tab));
+      return;
     }
+    setActiveTab(tab);
   };
 
   const mainNavItems: NavItemConfig[] = [
@@ -126,9 +134,15 @@ export default function Sidebar({
 
   const renderNavItem = (item: NavItemConfig) => (
     <li key={item.tab}>
+      {/* ⭐ prefetchHandlers descarga el modulo al pasar el mouse (escritorio) o
+          al APOYAR el dedo (movil), antes del click. Entre pointerdown y click
+          hay ~90ms: suficiente para adelantar la descarga y que el cambio de
+          vista se sienta instantaneo. Ver src/utils/viewPrefetch.ts. */}
       <button
         className={`nav-item ${activeTab === item.tab ? 'active' : ''}`}
         onClick={item.onClick ?? (() => handleNavClick(item.tab))}
+        aria-current={activeTab === item.tab ? 'page' : undefined}
+        {...prefetchHandlers(item.tab)}
       >
         <item.icon size={18} className="nav-icon" />
         {isSidebarOpen && <span className="nav-text">{item.label}</span>}
