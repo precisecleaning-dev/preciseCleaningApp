@@ -257,7 +257,13 @@ export const exportQCReportPDF = async (args: {
               .summary-num.bad { color: #b91c1c; }
               .summary-sm { font-size: 13px; font-weight: 700; color: #94a3b8; }
               .summary-lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 8px; }
-              .place-section { margin-bottom: 32px; page-break-inside: avoid; }
+              /* Un area con 6-8 fotos mide mas que una hoja A4, asi que pedirle
+                 al generador que no la parta es imposible de cumplir: empujaba
+                 el area entera a la pagina siguiente y dejaba media hoja en
+                 blanco. Ahora el area PUEDE partirse; se protege solo cada foto
+                 y se evita que el encabezado quede huerfano al final de pagina. */
+              .place-section { margin-bottom: 28px; }
+              .place-header { page-break-after: avoid; break-after: avoid; }
               .place-header {
                 display: flex; justify-content: space-between; align-items: center;
                 padding: 12px 18px; background: #1e40af; border-radius: 10px 10px 0 0;
@@ -304,7 +310,7 @@ export const exportQCReportPDF = async (args: {
                 @page { margin: 12mm; size: A4; }
                 body { background: #ffffff; padding: 0; }
                 .container { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; border-top: none; }
-                .place-section, .photo-item, .summary-card, .info-item { break-inside: avoid; }
+                .photo-item, .summary-card, .info-item { break-inside: avoid; }
               }
             </style>
           </head>
