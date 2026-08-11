@@ -426,7 +426,7 @@ export default function QCReportsTableView({
       <header className="main-header qcrt-header">
         <div>
           <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · PDF, WhatsApp y email · v2</p>
+          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v3</p>
         </div>
       </header>
 
@@ -492,6 +492,12 @@ export default function QCReportsTableView({
         <table className="qcrt-table">
           <thead>
             <tr>
+              {/* ⭐ ENVIAR va PRIMERO y fijo a la izquierda. Antes estaba al final:
+                  la tabla mide 980px minimo, asi que en un portatil con el menu
+                  abierto esa columna quedaba fuera de pantalla y los botones no
+                  se veian nunca. Aqui son lo primero que aparece y no se pierden
+                  al desplazar horizontalmente. */}
+              <th className="qcrt-th center actions">Enviar</th>
               <th className="qcrt-th">Result</th>
               <th className="qcrt-th center">Score</th>
               <th className="qcrt-th">House Status</th>
@@ -500,7 +506,6 @@ export default function QCReportsTableView({
               <th className="qcrt-th">Team</th>
               <th className="qcrt-th">Inspector</th>
               <th className="qcrt-th">Duration</th>
-              <th className="qcrt-th center actions">Enviar</th>
             </tr>
           </thead>
           <tbody>
@@ -521,6 +526,40 @@ export default function QCReportsTableView({
               const scoreColors = passRateColors(score.passRate, score.hasData);
               return (
                 <tr key={r.id} className="qcrt-row">
+                  {/* ⭐ PRIMERA columna: los tres envíos, siempre a la vista. */}
+                  <td className="qcrt-td center actions">
+                    <div className="qcrt-actions-row">
+                      <button
+                        type="button"
+                        className="qcrt-wa-btn"
+                        onClick={() => handleShareWhatsApp(r)}
+                        disabled={sharingId === r.id}
+                        title="Enviar por WhatsApp"
+                        aria-label="Enviar por WhatsApp"
+                      >
+                        {sharingId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <Send size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        className="qcrt-mail-btn"
+                        onClick={() => handleSendEmail(r)}
+                        title="Enviar por email"
+                        aria-label="Enviar por email"
+                      >
+                        <Mail size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="qcrt-pdf-icon-btn"
+                        onClick={() => handleExportPdf(r)}
+                        disabled={exportingId === r.id}
+                        title="Ver el reporte en PDF"
+                        aria-label="Ver el reporte en PDF"
+                      >
+                        {exportingId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <Printer size={16} />}
+                      </button>
+                    </div>
+                  </td>
                   <td className="qcrt-td">
                     <span
                       className="qcrt-badge"
@@ -562,45 +601,6 @@ export default function QCReportsTableView({
                   </td>
                   <td className="qcrt-td muted">
                     <span className="qcrt-inline-cell"><Clock size={14} /> {fmtDuration(r.durationMinutes)}</span>
-                  </td>
-                  <td className="qcrt-td center actions">
-                    {/* ⭐ Contenedor flex explicito. Antes los tres botones eran
-                        hijos directos del <td> y dependian de que la celda se
-                        ensanchara sola; si la tabla repartia poco ancho a esta
-                        columna, los botones se recortaban por el overflow y solo
-                        quedaba visible el primero. Con un flex de ancho propio la
-                        celda no puede encogerlos. */}
-                    <div className="qcrt-actions-row">
-                    <button
-                      type="button"
-                      className="qcrt-pdf-btn"
-                      onClick={() => handleExportPdf(r)}
-                      disabled={exportingId === r.id}
-                      title="Ver el reporte en PDF"
-                    >
-                      {exportingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Printer size={15} />} PDF
-                    </button>
-                    {/* ⭐ Enviar por WhatsApp: en movil adjunta el PDF real. */}
-                    <button
-                      type="button"
-                      className="qcrt-wa-btn"
-                      onClick={() => handleShareWhatsApp(r)}
-                      disabled={sharingId === r.id}
-                      title="Enviar por WhatsApp"
-                    >
-                      {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />}
-                    </button>
-                    {/* ⭐ Enviar por email: abre el cliente de correo con el resumen
-                        ya escrito y deja el PDF descargado para adjuntar. */}
-                    <button
-                      type="button"
-                      className="qcrt-mail-btn"
-                      onClick={() => handleSendEmail(r)}
-                      title="Enviar por email"
-                    >
-                      <Mail size={15} />
-                    </button>
-                    </div>
                   </td>
                 </tr>
               );

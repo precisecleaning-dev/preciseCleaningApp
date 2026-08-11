@@ -148,29 +148,48 @@
 .qcrt-mail-btn:hover { background-color: #dbeafe; border-color: #93c5fd; }
 .qcrt-mail-btn.full { width: 100%; margin: 8px 0 0; padding: 11px 16px; }
 
-/* ⭐ COLUMNA DE ACCIONES FIJA A LA DERECHA.
-   La tabla mide 980px minimo, asi que en un portatil de 1366px con el menu
-   abierto la ultima columna quedaba FUERA de pantalla: los botones existian
-   pero no habia forma de verlos sin desplazarse a mano. Con `position: sticky`
-   la columna viaja con el scroll horizontal y siempre esta a la vista.
-   El borde izquierdo marca donde empieza la zona fija, para que no parezca
-   que las celdas se solapan al desplazar. */
+/* ⭐ COLUMNA DE ENVIO: PRIMERA y FIJA A LA IZQUIERDA.
+   La tabla mide 980px minimo, asi que en un portatil con el menu abierto la
+   ultima columna quedaba fuera de pantalla y los botones no se veian nunca.
+   Puestos al principio y con `position: sticky; left: 0`, permanecen visibles
+   aunque se desplace la tabla hacia la derecha.
+   El borde derecho marca donde termina la zona fija, para que no parezca que
+   las celdas se solapan al desplazar. */
 .qcrt-th.actions,
 .qcrt-td.actions {
   position: sticky;
-  right: 0;
+  left: 0;
   z-index: 3;
   white-space: nowrap;
-  border-left: 1px solid #e9eef5;
+  border-right: 1px solid #e9eef5;
 }
-.qcrt-th.actions { background-color: #f8fafc; }
+.qcrt-th.actions { background-color: #f8fafc; z-index: 4; }
 /* ⭐ Ancho MINIMO garantizado para los tres botones (PDF + WhatsApp + Email).
    Sin esto la tabla podia repartirle poco ancho a la ultima columna y los
    botones quedaban recortados fuera de la celda. */
-.qcrt-th.actions, .qcrt-td.actions { min-width: 13rem; }
+/* Tres botones de icono de 44px + separaciones. */
+.qcrt-th.actions, .qcrt-td.actions { min-width: 10.5rem; width: 10.5rem; }
+/* ⭐ Boton PDF en version SOLO ICONO: en la columna de envio los tres deben
+   ocupar lo mismo; la variante con texto sigue existiendo para las tarjetas. */
+.qcrt-pdf-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.75rem; height: 2.75rem; padding: 0; flex-shrink: 0;
+  border: 1px solid #bfdbfe; border-radius: var(--radius-md, 0.75rem);
+  background-color: #eff6ff; color: #1d4ed8; cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.qcrt-pdf-icon-btn:hover:not(:disabled) { background-color: #dbeafe; border-color: #93c5fd; }
+.qcrt-pdf-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .qcrt-actions-row {
   display: flex; align-items: center; justify-content: center;
   gap: 6px; flex-wrap: nowrap;
+}
+/* En la columna de envio los botones son cuadrados de 44px: iconos sin texto,
+   suficiente para el pulgar y sin robarle ancho al resto de la tabla. */
+.qcrt-actions-row .qcrt-wa-btn,
+.qcrt-actions-row .qcrt-mail-btn {
+  width: 2.75rem; height: 2.75rem; min-width: 2.75rem; min-height: 2.75rem;
+  padding: 0; flex-shrink: 0;
 }
 /* Los botones ya no llevan margen propio: el gap del flex los separa. */
 .qcrt-actions-row .qcrt-wa-btn,
