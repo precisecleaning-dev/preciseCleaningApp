@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
-  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText,
+  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Send,
 } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
@@ -13,6 +13,8 @@ import { statusHistoryService } from '../services/statusHistoryService';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import { formatDate } from '../utils/dateFormat';
 import { computeQCScore, passRateColors } from '../utils/qcScore';
+import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
+import ShareReportSheet from '../components/ShareReportSheet';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import './QCReportsTableView.css';
@@ -106,6 +108,7 @@ export default function QCReportsTableView({
   const [activeTab, setActiveTab] = useState<ReportTab>('quality_check');
 
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
@@ -225,6 +228,55 @@ export default function QCReportsTableView({
       alert('No se pudo generar el PDF del reporte.');
     } finally {
       setExportingId(null);
+    }
+  };
+
+  // ⭐ ENVIAR POR WHATSAPP. Se genera el MISMO HTML que el PDF (returnHtml) y se
+  //    comparte: en movil sale la hoja del sistema con el archivo adjunto; en
+  //    escritorio se descarga y se abre WhatsApp Web con el resumen.
+  const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
+  const [shareClient, setShareClient] = useState('');
+
+  const handleShareWhatsApp = async (r: QCReportRow) => {
+    setSharingId(r.id);
+    try {
+      const html = await exportQCReportPDF({
+        house: { address: r.address || '' },
+        clientName: getClientName(r.client),
+        teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
+        qcData: r.qcData || {},
+        inspectorName: r.inspector || 'Unknown',
+        recordDate: r.date,
+        places,
+        tasks,
+        branding,
+        returnHtml: true,
+      });
+      if (!html || typeof html !== 'string') {
+        alert('Este reporte no tiene datos para enviar.');
+        return;
+      }
+      const score = reportScore(r);
+      const clientName = getClientName(r.client);
+      // ⭐ Solo se PREPARA el PDF. El envio lo dispara el segundo toque desde
+      //    ShareReportSheet, porque iOS exige activacion por gesto fresca para
+      //    navigator.share (ver src/utils/shareQCReport.ts).
+      const prepared = await prepareQCShare(html, {
+        clientName,
+        address: r.address || '',
+        date: r.date,
+        inspectorName: r.inspector || 'Unknown',
+        teamName: r.team || getTeamName(houseFor(r)?.teamId),
+        passRate: score.hasData ? score.passRate : null,
+        failed: r.result === 'failed',
+      });
+      setShareClient(clientName);
+      setShareReady(prepared);
+    } catch (e) {
+      console.error('Error preparando el reporte:', e);
+      alert('No se pudo generar el PDF del reporte.');
+    } finally {
+      setSharingId(null);
     }
   };
 
@@ -493,6 +545,16 @@ export default function QCReportsTableView({
                     >
                       {exportingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Printer size={15} />} PDF
                     </button>
+                    {/* ⭐ Enviar por WhatsApp: en movil adjunta el PDF real. */}
+                    <button
+                      type="button"
+                      className="qcrt-wa-btn"
+                      onClick={() => handleShareWhatsApp(r)}
+                      disabled={sharingId === r.id}
+                      title="Enviar por WhatsApp"
+                    >
+                      {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />}
+                    </button>
                   </td>
                 </tr>
               );
@@ -570,10 +632,26 @@ export default function QCReportsTableView({
               >
                 {exportingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Printer size={15} />} Ver reporte PDF
               </button>
+              <button
+                type="button"
+                className="qcrt-wa-btn full"
+                onClick={() => handleShareWhatsApp(r)}
+                disabled={sharingId === r.id}
+              >
+                {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />} Enviar por WhatsApp
+              </button>
             </div>
           );
         })}
       </div>
+
+      {shareReady && (
+        <ShareReportSheet
+          prepared={shareReady}
+          clientName={shareClient}
+          onClose={() => setShareReady(null)}
+        />
+      )}
 
       {statusModal && (
         <StatusChangeModal

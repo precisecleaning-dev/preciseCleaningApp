@@ -1,0 +1,140 @@
+/* ============================================================================
+   ShareReportSheet.css
+   Hoja inferior "Reporte listo" — patrón nativo: nace del borde de abajo,
+   donde está el pulgar.
+   ============================================================================ */
+
+.srs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10100; /* por encima del modal de inspección */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background-color: rgba(15, 23, 42, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: srs-fade 160ms ease-out both;
+}
+
+@keyframes srs-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.srs-sheet {
+  width: 100%;
+  max-width: min(100%, 30rem);
+  background-color: #ffffff;
+  border-radius: var(--radius-xl, 2rem) var(--radius-xl, 2rem) 0 0;
+  box-shadow: var(--shadow-xl, 0 -12px 40px rgba(15, 23, 42, 0.2));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  animation: srs-rise 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes srs-rise {
+  from { transform: translate3d(0, 100%, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+/* En pantallas grandes se centra como diálogo normal. */
+@media (min-width: 40rem) {
+  .srs-overlay { align-items: center; }
+  .srs-sheet {
+    border-radius: var(--radius-xl, 2rem);
+    padding-bottom: 1rem;
+    animation: srs-fade 160ms ease-out both;
+  }
+}
+
+/* --- Cabecera --- */
+
+.srs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem 0.75rem;
+}
+.srs-head-info { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.srs-min-w-0 { min-width: 0; }
+
+.srs-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-md, 1rem);
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+.srs-title { margin: 0; font-size: var(--fs-md, 1.1rem); font-weight: 700; color: #0f172a; }
+.srs-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: var(--fs-xs, 0.8rem);
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srs-close {
+  min-height: var(--touch-min, 3rem);
+  min-width: var(--touch-min, 3rem);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: #64748b;
+}
+.srs-close:hover { background-color: #f1f5f9; }
+
+/* --- Acciones --- */
+
+.srs-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.25rem 1.25rem 1rem;
+}
+
+/* Botones altos: son el objetivo principal de la pantalla y se tocan con el
+   pulgar, a veces con guantes de trabajo. */
+.srs-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 3.75rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-radius: var(--radius-lg, 1.5rem);
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.srs-btn-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.srs-btn-text strong { font-size: var(--fs-sm, 0.92rem); font-weight: 700; }
+.srs-btn-text small { font-size: var(--fs-2xs, 0.72rem); opacity: 0.8; font-weight: 500; }
+
+.srs-btn.primary { background-color: #2563eb; color: #ffffff; }
+.srs-btn.primary:hover { background-color: #1d4ed8; }
+
+.srs-btn.whatsapp { background-color: #25d366; color: #06331a; }
+.srs-btn.whatsapp:hover { background-color: #1fb855; }
+
+.srs-btn.ghost { background-color: #f8fafc; color: #334155; border-color: #e2e8f0; }
+.srs-btn.ghost:hover { background-color: #f1f5f9; }
+
+.srs-hint {
+  margin: 0.15rem 0.25rem 0.35rem;
+  font-size: var(--fs-2xs, 0.72rem);
+  color: #64748b;
+  line-height: 1.45;
+}
+.srs-hint.warn { color: #92400e; }
+
+@media (prefers-reduced-motion: reduce) {
+  .srs-overlay, .srs-sheet { animation: none; }
+}

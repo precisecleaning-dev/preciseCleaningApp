@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
-  Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, ChevronLeft, ChevronRight,
+  Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, ChevronLeft, ChevronRight, Send,
   Save, Clock, WifiOff, Plus, StickyNote,
   Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy
 } from 'lucide-react';
@@ -23,6 +23,8 @@ import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil } from '../utils/qcReportPdf';
+import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
+import ShareReportSheet from '../components/ShareReportSheet';
 import QCRouteDrawer, { type RouteDrawerHouse } from './QCRouteDrawer';
 import './QualityCheckView.css';
 
@@ -1468,6 +1470,61 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     });
   };
 
+  // ⭐ ENVIAR POR WHATSAPP. Reutiliza el MISMO HTML que produce el PDF
+  //    (returnHtml), asi el reporte que se comparte es identico al que se
+  //    imprime: una sola maquetacion que mantener.
+  const [isSharing, setIsSharing] = useState(false);
+
+  // ⭐ PASO 1 de 2. Solo GENERA el PDF y abre la hoja "Reporte listo".
+  //    NO llama aquí a navigator.share: tras el await la activación por gesto
+  //    de iOS ya expiró y la llamada falla en silencio (era la causa de que el
+  //    botón no hiciera nada). El envío real ocurre con el segundo toque, ya
+  //    dentro de ShareReportSheet.
+  const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
+  const [shareClient, setShareClient] = useState('');
+
+  const handleShareWhatsApp = async (
+    house: Property,
+    qcDataObj: Record<string, any>,
+    inspectorName: string,
+    dateStr?: string,
+    teamNameOverride?: string,
+    failed?: boolean,
+  ) => {
+    if (collectPlacesWithData(qcDataObj).length === 0) {
+      alert('Esta inspección no tiene tareas evaluadas, notas ni fotos: no hay nada que enviar.');
+      return;
+    }
+    setIsSharing(true);
+    try {
+      const html = await buildAndExportQCPDF(
+        house, qcDataObj, inspectorName, dateStr, undefined, teamNameOverride, { returnHtml: true },
+      );
+      if (!html || typeof html !== 'string') {
+        alert('No se pudo generar el reporte.');
+        return;
+      }
+      const score = computeQCScore(qcDataObj, tasks);
+      const clientName = getClientName(house.client);
+      const prepared = await prepareQCShare(html, {
+        clientName,
+        address: house.address || '',
+        date: dateStr,
+        inspectorName,
+        teamName: teamNameOverride || getTeamNameForHouse(house),
+        passRate: score.hasData ? score.passRate : null,
+        failed,
+      });
+      setShareClient(clientName);
+      setShareReady(prepared);
+    } catch (e) {
+      console.error('Error preparando el reporte para compartir:', e);
+      alert('No se pudo generar el PDF del reporte. Revisa la consola.');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   // ⭐ Enviar automáticamente el reporte al email de la empresa.
   //    Escribe en la colección "mail" (extensión Firebase "Trigger Email").
   const sendQCByEmail = async (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string): Promise<boolean> => {
@@ -1564,15 +1621,28 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setEmailModalOpen(true);
   };
 
-  const sendEmail = async () => {
+  const sendEmail = () => {
     if (!emailCtx) return;
     const to = emailTo.trim();
     if (!to) { alert('Ingresa un correo de destino.'); return; }
-    // Abrir el PDF primero para que el usuario lo guarde y lo adjunte
-    try { if (emailExport) await emailExport(); } catch (e) { console.error(e); }
+
+    // ⭐ ARREGLO: antes esto hacia `await emailExport()` ANTES del mailto.
+    //    Ese export abre una ventana con window.open, que en iOS se bloquea
+    //    como popup y ademas consume la activacion por gesto: cuando llegaba
+    //    el `location.href = mailto:` el navegador ya no lo obedecia y no
+    //    pasaba nada. Ahora el mailto se dispara PRIMERO y de forma sincrona,
+    //    que es lo unico que el usuario pidio con este boton.
     const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(emailCtx.subject)}&body=${encodeURIComponent(emailCtx.body)}`;
     window.location.href = mailto;
     setEmailModalOpen(false);
+
+    // El PDF se genera despues, sin bloquear la apertura del correo. Si el
+    // usuario quiere adjuntarlo, lo tendra descargado al volver.
+    if (emailExport) {
+      setTimeout(() => {
+        Promise.resolve(emailExport()).catch(e => console.error('Error generando el PDF adjunto:', e));
+      }, 800);
+    }
   };
 
   const setTaskValue = (placeId: string, taskId: string, value: 'Yes' | 'No') => {
@@ -1947,6 +2017,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                           )
                         )}
                         <div className="qcv-row-actions">
+                          <button
+                            onClick={() => {
+                              const house = (properties.find(p => p.id === qc.houseId)
+                                || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
+                              handleShareWhatsApp(
+                                house, (qc.qcData as Record<string, any>) || {},
+                                qc.inspector || 'Unknown', qc.date, qc.team,
+                                qc.result === 'failed',
+                              );
+                            }}
+                            title="Enviar por WhatsApp"
+                            disabled={isSharing}
+                            className="qcv-row-icon-btn whatsapp"
+                          >
+                            <Send size={15} />
+                          </button>
                           <button onClick={() => handleExportFromTable(qc)} title="Exportar PDF" disabled={exportingForQcId === qc.id} className="qcv-row-icon-btn">
                             {exportingForQcId === qc.id ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}
                           </button>
@@ -2062,6 +2148,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <div className="qcv-im-header-actions">
                 <button onClick={handleExportFromModal} title="Exportar PDF" disabled={isExportingPDF} className="qcv-im-header-btn">
                   {isExportingPDF ? <Loader2 size={16} className="spin-qc" /> : <Printer size={16} />}<span className="qc-export-label">PDF</span>
+                </button>
+                {/* ⭐ WhatsApp: en movil abre la hoja del sistema con el PDF ya
+                    adjunto (dos toques, sin salir de la app). En escritorio
+                    descarga el PDF y abre WhatsApp Web con el resumen escrito. */}
+                <button
+                  onClick={() => selectedHouse && handleShareWhatsApp(
+                    selectedHouse, qcData,
+                    currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
+                  )}
+                  title="Enviar por WhatsApp"
+                  disabled={isSharing}
+                  className="qcv-im-header-btn whatsapp"
+                >
+                  {isSharing ? <Loader2 size={16} className="spin-qc" /> : <Send size={16} />}
+                  <span className="qc-export-label">WhatsApp</span>
                 </button>
                 <button onClick={openEmailForCurrent} title="Enviar por email" className="qcv-im-header-btn">
                   <Mail size={16} /><span className="qc-export-label">Email</span>
@@ -2374,6 +2475,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       {/* ⭐ Ahora usa el MISMO modal (grid de estados con colores) que Houses,
           Pipeline e Invoices, en vez de un <select> propio. La lista se limita a
           los cuatro estados que tienen sentido en el flujo de calidad. */}
+      {/* ⭐ PASO 2 de 2: aqui el envio lo dispara un toque NUEVO del usuario, con
+          activacion por gesto fresca, que es lo que iOS exige. */}
+      {shareReady && (
+        <ShareReportSheet
+          prepared={shareReady}
+          clientName={shareClient}
+          onClose={() => setShareReady(null)}
+        />
+      )}
+
       {statusModalHouse && (
         <StatusChangeModal
           config={{
