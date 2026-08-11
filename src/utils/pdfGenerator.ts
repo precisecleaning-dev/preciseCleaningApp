@@ -19,8 +19,30 @@ interface PDFOptions {
  */
 export async function generatePDFFromHTML(
   htmlContent: string,
-  options: PDFOptions
+  options: PDFOptions,
 ): Promise<void> {
+  await renderPDF(htmlContent, options, 'save');
+}
+
+/**
+ * ⭐ Igual que generatePDFFromHTML pero devuelve el PDF como Blob en vez de
+ *    descargarlo. Es lo que permite ENVIARLO por WhatsApp: la API de compartir
+ *    del sistema (navigator.share) necesita un File real, no una descarga.
+ */
+export async function generatePDFBlob(
+  htmlContent: string,
+  options: PDFOptions,
+): Promise<Blob> {
+  const blob = await renderPDF(htmlContent, options, 'blob');
+  if (!blob) throw new Error('No se pudo generar el PDF');
+  return blob;
+}
+
+async function renderPDF(
+  htmlContent: string,
+  options: PDFOptions,
+  mode: 'save' | 'blob',
+): Promise<Blob | void> {
   // Crear iframe oculto para aislar estilos del documento principal
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
@@ -101,8 +123,12 @@ export async function generatePDFFromHTML(
       }
     };
 
-    // Generar y descargar PDF
-    await html2pdf().set(opt).from(doc.body).save();
+    // Generar el PDF: descargarlo o devolverlo como Blob para compartir.
+    const worker = html2pdf().set(opt).from(doc.body);
+    if (mode === 'blob') {
+      return (await worker.output('blob')) as Blob;
+    }
+    await worker.save();
   } finally {
     // Limpiar iframe
     if (document.body.contains(iframe)) {
