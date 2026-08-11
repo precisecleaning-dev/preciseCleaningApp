@@ -18,6 +18,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from '
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
 import { isInvoiceStatus } from '../utils/invoiceEntry';
 import { computeQCScore } from '../utils/qcScore';
+import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
@@ -1231,10 +1232,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       let emailNote = '';
       if (finalStatus === 'Finished' && companySettings.autoSend && branding.email) {
         try {
-          const sent = await sendQCByEmail(selectedHouse, qcData, recordData.inspector, recordData.date, recordData.team);
-          if (sent) emailNote = `\n📧 Reporte enviado automáticamente a ${branding.email}.`;
+          const res = await sendQCByEmail(selectedHouse, qcData, recordData.inspector, recordData.date, recordData.team);
+          if (res) emailNote = `\n${mailResultMessage(res, branding.email)}`;
         } catch (e) {
           console.error('No se pudo enviar el email automático:', e);
+          emailNote = '\n⚠️ No se pudo encolar el reporte por email. Revisa la consola.';
         }
       } else if (finalStatus === 'Finished' && companySettings.autoSend && !branding.email) {
         emailNote = '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").';
@@ -1527,15 +1529,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Enviar automáticamente el reporte al email de la empresa.
   //    Escribe en la colección "mail" (extensión Firebase "Trigger Email").
-  const sendQCByEmail = async (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string): Promise<boolean> => {
+  //    ⭐ Devuelve el resultado REAL del envio. Escribir en `mail` solo ENCOLA;
+  //       quien despacha es la extension Trigger Email. Si no esta instalada, el
+  //       documento se guarda igual y antes se anunciaba "enviado" sin que
+  //       saliera ningun correo. Ver src/utils/sendMail.ts.
+  const sendQCByEmail = async (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string) => {
     const to = branding.email;
-    if (!to) return false;
-    if (collectPlacesWithData(qcDataObj).length === 0) return false;
+    if (!to) return null;
+    if (collectPlacesWithData(qcDataObj).length === 0) return null;
     const html = await buildAndExportQCPDF(house, qcDataObj, inspector, dateStr, undefined, teamNameOverride, { returnHtml: true });
-    if (!html || typeof html !== 'string') return false;
+    if (!html || typeof html !== 'string') return null;
     const { subject } = buildEmail(house, qcDataObj, inspector, dateStr, teamNameOverride);
-    await addDoc(collection(db, 'mail'), { to, message: { subject, html } });
-    return true;
+    return sendMailAndConfirm(to, subject, html);
   };
 
   const handleExportFromModal = async () => {

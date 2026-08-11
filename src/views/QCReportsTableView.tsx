@@ -5,7 +5,8 @@ import {
   Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
 import { db } from '../config/firebase';
-import { collection, onSnapshot, query, limit, doc, getDoc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
+import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import type { Customer, Property, Status, Team, Role, SystemUser } from '../types/index';
 import type { QCRecord } from './QualityCheckView';
 import { propertiesService } from '../services/propertiesService';
@@ -275,8 +276,12 @@ export default function QCReportsTableView({
         return;
       }
       const subject = `Quality Check Report - ${clientName} (${formatDate(r.date)})`;
-      await addDoc(collection(db, 'mail'), { to, message: { subject, html } });
-      alert(`📧 Reporte enviado a ${to}.`);
+      // ⭐ No basta con escribir en `mail`: eso solo ENCOLA. Quien envia es la
+      //    extension Trigger Email, y si no esta instalada el documento se
+      //    guarda igual. Antes se anunciaba "enviado" sin que saliera nada.
+      //    sendMailAndConfirm espera la confirmacion real (ver src/utils/sendMail.ts).
+      const result = await sendMailAndConfirm(to, subject, html);
+      alert(mailResultMessage(result, to));
     } catch (e) {
       console.error('Error enviando el reporte por email:', e);
       alert('No se pudo enviar el reporte por email. Revisa la consola.');
@@ -449,7 +454,7 @@ export default function QCReportsTableView({
       <header className="main-header qcrt-header">
         <div>
           <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v5</p>
+          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v6</p>
         </div>
       </header>
 
