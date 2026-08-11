@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
-  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Send,
+  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Send, Mail,
 } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
@@ -13,7 +13,7 @@ import { statusHistoryService } from '../services/statusHistoryService';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import { formatDate } from '../utils/dateFormat';
 import { computeQCScore, passRateColors } from '../utils/qcScore';
-import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
+import { prepareQCShare, buildQCMessage, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
@@ -234,6 +234,34 @@ export default function QCReportsTableView({
   // ⭐ ENVIAR POR WHATSAPP. Se genera el MISMO HTML que el PDF (returnHtml) y se
   //    comparte: en movil sale la hoja del sistema con el archivo adjunto; en
   //    escritorio se descarga y se abre WhatsApp Web con el resumen.
+  // ⭐ ENVIAR POR EMAIL. Se usa `mailto:` de forma SINCRONA dentro del onClick:
+  //    cualquier `await` previo consumiria la activacion por gesto y en iOS el
+  //    correo no llegaria a abrirse (mismo motivo que en shareQCReport.ts).
+  //    El PDF se prepara DESPUES, para que quede descargado y se pueda adjuntar.
+  const handleSendEmail = (r: QCReportRow) => {
+    const clientName = getClientName(r.client);
+    const score = reportScore(r);
+    const subject = `Quality Check Report - ${clientName} (${formatDate(r.date)})`;
+    const body = buildQCMessage({
+      clientName,
+      address: r.address || '',
+      date: r.date,
+      inspectorName: r.inspector || 'Unknown',
+      teamName: r.team || getTeamName(houseFor(r)?.teamId),
+      passRate: score.hasData ? score.passRate : null,
+      failed: r.result === 'failed',
+      // El asterisco es formato de WhatsApp; en un correo se veria literal.
+    }).replace(/\*/g, '');
+
+    const to = branding.email || '';
+    window.location.href = `mailto:${encodeURIComponent(to)}`
+      + `?subject=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(body + '\n\nAdjunto el reporte completo en PDF.')}`;
+
+    // Se genera el PDF en segundo plano para tenerlo listo al adjuntar.
+    setTimeout(() => { handleExportPdf(r).catch(() => { /* ya se avisa dentro */ }); }, 800);
+  };
+
   const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
   const [shareClient, setShareClient] = useState('');
 
@@ -472,7 +500,7 @@ export default function QCReportsTableView({
               <th className="qcrt-th">Team</th>
               <th className="qcrt-th">Inspector</th>
               <th className="qcrt-th">Duration</th>
-              <th className="qcrt-th center">Report</th>
+              <th className="qcrt-th center actions">Enviar</th>
             </tr>
           </thead>
           <tbody>
@@ -535,7 +563,7 @@ export default function QCReportsTableView({
                   <td className="qcrt-td muted">
                     <span className="qcrt-inline-cell"><Clock size={14} /> {fmtDuration(r.durationMinutes)}</span>
                   </td>
-                  <td className="qcrt-td center">
+                  <td className="qcrt-td center actions">
                     <button
                       type="button"
                       className="qcrt-pdf-btn"
@@ -554,6 +582,16 @@ export default function QCReportsTableView({
                       title="Enviar por WhatsApp"
                     >
                       {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />}
+                    </button>
+                    {/* ⭐ Enviar por email: abre el cliente de correo con el resumen
+                        ya escrito y deja el PDF descargado para adjuntar. */}
+                    <button
+                      type="button"
+                      className="qcrt-mail-btn"
+                      onClick={() => handleSendEmail(r)}
+                      title="Enviar por email"
+                    >
+                      <Mail size={15} />
                     </button>
                   </td>
                 </tr>
@@ -639,6 +677,13 @@ export default function QCReportsTableView({
                 disabled={sharingId === r.id}
               >
                 {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />} Enviar por WhatsApp
+              </button>
+              <button
+                type="button"
+                className="qcrt-mail-btn full"
+                onClick={() => handleSendEmail(r)}
+              >
+                <Mail size={15} /> Enviar por email
               </button>
             </div>
           );
