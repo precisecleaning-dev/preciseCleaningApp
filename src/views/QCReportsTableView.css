@@ -164,6 +164,17 @@
   border-left: 1px solid #e9eef5;
 }
 .qcrt-th.actions { background-color: #f8fafc; }
+/* ⭐ Ancho MINIMO garantizado para los tres botones (PDF + WhatsApp + Email).
+   Sin esto la tabla podia repartirle poco ancho a la ultima columna y los
+   botones quedaban recortados fuera de la celda. */
+.qcrt-th.actions, .qcrt-td.actions { min-width: 13rem; }
+.qcrt-actions-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; flex-wrap: nowrap;
+}
+/* Los botones ya no llevan margen propio: el gap del flex los separa. */
+.qcrt-actions-row .qcrt-wa-btn,
+.qcrt-actions-row .qcrt-mail-btn { margin-left: 0; }
 .qcrt-td.actions { background-color: #ffffff; }
 /* La fila resaltada al pasar el mouse debe teñir tambien la celda fija: si no,
    se ve una isla blanca sobre la fila gris. */

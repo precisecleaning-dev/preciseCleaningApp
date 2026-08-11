@@ -426,7 +426,7 @@ export default function QCReportsTableView({
       <header className="main-header qcrt-header">
         <div>
           <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · reporte PDF y estado de la casa</p>
+          <p className="qcrt-header-subtitle">Inspecciones finalizadas · PDF, WhatsApp y email · v2</p>
         </div>
       </header>
 
@@ -564,6 +564,13 @@ export default function QCReportsTableView({
                     <span className="qcrt-inline-cell"><Clock size={14} /> {fmtDuration(r.durationMinutes)}</span>
                   </td>
                   <td className="qcrt-td center actions">
+                    {/* ⭐ Contenedor flex explicito. Antes los tres botones eran
+                        hijos directos del <td> y dependian de que la celda se
+                        ensanchara sola; si la tabla repartia poco ancho a esta
+                        columna, los botones se recortaban por el overflow y solo
+                        quedaba visible el primero. Con un flex de ancho propio la
+                        celda no puede encogerlos. */}
+                    <div className="qcrt-actions-row">
                     <button
                       type="button"
                       className="qcrt-pdf-btn"
@@ -593,6 +600,7 @@ export default function QCReportsTableView({
                     >
                       <Mail size={15} />
                     </button>
+                    </div>
                   </td>
                 </tr>
               );
