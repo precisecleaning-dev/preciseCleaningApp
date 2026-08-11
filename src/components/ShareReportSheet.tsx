@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Send, Download, Share2, X, FileText, Check } from 'lucide-react';
+import { Download, X, FileText, Check } from 'lucide-react';
+import WhatsAppIcon from './WhatsAppIcon';
 import {
   shareNow, downloadPrepared, openWhatsAppWithText, canShareFiles,
   type PreparedQCShare,
@@ -40,17 +41,26 @@ export default function ShareReportSheet({
 
   // ⚠ Sin `await` antes de shareNow: cualquier espera aquí volvería a romper la
   //   activación por gesto y estaríamos igual que al principio.
+  // ⚠ Sin `await` antes de shareNow: cualquier espera aquí volvería a romper la
+  //   activación por gesto y estaríamos igual que al principio.
   const handleNativeShare = () => {
     shareNow(prepared).then(res => {
-      if (res.status === 'shared') onClose();
-      // 'cancelled' deja la hoja abierta a propósito: el usuario cerró el
-      // selector del sistema, quizá para elegir otra opción de aquí.
+      if (res.status === 'shared') { onClose(); return; }
+      if (res.status === 'cancelled') return;
+      // El navegador dijo que podía compartir archivos y no pudo: en vez de
+      // dejar al usuario sin nada, se abre WhatsApp con el resumen.
+      openWhatsAppWithText(prepared.message, phone);
+      onClose();
     });
   };
 
+  // ⭐ ABRIR WHATSAPP. Antes esto descargaba el PDF ANTES de abrir el chat, y en
+  //    escritorio lo que el usuario veía era el documento abriéndose — no
+  //    WhatsApp. Ahora WhatsApp es lo primero y lo único que ocurre al tocar el
+  //    botón; el PDF queda disponible en "Descargar PDF" para adjuntarlo si hace
+  //    falta. El texto ya lleva cliente, dirección, fecha y resultado, así que el
+  //    mensaje es útil por sí solo.
   const handleWhatsAppText = () => {
-    // Se descarga primero para que el archivo esté disponible al adjuntarlo.
-    downloadPrepared(prepared);
     openWhatsAppWithText(prepared.message, phone);
     onClose();
   };
@@ -79,35 +89,41 @@ export default function ShareReportSheet({
         </header>
 
         <div className="srs-actions">
+          {/* ⭐ WhatsApp SIEMPRE es la acción principal y la primera de la lista.
+              En móvil se usa la hoja del sistema, que adjunta el PDF de verdad;
+              en escritorio se abre WhatsApp Web con el resumen escrito. En los
+              dos casos lo que ocurre al tocar es que se abre WhatsApp — que es
+              lo que el botón promete. */}
           {supportsNativeShare ? (
             <>
-              <button type="button" className="srs-btn primary" onClick={handleNativeShare}>
-                <Share2 size={18} />
+              <button type="button" className="srs-btn whatsapp" onClick={handleNativeShare}>
+                <WhatsAppIcon size={20} />
                 <span className="srs-btn-text">
-                  <strong>Compartir</strong>
-                  <small>WhatsApp, correo, o cualquier app</small>
+                  <strong>Enviar por WhatsApp</strong>
+                  <small>Con el PDF adjunto</small>
                 </span>
               </button>
               <p className="srs-hint">
-                Se abre el menú del sistema con el PDF ya adjunto. Elige WhatsApp
-                y luego el contacto.
+                Se abre el menú de compartir con el PDF listo: elige WhatsApp y
+                luego el contacto.
               </p>
             </>
           ) : (
             <>
               <button type="button" className="srs-btn whatsapp" onClick={handleWhatsAppText}>
-                <Send size={18} />
+                <WhatsAppIcon size={20} />
                 <span className="srs-btn-text">
                   <strong>Abrir WhatsApp</strong>
-                  <small>Descarga el PDF y abre el chat</small>
+                  <small>Con el resumen ya escrito</small>
                 </span>
               </button>
               {/* Este navegador no puede adjuntar archivos por sí solo, así que
-                  hay que decirlo: si no, el usuario ve WhatsApp abrirse "vacío"
+                  hay que decirlo: si no, el usuario espera ver el PDF en el chat
                   y cree que se perdió el reporte. */}
               <p className="srs-hint warn">
-                Este navegador no permite adjuntar el archivo automáticamente.
-                El PDF se descarga y lo adjuntas desde el clip de WhatsApp.
+                Desde el navegador de escritorio WhatsApp no admite adjuntos
+                automáticos. Si necesitas mandar el PDF, descárgalo abajo y
+                arrástralo al chat.
               </p>
             </>
           )}

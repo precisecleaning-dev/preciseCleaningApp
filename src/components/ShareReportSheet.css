@@ -123,6 +123,9 @@
 
 .srs-btn.whatsapp { background-color: #25d366; color: #06331a; }
 .srs-btn.whatsapp:hover { background-color: #1fb855; }
+/* El logo de WhatsApp es un glifo solido: sobre el verde de la marca se pinta
+   en blanco para que contraste. */
+.srs-btn.whatsapp svg { fill: #ffffff; color: #ffffff; flex-shrink: 0; }
 
 .srs-btn.ghost { background-color: #f8fafc; color: #334155; border-color: #e2e8f0; }
 .srs-btn.ghost:hover { background-color: #f1f5f9; }

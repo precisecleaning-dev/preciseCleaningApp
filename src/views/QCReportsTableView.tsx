@@ -5,7 +5,7 @@ import {
   Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
 import { db } from '../config/firebase';
-import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, limit, doc, getDoc, addDoc } from 'firebase/firestore';
 import type { Customer, Property, Status, Team, Role, SystemUser } from '../types/index';
 import type { QCRecord } from './QualityCheckView';
 import { propertiesService } from '../services/propertiesService';
@@ -13,7 +13,7 @@ import { statusHistoryService } from '../services/statusHistoryService';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import { formatDate } from '../utils/dateFormat';
 import { computeQCScore, passRateColors } from '../utils/qcScore';
-import { prepareQCShare, buildQCMessage, type PreparedQCShare } from '../utils/shareQCReport';
+import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
 import WhatsAppIcon from '../components/WhatsAppIcon';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
@@ -235,32 +235,54 @@ export default function QCReportsTableView({
   // ⭐ ENVIAR POR WHATSAPP. Se genera el MISMO HTML que el PDF (returnHtml) y se
   //    comparte: en movil sale la hoja del sistema con el archivo adjunto; en
   //    escritorio se descarga y se abre WhatsApp Web con el resumen.
-  // ⭐ ENVIAR POR EMAIL. Se usa `mailto:` de forma SINCRONA dentro del onClick:
-  //    cualquier `await` previo consumiria la activacion por gesto y en iOS el
-  //    correo no llegaria a abrirse (mismo motivo que en shareQCReport.ts).
-  //    El PDF se prepara DESPUES, para que quede descargado y se pueda adjuntar.
-  const handleSendEmail = (r: QCReportRow) => {
+  // ⭐ ENVIAR POR EMAIL — ENVÍO REAL, no `mailto:`.
+  //
+  //    Antes esto abría el cliente de correo del dispositivo y dejaba al usuario
+  //    redactando a mano. El resto de la app ya envía de verdad: escribe en la
+  //    colección `mail`, que la extensión "Trigger Email" de Firebase recoge y
+  //    despacha con el reporte COMPLETO en el cuerpo (mismo mecanismo que el
+  //    envío automático al guardar una inspección y que la pestaña Reportes).
+  //
+  //    Así el correo sale igual desde un teléfono sin app de correo configurada,
+  //    y siempre al mismo destino: el email de la empresa.
+  const [sendingEmailId, setSendingEmailId] = useState<string | null>(null);
+
+  const handleSendEmail = async (r: QCReportRow) => {
+    const to = branding.email;
+    if (!to) {
+      alert('No hay un email de empresa configurado.\n\nVe a la sección "Empresa" y captura el correo para poder enviar reportes.');
+      return;
+    }
     const clientName = getClientName(r.client);
-    const score = reportScore(r);
-    const subject = `Quality Check Report - ${clientName} (${formatDate(r.date)})`;
-    const body = buildQCMessage({
-      clientName,
-      address: r.address || '',
-      date: r.date,
-      inspectorName: r.inspector || 'Unknown',
-      teamName: r.team || getTeamName(houseFor(r)?.teamId),
-      passRate: score.hasData ? score.passRate : null,
-      failed: r.result === 'failed',
-      // El asterisco es formato de WhatsApp; en un correo se veria literal.
-    }).replace(/\*/g, '');
+    if (!window.confirm(`¿Enviar el reporte de ${clientName} a ${to}?`)) return;
 
-    const to = branding.email || '';
-    window.location.href = `mailto:${encodeURIComponent(to)}`
-      + `?subject=${encodeURIComponent(subject)}`
-      + `&body=${encodeURIComponent(body + '\n\nAdjunto el reporte completo en PDF.')}`;
-
-    // Se genera el PDF en segundo plano para tenerlo listo al adjuntar.
-    setTimeout(() => { handleExportPdf(r).catch(() => { /* ya se avisa dentro */ }); }, 800);
+    setSendingEmailId(r.id);
+    try {
+      const html = await exportQCReportPDF({
+        house: { address: r.address || '' },
+        clientName,
+        teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
+        qcData: r.qcData || {},
+        inspectorName: r.inspector || 'Unknown',
+        recordDate: r.date,
+        places,
+        tasks,
+        branding,
+        returnHtml: true,
+      });
+      if (!html || typeof html !== 'string') {
+        alert('Este reporte no tiene datos para enviar (sin tareas, notas ni fotos).');
+        return;
+      }
+      const subject = `Quality Check Report - ${clientName} (${formatDate(r.date)})`;
+      await addDoc(collection(db, 'mail'), { to, message: { subject, html } });
+      alert(`📧 Reporte enviado a ${to}.`);
+    } catch (e) {
+      console.error('Error enviando el reporte por email:', e);
+      alert('No se pudo enviar el reporte por email. Revisa la consola.');
+    } finally {
+      setSendingEmailId(null);
+    }
   };
 
   const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
@@ -427,7 +449,7 @@ export default function QCReportsTableView({
       <header className="main-header qcrt-header">
         <div>
           <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v4</p>
+          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v5</p>
         </div>
       </header>
 
@@ -542,10 +564,11 @@ export default function QCReportsTableView({
                         type="button"
                         className="qcrt-mail-btn"
                         onClick={() => handleSendEmail(r)}
-                        title="Enviar por email"
+                        disabled={sendingEmailId === r.id}
+                        title={`Enviar por email a ${branding.email || '(sin correo configurado)'}`}
                         aria-label="Enviar por email"
                       >
-                        <Mail size={16} />
+                        {sendingEmailId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <Mail size={16} />}
                       </button>
                       <button
                         type="button"
@@ -681,8 +704,9 @@ export default function QCReportsTableView({
                 type="button"
                 className="qcrt-mail-btn full"
                 onClick={() => handleSendEmail(r)}
+                disabled={sendingEmailId === r.id}
               >
-                <Mail size={15} /> Enviar por email
+                {sendingEmailId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Mail size={15} />} Enviar por email
               </button>
             </div>
           );
