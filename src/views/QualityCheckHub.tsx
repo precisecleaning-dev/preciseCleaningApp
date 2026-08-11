@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ClipboardCheck, Route, FileBarChart } from 'lucide-react';
+import { ClipboardCheck, Route } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
 import QualityCheckView, { type QCRecord } from './QualityCheckView';
 import QCRoutesTableView from './QCRoutesTableView';
-import QCReportsView from './QCReportsView';
 import './QualityCheckHub.css';
 
 // ============================================================================
@@ -34,7 +33,7 @@ interface Props {
   onOpenHouseEdit?: (house: Property) => void;
 }
 
-type HubTab = 'inspections' | 'routes' | 'reports';
+type HubTab = 'inspections' | 'routes';
 
 export default function QualityCheckHub(props: Props) {
   // Si llegan con un link de ruta compartida, aterrizan directo en "Rutas"
@@ -64,7 +63,11 @@ export default function QualityCheckHub(props: Props) {
         <div className="qch-tabbar">
           {tabBtn('inspections', 'Quality Check', ClipboardCheck, '#1d4ed8')}
           {tabBtn('routes', 'Rutas', Route, '#16a34a')}
-          {tabBtn('reports', 'Reportes', FileBarChart, '#7c3aed')}
+          {/* ⭐ La pestana "Reportes" se retiro: los reportes finalizados ya tienen
+              su propia entrada en el menu lateral (Quality Check Reports), con
+              tabla, filtros y envio por WhatsApp/email. Tener dos listados del
+              mismo dato invitaba a editar en uno y consultar en el otro.
+              QCReportsView.tsx queda en el proyecto por si se reincorpora. */}
         </div>
       </div>
 
@@ -83,10 +86,6 @@ export default function QualityCheckHub(props: Props) {
         />
       )}
       {tab === 'routes' && <QCRoutesTableView onOpenMenu={props.onOpenMenu} />}
-      {/* ⭐ Punto 9: reportes acumulados del más reciente al más antiguo */}
-      {tab === 'reports' && (
-        <QCReportsView onEditReport={(qc) => { setReportToEdit(qc); setTab('inspections'); }} />
-      )}
     </div>
   );
 }

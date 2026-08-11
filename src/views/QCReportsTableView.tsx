@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
-  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Send, Mail,
+  Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
@@ -15,6 +15,7 @@ import { formatDate } from '../utils/dateFormat';
 import { computeQCScore, passRateColors } from '../utils/qcScore';
 import { prepareQCShare, buildQCMessage, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
+import WhatsAppIcon from '../components/WhatsAppIcon';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import './QCReportsTableView.css';
@@ -426,7 +427,7 @@ export default function QCReportsTableView({
       <header className="main-header qcrt-header">
         <div>
           <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v3</p>
+          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v4</p>
         </div>
       </header>
 
@@ -498,7 +499,6 @@ export default function QCReportsTableView({
                   se veian nunca. Aqui son lo primero que aparece y no se pierden
                   al desplazar horizontalmente. */}
               <th className="qcrt-th center actions">Enviar</th>
-              <th className="qcrt-th">Result</th>
               <th className="qcrt-th center">Score</th>
               <th className="qcrt-th">House Status</th>
               <th className="qcrt-th">Client / Address</th>
@@ -510,17 +510,16 @@ export default function QCReportsTableView({
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="qcrt-empty-row">Cargando reportes de calidad...</td></tr>
+              <tr><td colSpan={8} className="qcrt-empty-row">Cargando reportes de calidad...</td></tr>
             ) : finishedReports.length === 0 ? (
-              <tr><td colSpan={9} className="qcrt-empty-row">
+              <tr><td colSpan={8} className="qcrt-empty-row">
                 Todavía no hay inspecciones finalizadas. Al terminar una inspección en Quality Check aparecerá aquí.
               </td></tr>
             ) : filteredReports.length === 0 ? (
-              <tr><td colSpan={9} className="qcrt-empty-row">
+              <tr><td colSpan={8} className="qcrt-empty-row">
                 Ningún reporte en esta pestaña coincide con los filtros. Limpia la búsqueda o revisa las otras pestañas.
               </td></tr>
             ) : filteredReports.map(r => {
-              const badge = resultBadge(r);
               const notes = reportNotes(r);
               const score = reportScore(r);
               const scoreColors = passRateColors(score.passRate, score.hasData);
@@ -537,7 +536,7 @@ export default function QCReportsTableView({
                         title="Enviar por WhatsApp"
                         aria-label="Enviar por WhatsApp"
                       >
-                        {sharingId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <Send size={16} />}
+                        {sharingId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <WhatsAppIcon size={18} />}
                       </button>
                       <button
                         type="button"
@@ -559,14 +558,6 @@ export default function QCReportsTableView({
                         {exportingId === r.id ? <Loader2 size={16} className="qcrt-spin" /> : <Printer size={16} />}
                       </button>
                     </div>
-                  </td>
-                  <td className="qcrt-td">
-                    <span
-                      className="qcrt-badge"
-                      style={{ '--badge-bg': badge.bg, '--badge-fg': badge.fg } as CSSProperties}
-                    >
-                      <badge.Icon size={12} /> {badge.label}
-                    </span>
                   </td>
                   <td className="qcrt-td center">
                     {/* ⭐ El MISMO % que imprime el PDF (src/utils/qcScore.ts). */}
@@ -684,7 +675,7 @@ export default function QCReportsTableView({
                 onClick={() => handleShareWhatsApp(r)}
                 disabled={sharingId === r.id}
               >
-                {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <Send size={15} />} Enviar por WhatsApp
+                {sharingId === r.id ? <Loader2 size={15} className="qcrt-spin" /> : <WhatsAppIcon size={17} />} Enviar por WhatsApp
               </button>
               <button
                 type="button"

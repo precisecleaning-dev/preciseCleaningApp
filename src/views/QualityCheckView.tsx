@@ -1773,10 +1773,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               const failed = houseFailedQC(house.id, qcList);
               return (
                 <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className={`qcv-house-card${failed ? ' failed' : ''}`}>
-                  <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" onClick={() => onOpenHouseEdit?.(house)} title="Editar (formulario)" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
-                    <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
-                  </div>
                   <div className="qcv-house-card-title-row">
                     <div className="qcv-house-client-name">
                       {getClientName(house.client)}
@@ -1839,6 +1835,28 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   >
                     <ClipboardCheck size={17} /> {failed ? 'Revisar / Corregir QC' : 'Iniciar inspección'}
                   </button>
+                  {/* ⭐ Editar / Eliminar al PIE, con etiqueta.
+                      Antes eran dos iconos sueltos flotando arriba a la derecha:
+                      quedaban por encima del nombre del cliente, sin texto que
+                      dijera que hacian, y Eliminar (destructivo) era lo primero
+                      que encontraba el pulgar. Abajo y etiquetados quedan lejos
+                      del toque accidental y se entienden sin adivinar. */}
+                  <div className="qcv-house-card-footer" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenHouseEdit?.(house)}
+                      className="qcv-house-foot-btn"
+                    >
+                      <Edit2 size={14} /> Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHouse(house)}
+                      className="qcv-house-foot-btn delete"
+                    >
+                      <Trash2 size={14} /> Eliminar
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1871,10 +1889,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <div className="qc-pending-grid">
             {filteredRecallHouses.map(house => (
               <div key={house.id} onClick={() => onOpenHouseDetail?.(house)} className="qcv-house-card recall">
-                <div className="qcv-house-card-actions-row" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => onOpenHouseEdit?.(house)} title="Editar (formulario)" className="qcv-house-icon-btn"><Edit2 size={15} /></button>
-                  <button type="button" onClick={() => handleDeleteHouse(house)} title="Eliminar casa" className="qcv-house-icon-btn delete"><Trash2 size={15} /></button>
-                </div>
                 <div className="qcv-house-card-title-row">
                   <div className="qcv-house-client-name">
                     {getClientName(house.client)}
@@ -1931,6 +1945,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 >
                   <ClipboardCheck size={17} /> Re-inspeccionar
                 </button>
+                {/* Mismo pie que las tarjetas pendientes. */}
+                <div className="qcv-house-card-footer" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={() => onOpenHouseEdit?.(house)} className="qcv-house-foot-btn">
+                    <Edit2 size={14} /> Editar
+                  </button>
+                  <button type="button" onClick={() => handleDeleteHouse(house)} className="qcv-house-foot-btn delete">
+                    <Trash2 size={14} /> Eliminar
+                  </button>
+                </div>
               </div>
             ))}
           </div>

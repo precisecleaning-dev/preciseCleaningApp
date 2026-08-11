@@ -132,6 +132,13 @@
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .qcrt-wa-btn:hover:not(:disabled) { background-color: #dcfce7; border-color: #4ade80; }
+/* ⭐ El logo de WhatsApp es un glifo SOLIDO (fill), no un trazo como los iconos
+   de lucide. Se pinta con el verde de la marca para que se reconozca de un
+   vistazo: es la mitad del valor de tenerlo en una tabla larga. */
+.qcrt-wa-btn svg { fill: #25d366; color: #25d366; flex-shrink: 0; }
+.qcrt-wa-btn:hover:not(:disabled) svg { fill: #128c3e; color: #128c3e; }
+/* El spinner de carga SI es de trazo: no debe recibir el fill. */
+.qcrt-wa-btn svg.qcrt-spin { fill: none; color: #15803d; }
 .qcrt-wa-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .qcrt-wa-btn.full { width: 100%; margin: 8px 0 0; padding: 11px 16px; }
 

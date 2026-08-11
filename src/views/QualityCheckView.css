@@ -272,7 +272,14 @@
 .qcv-house-card { border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; cursor: pointer; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: none; }
 .qcv-house-card.recall { background: #fdfcff; border-color: #ddd6fe; }
 .qcv-house-card.failed { background: #fff5f5; border-color: #fca5a5; box-shadow: 0 0 0 2px rgba(239,68,68,0.12); }
-.qcv-house-card-actions-row { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: -4px; }
+/* ⭐ Pie de la tarjeta: Editar y Eliminar, a mitad de ancho cada uno.
+   Separados del resto por una linea para que se lean como acciones sobre la
+   CASA, no como parte del flujo de inspeccion. */
+.qcv-house-card-footer { display: flex; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid #f1f5f9; }
+.qcv-house-foot-btn { flex: 1 1 50%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 8px 10px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.qcv-house-foot-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.qcv-house-foot-btn.delete { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
+.qcv-house-foot-btn.delete:hover { background: #fee2e2; border-color: #fca5a5; }
 .qcv-house-icon-btn { border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 7px; padding: 5px; cursor: pointer; color: #2563eb; display: flex; }
 .qcv-house-icon-btn.delete { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
 .qcv-house-card-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -285,7 +292,12 @@
 .qcv-house-info-row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #475569; }
 .qcv-shrink-0 { flex-shrink: 0; }
 .qcv-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qcv-house-status-btn { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; padding: 5px 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+/* ⭐ Status a ANCHO COMPLETO de la tarjeta. Antes era `align-self: flex-start`,
+   asi que su ancho dependia del largo del nombre del estado y las tarjetas se
+   veian desalineadas entre si. Con width 100% y 44px de alto se alinea con el
+   boton de ruta y con "Iniciar inspeccion". */
+.qcv-house-status-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.qcv-house-status-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
 .qcv-house-status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dot-color); flex-shrink: 0; }
 .qcv-house-inspect-btn { margin-top: 2px; height: 46px; border-radius: 11px; background: #3b82f6; border: none; color: #fff; font-weight: 600; font-size: 0.92rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .qcv-house-inspect-btn.failed { background: #ef4444; }
@@ -455,7 +467,9 @@
 
 /* ===== Ruta de inspección (drawer lateral) — botón en tarjeta + botón flotante ===== */
 /* Misma familia visual que .qcv-house-status-btn (pill dentro de la tarjeta). */
-.qcv-house-route-btn { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; padding: 5px 12px; border-radius: 999px; border: 1px solid #c7d2fe; background: #eef2ff; color: #4338ca; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+/* ⭐ Ruta tambien a ancho completo, mismo alto que Status. */
+.qcv-house-route-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 1px solid #c7d2fe; background: #eef2ff; color: #4338ca; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.qcv-house-route-btn:hover { background: #e0e7ff; }
 .qcv-house-route-btn.in-route { border-color: #86efac; background: #dcfce7; color: #166534; }
 
 /* Nota general en la tarjeta — espejo visual de .pb-job-note (PipelineBoardView.css,
