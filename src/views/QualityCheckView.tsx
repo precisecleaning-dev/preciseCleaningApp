@@ -492,6 +492,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     await refreshPendingCount();
   };
 
+  // ⭐ Anexa URLs de fotos a un area SIN repetir.
+  //    Segunda linea de defensa: la causa real de las fotos repetidas estaba en
+  //    storageService (nombres de archivo que colisionaban), pero hay tres rutas
+  //    distintas que anexan fotos — subida directa, camara rafaga y cola offline —
+  //    y un reintento de la cola puede volver a anexar una URL ya presente.
+  //    Filtrar aqui garantiza que el reporte nunca muestre la misma foto dos veces.
+  const appendPhotos = (placeId: string, urls: string[]) => {
+    setQcData(prev => {
+      const place = prev[placeId] || {};
+      const current: string[] = (place.photos || []) as string[];
+      const merged = [...current];
+      urls.forEach(u => { if (u && !merged.includes(u)) merged.push(u); });
+      return { ...prev, [placeId]: { ...place, photos: merged } };
+    });
+  };
+
   // ⭐ Procesa la cola: sube cada foto pendiente; al lograrlo la adjunta al reporte
   //    (en memoria si está abierto, y al documento guardado si ya existe).
   const processQueue = async () => {
@@ -512,7 +528,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             catch (e) { console.error('No se pudo parchar el reporte con la foto:', e); }
           }
           if (selectedHouseRef.current && selectedHouseRef.current.id === entry.houseId) {
-            setQcData(prev => ({ ...prev, [entry.placeId]: { ...(prev[entry.placeId] || {}), photos: [...((prev[entry.placeId] || {}).photos || []), url] } }));
+            appendPhotos(entry.placeId, [url]);
           }
           await offlineDelete(entry.id);
           setQueuedByPlace(prev => ({ ...prev, [entry.placeId]: (prev[entry.placeId] || []).filter(p => p.id !== entry.id) }));
@@ -1310,7 +1326,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       if (online) {
         try {
           const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);
-          setQcData(prev => ({ ...prev, [placeId]: { ...(prev[placeId] || {}), photos: [...((prev[placeId] || {}).photos || []), ...urls] } }));
+          appendPhotos(placeId, urls);
         } catch (upErr) {
           console.warn('Subida falló, se guarda offline para reintentar:', upErr);
           await queuePhoto({ id, houseId: house.id, placeId, placeName, address: house.address, blob: compressed });
