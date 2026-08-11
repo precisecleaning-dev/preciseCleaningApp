@@ -28,7 +28,7 @@
    ============================================================================ */
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
@@ -57,6 +57,13 @@ const SYNC_STATE_DOC = "app_settings/gcal_sync";
 const GCAL_CLIENT_ID = defineSecret("GCAL_CLIENT_ID");
 const GCAL_CLIENT_SECRET = defineSecret("GCAL_CLIENT_SECRET");
 const GCAL_REFRESH_TOKEN = defineSecret("GCAL_REFRESH_TOKEN");
+
+// ⭐ Credenciales SMTP para el envío de correo (ver función sendmailqueue).
+const SMTP_HOST = defineSecret("SMTP_HOST");
+const SMTP_PORT = defineSecret("SMTP_PORT");
+const SMTP_USER = defineSecret("SMTP_USER");
+const SMTP_PASS = defineSecret("SMTP_PASS");
+const SMTP_FROM = defineSecret("SMTP_FROM");
 
 // URI de redirección usado al obtener el refresh token (OAuth Playground).
 // Debe COINCIDIR con el que se registró en el cliente OAuth.
@@ -576,5 +583,104 @@ export const onqualitycheckfinished = onDocumentWritten(
     await db.collection("mail").add({ to, message: { subject, html } });
     await afterSnap.ref.update({ reportEmailSentAt: new Date().toISOString() });
     logger.info(`Reporte QC enviado a ${to} (${clientName}, ${after.date})`);
+  },
+);
+
+// ============================================================================
+// 6) sendmailqueue — ENVÍO REAL DE CORREO
+// ----------------------------------------------------------------------------
+// Reemplaza a la extensión "Trigger Email from Firestore".
+//
+// POR QUÉ EXISTE:
+//   Toda la app "envía" correos escribiendo en la colección `mail`. Ese diseño
+//   asume que hay algo escuchando esa colección — la extensión. Sin ella los
+//   documentos se guardaban y nadie los despachaba: la app decía "enviado" y no
+//   llegaba nada.
+//
+//   Esta función hace exactamente lo mismo que la extensión, incluido escribir
+//   el resultado en el campo `delivery` con el MISMO formato. Por eso NO hay que
+//   tocar una sola línea del cliente: `sendMailAndConfirm` sigue funcionando
+//   igual, y si algún día se instala la extensión, basta con borrar esta función.
+//
+// IDEMPOTENCIA:
+//   Si el documento ya trae `delivery`, se ignora. Evita reenvíos cuando la
+//   función se reintenta (Firestore garantiza "al menos una vez", no "una sola
+//   vez": sin este candado un fallo transitorio duplicaría el correo).
+// ============================================================================
+export const sendmailqueue = onDocumentCreated(
+  {
+    document: "mail/{mailId}",
+    region: "us-central1",
+    secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM],
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() as {
+      to?: string | string[];
+      message?: { subject?: string; html?: string; text?: string };
+      delivery?: unknown;
+    };
+
+    if (data.delivery) return; // ya procesado
+    const to = data.to;
+    const subject = data.message?.subject;
+    const html = data.message?.html;
+    if (!to || (!html && !data.message?.text)) {
+      await snap.ref.update({
+        delivery: {
+          state: "ERROR",
+          error: "El documento no tiene destinatario o cuerpo del mensaje.",
+          endTime: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
+    await snap.ref.update({
+      delivery: { state: "PROCESSING", startTime: new Date().toISOString() },
+    });
+
+    try {
+      // Import dinámico: nodemailer solo se carga cuando llega un correo, así el
+      // análisis de despliegue de las OTRAS funciones no se hace más lento.
+      const nodemailer = await import("nodemailer");
+
+      const port = Number(SMTP_PORT.value() || "465");
+      const transporter = nodemailer.createTransport({
+        host: SMTP_HOST.value(),
+        port,
+        // 465 = SSL implícito; 587 = STARTTLS. Deducirlo del puerto evita un
+        // secreto más y es el error de configuración más común.
+        secure: port === 465,
+        auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+      });
+
+      const info = await transporter.sendMail({
+        from: SMTP_FROM.value() || SMTP_USER.value(),
+        to: Array.isArray(to) ? to.join(",") : to,
+        subject: subject || "(sin asunto)",
+        html,
+        text: data.message?.text,
+      });
+
+      await snap.ref.update({
+        delivery: {
+          state: "SUCCESS",
+          endTime: new Date().toISOString(),
+          info: { messageId: info.messageId, accepted: info.accepted },
+        },
+      });
+      logger.info(`Correo enviado a ${String(to)} — ${subject}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // El error se guarda EN EL DOCUMENTO, no solo en los logs: así la app se
+      // lo muestra al usuario y no hay que entrar a la consola para saber que
+      // fallaron las credenciales SMTP.
+      await snap.ref.update({
+        delivery: { state: "ERROR", error: message, endTime: new Date().toISOString() },
+      });
+      logger.error(`Error enviando correo a ${String(to)}: ${message}`);
+    }
   },
 );
