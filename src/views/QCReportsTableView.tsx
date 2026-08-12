@@ -18,6 +18,7 @@ import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
 import WhatsAppIcon from '../components/WhatsAppIcon';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
+import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import './QCReportsTableView.css';
 
@@ -203,6 +204,12 @@ export default function QCReportsTableView({
           changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
         });
       } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
+
+      // ⭐ Alinear el REPORTE de calidad con el nuevo estado de la casa.
+      //    Quality Check clasifica por `quality_checks.result`, no por el estado
+      //    de la casa: sin esto, mover una casa a "Quality Check" aqui la dejaba
+      //    igual como Recall alla. Ver src/utils/qcRecordSync.ts.
+      await syncQCRecordWithStatus(house.id, statuses, newStatusId);
     } catch (e) {
       console.error('Error cambiando el estado:', e);
       alert('No se pudo cambiar el estado de la casa.');

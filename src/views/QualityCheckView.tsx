@@ -19,7 +19,8 @@ import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } 
 import { isInvoiceStatus } from '../utils/invoiceEntry';
 import { computeQCScore } from '../utils/qcScore';
 import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
-import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
+import { qualityCheckAllowedStatuses, isRecallName } from '../utils/statusFilters';
+import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -683,6 +684,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           source: 'quality_check',
         } as any);
       } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
+
+      // ⭐ Misma sincronizacion que en Quality Check Reports, en sentido inverso:
+      //    el estado de la casa manda sobre el resultado del reporte, para que
+      //    ambas vistas cuenten lo mismo. Ver src/utils/qcRecordSync.ts.
+      await syncQCRecordWithStatus(house.id, statuses, newStatusId);
       setStatusModalHouse(null);
     } catch (e) {
       console.error('Error cambiando status:', e);
@@ -747,10 +753,33 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    - Recall:   se presionó "DID NOT PASS" (result === 'failed')
   //    - Finished: inspección terminada y guardada con "Guardar Todo" (pasó)
   //    - Pending:  llegó a Quality Check y aún no se completa la inspección
+  // ⭐ UNA SOLA FUENTE DE VERDAD: el ESTADO ACTUAL DE LA CASA.
+  //
+  //    Antes esto clasificaba por `qc.result`, mientras que Quality Check
+  //    Reports clasificaba por `properties.statusId`. Al mover una casa de
+  //    Recall a Quality Check desde Reports, el reporte conservaba
+  //    `result: 'failed'` y la misma casa salia como "Quality Check" en una
+  //    vista y "Recall" en la otra, para siempre.
+  //
+  //    Ahora manda el estado de la casa, que es el dato que el usuario ve y
+  //    edita. `result` se conserva como el resultado historico de esa
+  //    inspeccion y se usa solo de respaldo si la casa ya no existe.
+  //
+  //    Efecto util: los reportes YA desincronizados se corrigen solos al
+  //    cargar, sin migracion de datos.
   const qcCategory = (qc: QCRecord): 'Pending' | 'Finished' | 'Recall' => {
-    if (qc.result === 'failed') return 'Recall';
-    if (qc.status === 'Finished') return 'Finished';
-    return 'Pending';
+    if (qc.status !== 'Finished') return 'Pending';
+
+    const house = properties.find(p => p.id === qc.houseId);
+    if (house) {
+      const raw = String(house.statusId || '').trim();
+      const st = statuses.find(x => String(x.id) === raw || String(x.name) === raw);
+      const name = st?.name || raw;
+      if (name) return isRecallName(name) ? 'Recall' : 'Finished';
+    }
+
+    // La casa fue borrada o no tiene estado: se cae al resultado del reporte.
+    return qc.result === 'failed' ? 'Recall' : 'Finished';
   };
 
   // ⭐ Reúne las notas y daños capturados por área (para mostrarlos en la tarjeta del QC)
