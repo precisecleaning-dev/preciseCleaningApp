@@ -306,16 +306,11 @@
 .qcv-empty-note-box { text-align: center; color: #6b7280; font-style: italic; padding: 30px; background: white; border-radius: 12px; border: 1px solid #e5e7eb; }
 
 /* ===== Tabla de registros ===== */
-.qcv-th { background-color: #f9fafb; padding: 12px 16px; color: #6b7280; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; text-align: left; }
 .qcv-th.right { text-align: right; }
-.qcv-td { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 0.95rem; }
 .qcv-td.empty { text-align: center; color: #94a3b8; font-style: italic; padding: 30px; }
 .qcv-td.notes { max-width: 260px; }
 .qcv-td.actions { text-align: right; white-space: nowrap; }
 
-.qcv-table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
-.qcv-table-scroll { overflow-x: auto; }
-.qcv-table { width: 100%; border-collapse: collapse; min-width: 900px; }
 
 .qcv-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 10px; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; background: var(--badge-bg); color: var(--badge-fg); }
 .qcv-badge.card { font-size: 0.68rem; gap: 5px; }
@@ -331,15 +326,26 @@
 .qcv-note-damage { color: #b91c1c; }
 .qcv-notes-more { font-size: 0.72rem; color: #94a3b8; }
 .qcv-row-actions { display: inline-flex; gap: 6px; }
-.qcv-row-icon-btn { border-radius: 8px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; }
 .qcv-row-icon-btn.email { background: #f0fdf4; border-color: #bbf7d0; color: #16a34a; }
 .qcv-row-icon-btn.edit { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
 .qcv-row-icon-btn.delete { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
 
 /* ===== Tarjetas móviles de registros ===== */
-.qcv-record-cards-wrap { flex-direction: column; gap: 12px; }
+/* ⭐ REGISTROS EN TARJETAS, SIEMPRE.
+   Antes en escritorio se pintaba una TABLA y en movil estas tarjetas: la misma
+   informacion dos veces en el codigo, y en pantallas intermedias llegaban a
+   verse las dos a la vez (lo que se ve repetido en Recall). Ahora solo existen
+   las tarjetas, con la MISMA rejilla que "Casas pendientes" para que las tres
+   pestanas se lean igual. */
+.qcv-record-cards-wrap {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
 .qcv-record-empty { text-align: center; color: #94a3b8; font-style: italic; padding: 24px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; }
-.qcv-record-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+/* Mismas medidas, radio y espaciado que .qcv-house-card (tarjetas Pending). */
+.qcv-record-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; height: 100%; }
 .qcv-record-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .qcv-record-meta-row { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.82rem; color: #475569; }
 .qcv-record-meta-item { display: inline-flex; align-items: center; gap: 4px; }
