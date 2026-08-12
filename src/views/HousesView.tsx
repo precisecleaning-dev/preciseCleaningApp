@@ -181,6 +181,8 @@ const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   },
   { id: "note", label: "General Note", section: "Notes" },
   { id: "employeeNote", label: "Employee's Note", section: "Notes" },
+  // ⭐ Notas de OFICINA: internas, no las ve el personal de campo.
+  { id: "officeNote", label: "Office Notes", section: "Notes" },
   {
     id: "card_billedServices",
     label: "Billed Services (entire section)",
@@ -671,6 +673,7 @@ export default function HousesView({
     note: "",
     address: "",
     employeeNote: "",
+    officeNote: "",
     serviceId: "",
     rooms: "1",
     bathrooms: "1",
@@ -1368,6 +1371,19 @@ export default function HousesView({
     if (!userRoleId) return true;
     const hiddenForRoles = formConfig?.visibility?.[elementId] || [];
     return !hiddenForRoles.includes(userRoleId);
+  };
+
+  // ⭐ ¿Puede el rol activo VER las notas de oficina?
+  //    Doble candado a proposito: hace falta el permiso "Office Notes" en Roles
+  //    Y que el elemento este activo en Configure Fields. Si solo dependiera del
+  //    configurador, cualquiera que lo activara por error expondria informacion
+  //    interna a todos los equipos.
+  const canSeeOfficeNotes = (): boolean => {
+    if (!isElementVisible("officeNote")) return false;
+    if (isSuperAdmin) return true;
+    return !!activeRole?.permissions?.find(
+      (p: { module: string; canView?: boolean }) => p.module === "Office Notes",
+    )?.canView;
   };
 
   // ⭐ ¿Alguno de estos elementos es visible para el rol activo?
@@ -3854,6 +3870,9 @@ export default function HousesView({
           )}
 
           {viewMode === "board" ? (
+            /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
+               puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
+               no se pase siquiera al componente cuando no hay permiso. */
             <PipelineBoardView
               properties={boardProperties}
               statuses={statuses.filter((s) => isStatusVisibleForRole(s.id))}
@@ -3866,6 +3885,7 @@ export default function HousesView({
               isSaving={isSaving}
               showBeforePhotos={isElementVisible("board_beforePhotos")}
               showAfterPhotos={isElementVisible("board_afterPhotos")}
+              showOfficeNote={canSeeOfficeNotes()}
               onOpenPhotos={(prop) => {
                 handleOpenDetail(prop);
                 setActiveDetailTab("media");
@@ -5376,6 +5396,25 @@ export default function HousesView({
                         ></textarea>
                       </div>
                     )}
+                    {canSeeOfficeNotes() && (
+                      <div>
+                        <label className="hv-label office">
+                          Office Notes
+                        </label>
+                        <textarea
+                          className="hv-input hv-textarea office"
+                          placeholder="Notas internas de oficina (no visibles para los equipos)..."
+                          value={(formData as PropertyU).officeNote || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              officeNote: e.target.value,
+                            } as Property)
+                          }
+                          disabled={isFieldRO("officeNote")}
+                        ></textarea>
+                      </div>
+                    )}
                     {isElementVisible("employeeNote") && (
                       <div>
                         <label className="hv-label danger">
@@ -6445,8 +6484,24 @@ export default function HousesView({
 
               {activeDetailTab === "media" && isVisible("media") && (
                 <div className="fade-in">
-                  {anyVisible("note", "employeeNote") && (
+                  {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
                     <div className="hv-media-grid">
+                      {/* ⭐ Notas de OFICINA en azul, primero: son internas y deben
+                          distinguirse a simple vista del resto. */}
+                      {canSeeOfficeNotes() && (
+                        <div className="hv-note-box office">
+                          <span className="hv-detail-label office">
+                            <Briefcase
+                              size={14}
+                              className="hv-label-icon-inline"
+                            />{" "}
+                            OFFICE NOTES
+                          </span>
+                          <p className="hv-note-text">
+                            {(selectedHouse as PropertyU).officeNote || "No office notes."}
+                          </p>
+                        </div>
+                      )}
                       {isElementVisible("note") && (
                         <div className="hv-note-box">
                           <span className="hv-detail-label">

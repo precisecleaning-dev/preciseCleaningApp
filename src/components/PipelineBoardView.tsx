@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Camera, Image as ImageIcon } from 'lucide-react';
+import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Camera, Image as ImageIcon, Briefcase } from 'lucide-react';
 import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import { getRelationName, getRelationColor } from '../utils/relations';
@@ -25,6 +25,7 @@ type Property = BaseProperty & {
   receiveDate?: string | null;
   note?: string | null;
   generalNotes?: string | null;
+  officeNote?: string | null;
 };
 
 interface PipelineBoardViewProps {
@@ -45,6 +46,13 @@ interface PipelineBoardViewProps {
   showAfterPhotos?: boolean;
   /** ⭐ Abre el detalle de la casa en la pestaña de fotos */
   onOpenPhotos?: (p: Property) => void;
+  /**
+   * ⭐ Mostrar las NOTAS DE OFICINA en la tarjeta.
+   *    Lo decide HousesView combinando el permiso "Office Notes" de Roles con el
+   *    elemento "officeNote" del configurador. Aqui solo se obedece: el tablero
+   *    no debe conocer las reglas de permisos.
+   */
+  showOfficeNote?: boolean;
 }
 
 /* Pastilla de estado en la tarjeta. Al tocarla YA NO abre un dropdown:
@@ -76,6 +84,7 @@ export default function PipelineBoardView({
   properties, statuses, teams, priorities = [], getClientName,
   onOpenDetail, onQuickStatusChange, canEdit, isSaving, getAmount,
   showBeforePhotos = false, showAfterPhotos = false, onOpenPhotos,
+  showOfficeNote = false,
 }: PipelineBoardViewProps) {
 
   // Modal central de cambio de estado (null = cerrado)
@@ -165,6 +174,19 @@ export default function PipelineBoardView({
                         <CalendarDays size={12} className="pb-shrink-0" />
                         <span>{p.scheduleDate ? formatDate(p.scheduleDate) : 'Sin fecha'}</span>
                       </div>
+
+                      {/* ⭐ NOTAS DE OFICINA — en azul y con etiqueta, para que se
+                          distingan de la nota general de un vistazo. Van primero
+                          porque son la informacion de coordinacion. */}
+                      {showOfficeNote && p.officeNote && (
+                        <div className="pb-job-note office">
+                          <Briefcase size={12} className="pb-job-note-icon office" />
+                          <span className="pb-job-note-body">
+                            <span className="pb-job-note-label">Office</span>
+                            <span className="pb-job-note-text">{p.officeNote}</span>
+                          </span>
+                        </div>
+                      )}
 
                       {/* Nota general (NO la del empleado). Soporta datos de la app (note)
                           y los importados de AppSheet (generalNotes). */}

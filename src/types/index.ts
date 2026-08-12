@@ -47,6 +47,18 @@ export interface Property {
   note: string;
   address: string;
   employeeNote: string;
+  /**
+   * ⭐ NOTAS DE OFICINA — informacion interna (coordinacion, cobros, acuerdos con
+   *    el cliente) que NO deben ver los equipos de limpieza.
+   *
+   *    Opcional a proposito: las casas ya guardadas no lo tienen, y marcarlo como
+   *    obligatorio romperia el tipo en cada registro existente.
+   *
+   *    La visibilidad se controla en DOS niveles, como el resto de campos:
+   *      1. Roles & Permissions → modulo "Office Notes"
+   *      2. Configure Fields   → elemento "officeNote"
+   */
+  officeNote?: string;
   serviceId: string;
   rooms: string;
   bathrooms: string;

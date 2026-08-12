@@ -237,6 +237,12 @@
 .hv-input { background-color: #ffffff; padding: 10px 14px 10px 40px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; color: #111827; width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
 .hv-textarea { min-height: 80px; resize: vertical; padding: 14px; }
 .hv-textarea.danger { background-color: #FEF2F2; border-color: #FECACA; }
+/* ⭐ NOTAS DE OFICINA — azul en todo el flujo (formulario, detalle y tablero),
+   para que se lean de un vistazo como informacion INTERNA y no se confundan con
+   la nota general (gris) ni con la del empleado (roja/naranja). */
+.hv-label.office { color: #1d4ed8; }
+.hv-textarea.office { background-color: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.hv-textarea.office:focus { border-color: #3b82f6; }
 
 .hv-form-inner { max-width: 900px; margin: 0 auto; }
 .hv-form-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 12px; flex-wrap: wrap; }
@@ -581,6 +587,9 @@
 .hv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
 .hv-detail-label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 600; }
 .hv-detail-label.orange { color: #c2410c; }
+.hv-note-box.office { background-color: #eff6ff; border-color: #bfdbfe; border-left: 3px solid #2563eb; }
+.hv-detail-label.office { color: #1d4ed8; }
+.hv-note-box.office .hv-note-text { color: #1e3a8a; }
 .hv-note-text { font-size: 0.95rem; color: #111827; font-weight: 500; margin-top: 4px; white-space: pre-wrap; }
 .hv-photo-actions-row { display: flex; gap: 8px; }
 .hv-btn-compact { display: flex; align-items: center; gap: 4px; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }

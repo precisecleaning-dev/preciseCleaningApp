@@ -28,6 +28,10 @@ const DEFAULT_MODULES = [
   'Pipeline',
   'No Status',
   'Notice Board',
+  // ⭐ Permiso PROPIO para las notas de oficina: informacion interna que no debe
+  //    ver el personal de campo. Sin marcar aqui, el campo no aparece en ningun
+  //    lado, ni siquiera si esta activo en Configure Fields.
+  'Office Notes',
   'Calendar',
   'Checklist',
   // --- Calidad ---
@@ -197,6 +201,14 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
     formData.permissions.length > 0
     && formData.permissions.every((p: PermissionExt) => !!p[field]);
 
+  // ⭐ Estado PARCIAL: algunas si, otras no. Sin esto la casilla maestra se ve
+  //    vacia aunque haya 15 modulos marcados, y da la impresion de que no hay
+  //    nada configurado. El guion horizontal del estado indeterminado es la
+  //    convencion nativa del navegador para "parcial".
+  const isColumnPartial = (field: PermissionField): boolean =>
+    formData.permissions.some((p: PermissionExt) => !!p[field])
+    && !isColumnChecked(field);
+
   const toggleColumn = (field: PermissionField, value: boolean) => {
     setFormData(prev => ({
       ...prev,
@@ -207,6 +219,9 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
   // ⭐ Maestro por FILA: activa los 4 permisos de un modulo de una vez.
   const isRowChecked = (perm: PermissionExt): boolean =>
     PERMISSION_FIELDS.every(f => !!perm[f]);
+
+  const isRowPartial = (perm: PermissionExt): boolean =>
+    PERMISSION_FIELDS.some(f => !!perm[f]) && !isRowChecked(perm);
 
   const toggleRow = (moduleName: string, value: boolean) => {
     setFormData(prev => ({
@@ -415,6 +430,7 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                             type="checkbox"
                             className="rv-checkbox master"
                             checked={isColumnChecked(field)}
+                            ref={el => { if (el) el.indeterminate = isColumnPartial(field); }}
                             onChange={e => toggleColumn(field, e.target.checked)}
                             title={`Marcar o desmarcar esta columna en todos los módulos`}
                             aria-label={`Seleccionar toda la columna ${field}`}
@@ -434,6 +450,7 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                               type="checkbox"
                               className="rv-checkbox master"
                               checked={isRowChecked(perm)}
+                              ref={el => { if (el) el.indeterminate = isRowPartial(perm); }}
                               onChange={e => toggleRow(perm.module, e.target.checked)}
                               aria-label={`Seleccionar todos los permisos de ${perm.module}`}
                             />
