@@ -2121,7 +2121,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <div className="qcv-im-header-title-wrap">
                 {/* El sufijo v2 permite saber de un vistazo si el navegador esta
                     corriendo esta version o una cacheada. */}
-                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check <span className="qc-title-ver">v3</span></h2>
+                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check <span className="qc-title-ver">v4</span></h2>
                 <p className="qc-prop">{getClientName(selectedHouse.client)} · {selectedHouse.address || '—'}</p>
                 <p className="qc-insp">
                   <User size={13} /> {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown'}

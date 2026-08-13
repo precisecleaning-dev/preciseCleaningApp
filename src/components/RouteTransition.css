@@ -5,11 +5,20 @@
 
 /* --- Transición de entrada ---------------------------------------------- */
 
+/* ⚠ NO agregar aquí `will-change: transform` ni dejar un `transform` aplicado
+   al terminar la animación.
+
+   MOTIVO (bug real, costó encontrarlo): un elemento con `transform` o
+   `will-change: transform` se convierte en BLOQUE CONTENEDOR de sus
+   descendientes `position: fixed`. Ese contenedor envuelve TODA la vista, así
+   que los modales de la app (`position: fixed; inset: 0`) dejaban de anclarse
+   al viewport y se comportaban como `absolute` dentro de la vista: no cubrían
+   la pantalla, empujaban el contenido hacia abajo y su encabezado se
+   descuadraba al quedar limitado por el ancho del padre.
+
+   Por eso el último fotograma usa `transform: none` (no `translate3d(0,0,0)`,
+   que SÍ cuenta como transform aplicado con `animation-fill-mode: both`). */
 .route-transition {
-  /* `will-change` avisa al navegador que estas dos propiedades van a cambiar,
-     así promueve la capa antes de empezar y la animación no salta en el primer
-     fotograma (muy visible en móviles de gama media). */
-  will-change: transform, opacity;
   animation: route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   height: 100%;
 }
@@ -19,14 +28,13 @@
     opacity: 0;
     /* Un desplazamiento MÍNIMO. Con 20–30px la vista "vuela" y se percibe
        lenta; con 8px se lee como un asentamiento, que es lo que hacen las
-       apps del sistema. Solo se anima transform/opacity: son las dos
-       propiedades que el compositor resuelve sin recalcular layout, así que
-       la animación corre a 60fps incluso en un teléfono modesto. */
+       apps del sistema. */
     transform: translate3d(0, 8px, 0);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    /* `none`, no translate3d(0,0,0): ver la advertencia de arriba. */
+    transform: none;
   }
 }
 

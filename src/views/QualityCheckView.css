@@ -61,17 +61,24 @@
   gap: 12px;
   flex-shrink: 0;
 }
+/* ⭐ El bloque de texto DEBE poder encogerse. Sin `min-width: 0` un flex item
+   nunca baja de su ancho de contenido, asi que en movil el titulo empujaba a
+   los botones y todo se apilaba en columnas de una palabra. */
+.qcv-im-header-title-wrap { min-width: 0; flex: 1; }
 .qc-title {
   margin: 0;
   font-size: 1.3rem;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
+.qc-title svg { flex-shrink: 0; }
 .qc-prop {
   margin: 8px 0 0;
   font-size: 0.95rem;
   opacity: 0.9;
+  min-width: 0;
 }
 .qc-insp {
   margin: 4px 0 0;
@@ -79,8 +86,11 @@
   opacity: 0.8;
   display: flex;
   align-items: center;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
 }
+.qc-insp svg { flex-shrink: 0; }
 
 /* ===== Buscador de áreas ===== */
 .qc-search-bar {
@@ -551,11 +561,22 @@
     height: 100dvh;
     border-radius: 0;
   }
+  /* ⭐ En movil el encabezado se apila: texto arriba, acciones abajo a lo ancho.
+     Compitiendo en la misma fila, con 4 botones y una direccion larga, el
+     titulo se partia en columnas de una palabra. */
   .qc-header {
-    padding: 14px 16px;
+    padding: 12px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
+  .qcv-im-header-title-wrap { width: 100%; }
+  .qcv-im-header-actions { width: 100%; justify-content: flex-end; }
   .qc-title {
     font-size: 1.05rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .qc-prop {
     font-size: 0.8rem;
