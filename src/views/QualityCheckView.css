@@ -316,18 +316,49 @@
 }
 
 /* ===== Selector de áreas (chips) ===== */
+/* ⭐ Selector de areas: UNA barra horizontal deslizable.
+   Antes eran dos grupos apilados que con 12+ areas ocupaban media pantalla
+   antes de llegar al formulario. Al reducirse a una fila el padding tambien
+   baja: el selector deja de competir con el contenido. */
 .qc-picker {
   grid-column: 1 / -1;
   background: #fff;
   border: 1px solid #e1e4e8;
   border-radius: 10px;
-  padding: 16px;
+  padding: 8px 10px;
 }
+.qc-picker-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scroll-padding: 0 10px;
+  padding-bottom: 2px;
+}
+.qc-picker-strip::-webkit-scrollbar { height: 5px; }
+.qc-picker-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+.qc-picker-strip::-webkit-scrollbar-track { background: transparent; }
+/* Ningun chip se encoge: si no caben, se deslizan. */
+.qc-picker-strip .qc-chip { flex: 0 0 auto; }
+.qc-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
+/* Contador de avance dentro del chip (3/8): evita tener que entrar al area
+   para saber cual quedo a medias. */
+.qc-chip-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.9rem; padding: 1px 5px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28); font-size: 0.68rem; font-weight: 800;
+}
+/* Estados de avance, legibles por color sin leer el contador. */
+.qc-chip.selected.partial { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+.qc-chip.selected.complete { background: #16a34a; border-color: #16a34a; color: #fff; }
+.qc-chip.selected.current { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.32); }
 .qc-chip {
-  padding: 8px 14px;
-  border-radius: 20px;
+  padding: 7px 12px;
+  border-radius: 999px;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -335,53 +366,9 @@
   transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-/* ⭐ El chip SELECCIONADO ya no es un boton suelto: es un contenedor con dos
-   acciones (ir al area / quitarla), por eso pierde su padding propio y lo
-   reparte entre los botones internos. */
-.qc-chip.selected {
-  padding: 0 6px 0 0;
-  gap: 0;
-}
-.qc-chip-goto {
-  padding: 8px 8px 8px 14px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.qc-chip-remove {
-  padding: 4px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  opacity: 0.75;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    opacity 0.15s,
-    background-color 0.15s;
-}
-.qc-chip-remove:hover {
-  opacity: 1;
-  background-color: rgba(255, 255, 255, 0.25);
-}
 /* ⭐ Area que se esta inspeccionando en este momento. */
 .qc-chip.current {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-}
-/* Grupos del selector: "Inspeccionando" arriba, "Disponibles" abajo. */
-.qcv-im-picker-group + .qcv-im-picker-group {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px dashed #e1e4e8;
 }
 
 /* ===== Casas pendientes de Quality Check ===== */
@@ -619,13 +606,6 @@
   }
   .qc-chip {
     padding: 10px 16px;
-    font-size: 0.95rem;
-  }
-  .qc-chip.selected {
-    padding: 0 8px 0 0;
-  }
-  .qc-chip-goto {
-    padding: 10px 8px 10px 16px;
     font-size: 0.95rem;
   }
 }
@@ -1200,23 +1180,10 @@
   justify-content: center;
 }
 
-.qcv-im-picker-title {
-  font-size: 0.78rem;
-  font-weight: 800;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 10px;
-}
 .qcv-im-picker-empty {
   color: #94a3b8;
   font-style: italic;
   font-size: 0.85rem;
-}
-.qcv-im-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .qc-chip.selected {
   background: #3b82f6;
@@ -1410,13 +1377,14 @@
 .qcv-im-btn-save {
   background-color: #22c55e;
   color: white;
-  padding: 15px 50px;
+  padding: 9px 20px;
+  min-height: 40px;
   border: none;
-  border-radius: 30px;
-  font-weight: bold;
+  border-radius: 10px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 16px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1428,13 +1396,14 @@
 .qcv-im-btn-fail {
   background-color: #ef4444;
   color: white;
-  padding: 15px 40px;
+  padding: 9px 20px;
+  min-height: 40px;
   border: none;
-  border-radius: 30px;
-  font-weight: bold;
+  border-radius: 10px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 16px;
-  box-shadow: 0 4px 6px rgba(239, 68, 68, 0.25);
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1447,13 +1416,14 @@
 .qcv-im-btn-done {
   background-color: #1e293b;
   color: white;
-  padding: 15px 40px;
+  padding: 9px 20px;
+  min-height: 40px;
   border: none;
-  border-radius: 30px;
-  font-weight: bold;
+  border-radius: 10px;
+  font-weight: 700;
   cursor: pointer;
-  font-size: 16px;
-  box-shadow: 0 4px 6px rgba(30, 41, 59, 0.2);
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(30, 41, 59, 0.18);
   display: inline-flex;
   align-items: center;
   justify-content: center;
