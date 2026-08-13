@@ -228,14 +228,17 @@
   color: #fff;
 }
 
+/* ⭐ Pie de acciones. El borde superior pasa de 3px verde a 1px gris: el verde
+   grueso competia con el propio boton verde de guardar y hacia ver la barra
+   mas pesada de lo que es. */
 .qc-savebar {
-  padding: 14px;
+  padding: 10px 14px;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  border-top: 3px solid #22c55e;
+  border-top: 1px solid #e1e4e8;
   background-color: #fff;
   flex-shrink: 0;
   padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -329,14 +332,21 @@
 }
 .qc-picker-strip {
   display: flex;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
   flex-wrap: nowrap;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scroll-padding: 0 10px;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
+  /* ⭐ Desvanecido en el borde derecho: pista visual de que la barra CONTINUA.
+     Sin ella, con la ultima area justo al ras, no hay nada que indique que
+     quedan mas y el usuario no intenta deslizar. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
+.qc-title-ver { padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.22); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; vertical-align: middle; }
 .qc-picker-strip::-webkit-scrollbar { height: 5px; }
 .qc-picker-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
 .qc-picker-strip::-webkit-scrollbar-track { background: transparent; }
@@ -354,8 +364,12 @@
 .qc-chip.selected.partial { background: #f59e0b; border-color: #f59e0b; color: #fff; }
 .qc-chip.selected.complete { background: #16a34a; border-color: #16a34a; color: #fff; }
 .qc-chip.selected.current { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.32); }
+/* ⭐ El borde SIEMPRE presente (transparente si no aplica) evita que el chip
+   cambie de tamaño al pasar de disponible a abierto: sin esto la barra daba
+   un salto de 2px cada vez que se tocaba un area. */
 .qc-chip {
   padding: 7px 12px;
+  border: 1px solid transparent;
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.8rem;
