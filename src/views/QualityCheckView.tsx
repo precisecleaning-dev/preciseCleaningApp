@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
@@ -112,7 +113,7 @@ async function offlineSetDocIdForHouse(houseId: string, qcDocId: string): Promis
 
 interface QualityCheckViewProps {
   onOpenMenu: () => void;
-  properties: Property[]; 
+  properties: Property[];
   houseToInspect: Property | null;
   // ⭐ Edición pedida desde la pestaña Reportes del hub
   reportToEdit?: QCRecord | null;
@@ -221,7 +222,7 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
         try {
           const r = await fetch(imageUrl, { mode: 'cors' });
           if (r.ok) { const b = await r.blob(); src = URL.createObjectURL(b); }
-        } catch {}
+        } catch { }
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -355,7 +356,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Áreas seleccionadas para inspeccionar en el modal
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
-  // ⭐ Guardar ya NO cierra la inspeccion (se cierra con "Done"), asi que hace
+  // ⭐ Guardar ya NO cierra la inspeccion (se cierra con "Save All"), asi que hace
   //    falta saber si queda trabajo sin guardar para avisar antes de salir.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // ⭐ PANEL FLOTANTE DE AREAS (movil).
@@ -439,9 +440,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() } as Customer)));
 
         const docsArray = (qcSnap as any).docs || [];
-        const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({ 
-          id: document.id, 
-          ...document.data() 
+        const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({
+          id: document.id,
+          ...document.data()
         } as QCRecord));
 
         loadedQCs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -941,7 +942,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPlaceSearch('');
     setSelectedPlaceIds([]);
     setCheckInAt(new Date().toISOString()); // ⭐ hora de entrada
-    
+
     const initialData: any = {};
     places.forEach(p => {
       initialData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
@@ -974,7 +975,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPendingPhotos({});
     setPlaceSearch('');
     setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
-    
+
     const loadedData: any = qc.qcData || {};
     places.forEach(p => {
       if (!loadedData[p.id]) {
@@ -984,7 +985,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         loadedData[p.id].photos = [];
       }
     });
-    
+
     setQcData(loadedData);
 
     // ⭐ Restaurar áreas seleccionadas: usa las guardadas o, si no hay, deriva las que tengan datos
@@ -1044,7 +1045,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     });
   }, [focusPlaceId, selectedPlaceIds]);
 
-  // ⭐ Cierre REAL del modal. No pregunta nada: lo usan "Done" y el cierre con
+  // ⭐ Cierre REAL del modal. No pregunta nada: lo usan "Save All" y el cierre con
   //    confirmacion. Se mantiene separado para no repetir la limpieza de estado.
   const handleCloseForm = () => {
     // Si la cámara ráfaga quedó abierta, apagar el stream.
@@ -1076,9 +1077,37 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     handleCloseForm();
   };
 
-  // ⭐ "Done": da por FINALIZADA la inspeccion y cierra. Siempre pide confirmacion.
-  //    Si quedan cambios sin guardar los guarda primero, para que terminar nunca
-  //    implique perder trabajo (handleSaveQC se encarga de cerrar despues).
+  // ⭐ Ref con el contexto vivo para el listener de teclado: evita re-suscribir
+  //    el efecto en cada render y siempre lee el estado mas reciente.
+  const escCtxRef = useRef({ cameraOpen: false, requestClose: () => { } });
+  escCtxRef.current = { cameraOpen, requestClose: handleRequestCloseForm };
+
+  // ⭐ Mientras la inspeccion esta abierta:
+  //    1) Se BLOQUEA el scroll del fondo. El modal vive en un portal sobre
+  //       <body> (ver render), asi que sin esto la rueda/gesto seguia moviendo
+  //       la vista de atras y al cerrar el usuario aparecia en otro punto.
+  //    2) Escape pide cerrar (con la misma confirmacion que la X). Si la camara
+  //       rafaga esta abierta, Escape no cierra el formulario: primero se sale
+  //       de la camara con su propio boton.
+  useEffect(() => {
+    if (!isFormModalOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (escCtxRef.current.cameraOpen) return;
+      escCtxRef.current.requestClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isFormModalOpen]);
+
+  // ⭐ "Save All": da por FINALIZADA la inspeccion y cierra. Siempre pide
+  //    confirmacion. Si quedan cambios sin guardar los guarda primero, para que
+  //    terminar nunca implique perder trabajo (handleSaveQC cierra despues).
   const handleDoneInspection = async () => {
     const msg = hasUnsavedChanges
       ? '¿Dar por finalizada esta inspeccion?\n\nTienes cambios sin guardar: se guardaran antes de cerrar.'
@@ -1126,9 +1155,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // ⭐ opts.silent: no muestra el alert de exito (lo usa "Done", que ya confirmo).
+  // ⭐ opts.silent: no muestra el alert de exito (lo usa "Save All", que ya confirmo).
   //    opts.closeAfter: cierra el formulario al terminar. Por defecto NO cierra:
-  //    "Guardar" deja la inspeccion abierta para seguir con mas areas.
+  //    "Done" guarda y deja la inspeccion abierta para seguir con mas areas.
   const handleSaveQC = async (
     forceFail = false,
     opts: { silent?: boolean; closeAfter?: boolean } = {},
@@ -1152,10 +1181,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       });
     });
 
-    // ⭐ "Done" y "RECALL" DAN POR TERMINADA la inspeccion, aunque queden
-    //    tareas sin responder: si no, presionar Done con areas a medias dejaba el
+    // ⭐ "Save All" y "RECALL" DAN POR TERMINADA la inspeccion, aunque queden
+    //    tareas sin responder: si no, terminar con areas a medias dejaba el
     //    reporte en Pending y nunca llegaba a Quality Check Reports.
-    //    "Guardar" conserva el comportamiento de siempre (Pending si falta algo).
+    //    "Done" conserva el comportamiento de guardado (Pending si falta algo).
     const isFinishing = forceFail || opts.closeAfter === true;
     const finalStatus: 'Pending' | 'Finished' =
       isFinishing ? 'Finished' : (isPending ? 'Pending' : 'Finished');
@@ -1244,7 +1273,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       // ⭐ Si NO pasó, mover la casa a "Recall" (con registro en status_history para
       //    que aparezca en la vista de Recalls con su fecha de entrada). Si no existe
       //    un status "Recall", como respaldo se deja en "Quality Check".
-      // ⭐ Al TERMINAR con "Done", la casa pasa al estado "Quality Check": es el
+      // ⭐ Al TERMINAR con "Save All", la casa pasa al estado "Quality Check": es el
       //    estado con el que debe aparecer en Quality Check Reports. (Con
       //    "RECALL" manda el bloque de abajo, que la lleva a Recall.)
       if (!forceFail && opts.closeAfter === true) {
@@ -1308,20 +1337,20 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       }
 
       // ⭐ La inspeccion NO se cierra al guardar: la manager suele guardar avances
-      //    y seguir con las demas areas. El cierre es explicito con "Done" o la X.
+      //    y seguir con las demas areas. El cierre es explicito con "Save All" o la X.
       //    Se pasa a modo edicion del registro recien creado para que un segundo
       //    "Guardar" ACTUALICE ese documento en vez de crear un duplicado.
       if (!editingQcId && savedId) setEditingQcId(savedId);
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
-      // ⭐ "RECALL" y "Done" terminan la inspeccion; "Guardar" no.
+      // ⭐ "RECALL" y "Save All" terminan la inspeccion; "Done" (guardar) no.
       const shouldClose = forceFail || opts.closeAfter === true;
       if (!opts.silent) {
         alert((forceFail
           ? '⚠️ Quality Check marcado como RECALL. La casa pasó a Recall y aparecerá en la vista de Recalls para corregirse.'
           : '✅ Quality Check Saved Successfully!') + emailNote
-          + (shouldClose ? '' : '\n\nLa inspección sigue abierta. Presiona "Done" cuando termines.'));
+          + (shouldClose ? '' : '\n\nLa inspección sigue abierta. Presiona "Save All" cuando termines.'));
       }
       if (shouldClose) handleCloseForm();
     } catch (error) {
@@ -1345,7 +1374,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const handleDeleteQC = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this Quality Check report? This cannot be undone.")) return;
-    
+
     try {
       await deleteDoc(doc(db, 'quality_checks', id));
       setQcList(prev => prev.filter(qc => qc.id !== id));
@@ -1411,7 +1440,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const closeBurstCamera = () => {
     const st = streamRef.current;
     if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    cameraShots.forEach(sh => { try { URL.revokeObjectURL(sh.preview); } catch {} });
+    cameraShots.forEach(sh => { try { URL.revokeObjectURL(sh.preview); } catch { } });
     setCameraShots([]);
     setCameraOpen(false);
     setCameraPlace(null);
@@ -1508,7 +1537,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     logo: escapeHtml((companySettings.logo || '').trim()),
     email: (companySettings.email || '').trim(),
   };
-  
+
   // ⭐ El generador del PDF vive ahora en src/utils/qcReportPdf.ts (compartido con
   //    la pestaña Reportes). Estos wrappers solo aportan el contexto de esta vista.
   const collectPlacesWithData = (qcDataObj: Record<string, any>) => collectPlacesWithDataUtil(places, qcDataObj);
@@ -1619,7 +1648,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     const inspector = qc.inspector || 'Unknown';
     const recordQcData = (qc.qcData as Record<string, any>) || {};
-    
+
     setExportingForQcId(qc.id as string);
     try {
       await buildAndExportQCPDF(house, recordQcData, inspector, qc.date, undefined, qc.team);
@@ -2114,7 +2143,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       )}
 
       {/* ═══════════ MODAL DE INSPECCIÓN (Quality Check) ═══════════ */}
-      {isFormModalOpen && selectedHouse && (
+      {/* ⭐ createPortal(document.body): el overlay usa position:fixed, pero si
+          CUALQUIER ancestro crea un bloque contenedor (transform/filter de una
+          animacion, will-change, etc.) el fixed se degrada a absolute y el modal
+          aparece "hasta arriba" de la pagina en vez de al frente del viewport.
+          Renderizarlo directo en <body> lo hace inmune a los estilos de la vista. */}
+      {isFormModalOpen && selectedHouse && createPortal(
         <div className="qc-overlay" onClick={handleRequestCloseForm}>
           <div className="qc-modal" onClick={e => e.stopPropagation()}>
             <div className="qc-header">
@@ -2393,16 +2427,18 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
             )}
 
             <div className="qc-savebar">
-              {/* ⭐ Guardar mantiene la inspeccion ABIERTA para poder seguir
-                  llenando areas; el cierre es explicito con "Done". */}
-              <button className="qcv-im-btn-save" disabled={isSaving} onClick={() => handleSaveQC(false)}>
-                {isSaving ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Save All
+              {/* ⭐ Comportamientos INTERCAMBIADOS a pedido del usuario:
+                  · "Done" GUARDA el avance y deja la inspeccion abierta.
+                  · "Save All" DA POR TERMINADA la inspeccion y cierra.
+                  El orden tambien cambio: Done · RECALL · Save All. */}
+              <button className="qcv-im-btn-done" disabled={isSaving} onClick={() => handleSaveQC(false)}>
+                {isSaving ? <Loader2 size={16} className="spin-qc" /> : <Check size={16} />} Done
               </button>
               <button className="qcv-im-btn-fail" disabled={isSaving} onClick={() => handleSaveQC(true)}>
                 <AlertTriangle size={16} /> RECALL
               </button>
-              <button className="qcv-im-btn-done" disabled={isSaving} onClick={handleDoneInspection}>
-                <Check size={16} /> Done
+              <button className="qcv-im-btn-save" disabled={isSaving} onClick={handleDoneInspection}>
+                {isSaving ? <Loader2 size={16} className="spin-qc" /> : <Save size={16} />} Save All
               </button>
               <div className="qcv-im-save-state" aria-live="polite">
                 {hasUnsavedChanges
@@ -2413,11 +2449,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ═══════════ CÁMARA EN RÁFAGA ═══════════ */}
-      {cameraOpen && (
+      {/* ⭐ Tambien en portal: es pantalla completa (fixed) y sufre el mismo
+          problema de bloque contenedor que el modal de inspeccion. */}
+      {cameraOpen && createPortal(
         <div className="qcv-cam-root">
           <div className="qcv-cam-header">
             <div className="qcv-cam-title">{cameraPlace?.name || 'Cámara'}</div>
@@ -2448,7 +2487,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <button onClick={closeBurstCamera} className="qcv-cam-done-btn">Listo</button>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ═══════════ MODAL: CAMBIAR STATUS DE LA CASA ═══════════ */}
@@ -2480,7 +2520,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       )}
 
       {/* ═══════════ MODAL: EMAIL ═══════════ */}
-      {emailModalOpen && emailCtx && (
+      {emailModalOpen && emailCtx && createPortal(
         <div className="qc-overlay" onClick={() => setEmailModalOpen(false)}>
           <div onClick={e => e.stopPropagation()} className="qcv-sm-modal wide">
             <div className="qcv-sm-modal-header green">
@@ -2501,17 +2541,21 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ═══════════ EDITOR DE FOTO (dibujar estilo WhatsApp) ═══════════ */}
-      {annotate && (
+      {/* ⭐ En portal: es pantalla completa (fixed) y se abre desde dentro del
+          modal de inspeccion, que ahora tambien vive en <body>. */}
+      {annotate && createPortal(
         <PhotoAnnotator
           imageUrl={annotate.url}
           saving={savingAnnotation}
           onCancel={() => setAnnotate(null)}
           onSave={handleSaveAnnotation}
-        />
+        />,
+        document.body,
       )}
 
       {/* ⭐ RUTA DE INSPECCIÓN: botón flotante + drawer lateral con mapa numerado */}

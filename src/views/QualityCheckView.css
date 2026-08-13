@@ -37,8 +37,24 @@
   padding: 24px;
   box-sizing: border-box;
   overflow: hidden;
+  /* ⭐ Entrada suave: el fondo se funde y el modal "asienta". Breve (<200ms)
+     para que se sienta fluido, no lento. Sin fill-mode que deje un transform
+     aplicado: un transform persistente rompe los position:fixed descendientes. */
+  animation: qc-overlay-in 150ms ease-out;
+}
+@keyframes qc-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes qc-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qc-overlay, .qc-modal { animation: none; }
 }
 .qc-modal {
+  animation: qc-modal-in 190ms cubic-bezier(0.22, 0.61, 0.36, 1);
   background-color: #eaeff2;
   /* ⭐ Mas grande: con 12+ areas y sus fotos, 80vw/82vh obligaba a hacer scroll
      constante y desperdiciaba los margenes de pantallas grandes. */
