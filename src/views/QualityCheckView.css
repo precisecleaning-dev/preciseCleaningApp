@@ -67,30 +67,38 @@
 .qcv-im-header-title-wrap { min-width: 0; flex: 1; }
 .qc-title {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
-.qc-title svg { flex-shrink: 0; }
+.qc-title-icon { flex-shrink: 0; opacity: 0.95; }
 .qc-prop {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 0.95rem;
-  opacity: 0.9;
+  font-weight: 500;
+  opacity: 0.95;
+  line-height: 1.45;
   min-width: 0;
 }
+/* ⭐ Inspector y hora como dos bloques con su propio icono, separados por un
+   espacio generoso. Antes iban en una sola linea unida por · y al partirse en
+   movil el separador quedaba huerfano al final de la primera linea. */
 .qc-insp {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
-  opacity: 0.8;
+  margin: 8px 0 0;
+  font-size: 0.86rem;
+  opacity: 0.92;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 4px 18px;
   min-width: 0;
 }
-.qc-insp svg { flex-shrink: 0; }
+.qc-insp-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.qc-insp svg { flex-shrink: 0; opacity: 0.9; }
 
 /* ===== Buscador de áreas ===== */
 .qc-search-bar {
@@ -356,7 +364,6 @@
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
-.qc-title-ver { padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.22); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; vertical-align: middle; }
 /* ⭐ Boton "Areas": SOLO movil. En escritorio el selector no flota, asi que no
    hay nada que abrir ni cerrar. */
 .qc-picker-toggle { display: none; }
@@ -573,10 +580,7 @@
   .qcv-im-header-title-wrap { width: 100%; }
   .qcv-im-header-actions { width: 100%; justify-content: flex-end; }
   .qc-title {
-    font-size: 1.05rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 1.15rem;
   }
   .qc-prop {
     font-size: 0.8rem;

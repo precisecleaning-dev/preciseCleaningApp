@@ -2119,13 +2119,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <div className="qc-modal" onClick={e => e.stopPropagation()}>
             <div className="qc-header">
               <div className="qcv-im-header-title-wrap">
-                {/* El sufijo v2 permite saber de un vistazo si el navegador esta
-                    corriendo esta version o una cacheada. */}
-                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check <span className="qc-title-ver">v4</span></h2>
+                {/* Titulo fijo "Quality Check": el prefijo Nuevo/Editar no aportaba
+                    nada (el usuario ya sabe que abrio) y en movil obligaba a partir
+                    el titulo en dos lineas. */}
+                <h2 className="qc-title">
+                  <ClipboardCheck size={22} className="qc-title-icon" />
+                  Quality Check
+                </h2>
                 <p className="qc-prop">{getClientName(selectedHouse.client)} · {selectedHouse.address || '—'}</p>
                 <p className="qc-insp">
-                  <User size={13} /> {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown'}
-                  {checkInAt && <> · <Clock size={13} /> Entrada {fmtTime(checkInAt)}</>}
+                  <span className="qc-insp-item">
+                    <User size={14} /> {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown'}
+                  </span>
+                  {checkInAt && (
+                    <span className="qc-insp-item">
+                      <Clock size={14} /> Entrada {fmtTime(checkInAt)}
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="qcv-im-header-actions">
