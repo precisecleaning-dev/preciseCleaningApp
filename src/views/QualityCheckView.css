@@ -347,6 +347,9 @@
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
 .qc-title-ver { padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.22); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; vertical-align: middle; }
+/* ⭐ Boton "Areas": SOLO movil. En escritorio el selector no flota, asi que no
+   hay nada que abrir ni cerrar. */
+.qc-picker-toggle { display: none; }
 .qc-picker-strip::-webkit-scrollbar { height: 5px; }
 .qc-picker-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
 .qc-picker-strip::-webkit-scrollbar-track { background: transparent; }
@@ -591,6 +594,84 @@
   .qcv-im-card-current {
     display: none;
   }
+  /* ⭐ SELECTOR DE ÁREAS COMO PANEL FLOTANTE (móvil).
+     En pantalla chica la barra horizontal obligaba a deslizar de lado para dar
+     con un área entre 14. Ahora se despliega como una hoja que FLOTA sobre el
+     formulario: los chips van en varias filas, se ve el listado completo de un
+     vistazo y se cierra al elegir.
+
+     `position: absolute` dentro de .qc-body (que es relative) en lugar de
+     `fixed`: así el panel queda contenido entre el buscador y la barra de
+     acciones, sin taparlos. */
+  .qc-body { position: relative; }
+
+  .qc-picker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    margin: 0;
+    padding: 12px;
+    border-radius: 0 0 16px 16px;
+    border: 1px solid #e1e4e8;
+    border-top: none;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+    /* Cerrado por defecto: el formulario manda. */
+    display: none;
+  }
+  .qc-picker.open { display: block; }
+
+  /* Los chips pasan a MULTIPLES FILAS: sin scroll lateral y sin recorte. */
+  .qc-picker-strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 8px;
+    padding-bottom: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .qc-picker-strip .qc-chip { flex: 0 1 auto; }
+  .qc-chip-text { max-width: none; }
+
+  /* Botón para abrir/cerrar el panel, junto al buscador. */
+  .qc-picker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 46px;
+    padding: 0 14px;
+    flex-shrink: 0;
+    border: 1px solid #e1e4e8;
+    border-radius: 12px;
+    background: #fff;
+    color: #334155;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .qc-picker-toggle.open { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+  .qc-picker-toggle-count {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 0.7rem;
+    font-weight: 800;
+  }
+  .qc-picker-toggle.open .qc-picker-toggle-count {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  }
+  /* El buscador y el botón comparten fila. */
+  .qc-search-bar { display: flex; align-items: center; gap: 8px; }
+  .qc-search-bar .qc-search { flex: 1; min-width: 0; }
+
   .qc-areabar {
     display: flex;
     align-items: center;

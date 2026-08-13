@@ -4,7 +4,7 @@ import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
   Upload, Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, ChevronLeft, ChevronRight, Send,
   Save, Clock, WifiOff, Plus, StickyNote,
-  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy
+  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy, LayoutGrid
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '../types/index';
 import { getRelationName } from '../utils/relations';
@@ -358,6 +358,26 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Guardar ya NO cierra la inspeccion (se cierra con "Done"), asi que hace
   //    falta saber si queda trabajo sin guardar para avisar antes de salir.
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // ⭐ PANEL FLOTANTE DE AREAS (movil).
+  //    En movil la barra horizontal obligaba a deslizar de lado para encontrar
+  //    un area entre 14. Ahora el selector se abre como una hoja que FLOTA sobre
+  //    el formulario, con los chips en varias filas y su propio scroll: se ve
+  //    todo el listado de un vistazo y se cierra al elegir.
+  //    Arranca ABIERTO cuando no hay ninguna area elegida, que es justo el
+  //    momento en que el usuario necesita el listado.
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // ⭐ Abrir el panel solo cuando NO hay ninguna area elegida: es el momento en que
+  //    el usuario necesita el listado. Si ya eligio areas, el formulario manda y el
+  //    panel se abre a peticion con el boton "Areas".
+  useEffect(() => {
+    if (!isFormModalOpen) { setIsPickerOpen(false); return; }
+    setIsPickerOpen(selectedPlaceIds.length === 0);
+    // Solo al abrir/cerrar el modal: si dependiera de selectedPlaceIds el panel
+    // volveria a abrirse cada vez que se quita la ultima area a mano.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormModalOpen]);
+
   // ⭐ Area recien seleccionada: se desplaza a ella para que quede a la vista.
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -2101,7 +2121,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               <div className="qcv-im-header-title-wrap">
                 {/* El sufijo v2 permite saber de un vistazo si el navegador esta
                     corriendo esta version o una cacheada. */}
-                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check <span className="qc-title-ver">v2</span></h2>
+                <h2 className="qc-title"><ClipboardCheck size={20} /> {editingQcId ? 'Editar' : 'Nuevo'} Quality Check <span className="qc-title-ver">v3</span></h2>
                 <p className="qc-prop">{getClientName(selectedHouse.client)} · {selectedHouse.address || '—'}</p>
                 <p className="qc-insp">
                   <User size={13} /> {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown'}
@@ -2140,6 +2160,17 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 <input type="text" value={placeSearch} onChange={e => setPlaceSearch(e.target.value)} placeholder="Buscar área para inspeccionar..." />
                 {placeSearch && <button onClick={() => setPlaceSearch('')} aria-label="Limpiar"><X size={16} /></button>}
               </div>
+              {/* ⭐ Solo visible en movil (CSS): abre/cierra el panel flotante. */}
+              <button
+                type="button"
+                className={`qc-picker-toggle${isPickerOpen ? ' open' : ''}`}
+                onClick={() => setIsPickerOpen(v => !v)}
+                aria-expanded={isPickerOpen}
+              >
+                <LayoutGrid size={16} />
+                <span>Áreas</span>
+                <span className="qc-picker-toggle-count">{selectedPlaceIds.length}/{availablePlaces.length}</span>
+              </button>
             </div>
 
             <div className="qc-body">
@@ -2151,7 +2182,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   salta a ella; si ya está abierta, solo navega.
                   El estado (abierta / a medias / completa) se lee por el color
                   del chip, sin necesidad de dos listas separadas. */}
-              <div className="qc-picker">
+              <div className={`qc-picker${isPickerOpen ? ' open' : ''}`}>
                 {searchablePlaces.length === 0 ? (
                   <div className="qcv-im-picker-empty">No hay áreas con tareas configuradas.</div>
                 ) : allPickerPlaces.length === 0 ? (
@@ -2168,7 +2199,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                           key={p.id}
                           type="button"
                           className={`qc-chip${isOpen ? ' selected' : ''}${activePlaceId === p.id ? ' current' : ''}${complete ? ' complete' : started ? ' partial' : ''}`}
-                          onClick={() => (isOpen ? goToPlace(p.id) : togglePlaceSelection(p.id))}
+                          onClick={() => {
+                            if (isOpen) goToPlace(p.id);
+                            else togglePlaceSelection(p.id);
+                            // Al elegir, el panel flotante se cierra y deja ver el
+                            // formulario del area. En escritorio no aplica: alli el
+                            // selector no flota (ver CSS).
+                            setIsPickerOpen(false);
+                          }}
                           title={isOpen ? `Ir a ${p.name}` : `Inspeccionar ${p.name}`}
                         >
                           {isOpen
