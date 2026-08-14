@@ -46,6 +46,9 @@ interface PipelineBoardViewProps {
   showAfterPhotos?: boolean;
   /** ⭐ Abre el detalle de la casa en la pestaña de fotos */
   onOpenPhotos?: (p: Property) => void;
+  /** ⭐ Gate por propiedad: el rol empleado solo ve los botones de fotos
+   *  después de Start Job. Si no se pasa, no se restringe nada. */
+  photoGate?: (p: Property) => boolean;
   /**
    * ⭐ Mostrar las NOTAS DE OFICINA en la tarjeta.
    *    Lo decide HousesView combinando el permiso "Office Notes" de Roles con el
@@ -83,7 +86,7 @@ function StatusPill({ current, statuses, disabled, onOpen }: {
 export default function PipelineBoardView({
   properties, statuses, teams, priorities = [], getClientName,
   onOpenDetail, onQuickStatusChange, canEdit, isSaving, getAmount,
-  showBeforePhotos = false, showAfterPhotos = false, onOpenPhotos,
+  showBeforePhotos = false, showAfterPhotos = false, onOpenPhotos, photoGate,
   showOfficeNote = false,
 }: PipelineBoardViewProps) {
 
@@ -231,7 +234,8 @@ export default function PipelineBoardView({
                       </div>
 
                       {/* ⭐ Botones Before / After Photos (visibilidad por rol) */}
-                      {(showBeforePhotos || showAfterPhotos) && (
+                      {(showBeforePhotos || showAfterPhotos) &&
+                        (photoGate ? photoGate(p) : true) && (
                         <div className="pb-photo-btns" onClick={(e) => e.stopPropagation()}>
                           {showBeforePhotos && (
                             <button

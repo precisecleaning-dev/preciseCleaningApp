@@ -817,6 +817,16 @@ export default function HousesView({
     isSuperAdmin ||
     activeRole?.permissions?.find((p) => p.module === "Houses")?.canDelete;
 
+  // ============================================================================
+  // ⭐ REGLA para el rol EMPLEADO (sin permiso de Edit del módulo Houses):
+  //    el apartado de FOTOS (tab "Notes & Photos", botones de fotos en las
+  //    tarjetas y en el tablero) solo se muestra DESPUÉS de presionar Start Job
+  //    en esa casa. Admins y super admin lo ven siempre.
+  // ============================================================================
+  const isEmployeeRole = !isSuperAdmin && !canEdit;
+  const photosUnlockedFor = (house: Property | null): boolean =>
+    !isEmployeeRole || !!house?.employeeStartedBy;
+
   // ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
   const recordTotalMinusTax = (r: ServiceRecord): number => {
     if (typeof r?.totalMinusTax === "number") return r.totalMinusTax;
@@ -977,7 +987,17 @@ export default function HousesView({
         );
         return { urls, queued: 0 };
       } catch (e) {
-        console.error("Subida online falló, se encola:", e);
+        // ⭐ CORRECCION "no se pueden guardar": antes CUALQUIER error de subida
+        //    se encolaba en silencio, incluso los PERMANENTES (reglas de Storage,
+        //    CORS, cuota). La foto quedaba "pendiente" para siempre y nunca se
+        //    guardaba, sin decirle al usuario el motivo real. Ahora solo se
+        //    encola cuando el fallo es de CONEXION; los demás se reportan con
+        //    su código para poder corregir la causa (ver alert del caller).
+        const code = String((e as { code?: string })?.code || "");
+        const isConnectivity =
+          !navigator.onLine || code === "storage/retry-limit-exceeded";
+        if (!isConnectivity) throw e;
+        console.error("Subida online falló por conexión, se encola:", e);
       }
     }
     const entries: PendingPhoto[] = files.map((f) => ({
@@ -3222,7 +3242,10 @@ export default function HousesView({
       handleCloseForm();
     } catch (error) {
       console.error("❌ Error saving to Firebase:", error);
-      alert("Error trying to save property to Firebase. Check console.");
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `No se pudo guardar la propiedad.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -3302,7 +3325,14 @@ export default function HousesView({
       return;
     } catch (error) {
       console.error("❌ Error saving photos:", error);
-      alert("Error saving photos. Check console.");
+      // ⭐ Se muestra el código REAL de Firebase (igual que en checklist/daños)
+      //    para poder diagnosticar: storage/unauthorized = reglas de Storage;
+      //    permission-denied = reglas de Firestore; error de red/CORS = dominio
+      //    de producción faltante en el cors.json del bucket.
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `No se pudieron guardar las fotos.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -3885,6 +3915,7 @@ export default function HousesView({
               isSaving={isSaving}
               showBeforePhotos={isElementVisible("board_beforePhotos")}
               showAfterPhotos={isElementVisible("board_afterPhotos")}
+              photoGate={photosUnlockedFor}
               showOfficeNote={canSeeOfficeNotes()}
               onOpenPhotos={(prop) => {
                 handleOpenDetail(prop);
@@ -4335,7 +4366,8 @@ export default function HousesView({
                                 al presionar). Respetan el configurador de visibilidad. */}
                             {isVisible("media") &&
                               isElementVisible("btn_tabMedia") &&
-                              isElementVisible("card_photos") && (
+                              isElementVisible("card_photos") &&
+                              photosUnlockedFor(prop) && (
                                 <div className="hv-card-photos-row">
                                   <button
                                     onClick={(e) => {
@@ -5791,57 +5823,6 @@ export default function HousesView({
                 </div>
               )}
 
-              {/* ⭐ AVISO: faltan fotos para poder finalizar la casa */}
-              {isVisible("workflow") &&
-                isElementVisible("btn_markFinished") &&
-                !selectedHouse.employeeFinishedBy &&
-                (() => {
-                  const pc = photoStatusFor(selectedHouse);
-                  if (pc.ok) return null;
-                  return (
-                    <div className="hv-photos-required">
-                      <div className="hv-photos-required-icon">
-                        <AlertTriangle size={18} />
-                      </div>
-                      <div className="hv-photos-required-body">
-                        <div className="hv-photos-required-title">
-                          No se puede finalizar: faltan fotos
-                        </div>
-                        <div className="hv-photos-required-text">
-                          Para marcar esta casa como <b>Finished</b> se deben
-                          cargar fotos <b>Before</b> y <b>After</b>.
-                        </div>
-                        <div className="hv-photos-required-chips">
-                          <span
-                            className={`hv-photos-chip${pc.before > 0 ? " ok" : ""}`}
-                          >
-                            {pc.before > 0 ? (
-                              <Check size={12} />
-                            ) : (
-                              <X size={12} />
-                            )}{" "}
-                            Before: {pc.before}
-                          </span>
-                          <span
-                            className={`hv-photos-chip${pc.after > 0 ? " ok" : ""}`}
-                          >
-                            {pc.after > 0 ? <Check size={12} /> : <X size={12} />}{" "}
-                            After: {pc.after}
-                          </span>
-                        </div>
-                        {isElementVisible("btn_tabMedia") && (
-                          <button
-                            className="hv-photos-required-btn"
-                            onClick={() => setActiveDetailTab("media")}
-                          >
-                            <ImageIcon size={14} /> Ir a cargar fotos
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
               {/* ⭐ SELECTOR DE STATUS PROMINENTE — mover la casa de lugar fácilmente */}
               {isVisible("workflow") && isElementVisible("statusId") && (
                 <div className="hv-status-banner">
@@ -5891,7 +5872,10 @@ export default function HousesView({
                       Financials & Billing
                     </button>
                   )}
-                {isVisible("media") && isElementVisible("btn_tabMedia") && (
+                {/* ⭐ Empleado: el tab de fotos aparece SOLO después de Start Job */}
+                {isVisible("media") &&
+                  isElementVisible("btn_tabMedia") &&
+                  photosUnlockedFor(selectedHouse) && (
                   <button
                     className={`hv-detail-tab${activeDetailTab === "media" ? " active" : ""}`}
                     onClick={() => setActiveDetailTab("media")}
@@ -6482,7 +6466,9 @@ export default function HousesView({
                 </div>
               )}
 
-              {activeDetailTab === "media" && isVisible("media") && (
+              {activeDetailTab === "media" &&
+                isVisible("media") &&
+                photosUnlockedFor(selectedHouse) && (
                 <div className="fade-in">
                   {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
                     <div className="hv-media-grid">
