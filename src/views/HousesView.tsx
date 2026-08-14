@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+// ⭐ createPortal: la CÁMARA RÁPIDA se monta en document.body. Con z-index
+//    10000 nada se abre encima, así que el portal es seguro y garantiza que el
+//    overlay fixed cubra el viewport real aunque un ancestro tenga transform
+//    durante la animación de RouteTransition.
+import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -703,6 +708,16 @@ export default function HousesView({
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
+
+  // ⭐ NOTAS EDITABLES EN EL DETALLE: borrador local de las notas para poder
+  //    editarlas directo en "Notes & Photos" (sin abrir el formulario). Cada
+  //    campo respeta su visibilidad y su solo-lectura por rol (isFieldRO).
+  const [detailNotes, setDetailNotes] = useState<{
+    note: string;
+    officeNote: string;
+    employeeNote: string;
+  }>({ note: "", officeNote: "", employeeNote: "" });
+  const [detailNotesDirty, setDetailNotesDirty] = useState(false);
 
   const [beforeExcluded, setBeforeExcluded] = useState<string[]>([]);
   const [afterExcluded, setAfterExcluded] = useState<string[]>([]);
@@ -3251,6 +3266,55 @@ export default function HousesView({
     }
   };
 
+  // ⭐ ¿El rol activo puede EDITAR esta nota desde el detalle? Visible y no
+  //    solo-lectura. El empleado edita "Employee's Note" si el configurador
+  //    se lo permite, sin necesitar el permiso Edit del módulo completo.
+  const canEditDetailNote = (fieldId: "note" | "officeNote" | "employeeNote") => {
+    if (fieldId === "officeNote") return canSeeOfficeNotes() && !isFieldRO("officeNote");
+    return isElementVisible(fieldId) && !isFieldRO(fieldId);
+  };
+
+  const handleSaveDetailNotes = async () => {
+    if (!selectedHouse) return;
+    // Solo se mandan a Firestore los campos que el rol puede editar.
+    const payload: Partial<PropertyU> = {};
+    if (canEditDetailNote("note")) payload.note = detailNotes.note;
+    if (canEditDetailNote("officeNote")) payload.officeNote = detailNotes.officeNote;
+    if (canEditDetailNote("employeeNote")) payload.employeeNote = detailNotes.employeeNote;
+    if (Object.keys(payload).length === 0) return;
+
+    setIsSaving(true);
+    try {
+      await propertiesService.update(selectedHouse.id, payload as Partial<Property>);
+      const updatedHouse = { ...selectedHouse, ...payload } as Property;
+      // ⭐ Bitacora con diff campo a campo, igual que el guardado del formulario.
+      logActivity({
+        action: "update",
+        module: "Houses",
+        user: currentUser,
+        targetId: selectedHouse.id,
+        targetLabel: logLabel(updatedHouse),
+        changes: diffObjects(
+          selectedHouse as unknown as Record<string, unknown>,
+          updatedHouse as unknown as Record<string, unknown>,
+        ),
+      });
+      setSelectedHouse(updatedHouse);
+      setProperties(
+        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
+      );
+      setDetailNotesDirty(false);
+    } catch (error) {
+      console.error("❌ Error saving notes:", error);
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `No se pudieron guardar las notas.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSavePhotosFromDetail = async () => {
     if (!selectedHouse) return alert("No property selected.");
 
@@ -3403,6 +3467,12 @@ export default function HousesView({
     setSelectedHouse(house);
     setIsAssigningWorker(false);
     setActiveDetailTab("overview");
+    setDetailNotes({
+      note: house.note || "",
+      officeNote: (house as PropertyU).officeNote || "",
+      employeeNote: house.employeeNote || "",
+    });
+    setDetailNotesDirty(false);
     setBeforeFiles([]);
     setAfterFiles([]);
     setBeforePhotoURLs(house.beforePhotos || []);
@@ -5674,13 +5744,23 @@ export default function HousesView({
         </div>
       )}
 
-      {/* --- DETAIL MODAL --- */}
+      {/* --- DETAIL MODAL. NO va por portal a body: los modales que se abren
+          DESDE el detalle (Damages, Checklist, payroll, status) comparten
+          z-index 9999 y un portal en body los taparia por orden del DOM.
+          La X va ABSOLUTA arriba a la derecha del modal, grande y táctil. --- */}
       {isDetailModalOpen && selectedHouse && (
         <div
           className="modal-overlay-centered"
           onClick={() => setIsDetailModalOpen(false)}
         >
-          <div className="modal-90" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-90 hv-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="hv-detail-close-btn"
+              aria-label="Cerrar detalle"
+              onClick={() => setIsDetailModalOpen(false)}
+            >
+              <X size={26} />
+            </button>
             <header className="hv-modal-header">
               <div className="hv-detail-title-group">
                 <h3 className="hv-modal-title">
@@ -5801,12 +5881,6 @@ export default function HousesView({
                       <Copy size={16} /> Duplicate
                     </button>
                   )}
-                <button
-                  className="hv-detail-close-btn"
-                  onClick={() => setIsDetailModalOpen(false)}
-                >
-                  <X size={24} />
-                </button>
               </div>
             </header>
 
@@ -6483,9 +6557,21 @@ export default function HousesView({
                             />{" "}
                             OFFICE NOTES
                           </span>
-                          <p className="hv-note-text">
-                            {(selectedHouse as PropertyU).officeNote || "No office notes."}
-                          </p>
+                          {canEditDetailNote("officeNote") ? (
+                            <textarea
+                              className="hv-note-input office"
+                              placeholder="Notas internas de oficina..."
+                              value={detailNotes.officeNote}
+                              onChange={(e) => {
+                                setDetailNotes((p) => ({ ...p, officeNote: e.target.value }));
+                                setDetailNotesDirty(true);
+                              }}
+                            />
+                          ) : (
+                            <p className="hv-note-text">
+                              {(selectedHouse as PropertyU).officeNote || "No office notes."}
+                            </p>
+                          )}
                         </div>
                       )}
                       {isElementVisible("note") && (
@@ -6497,9 +6583,21 @@ export default function HousesView({
                             />{" "}
                             GENERAL NOTE
                           </span>
-                          <p className="hv-note-text">
-                            {selectedHouse.note || "No general notes."}
-                          </p>
+                          {canEditDetailNote("note") ? (
+                            <textarea
+                              className="hv-note-input"
+                              placeholder="General instructions or notes..."
+                              value={detailNotes.note}
+                              onChange={(e) => {
+                                setDetailNotes((p) => ({ ...p, note: e.target.value }));
+                                setDetailNotesDirty(true);
+                              }}
+                            />
+                          ) : (
+                            <p className="hv-note-text">
+                              {selectedHouse.note || "No general notes."}
+                            </p>
+                          )}
                         </div>
                       )}
                       {isElementVisible("employeeNote") && (
@@ -6511,11 +6609,40 @@ export default function HousesView({
                             />{" "}
                             EMPLOYEE'S NOTE
                           </span>
-                          <p className="hv-note-text">
-                            {selectedHouse.employeeNote || "No employee notes."}
-                          </p>
+                          {canEditDetailNote("employeeNote") ? (
+                            <textarea
+                              className="hv-note-input orange"
+                              placeholder="Escribe aquí las notas del empleado..."
+                              value={detailNotes.employeeNote}
+                              onChange={(e) => {
+                                setDetailNotes((p) => ({ ...p, employeeNote: e.target.value }));
+                                setDetailNotesDirty(true);
+                              }}
+                            />
+                          ) : (
+                            <p className="hv-note-text">
+                              {selectedHouse.employeeNote || "No employee notes."}
+                            </p>
+                          )}
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* ⭐ Guardar notas: aparece solo si el rol puede editar alguna
+                      y se habilita cuando hay cambios sin guardar. */}
+                  {(canEditDetailNote("note") ||
+                    canEditDetailNote("officeNote") ||
+                    canEditDetailNote("employeeNote")) && (
+                    <div className="hv-save-notes-row">
+                      <button
+                        onClick={handleSaveDetailNotes}
+                        disabled={isSaving || !detailNotesDirty}
+                        className="hv-btn-primary-modal green"
+                      >
+                        <Save size={16} />{" "}
+                        {isSaving ? "Saving..." : "Save Notes"}
+                      </button>
                     </div>
                   )}
 
@@ -8111,8 +8238,11 @@ export default function HousesView({
         </div>
       )}
 
-      {/* --- CÁMARA RÁPIDA (RÁFAGA): se mantiene abierta y permite varias tomas --- */}
-      {cameraOpen && (
+      {/* --- CÁMARA RÁPIDA (RÁFAGA): se mantiene abierta y permite varias tomas.
+          Va por PORTAL a body para que el overlay fixed cubra el viewport real
+          y el obturador quede SIEMPRE visible en móvil. --- */}
+      {cameraOpen &&
+        createPortal(
         <div className="hv-camera-overlay">
           <div className="hv-camera-topbar">
             <div className="hv-camera-title">
@@ -8173,7 +8303,8 @@ export default function HousesView({
                 : `Listo (${burstCount})`}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* --- MODAL DE CAMBIO DE ESTADO (reemplaza la lista desplegable) --- */}
