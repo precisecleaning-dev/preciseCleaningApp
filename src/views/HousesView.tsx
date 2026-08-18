@@ -2607,6 +2607,11 @@ export default function HousesView({
     }
     setIsGcalPreviewOpen(false);
 
+    // ⭐ Si la Cloud Function falla, aquí se guarda el MOTIVO real (mensaje del
+    //    HttpsError) para mostrarlo en el diálogo y saber qué corregir:
+    //    secretos faltantes, token de Google vencido, permisos, etc.
+    let gcalError = "";
+
     // ⭐ VÍA API (Cloud Function synchousetocalendar): crea/actualiza el evento
     //    y guarda gcalEventId en la casa. Con ese vínculo, las EDICIONES hechas
     //    en Google Calendar regresan solas a la app (webhook calendarwebhook).
@@ -2638,6 +2643,8 @@ export default function HousesView({
         "synchousetocalendar no disponible; usando el método manual:",
         fnErr,
       );
+      gcalError =
+        (fnErr as { message?: string })?.message || String(fnErr);
     } finally {
       setIsSaving(false);
     }
@@ -2645,7 +2652,7 @@ export default function HousesView({
     //    plantilla del navegador NO puede aplicar el color del equipo ni
     //    quitar el Meet/notificación (eso solo lo hace la Cloud Function).
     const goManual = window.confirm(
-      "No se pudo enviar por la Cloud Function (revisa que esté desplegada: firebase deploy --only functions:synchousetocalendar).\n\n¿Abrir Google Calendar en modo MANUAL?\nOJO: por esta vía el evento NO llevará el color del equipo y Google puede agregarle Meet y notificación.",
+      `No se pudo enviar por la Cloud Function.\n\nMotivo: ${gcalError || "desconocido"}\n\n¿Abrir Google Calendar en modo MANUAL?\nOJO: por esta vía el evento NO llevará el color del equipo y Google puede agregarle Meet y notificación.`,
     );
     if (!goManual) return;
     // ⭐ Hora "flotante" (local) exacta: respeta Time In y Time Out tal cual, sin
