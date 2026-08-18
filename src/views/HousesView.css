@@ -7,8 +7,6 @@
 .modal-overlay-centered *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.55); }
 .modal-overlay-centered *::-webkit-scrollbar-corner { background: transparent; }
 .modal-overlay-centered * { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.25) transparent; }
-.modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; box-sizing: border-box; }
-.modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
 
 .modal-90 .modal-body-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .modal-90 .modal-body-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -16,7 +14,6 @@
 .modal-90 .modal-body-scroll::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.6); }
 .modal-90 .modal-body-scroll { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.4) transparent; }
 
-.modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
 .modal-full-left { flex: 1; overflow-y: auto; padding: 3rem 2rem; }
 .modal-full-right { width: 380px; background-color: white; border-left: 1px solid #E2E8F0; display: flex; flex-direction: column; z-index: 5; flex-shrink: 0; }
 

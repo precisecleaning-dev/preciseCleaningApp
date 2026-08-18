@@ -2,9 +2,6 @@
 .spin-users { animation: spin-users 1s linear infinite; }
 @keyframes spin-users { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-.modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
-.modal-50 { background-color: #ffffff; width: 100%; max-width: 600px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; }
-.modal-80 { background-color: #ffffff; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; }
 
 @media (max-width: 768px) {
   .responsive-table thead { display: none; }

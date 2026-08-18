@@ -425,7 +425,42 @@ export const synchousetocalendar = onCall(
       gcalSyncedAt: new Date().toISOString(),
     });
 
-    return { ok: true, eventId };
+    // ⭐ VERIFICACIÓN: se relee el evento tal como quedó GUARDADO en Google
+    //    (no lo que se envió) y se devuelve a la app para que el usuario
+    //    pueda rectificar título, color, invitados y que el Meet quedó fuera,
+    //    con el enlace directo al evento en el calendario.
+    let saved: calendar_v3.Schema$Event | undefined;
+    try {
+      const check = await calendar.events.get({
+        calendarId: CALENDAR_ID,
+        eventId: String(eventId),
+      });
+      saved = check.data;
+    } catch (err) {
+      logger.warn("No se pudo releer el evento para verificación:", err);
+    }
+
+    return {
+      ok: true,
+      eventId,
+      verified: saved
+        ? {
+            summary: saved.summary || "",
+            htmlLink: saved.htmlLink || "",
+            colorId: saved.colorId || "",
+            start: saved.start?.dateTime || saved.start?.date || "",
+            end: saved.end?.dateTime || saved.end?.date || "",
+            location: saved.location || "",
+            attendees: (saved.attendees || [])
+              .map((a) => String(a.email || ""))
+              .filter(Boolean),
+            meetRemoved: !saved.conferenceData,
+            remindersOff:
+              saved.reminders?.useDefault === false &&
+              (saved.reminders?.overrides || []).length === 0,
+          }
+        : null,
+    };
   },
 );
 

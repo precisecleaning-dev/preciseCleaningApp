@@ -188,3 +188,18 @@ textarea {
     width: 100%;
   }
 }
+
+/* ============================================================================
+   ⭐ BASE GLOBAL DE MODALES — UNICA FUENTE DE VERDAD.
+   No redefinir estas clases en el CSS de ninguna vista: el CSS por vista se
+   carga en orden de navegacion y la ultima copia cargada redefinia los
+   modales de TODA la app (aparecian con/sin padding segun el recorrido, o
+   sin estilo si su chunk llegaba desactualizado: contenido transparente y
+   estatico arriba). Aqui viven SIEMPRE, desde el primer byte de la app.
+   ============================================================================ */
+.modal-overlay-centered { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.6); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
+.modal-50 { background-color: #ffffff; width: 100%; max-width: 600px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
+.modal-80 { background-color: #ffffff; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; }
+.modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
+.modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+

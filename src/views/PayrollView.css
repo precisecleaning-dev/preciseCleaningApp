@@ -1,18 +1,7 @@
 .pv-page {
   padding: 20px;
 }
-.modal-overlay-centered {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 20px;
-  box-sizing: border-box;
-}
+/* (.modal-overlay-centered vive en index.css — base global de modales) */
 
 /* ===================== Header ===================== */
 .pv-header {

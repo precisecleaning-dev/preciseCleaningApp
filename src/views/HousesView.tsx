@@ -636,6 +636,20 @@ export default function HousesView({
   //    este modal con TODO lo que se va a enviar (título, horario, color,
   //    invitados, ubicación, nota) para rectificar antes de confirmar.
   const [isGcalPreviewOpen, setIsGcalPreviewOpen] = useState(false);
+  // ⭐ VERIFICACIÓN: lo que Google REALMENTE guardó (releído del calendario
+  //    por la Cloud Function tras guardar). Se muestra en un modal para poder
+  //    rectificar título, color, invitados, y abrir el evento directamente.
+  const [gcalVerification, setGcalVerification] = useState<{
+    summary: string;
+    htmlLink: string;
+    colorId: string;
+    start: string;
+    end: string;
+    location: string;
+    attendees: string[];
+    meetRemoved: boolean;
+    remindersOff: boolean;
+  } | null>(null);
   const [customerForm, setCustomerForm] = useState({
     type: "Residential",
     color: "#3b82f6",
@@ -2628,7 +2642,23 @@ export default function HousesView({
       const res = (await call({
         houseId: selectedHouse.id,
         clientName: getClientName(selectedHouse.client),
-      })) as { data?: { ok?: boolean; eventId?: string } };
+      })) as {
+        data?: {
+          ok?: boolean;
+          eventId?: string;
+          verified?: {
+            summary: string;
+            htmlLink: string;
+            colorId: string;
+            start: string;
+            end: string;
+            location: string;
+            attendees: string[];
+            meetRemoved: boolean;
+            remindersOff: boolean;
+          } | null;
+        };
+      };
       if (res?.data?.ok) {
         // ⭐ Bitacora: envio a Google Calendar.
         logActivity({
@@ -2639,9 +2669,14 @@ export default function HousesView({
           targetLabel: logLabel(selectedHouse),
           detail: `Evento sincronizado (${selectedHouse.scheduleDate} ${selectedHouse.timeIn})`,
         });
-        alert(
-          "✅ Evento sincronizado con Google Calendar.\n\nSi lo editas en el calendario (fecha, horas, dirección o nota), el cambio regresará a la app automáticamente.",
-        );
+        if (res.data.verified) {
+          // ⭐ Modal de verificación con lo que Google confirmó guardado.
+          setGcalVerification(res.data.verified);
+        } else {
+          alert(
+            "✅ Evento sincronizado con Google Calendar.\n\nSi lo editas en el calendario (fecha, horas, dirección o nota), el cambio regresará a la app automáticamente.",
+          );
+        }
         return;
       }
     } catch (fnErr) {
@@ -7196,6 +7231,103 @@ export default function HousesView({
             </div>
           );
         })()}
+
+      {/* --- MODAL: VERIFICACIÓN DEL EVENTO GUARDADO EN GOOGLE CALENDAR ---
+          Muestra lo que Google confirmó (releído del calendario), con enlace
+          directo al evento para rectificarlo a un clic. --- */}
+      {gcalVerification && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setGcalVerification(null)}
+        >
+          <div className="modal-50" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">✅ Evento guardado en Google Calendar</h3>
+              <button
+                className="hv-gcal-close"
+                aria-label="Cerrar"
+                onClick={() => setGcalVerification(null)}
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <div className="hv-gcal-body">
+              <p className="hv-gcal-hint">
+                Esto es lo que Google confirmó que quedó guardado en el
+                calendario (leído de vuelta después de enviar):
+              </p>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Título</span>
+                <span className="hv-gcal-value strong">{gcalVerification.summary || "—"}</span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Horario</span>
+                <span className="hv-gcal-value">
+                  {gcalVerification.start || "—"} – {gcalVerification.end || "—"}
+                </span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Color</span>
+                <span className="hv-gcal-value">
+                  {gcalVerification.colorId
+                    ? `Aplicado (colorId ${gcalVerification.colorId} de Google)`
+                    : "Por defecto del calendario"}
+                </span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Invitados</span>
+                <span className="hv-gcal-value">
+                  {gcalVerification.attendees.length > 0 ? (
+                    <ul className="hv-gcal-guest-list">
+                      {gcalVerification.attendees.map((g) => (
+                        <li key={g}>{g}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "—"
+                  )}
+                </span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Ubicación</span>
+                <span className="hv-gcal-value">{gcalVerification.location || "—"}</span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Meet</span>
+                <span className="hv-gcal-value">
+                  {gcalVerification.meetRemoved ? "Sin Google Meet ✓" : "⚠ Google agregó un Meet"}
+                </span>
+              </div>
+              <div className="hv-gcal-row">
+                <span className="hv-gcal-label">Aviso</span>
+                <span className="hv-gcal-value">
+                  {gcalVerification.remindersOff ? "Sin notificación ✓" : "⚠ El evento tiene notificación"}
+                </span>
+              </div>
+              <p className="hv-gcal-note">
+                Si editas el evento en Google Calendar (fecha, horas, dirección
+                o nota), el cambio regresará a la app automáticamente.
+              </p>
+            </div>
+            <footer className="hv-gcal-footer">
+              <button
+                className="hv-gcal-btn-cancel"
+                onClick={() => setGcalVerification(null)}
+              >
+                Cerrar
+              </button>
+              {gcalVerification.htmlLink && (
+                <button
+                  className="hv-btn-primary-modal"
+                  onClick={() => window.open(gcalVerification.htmlLink, "_blank")}
+                >
+                  <Calendar size={16} /> Ver en Google Calendar
+                </button>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL: NUEVO CLIENTE (mismo formulario que Customers) --- */}
       {isCustomerModalOpen && (
