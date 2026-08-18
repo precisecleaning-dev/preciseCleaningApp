@@ -178,8 +178,23 @@ const GCAL_EVENT_COLORS: Array<{ id: string; hex: string }> = [
   { id: "11", hex: "#d60000" }, // Tomato
 ];
 
-function hexToRgb(hex: string): [number, number, number] | null {
-  const m = hex.trim().match(/^#?([0-9a-f]{6})$/i);
+// Nombres CSS que pueden venir en equipos migrados de AppSheet (el editor de
+// la app guarda hex #rrggbb, pero los datos viejos pueden traer nombres).
+const CSS_COLOR_NAMES: Record<string, string> = {
+  black: "#000000", white: "#ffffff", red: "#ff0000", green: "#008000",
+  blue: "#0000ff", yellow: "#ffff00", orange: "#ffa500", purple: "#800080",
+  pink: "#ffc0cb", brown: "#a52a2a", gray: "#808080", grey: "#808080",
+  teal: "#008080", navy: "#000080", olive: "#808000", maroon: "#800000",
+  lime: "#00ff00", cyan: "#00ffff", magenta: "#ff00ff", gold: "#ffd700",
+};
+
+function hexToRgb(color: string): [number, number, number] | null {
+  let c = String(color || "").trim().toLowerCase();
+  if (CSS_COLOR_NAMES[c]) c = CSS_COLOR_NAMES[c];
+  // #rgb corto -> #rrggbb
+  const short = c.match(/^#?([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if (short) c = `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+  const m = c.match(/^#?([0-9a-f]{6})$/i);
   if (!m) return null;
   const n = parseInt(m[1], 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -326,6 +341,10 @@ export const synchousetocalendar = onCall(
       //    (ver también stripAutoMeet para el caso en que el calendario la
       //    agregue solo por configuración del dueño).
       conferenceData: NO_CONFERENCE,
+      // ⭐ Sin notificación: useDefault=false y sin overrides quita tanto el
+      //    recordatorio automático del calendario (30/10 min) como cualquiera
+      //    heredado del evento anterior.
+      reminders: { useDefault: false, overrides: [] },
       location: house.address || "",
       description: house.note || "",
       start: {

@@ -625,6 +625,10 @@ export default function HousesView({
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   // ⭐ Modal para agregar un cliente rápido desde el formulario de casa
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  // ⭐ Previsualización del Sync a Google Calendar: al presionar Sync se abre
+  //    este modal con TODO lo que se va a enviar (título, horario, color,
+  //    invitados, ubicación, nota) para rectificar antes de confirmar.
+  const [isGcalPreviewOpen, setIsGcalPreviewOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState({
     type: "Residential",
     color: "#3b82f6",
@@ -2542,7 +2546,45 @@ export default function HousesView({
     }
   };
 
-  const handleGoogleCalendarSync = async () => {
+  // ⭐ Datos EXACTOS que se enviarán a Google Calendar, calculados con la misma
+  //    lógica que la Cloud Function, para mostrarlos en la previsualización.
+  const buildGcalPreview = () => {
+    if (!selectedHouse) return null;
+    const team = teams.find((t) => t.id === selectedHouse.teamId);
+    const teamName = (team?.name || "").trim();
+    const base = selectedHouse.address || getClientName(selectedHouse.client);
+    const title = teamName ? `${teamName} - ${base}` : `Cleaning: ${base}`;
+    const guests = Array.from(
+      new Set(
+        (selectedHouse.assignedWorkers || [])
+          .map((id) => employees.find((e) => e.id === id))
+          .flatMap((w) => [w?.email, w?.altEmail])
+          .map((m) => String(m || "").toLowerCase().trim())
+          .filter((m) => m.includes("@") && m.includes(".")),
+      ),
+    );
+    const warnings: string[] = [];
+    if (!teamName) warnings.push("La casa no tiene Team asignado: el título saldrá sin equipo.");
+    if (team && !team.color) warnings.push("El Team no tiene color en el catálogo: el evento usará el color por defecto.");
+    if (guests.length === 0) warnings.push("Sin colaboradores asignados (o sin email): el evento no tendrá invitados.");
+    if (!selectedHouse.timeOut) warnings.push("Sin Time Out: se usarán 2 horas de duración como respaldo.");
+    return {
+      title,
+      teamColor: team?.color || "",
+      teamName,
+      guests,
+      warnings,
+      date: selectedHouse.scheduleDate,
+      timeIn: selectedHouse.timeIn,
+      timeOut: selectedHouse.timeOut || "(+2 horas)",
+      location: selectedHouse.address || "",
+      description: selectedHouse.note || "",
+    };
+  };
+
+  // ⭐ El botón Sync SOLO abre la previsualización. El envío real ocurre al
+  //    confirmar dentro del modal (handleGoogleCalendarSend).
+  const handleGoogleCalendarSync = () => {
     if (
       !selectedHouse ||
       !selectedHouse.scheduleDate ||
@@ -2552,6 +2594,18 @@ export default function HousesView({
         "Por favor asegúrate de que la propiedad tenga fecha de Schedule y hora Time In.",
       );
     }
+    setIsGcalPreviewOpen(true);
+  };
+
+  const handleGoogleCalendarSend = async () => {
+    if (
+      !selectedHouse ||
+      !selectedHouse.scheduleDate ||
+      !selectedHouse.timeIn
+    ) {
+      return;
+    }
+    setIsGcalPreviewOpen(false);
 
     // ⭐ VÍA API (Cloud Function synchousetocalendar): crea/actualiza el evento
     //    y guarda gcalEventId en la casa. Con ese vínculo, las EDICIONES hechas
@@ -2587,6 +2641,13 @@ export default function HousesView({
     } finally {
       setIsSaving(false);
     }
+    // ⭐ La vía API falló: avisar ANTES de abrir el método manual, porque la
+    //    plantilla del navegador NO puede aplicar el color del equipo ni
+    //    quitar el Meet/notificación (eso solo lo hace la Cloud Function).
+    const goManual = window.confirm(
+      "No se pudo enviar por la Cloud Function (revisa que esté desplegada: firebase deploy --only functions:synchousetocalendar).\n\n¿Abrir Google Calendar en modo MANUAL?\nOJO: por esta vía el evento NO llevará el color del equipo y Google puede agregarle Meet y notificación.",
+    );
+    if (!goManual) return;
     // ⭐ Hora "flotante" (local) exacta: respeta Time In y Time Out tal cual, sin
     //    convertir a UTC. Google Calendar interpreta YYYYMMDDTHHMMSS (sin 'Z') en la
     //    zona horaria del calendario, así que la hora/fecha se mantienen idénticas.
@@ -6882,6 +6943,120 @@ export default function HousesView({
           </div>
         </div>
       )}
+
+      {/* --- MODAL: PREVISUALIZACIÓN DEL SYNC A GOOGLE CALENDAR ---
+          Muestra EXACTAMENTE lo que se enviará (misma lógica que la Cloud
+          Function) y solo envía al confirmar. Va después del modal de detalle
+          en el DOM para pintarse encima con el mismo z-index. --- */}
+      {isGcalPreviewOpen &&
+        selectedHouse &&
+        (() => {
+          const gp = buildGcalPreview();
+          if (!gp) return null;
+          return (
+            <div
+              className="modal-overlay-centered"
+              onClick={() => setIsGcalPreviewOpen(false)}
+            >
+              <div className="modal-50" onClick={(e) => e.stopPropagation()}>
+                <header className="hv-modal-header">
+                  <h3 className="hv-modal-title">Enviar a Google Calendar</h3>
+                  <button
+                    className="hv-gcal-close"
+                    aria-label="Cerrar"
+                    onClick={() => setIsGcalPreviewOpen(false)}
+                  >
+                    <X size={22} />
+                  </button>
+                </header>
+                <div className="hv-gcal-body">
+                  <p className="hv-gcal-hint">
+                    Revisa la información antes de enviarla. El evento se crea o
+                    actualiza en el calendario al confirmar.
+                  </p>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Título</span>
+                    <span className="hv-gcal-value strong">{gp.title}</span>
+                  </div>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Horario</span>
+                    <span className="hv-gcal-value">
+                      {gp.date} · {gp.timeIn} – {gp.timeOut}
+                    </span>
+                  </div>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Color</span>
+                    <span className="hv-gcal-value">
+                      {gp.teamColor ? (
+                        <>
+                          <span
+                            className="hv-gcal-swatch"
+                            style={{ "--gcal-swatch": gp.teamColor } as CSSProperties}
+                          />
+                          {gp.teamColor.toUpperCase()}
+                          {gp.teamName ? ` (${gp.teamName})` : ""}
+                        </>
+                      ) : (
+                        "Por defecto (el Team no tiene color)"
+                      )}
+                    </span>
+                  </div>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Invitados</span>
+                    <span className="hv-gcal-value">
+                      {gp.guests.length > 0 ? (
+                        <ul className="hv-gcal-guest-list">
+                          {gp.guests.map((g) => (
+                            <li key={g}>{g}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                  </div>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Ubicación</span>
+                    <span className="hv-gcal-value">{gp.location || "—"}</span>
+                  </div>
+                  <div className="hv-gcal-row">
+                    <span className="hv-gcal-label">Nota</span>
+                    <span className="hv-gcal-value">{gp.description || "—"}</span>
+                  </div>
+                  {gp.warnings.length > 0 && (
+                    <div className="hv-gcal-warnings">
+                      {gp.warnings.map((w) => (
+                        <span key={w} className="hv-gcal-warning">
+                          <AlertTriangle size={13} /> {w}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className="hv-gcal-note">
+                    El evento se envía sin Google Meet y sin notificación. Los
+                    invitados recibirán la invitación en su correo.
+                  </p>
+                </div>
+                <footer className="hv-gcal-footer">
+                  <button
+                    className="hv-gcal-btn-cancel"
+                    onClick={() => setIsGcalPreviewOpen(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    className="hv-btn-primary-modal"
+                    disabled={isSaving}
+                    onClick={handleGoogleCalendarSend}
+                  >
+                    <Calendar size={16} />{" "}
+                    {isSaving ? "Enviando..." : "Confirmar y enviar"}
+                  </button>
+                </footer>
+              </div>
+            </div>
+          );
+        })()}
 
       {/* --- MODAL: NUEVO CLIENTE (mismo formulario que Customers) --- */}
       {isCustomerModalOpen && (
