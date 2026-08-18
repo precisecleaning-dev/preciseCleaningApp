@@ -178,6 +178,22 @@
   background: #fee2e2;
 }
 
+/* ⭐ Editar pago: mismo tamaño que borrar, en azul (como Billed Services) */
+.rpp-actions-cell {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.rpp-action-btn.edit {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+.rpp-action-btn.edit:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
 .rpp-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   DollarSign,
   Plus,
+  Edit2,
   Trash2,
   X,
   Save,
@@ -69,6 +70,9 @@ export default function RegisteredPaymentsPanel({
   onChanged,
 }: RegisteredPaymentsPanelProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // ⭐ EDICIÓN EN SITIO: id del pago que se está editando. null = registro
+  //    nuevo. Antes editar exigía borrar el pago y volver a capturarlo.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<PayrollRecordX>(emptyForm(propertyId || ""));
 
@@ -132,7 +136,25 @@ export default function RegisteredPaymentsPanel({
   );
 
   const handleOpen = () => {
+    setEditingId(null);
     setForm(emptyForm(propertyId || ""));
+    setIsModalOpen(true);
+  };
+
+  // ⭐ Abre el MISMO formulario del registro, precargado con el pago elegido.
+  const handleOpenEdit = (record: PayrollRecordX) => {
+    setEditingId(String(record.id));
+    setForm({
+      propertyId: String(record.propertyId || ""),
+      date: record.date || new Date().toISOString().split("T")[0],
+      employeeId: String(record.employeeId || ""),
+      baseAmount: Number(record.baseAmount || 0),
+      extraAmount: Number(record.extraAmount || 0),
+      extraNote: String(record.extraNote || ""),
+      discountAmount: Number(record.discountAmount || 0),
+      discountNote: String(record.discountNote || ""),
+      totalAmount: Number(record.totalAmount || 0),
+    });
     setIsModalOpen(true);
   };
 
@@ -144,16 +166,37 @@ export default function RegisteredPaymentsPanel({
 
     setIsSaving(true);
     try {
-      await payrollService.create({
-        ...form,
-        totalAmount: formTotal,
-        status: "Pending",
-      });
+      if (editingId) {
+        // ⭐ EDITAR: se actualizan solo los campos del formulario. El `status`
+        //    del pago NO se toca (conserva Pending/Paid tal como estaba), y el
+        //    total se recalcula con base + extra - descuento.
+        await payrollService.update(editingId, {
+          propertyId: form.propertyId,
+          date: form.date,
+          employeeId: form.employeeId,
+          baseAmount: Number(form.baseAmount || 0),
+          extraAmount: Number(form.extraAmount || 0),
+          extraNote: form.extraNote || "",
+          discountAmount: Number(form.discountAmount || 0),
+          discountNote: form.discountNote || "",
+          totalAmount: formTotal,
+        });
+      } else {
+        await payrollService.create({
+          ...form,
+          totalAmount: formTotal,
+          status: "Pending",
+        });
+      }
       setIsModalOpen(false);
+      setEditingId(null);
       onChanged?.();
     } catch (error) {
       console.error("Error saving payroll:", error);
-      alert("Error saving payment.");
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `Error saving payment.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -243,14 +286,26 @@ export default function RegisteredPaymentsPanel({
                   </td>
                   {canEdit && (
                     <td className="rpp-td right">
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(String(record.id))}
-                        disabled={isSaving}
-                        className="rpp-action-btn delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="rpp-actions-cell">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(record)}
+                          disabled={isSaving}
+                          className="rpp-action-btn edit"
+                          title="Edit payment"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(String(record.id))}
+                          disabled={isSaving}
+                          className="rpp-action-btn delete"
+                          title="Delete payment"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -268,7 +323,7 @@ export default function RegisteredPaymentsPanel({
         >
           <div className="modal-70" onClick={(e) => e.stopPropagation()}>
             <header className="rpp-modal-header">
-              <h3 className="rpp-modal-title">Register Payment</h3>
+              <h3 className="rpp-modal-title">{editingId ? "Edit Payment" : "Register Payment"}</h3>
               <button
                 type="button"
                 className="rpp-modal-close"
@@ -445,7 +500,7 @@ export default function RegisteredPaymentsPanel({
                 disabled={isSaving}
                 className="rpp-btn-primary"
               >
-                <Save size={16} /> {isSaving ? "Saving..." : "Register Payment"}
+                <Save size={16} /> {isSaving ? "Saving..." : editingId ? "Save Changes" : "Register Payment"}
               </button>
             </footer>
           </div>

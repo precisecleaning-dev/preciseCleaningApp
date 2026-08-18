@@ -42,6 +42,7 @@ import {
   PlayCircle,
   BarChart3,
   FileImage,
+  History,
   Save,
   XCircle,
   Layers,
@@ -94,6 +95,9 @@ import { formatDate, dateSortValue } from "../utils/dateFormat";
 import { escapeHtml } from "../utils/escapeHtml";
 import { getRelationName, getRelationColor } from "../utils/relations";
 import { stampInvoiceEntry } from "../utils/invoiceEntry";
+// ⭐ Pestaña "History" del detalle: reutiliza el panel de historial de status
+//    que ya usan Status History y PropertyDetailModal.
+import StatusHistoryPanel from "../components/StatusHistoryPanel";
 import StatusChangeModal, {
   type StatusModalConfig,
 } from "../components/StatusChangeModal";
@@ -544,7 +548,7 @@ interface HousesViewProps {
   renderMode?: "full" | "modals-only";
 }
 
-type DetailTab = "overview" | "financials" | "media";
+type DetailTab = "overview" | "financials" | "media" | "history";
 
 export default function HousesView({
   onOpenMenu,
@@ -6049,6 +6053,13 @@ export default function HousesView({
                     & Photos
                   </button>
                 )}
+                {/* ⭐ History: historial de cambios de status de ESTA casa */}
+                <button
+                  className={`hv-detail-tab${activeDetailTab === "history" ? " active" : ""}`}
+                  onClick={() => setActiveDetailTab("history")}
+                >
+                  <History size={14} className="hv-tab-icon-inline" /> History
+                </button>
               </div>
 
               {activeDetailTab === "overview" && (
@@ -6393,6 +6404,20 @@ export default function HousesView({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* ⭐ TAB HISTORY: todos los cambios de status por los que ha
+                  pasado la casa (quién lo cambió, cuándo, de qué a qué). */}
+              {activeDetailTab === "history" && (
+                <div className="fade-in">
+                  {/* key con el status actual: si cambian el status con el tab
+                      abierto, el panel se remonta y recarga el historial. */}
+                  <StatusHistoryPanel
+                    key={`${selectedHouse.id}-${selectedHouse.statusId || "none"}`}
+                    propertyId={selectedHouse.id}
+                    statuses={statuses}
+                  />
                 </div>
               )}
 

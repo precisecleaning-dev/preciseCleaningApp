@@ -878,13 +878,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
   );
 
+  // ⭐ SOLO registros de casas que SIGUEN en el flujo de calidad (estado
+  //    "Quality Check" o "Recall"). Cuando la casa se mueve a Invoice (o más
+  //    allá) desde Quality Check Reports, su reporte DESAPARECE de esta vista:
+  //    su lugar es Reports. Antes se quedaba aquí para siempre y el equipo
+  //    veía "casas que nunca desaparecen" aunque ya estuvieran facturadas.
+  //    Si la casa fue borrada, el registro se conserva como histórico visible.
+  const qcListInFlow = qcList.filter(qc => {
+    const house = properties.find(p => p.id === qc.houseId);
+    if (!house) return true;
+    return isQualityCheckStatus(house.statusId, statuses) || isRecallStatus(house);
+  });
+
   // ⭐ Registros para la TABLA inferior: Finished y Recall.
   //    (Las Pending no se listan aquí: se muestran como tarjetas de "casas
   //    pendientes". Así cada pestaña filtra exactamente lo que indica su nombre.)
   //    ⭐ Las FINISHED antes solo existían en la pestaña "Reportes", asi que la
   //    manager no podía revisar lo ya inspeccionado sin salir de esta vista. Ahora
   //    se listan aqui con el mismo formato de tabla (sin ninguna columna de costos).
-  const filteredQcList = qcList.filter(qc => {
+  const filteredQcList = qcListInFlow.filter(qc => {
     const cat = qcCategory(qc);
     if (cat === 'Pending') return false; // las pendientes van como tarjetas de casa
     if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
@@ -896,9 +908,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
   //    Pending = casas esperando inspección · Finished = registros de QC ·
   //    Recall = casas actualmente en estado "Recall" (+ registros marcados RECALL).
-  const recallRecordsCount = qcList.filter(q => qcCategory(q) === 'Recall').length;
+  //    ⭐ SIN DOBLE CONTEO: una casa en Recall aparecía dos veces en el total
+  //    (como tarjeta de casa Y como su registro reprobado). Ahora el número de
+  //    la pestaña cuenta CASAS: las que están en estado Recall + los registros
+  //    huérfanos (su casa fue borrada), que no están en la primera lista.
+  const recallRecordsCount = qcListInFlow.filter(q =>
+    qcCategory(q) === 'Recall' && !recallHouses.some(h => h.id === q.houseId),
+  ).length;
   const recallTotal = recallHouses.length + recallRecordsCount;
-  const finishedTotal = qcList.filter(q => qcCategory(q) === 'Finished').length;
+  const finishedTotal = qcListInFlow.filter(q => qcCategory(q) === 'Finished').length;
 
   // ⭐ Copia al portapapeles SOLO las direcciones de las casas EN QC (la sección
   //    "Casas pendientes de Quality Check"), sin recalls. Respeta el buscador.
