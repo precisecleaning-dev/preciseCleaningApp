@@ -905,8 +905,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     //    vive ahora en esas tarjetas de casa.
     if (cat === 'Recall') return false;
     if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
-    if (statusFilter === 'Finished' && cat !== 'Finished') return false;
-    if (statusFilter === 'Recall' && cat !== 'Recall') return false;
+    // (Aquí `cat` solo puede ser 'Finished': Pending y Recall ya retornaron
+    //  arriba, por eso ya no hay comparaciones por pestaña — TS2367.)
     return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId)), qc.inspector || '']);
   });
 
