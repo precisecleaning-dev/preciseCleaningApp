@@ -103,7 +103,11 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
         }
 
         const { id: _omit, ...updateData } = formData;
-        const payload: Partial<SystemUserExt> = { ...updateData, email: cleanEmail };
+        const payload: Partial<SystemUserExt> = {
+          ...updateData,
+          email: cleanEmail,
+          altEmail: (updateData.altEmail || '').toLowerCase().trim(),
+        };
 
         if (emailChanged) {
           // ⭐ El email cambió: la invitación anterior ya no aplica. Se marca
@@ -160,6 +164,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
           email: cleanEmail,
           phone: newData.phone || '',
           altPhone: newData.altPhone || '',
+          altEmail: (newData.altEmail || '').toLowerCase().trim(),
           status: 'Pending Invite' as const,
           inviteSent: false,
           createdAt: new Date().toISOString()
@@ -506,6 +511,23 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
                     value={formData.email || ''}
                     onChange={e => setFormData({...formData, email: e.target.value})}
                     placeholder="john@example.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="uv-label">
+                  Alt Email
+                  <span className="uv-label-hint">(opcional — también recibe las invitaciones de Google Calendar)</span>
+                </label>
+                <div className="uv-input-wrap">
+                  <Mail size={16} color="#9ca3af" className="uv-input-icon" />
+                  <input
+                    type="email"
+                    className="uv-input with-icon"
+                    value={formData.altEmail || ''}
+                    onChange={e => setFormData({...formData, altEmail: e.target.value})}
+                    placeholder="personal@example.com"
                   />
                 </div>
               </div>
