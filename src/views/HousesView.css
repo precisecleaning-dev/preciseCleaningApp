@@ -440,6 +440,8 @@
 .hv-service-action-btn { background: none; border: none; cursor: pointer; padding: 2px; }
 .hv-service-action-btn.edit { color: #3b82f6; }
 .hv-service-action-btn.delete { color: #ef4444; }
+/* ⭐ Celda de acciones de pagos: lapiz + basura en linea */
+.hv-fin-actions-cell { display: inline-flex; gap: 8px; align-items: center; }
 /* ⭐ Card Payroll dentro del FORMULARIO (reusa la tabla de servicios).
    `extra` en verde y `discount` en rojo: NO se reusa `.tax.positive` porque ahi
    el rojo significa impuesto sumado, un significado distinto al de un extra. */

@@ -611,6 +611,9 @@ export default function HousesView({
   const [isSavingFieldConfig, setIsSavingFieldConfig] = useState(false);
 
   const [isPayrollModalOpen, setIsPayrollModalOpen] = useState(false);
+  // ⭐ EDICIÓN DE PAGOS: id del pago que se está editando (null = pago nuevo).
+  //    Antes editar un pago exigía borrarlo y volver a capturarlo completo.
+  const [editingPayrollId, setEditingPayrollId] = useState<string | null>(null);
   const [housePayrollRecords, setHousePayrollRecords] = useState<
     PayrollRecord[]
   >([]);
@@ -2774,6 +2777,7 @@ export default function HousesView({
     //    queda en el buffer local y recibe su propertyId real al guardar.
     if (!houseId && !fromForm) return alert("Must save the house first.");
     setIsPayrollFromForm(fromForm);
+    setEditingPayrollId(null);
     setPayrollForm({
       propertyId: houseId,
       date: new Date().toISOString().split("T")[0],
@@ -2784,6 +2788,25 @@ export default function HousesView({
       discountAmount: 0,
       discountNote: "",
       totalAmount: 0,
+    });
+    setIsPayrollModalOpen(true);
+  };
+
+  // ⭐ Abre el MISMO modal de pago, precargado con el registro a editar.
+  //    fromForm=true cuando se edita desde el buffer del formulario de la casa.
+  const handleOpenPayrollEdit = (record: PayrollRecord, fromForm = false) => {
+    setIsPayrollFromForm(fromForm);
+    setEditingPayrollId(String(record.id));
+    setPayrollForm({
+      propertyId: String(record.propertyId || ""),
+      date: record.date || new Date().toISOString().split("T")[0],
+      employeeId: String(record.employeeId || ""),
+      baseAmount: Number(record.baseAmount || 0),
+      extraAmount: Number(record.extraAmount || 0),
+      extraNote: String(record.extraNote || ""),
+      discountAmount: Number(record.discountAmount || 0),
+      discountNote: String(record.discountNote || ""),
+      totalAmount: Number(record.totalAmount || 0),
     });
     setIsPayrollModalOpen(true);
   };
@@ -2804,18 +2827,73 @@ export default function HousesView({
 
     // ⭐ Capturado desde el FORMULARIO: al buffer local, se persiste en Save.
     if (isPayrollFromForm) {
-      setHousePayrollRecords(
-        [
-          ...housePayrollRecords,
-          { ...dataToSave, id: `temp-${Date.now()}` },
-        ].sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
-      );
+      if (editingPayrollId) {
+        // ⭐ EDICIÓN en el buffer: se reemplaza el registro conservando su
+        //    status. Si el pago ya existía en Firestore, se marca para borrar
+        //    y se recrea al presionar Save (misma tubería que el borrado del
+        //    formulario), así cancelar el formulario no altera nada.
+        const original = housePayrollRecords.find(
+          (r) => String(r.id) === String(editingPayrollId),
+        ) as (PayrollRecord & { status?: string }) | undefined;
+        if (!String(editingPayrollId).startsWith("temp-")) {
+          setPayrollsToDelete((prev) => [...prev, String(editingPayrollId)]);
+        }
+        const replacement = {
+          ...dataToSave,
+          status: (original?.status || "Pending") as "Pending",
+          id: `temp-${Date.now()}`,
+        };
+        setHousePayrollRecords((prev) =>
+          prev
+            .map((r) =>
+              String(r.id) === String(editingPayrollId) ? replacement : r,
+            )
+            .sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
+        );
+      } else {
+        setHousePayrollRecords(
+          [
+            ...housePayrollRecords,
+            { ...dataToSave, id: `temp-${Date.now()}` },
+          ].sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
+        );
+      }
       setIsPayrollModalOpen(false);
+      setEditingPayrollId(null);
       return;
     }
 
     setIsSaving(true);
     try {
+      if (editingPayrollId) {
+        // ⭐ EDITAR un pago existente: se actualiza el MISMO documento (el pago
+        //    conserva su id y su status Pending/Paid; solo cambian los datos).
+        const payload = {
+          propertyId: payrollForm.propertyId,
+          date: payrollForm.date,
+          employeeId: payrollForm.employeeId,
+          baseAmount: Number(payrollForm.baseAmount || 0),
+          extraAmount: Number(payrollForm.extraAmount || 0),
+          extraNote: payrollForm.extraNote || "",
+          discountAmount: Number(payrollForm.discountAmount || 0),
+          discountNote: payrollForm.discountNote || "",
+          totalAmount: total,
+        };
+        await payrollService.update(String(editingPayrollId), payload);
+        setHousePayrollRecords((prev) =>
+          prev
+            .map((r) =>
+              String(r.id) === String(editingPayrollId)
+                ? { ...r, ...payload }
+                : r,
+            )
+            .sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
+        );
+        setIsPayrollModalOpen(false);
+        setEditingPayrollId(null);
+        alert("Payment updated successfully.");
+        return;
+      }
       const newId = await payrollService.create(dataToSave);
       setHousePayrollRecords(
         [...housePayrollRecords, { ...dataToSave, id: newId }].sort(
@@ -2826,7 +2904,10 @@ export default function HousesView({
       alert("Payment registered successfully.");
     } catch (error) {
       console.error("Error saving payroll:", error);
-      alert("Error saving payment.");
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `Error saving payment.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -5539,17 +5620,29 @@ export default function HousesView({
                                   </td>
                                   {canEdit && (
                                     <td className="hv-service-td right">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleDeletePayrollLocal(
-                                            record.id as string,
-                                          )
-                                        }
-                                        className="hv-service-action-btn delete"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
+                                      <div className="hv-fin-actions-cell">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleOpenPayrollEdit(record, true)
+                                          }
+                                          className="hv-service-action-btn edit"
+                                          title="Edit payment"
+                                        >
+                                          <Edit2 size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeletePayrollLocal(
+                                              record.id as string,
+                                            )
+                                          }
+                                          className="hv-service-action-btn delete"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
                                     </td>
                                   )}
                                 </tr>
@@ -6633,16 +6726,30 @@ export default function HousesView({
                                   </td>
                                   {canEdit && (
                                     <td className="hv-fin-td right">
-                                      <button
-                                        onClick={() =>
-                                          handleDeletePayroll(
-                                            record.id as string,
-                                          )
-                                        }
-                                        className="hv-service-action-btn delete"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
+                                      <div className="hv-fin-actions-cell">
+                                        <button
+                                          onClick={() =>
+                                            handleOpenPayrollEdit(record)
+                                          }
+                                          disabled={isSaving}
+                                          className="hv-service-action-btn edit"
+                                          title="Edit payment"
+                                        >
+                                          <Edit2 size={14} />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            handleDeletePayroll(
+                                              record.id as string,
+                                            )
+                                          }
+                                          disabled={isSaving}
+                                          className="hv-service-action-btn delete"
+                                          title="Delete payment"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
                                     </td>
                                   )}
                                 </tr>
@@ -7520,7 +7627,7 @@ export default function HousesView({
         >
           <div className="modal-70" onClick={(e) => e.stopPropagation()}>
             <header className="hv-modal-header">
-              <h3 className="hv-modal-title">Register Payment</h3>
+              <h3 className="hv-modal-title">{editingPayrollId ? "Edit Payment" : "Register Payment"}</h3>
               <button
                 className="hv-modal-close-btn"
                 onClick={() => setIsPayrollModalOpen(false)}
@@ -7672,7 +7779,7 @@ export default function HousesView({
                 disabled={isSaving}
                 className="hv-btn-primary-modal green"
               >
-                <Save size={16} /> {isSaving ? "Saving..." : "Register Payment"}
+                <Save size={16} /> {isSaving ? "Saving..." : editingPayrollId ? "Save Changes" : "Register Payment"}
               </button>
             </footer>
           </div>

@@ -899,6 +899,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const filteredQcList = qcListInFlow.filter(qc => {
     const cat = qcCategory(qc);
     if (cat === 'Pending') return false; // las pendientes van como tarjetas de casa
+    // ⭐ Las tarjetas de registro en RECALL (las del botón "Correcciones
+    //    hechas") ya NO se muestran: duplicaban a las tarjetas de "Casas en
+    //    Recall" de arriba, que son las que mandan. El botón de correcciones
+    //    vive ahora en esas tarjetas de casa.
+    if (cat === 'Recall') return false;
     if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
     if (statusFilter === 'Finished' && cat !== 'Finished') return false;
     if (statusFilter === 'Recall' && cat !== 'Recall') return false;
@@ -908,14 +913,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
   //    Pending = casas esperando inspección · Finished = registros de QC ·
   //    Recall = casas actualmente en estado "Recall" (+ registros marcados RECALL).
-  //    ⭐ SIN DOBLE CONTEO: una casa en Recall aparecía dos veces en el total
-  //    (como tarjeta de casa Y como su registro reprobado). Ahora el número de
-  //    la pestaña cuenta CASAS: las que están en estado Recall + los registros
-  //    huérfanos (su casa fue borrada), que no están en la primera lista.
-  const recallRecordsCount = qcListInFlow.filter(q =>
-    qcCategory(q) === 'Recall' && !recallHouses.some(h => h.id === q.houseId),
-  ).length;
-  const recallTotal = recallHouses.length + recallRecordsCount;
+  //    ⭐ La pestaña Recall cuenta exactamente lo que muestra: las CASAS en
+  //    estado Recall. Los registros reprobados ya no se listan como tarjetas
+  //    (duplicaban a las casas), así que tampoco suman al total.
+  const recallTotal = recallHouses.length;
   const finishedTotal = qcListInFlow.filter(q => qcCategory(q) === 'Finished').length;
 
   // ⭐ Copia al portapapeles SOLO las direcciones de las casas EN QC (la sección
@@ -943,7 +944,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
   //  ⭐ En la pestaña Finished solo interesa la tabla de inspecciones terminadas.
   const showRecallBlock = statusFilter === 'All' || statusFilter === 'Recall';
-  const showRecordsTable = statusFilter !== 'Pending';
+  // ⭐ En Recall la tabla ya no aplica (los registros Recall no se listan):
+  //    mostraría siempre "No hay registros" debajo de las tarjetas de casas.
+  const showRecordsTable = statusFilter !== 'Pending' && statusFilter !== 'Recall';
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -2063,6 +2066,32 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       : <><Route size={13} /> Agregar a ruta</>}
                   </button>
                 </div>
+                {/* ⭐ Correcciones hechas: opera sobre el reporte reprobado más
+                    reciente de ESTA casa (vivía en las tarjetas de registro,
+                    que ya no se muestran). */}
+                {(() => {
+                  const failedQc = [...qcList]
+                    .filter(q => q.houseId === house.id && q.status === 'Finished' && q.result === 'failed')
+                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0] as (QCRecord & { correctionsDoneAt?: string | null; correctionsDoneBy?: string | null }) | undefined;
+                  if (!failedQc) return null;
+                  return failedQc.correctionsDoneAt ? (
+                    <div
+                      className="qcv-corr-chip"
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Por ${failedQc.correctionsDoneBy || '—'}`}
+                    >
+                      <Check size={13} /> Correcciones hechas · {formatDate(String(failedQc.correctionsDoneAt).split('T')[0])}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleCorrectionsDone(failedQc); }}
+                      className="qcv-corr-btn full"
+                    >
+                      <Check size={14} /> Correcciones hechas
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={(e) => { e.stopPropagation(); handleStartOrContinueQC(house); }}
                   disabled={isLoadingCatalogs}
