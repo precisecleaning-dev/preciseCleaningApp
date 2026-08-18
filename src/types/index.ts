@@ -28,6 +28,9 @@ export interface SystemUser {
   email: string;
   phone: string;
   altPhone: string;
+  /** ⭐ Segundo correo del colaborador: se agrega como invitado extra en los
+   *  eventos de Google Calendar (junto con `email`). Opcional. */
+  altEmail?: string;
   roleId: string;
   status: 'Active' | 'Pending Invite' | 'Inactive';
   teamId?: string; // Para el catálogo de equipos

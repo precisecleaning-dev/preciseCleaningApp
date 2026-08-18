@@ -154,6 +154,78 @@ function parseGoogleDate(
 }
 
 // ===========================================================================
+// Colores de EVENTO de Google Calendar. La API solo acepta estos 11 colorId;
+// no se puede mandar un hex arbitrario. El color del equipo (hex, definido en
+// la app en settings_teams) se traduce al colorId MÁS CERCANO por distancia
+// RGB, así cada equipo pinta sus eventos de "su" color en el calendario.
+// ===========================================================================
+// La API REST exige mandar `conferenceData: null` para QUITAR/evitar el Meet,
+// pero el tipado de @googleapis/calendar no admite null en ese campo: se
+// fuerza con este cast puntual (el JSON que viaja sí lleva null).
+const NO_CONFERENCE = null as unknown as calendar_v3.Schema$ConferenceData;
+
+const GCAL_EVENT_COLORS: Array<{ id: string; hex: string }> = [
+  { id: "1", hex: "#7986cb" }, // Lavender
+  { id: "2", hex: "#33b679" }, // Sage
+  { id: "3", hex: "#8e24aa" }, // Grape
+  { id: "4", hex: "#e67c73" }, // Flamingo
+  { id: "5", hex: "#f6c026" }, // Banana
+  { id: "6", hex: "#f5511d" }, // Tangerine
+  { id: "7", hex: "#039be5" }, // Peacock
+  { id: "8", hex: "#616161" }, // Graphite
+  { id: "9", hex: "#3f51b5" }, // Blueberry
+  { id: "10", hex: "#0b8043" }, // Basil
+  { id: "11", hex: "#d60000" }, // Tomato
+];
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = hex.trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function nearestGcalColorId(teamHex?: string): string | undefined {
+  const rgb = teamHex ? hexToRgb(teamHex) : null;
+  if (!rgb) return undefined;
+  let best: string | undefined;
+  let bestDist = Infinity;
+  for (const c of GCAL_EVENT_COLORS) {
+    const p = hexToRgb(c.hex);
+    if (!p) continue;
+    const d =
+      (rgb[0] - p[0]) ** 2 + (rgb[1] - p[1]) ** 2 + (rgb[2] - p[2]) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = c.id;
+    }
+  }
+  return best;
+}
+
+// Quita la videoconferencia de Meet que el calendario agrega solo cuando el
+// dueño tiene activada la opción "agregar Meet automáticamente" y el evento
+// lleva invitados. `conferenceData: null` + conferenceDataVersion 1 la borra.
+async function stripAutoMeet(
+  gcal: calendar_v3.Calendar,
+  eventId: string | null | undefined,
+  ev: calendar_v3.Schema$Event | undefined,
+): Promise<void> {
+  if (!eventId || !ev?.conferenceData) return;
+  try {
+    await gcal.events.patch({
+      calendarId: CALENDAR_ID,
+      eventId,
+      conferenceDataVersion: 1,
+      requestBody: { conferenceData: NO_CONFERENCE },
+    });
+  } catch (err) {
+    // No es fatal: el evento queda creado, solo con el Meet que Google agrego.
+    logger.warn("No se pudo quitar el Meet automatico:", err);
+  }
+}
+
+// ===========================================================================
 // 1) synchousetocalendar — botón "Sync" de la app
 //    data: { houseId, clientName }
 // ===========================================================================
@@ -183,6 +255,8 @@ export const synchousetocalendar = onCall(
       address?: string;
       note?: string;
       gcalEventId?: string;
+      teamId?: string;
+      assignedWorkers?: string[];
     };
     if (!house.scheduleDate || !house.timeIn) {
       throw new HttpsError(
@@ -199,8 +273,59 @@ export const synchousetocalendar = onCall(
       timeOut = `${String(Math.min(h + 2, 23)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
     }
 
+    // ⭐ (1) TEAM asignado → título, y (2) su color → color del evento.
+    //    El color se define en la app (Settings → Teams) y aquí se traduce
+    //    al colorId de Google más parecido.
+    let teamName = "";
+    let teamColorId: string | undefined;
+    if (house.teamId) {
+      const teamSnap = await db.doc(`settings_teams/${house.teamId}`).get();
+      if (teamSnap.exists) {
+        const team = teamSnap.data() as { name?: string; color?: string };
+        teamName = (team.name || "").trim();
+        teamColorId = nearestGcalColorId(team.color);
+      }
+    }
+
+    // ⭐ (4) Colaboradores asignados a la casa → invitados del evento.
+    //    Cada colaborador aporta sus DOS correos (email y altEmail) si los
+    //    tiene. Se deduplican y se descartan los vacíos o mal formados.
+    const attendees: calendar_v3.Schema$EventAttendee[] = [];
+    const workerIds = Array.isArray(house.assignedWorkers)
+      ? house.assignedWorkers.filter(Boolean)
+      : [];
+    if (workerIds.length > 0) {
+      const seen = new Set<string>();
+      const snaps = await db.getAll(
+        ...workerIds.map((id) => db.doc(`system_users/${id}`)),
+      );
+      for (const s of snaps) {
+        if (!s.exists) continue;
+        const w = s.data() as { email?: string; altEmail?: string };
+        for (const raw of [w.email, w.altEmail]) {
+          const mail = String(raw || "").toLowerCase().trim();
+          if (!mail || !mail.includes("@") || !mail.includes(".")) continue;
+          if (seen.has(mail)) continue;
+          seen.add(mail);
+          attendees.push({ email: mail });
+        }
+      }
+    }
+
+    // Título: "Team - Dirección". Sin equipo asignado se mantiene el formato
+    // anterior con el cliente para no dejar eventos sin identificar.
+    const summaryBase =
+      house.address || clientName || "Precise Cleaning";
     const event: calendar_v3.Schema$Event = {
-      summary: `Cleaning: ${clientName || "Precise Cleaning"}`,
+      summary: teamName
+        ? `${teamName} - ${summaryBase}`
+        : `Cleaning: ${summaryBase}`,
+      ...(teamColorId ? { colorId: teamColorId } : {}),
+      ...(attendees.length > 0 ? { attendees } : {}),
+      // ⭐ (3) Sin Google Meet: se pide explícitamente sin videoconferencia
+      //    (ver también stripAutoMeet para el caso en que el calendario la
+      //    agregue solo por configuración del dueño).
+      conferenceData: NO_CONFERENCE,
       location: house.address || "",
       description: house.note || "",
       start: {
@@ -229,20 +354,30 @@ export const synchousetocalendar = onCall(
     }
     let eventId: string | null | undefined = house.gcalEventId || null;
 
+    // conferenceDataVersion=1: obligatorio para que Google respete el
+    // `conferenceData: null` (sin Meet). sendUpdates="all": los invitados
+    // reciben la invitación en su correo (cámbialo a "none" si no se quiere
+    // notificar; igual les aparece en su calendario de Google).
     try {
       if (eventId) {
         // Ya existía: actualizar el mismo evento
-        await calendar.events.patch({
+        const res = await calendar.events.patch({
           calendarId: CALENDAR_ID,
           eventId,
+          conferenceDataVersion: 1,
+          sendUpdates: "all",
           requestBody: event,
         });
+        await stripAutoMeet(calendar, eventId, res.data);
       } else {
         const res = await calendar.events.insert({
           calendarId: CALENDAR_ID,
+          conferenceDataVersion: 1,
+          sendUpdates: "all",
           requestBody: event,
         });
         eventId = res.data.id;
+        await stripAutoMeet(calendar, eventId, res.data);
       }
     } catch (err) {
       const e = err as GoogleApiError;
@@ -251,9 +386,12 @@ export const synchousetocalendar = onCall(
       if (eventId && (e.code === 404 || e.code === 410)) {
         const res = await calendar.events.insert({
           calendarId: CALENDAR_ID,
+          conferenceDataVersion: 1,
+          sendUpdates: "all",
           requestBody: event,
         });
         eventId = res.data.id;
+        await stripAutoMeet(calendar, eventId, res.data);
       } else {
         logger.error("Error sincronizando con Calendar:", err);
         throw new HttpsError(

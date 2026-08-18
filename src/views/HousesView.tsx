@@ -2628,7 +2628,30 @@ export default function HousesView({
     const endDateTime = fmtStamp(selectedHouse.scheduleDate, endMin);
     // ⭐ El evento SIEMPRE debe crearse en esta cuenta, nunca en otra.
     const CALENDAR_ACCOUNT_EMAIL = "account@precisecleaningtx.com";
-    const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent("Cleaning: " + getClientName(selectedHouse.client))}&dates=${startDateTime}/${endDateTime}&ctz=America/Chicago&details=${encodeURIComponent(selectedHouse.note || "")}&location=${encodeURIComponent(selectedHouse.address)}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
+    // ⭐ Mismo título que la Cloud Function: "Team - Dirección". Los correos de
+    //    los colaboradores asignados (email y altEmail) van como invitados con
+    //    &add=. Nota: el COLOR del evento y quitar el Meet automático solo se
+    //    pueden hacer vía API (Cloud Function); la URL de plantilla no lo
+    //    soporta — este camino es solo el respaldo manual.
+    const fallbackTeamName = (
+      teams.find((t) => t.id === selectedHouse.teamId)?.name || ""
+    ).trim();
+    const fallbackTitle = fallbackTeamName
+      ? `${fallbackTeamName} - ${selectedHouse.address || getClientName(selectedHouse.client)}`
+      : `Cleaning: ${selectedHouse.address || getClientName(selectedHouse.client)}`;
+    const fallbackGuests = Array.from(
+      new Set(
+        (selectedHouse.assignedWorkers || [])
+          .map((id) => employees.find((e) => e.id === id))
+          .flatMap((w) => [w?.email, w?.altEmail])
+          .map((m) => String(m || "").toLowerCase().trim())
+          .filter((m) => m.includes("@") && m.includes(".")),
+      ),
+    );
+    const addParam = fallbackGuests.length
+      ? `&add=${encodeURIComponent(fallbackGuests.join(","))}`
+      : "";
+    const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(fallbackTitle)}&dates=${startDateTime}/${endDateTime}&ctz=America/Chicago&details=${encodeURIComponent(selectedHouse.note || "")}&location=${encodeURIComponent(selectedHouse.address)}${addParam}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
     // Forzamos el selector de cuenta de Google a ese correo y de ahí continuamos al
     // formulario del evento. Si esa cuenta no está iniciada, Google pedirá entrar con ella,
     // garantizando que el evento nunca se cree bajo otra cuenta.
