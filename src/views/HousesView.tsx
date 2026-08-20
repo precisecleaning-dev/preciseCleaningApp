@@ -781,7 +781,7 @@ export default function HousesView({
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+          await videoRef.current.play().catch(() => { });
         }
       } catch (e) {
         console.error("No se pudo abrir la cámara:", e);
@@ -1804,12 +1804,12 @@ export default function HousesView({
         setClRecord(
           latest
             ? {
-                id: latest.id,
-                checked: latest.checked || {},
-                notes: latest.notes,
-                date: latest.date,
-                inspector: latest.inspector,
-              }
+              id: latest.id,
+              checked: latest.checked || {},
+              notes: latest.notes,
+              date: latest.date,
+              inspector: latest.inspector,
+            }
             : null,
         );
       },
@@ -2584,12 +2584,37 @@ export default function HousesView({
           .filter((m) => m.includes("@") && m.includes(".")),
       ),
     );
+    // ⭐ DATOS OBLIGATORIOS para poder enviar: sin ellos el evento no puede
+    //    crearse (la fecha y la hora de entrada definen el evento). Se listan
+    //    en el modal con su estado ✓/✗ y el botón de enviar se bloquea si
+    //    falta alguno.
+    const required = [
+      {
+        label: "Schedule Date",
+        ok: !!selectedHouse.scheduleDate,
+        value: selectedHouse.scheduleDate || "",
+      },
+      {
+        label: "Time In",
+        ok: !!selectedHouse.timeIn,
+        value: selectedHouse.timeIn || "",
+      },
+      {
+        label: "Dirección o Cliente",
+        ok: !!(selectedHouse.address || getClientName(selectedHouse.client)),
+        value: selectedHouse.address || getClientName(selectedHouse.client) || "",
+      },
+    ];
+    const canSend = required.every((r) => r.ok);
+
     const warnings: string[] = [];
     if (!teamName) warnings.push("La casa no tiene Team asignado: el título saldrá sin equipo.");
     if (team && !team.color) warnings.push("El Team no tiene color en el catálogo: el evento usará el color por defecto.");
     if (guests.length === 0) warnings.push("Sin colaboradores asignados (o sin email): el evento no tendrá invitados.");
     if (!selectedHouse.timeOut) warnings.push("Sin Time Out: se usarán 2 horas de duración como respaldo.");
     return {
+      required,
+      canSend,
       title,
       teamColor: team?.color || "",
       teamName,
@@ -2603,18 +2628,11 @@ export default function HousesView({
     };
   };
 
-  // ⭐ El botón Sync SOLO abre la previsualización. El envío real ocurre al
-  //    confirmar dentro del modal (handleGoogleCalendarSend).
+  // ⭐ El botón Sync SIEMPRE abre la previsualización: ahí se ven los datos
+  //    que viajarán Y los obligatorios que falten (con ✓/✗). El envío real
+  //    ocurre al confirmar dentro del modal, que se bloquea si falta algo.
   const handleGoogleCalendarSync = () => {
-    if (
-      !selectedHouse ||
-      !selectedHouse.scheduleDate ||
-      !selectedHouse.timeIn
-    ) {
-      return alert(
-        "Por favor asegúrate de que la propiedad tenga fecha de Schedule y hora Time In.",
-      );
-    }
+    if (!selectedHouse) return;
     setIsGcalPreviewOpen(true);
   };
 
@@ -3341,8 +3359,8 @@ export default function HousesView({
       const prevStatusId = isNew
         ? ""
         : String(
-            properties.find((p) => p.id === workingId)?.statusId || "",
-          );
+          properties.find((p) => p.id === workingId)?.statusId || "",
+        );
       const enteredInvoiceNow = String(formData.statusId || "") !== prevStatusId;
 
       const finalDataToUpdate = {
@@ -3954,14 +3972,14 @@ export default function HousesView({
 
               <div class="photo-grid">
                 ${base64Images
-                  .map(
-                    (src) => `
+          .map(
+            (src) => `
                   <div class="photo-item">
                     <img src="${src}" alt="${type} photo" />
                   </div>
                 `,
-                  )
-                  .join("")}
+          )
+          .join("")}
               </div>
 
               <div class="footer">
@@ -4122,62 +4140,62 @@ export default function HousesView({
               {(isSuperAdmin ||
                 activeRole?.permissions?.find((p) => p.module === "Houses")
                   ?.canAdd) && (
-                <button
-                  className="add-btn-mobile hv-btn-add"
-                  onClick={() => handleOpenForm()}
-                >
-                  <Plus size={16} /> New Job
-                </button>
-              )}
+                  <button
+                    className="add-btn-mobile hv-btn-add"
+                    onClick={() => handleOpenForm()}
+                  >
+                    <Plus size={16} /> New Job
+                  </button>
+                )}
             </div>
           </header>
 
           {isElementVisible("card_kpis") && (
-          <div className="dash-grid hv-kpi-grid">
-            {isLoading ? (
-              <div className="hv-loading-text">Loading metrics...</div>
-            ) : (
-              statuses
-                .filter((s) => isStatusVisibleForRole(s.id))
-                .slice(0, 4)
-                .map((status, index) => {
-                const Icon = kpiIcons[index % kpiIcons.length];
-                const count = propertiesWithScope.filter(
-                  (p) => p.statusId === status.id || p.statusId === status.name,
-                ).length;
-                const isActive = activeFilter === status.name;
-                return (
-                  <div
-                    className={`hv-kpi-card${isActive ? " active" : ""}`}
-                    style={
-                      {
-                        "--kpi-color": status.color,
-                        "--kpi-color-30": `${status.color}30`,
-                        "--kpi-icon-bg": `${status.color}15`,
-                      } as CSSProperties
-                    }
-                    key={status.id}
-                    onClick={() =>
-                      setActiveFilter(isActive ? "All" : status.name)
-                    }
-                    title={
-                      isActive
-                        ? "Click para limpiar filtro"
-                        : `Filtrar trabajos por ${status.name}`
-                    }
-                  >
-                    <div className="hv-kpi-icon-box">
-                      <Icon size={18} />
-                    </div>
-                    <div className="hv-min-w-0">
-                      <div className="hv-kpi-label">{status.name}</div>
-                      <div className="hv-kpi-count">{count}</div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+            <div className="dash-grid hv-kpi-grid">
+              {isLoading ? (
+                <div className="hv-loading-text">Loading metrics...</div>
+              ) : (
+                statuses
+                  .filter((s) => isStatusVisibleForRole(s.id))
+                  .slice(0, 4)
+                  .map((status, index) => {
+                    const Icon = kpiIcons[index % kpiIcons.length];
+                    const count = propertiesWithScope.filter(
+                      (p) => p.statusId === status.id || p.statusId === status.name,
+                    ).length;
+                    const isActive = activeFilter === status.name;
+                    return (
+                      <div
+                        className={`hv-kpi-card${isActive ? " active" : ""}`}
+                        style={
+                          {
+                            "--kpi-color": status.color,
+                            "--kpi-color-30": `${status.color}30`,
+                            "--kpi-icon-bg": `${status.color}15`,
+                          } as CSSProperties
+                        }
+                        key={status.id}
+                        onClick={() =>
+                          setActiveFilter(isActive ? "All" : status.name)
+                        }
+                        title={
+                          isActive
+                            ? "Click para limpiar filtro"
+                            : `Filtrar trabajos por ${status.name}`
+                        }
+                      >
+                        <div className="hv-kpi-icon-box">
+                          <Icon size={18} />
+                        </div>
+                        <div className="hv-min-w-0">
+                          <div className="hv-kpi-label">{status.name}</div>
+                          <div className="hv-kpi-count">{count}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
           )}
 
           {viewMode === "board" ? (
@@ -4205,710 +4223,710 @@ export default function HousesView({
             />
           ) : (
             <>
-            {/* ⭐ AVISO: casas fuera de la lista por no tener status. Va FUERA
+              {/* ⭐ AVISO: casas fuera de la lista por no tener status. Va FUERA
                 de .main-columns: ese contenedor es flex y meter aqui un item
                 extra descuadraba las columnas. */}
-            {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
-              <div className="hv-nostatus-banner">
-                <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
-                <span>
-                  {hiddenNoStatusCount} job(s) are not shown here because they
-                  have no status assigned. They are in the "No Status" module.
-                </span>
-              </div>
-            )}
+              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
+                <div className="hv-nostatus-banner">
+                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
+                  <span>
+                    {hiddenNoStatusCount} job(s) are not shown here because they
+                    have no status assigned. They are in the "No Status" module.
+                  </span>
+                </div>
+              )}
 
-            <div className="main-columns">
-              {/* LEFT COLUMN: DAILY JOBS */}
-              <div className="left-col">
-                <div className="hv-panel-card">
-                  <div className="hv-table-header">
-                    <div>
-                      <h2 className="hv-panel-title">Daily Jobs</h2>
-                      <p className="hv-panel-date">{dateCapitalized}</p>
-                    </div>
+              <div className="main-columns">
+                {/* LEFT COLUMN: DAILY JOBS */}
+                <div className="left-col">
+                  <div className="hv-panel-card">
+                    <div className="hv-table-header">
+                      <div>
+                        <h2 className="hv-panel-title">Daily Jobs</h2>
+                        <p className="hv-panel-date">{dateCapitalized}</p>
+                      </div>
 
-                    <div className="filters-section">
-                      <div className="tabs-container">
-                        <button
-                          onClick={() => setActiveFilter("All")}
-                          className={`hv-pill-btn${activeFilter === "All" ? " active" : ""}`}
-                        >
-                          All
-                        </button>
-                        {dashboardTabs.map((st) => (
+                      <div className="filters-section">
+                        <div className="tabs-container">
                           <button
-                            key={st.id}
-                            onClick={() => setActiveFilter(st.name)}
-                            className={`hv-pill-btn${activeFilter === st.name ? " active" : ""}`}
+                            onClick={() => setActiveFilter("All")}
+                            className={`hv-pill-btn${activeFilter === "All" ? " active" : ""}`}
                           >
-                            {st.name}
+                            All
                           </button>
-                        ))}
-                      </div>
+                          {dashboardTabs.map((st) => (
+                            <button
+                              key={st.id}
+                              onClick={() => setActiveFilter(st.name)}
+                              className={`hv-pill-btn${activeFilter === st.name ? " active" : ""}`}
+                            >
+                              {st.name}
+                            </button>
+                          ))}
+                        </div>
 
-                      <div className="property-select-container">
-                        <button
-                          onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                          className="hv-btn-filters"
-                        >
-                          <Filter size={16} /> Filters{" "}
-                          {(houseFilter !== "All" ||
-                            invoiceFilter !== "All" ||
-                            statusFilter !== "All" ||
-                            priorityFilter !== "All") && (
-                            <span className="hv-filter-badge-dot">!</span>
+                        <div className="property-select-container">
+                          <button
+                            onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                            className="hv-btn-filters"
+                          >
+                            <Filter size={16} /> Filters{" "}
+                            {(houseFilter !== "All" ||
+                              invoiceFilter !== "All" ||
+                              statusFilter !== "All" ||
+                              priorityFilter !== "All") && (
+                                <span className="hv-filter-badge-dot">!</span>
+                              )}
+                          </button>
+
+                          {isFilterMenuOpen && (
+                            <div className="hv-filter-dropdown">
+                              <div>
+                                <label className="hv-filter-field-label">
+                                  Status
+                                </label>
+                                <select
+                                  className="hv-filter-select"
+                                  value={statusFilter}
+                                  onChange={(e) =>
+                                    setStatusFilter(e.target.value)
+                                  }
+                                >
+                                  <option value="All">All Statuses</option>
+                                  {statuses.map((st) => (
+                                    <option key={st.id} value={st.id}>
+                                      {st.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="hv-filter-field-label">
+                                  Priority
+                                </label>
+                                <select
+                                  className="hv-filter-select"
+                                  value={priorityFilter}
+                                  onChange={(e) =>
+                                    setPriorityFilter(e.target.value)
+                                  }
+                                >
+                                  <option value="All">All Priorities</option>
+                                  {priorities.map((pr) => (
+                                    <option key={pr.id} value={pr.id}>
+                                      {pr.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="hv-filter-field-label">
+                                  Property
+                                </label>
+                                <select
+                                  className="hv-filter-select"
+                                  value={houseFilter}
+                                  onChange={(e) => setHouseFilter(e.target.value)}
+                                >
+                                  <option value="All">All Properties</option>
+                                  {uniqueHouses.map((h, idx) => (
+                                    <option
+                                      key={idx}
+                                      value={`${h.client}|${h.address}`}
+                                    >
+                                      {getClientName(h.client)} - {h.address}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="hv-filter-field-label">
+                                  Invoice Status
+                                </label>
+                                <select
+                                  className="hv-filter-select"
+                                  value={invoiceFilter}
+                                  onChange={(e) =>
+                                    setInvoiceFilter(e.target.value)
+                                  }
+                                >
+                                  <option value="All">All Invoices</option>
+                                  <option value="Pre-Paid">Pre-Paid</option>
+                                  <option value="Pending">Pending</option>
+                                  <option value="Paid">Paid</option>
+                                  <option value="Needs Invoice">
+                                    Needs Invoice
+                                  </option>
+                                </select>
+                              </div>
+                            </div>
                           )}
-                        </button>
-
-                        {isFilterMenuOpen && (
-                          <div className="hv-filter-dropdown">
-                            <div>
-                              <label className="hv-filter-field-label">
-                                Status
-                              </label>
-                              <select
-                                className="hv-filter-select"
-                                value={statusFilter}
-                                onChange={(e) =>
-                                  setStatusFilter(e.target.value)
-                                }
-                              >
-                                <option value="All">All Statuses</option>
-                                {statuses.map((st) => (
-                                  <option key={st.id} value={st.id}>
-                                    {st.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="hv-filter-field-label">
-                                Priority
-                              </label>
-                              <select
-                                className="hv-filter-select"
-                                value={priorityFilter}
-                                onChange={(e) =>
-                                  setPriorityFilter(e.target.value)
-                                }
-                              >
-                                <option value="All">All Priorities</option>
-                                {priorities.map((pr) => (
-                                  <option key={pr.id} value={pr.id}>
-                                    {pr.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="hv-filter-field-label">
-                                Property
-                              </label>
-                              <select
-                                className="hv-filter-select"
-                                value={houseFilter}
-                                onChange={(e) => setHouseFilter(e.target.value)}
-                              >
-                                <option value="All">All Properties</option>
-                                {uniqueHouses.map((h, idx) => (
-                                  <option
-                                    key={idx}
-                                    value={`${h.client}|${h.address}`}
-                                  >
-                                    {getClientName(h.client)} - {h.address}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="hv-filter-field-label">
-                                Invoice Status
-                              </label>
-                              <select
-                                className="hv-filter-select"
-                                value={invoiceFilter}
-                                onChange={(e) =>
-                                  setInvoiceFilter(e.target.value)
-                                }
-                              >
-                                <option value="All">All Invoices</option>
-                                <option value="Pre-Paid">Pre-Paid</option>
-                                <option value="Pending">Pending</option>
-                                <option value="Paid">Paid</option>
-                                <option value="Needs Invoice">
-                                  Needs Invoice
-                                </option>
-                              </select>
-                            </div>
-                          </div>
-                        )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* ====== VISTA TABLA (escritorio) ====== */}
-                  <div className="jobs-table-wrap hv-jobs-table-wrap">
-                    <table className="responsive-table hv-table">
-                      <thead>
-                        <tr>
-                          <th className="hv-th sticky">Schedule</th>
-                          <th className="hv-th sticky">Client</th>
-                          <th className="hv-th sticky">Time</th>
-                          <th className="hv-th sticky">Type</th>
-                          <th className="hv-th sticky">Team</th>
-                          <th className="hv-th sticky">Status</th>
-                          <th className="hv-th sticky w-100 right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {isLoading ? (
+                    {/* ====== VISTA TABLA (escritorio) ====== */}
+                    <div className="jobs-table-wrap hv-jobs-table-wrap">
+                      <table className="responsive-table hv-table">
+                        <thead>
                           <tr>
-                            <td colSpan={7} className="hv-empty-row">
-                              Loading database...
-                            </td>
+                            <th className="hv-th sticky">Schedule</th>
+                            <th className="hv-th sticky">Client</th>
+                            <th className="hv-th sticky">Time</th>
+                            <th className="hv-th sticky">Type</th>
+                            <th className="hv-th sticky">Team</th>
+                            <th className="hv-th sticky">Status</th>
+                            <th className="hv-th sticky w-100 right">Actions</th>
                           </tr>
-                        ) : filteredProperties.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="hv-empty-row italic">
-                              No jobs to display for your team.
-                            </td>
-                          </tr>
-                        ) : (
-                          visibleProperties.map((prop) => {
-                            const teamName = getRelationName(
-                              teams,
-                              prop.teamId,
-                              "Unassigned",
-                            );
-                            const serviceName = getRelationName(
-                              services,
-                              prop.serviceId,
-                              "Regular",
-                            );
-                            const prObj = priorities.find(
-                              (pp) =>
-                                pp.id === prop.priorityId ||
-                                pp.name === prop.priorityId,
-                            );
-                            const isHighPriority =
-                              prObj?.name?.toLowerCase() === "high" ||
-                              prop.priorityId?.toLowerCase() === "high";
+                        </thead>
+                        <tbody>
+                          {isLoading ? (
+                            <tr>
+                              <td colSpan={7} className="hv-empty-row">
+                                Loading database...
+                              </td>
+                            </tr>
+                          ) : filteredProperties.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="hv-empty-row italic">
+                                No jobs to display for your team.
+                              </td>
+                            </tr>
+                          ) : (
+                            visibleProperties.map((prop) => {
+                              const teamName = getRelationName(
+                                teams,
+                                prop.teamId,
+                                "Unassigned",
+                              );
+                              const serviceName = getRelationName(
+                                services,
+                                prop.serviceId,
+                                "Regular",
+                              );
+                              const prObj = priorities.find(
+                                (pp) =>
+                                  pp.id === prop.priorityId ||
+                                  pp.name === prop.priorityId,
+                              );
+                              const isHighPriority =
+                                prObj?.name?.toLowerCase() === "high" ||
+                                prop.priorityId?.toLowerCase() === "high";
 
-                            return (
-                              <tr
-                                key={prop.id}
-                                onClick={() => handleOpenDetail(prop)}
-                                className={`hv-job-row${isHighPriority ? " high-priority" : ""}`}
-                              >
-                                <td
-                                  data-label="Schedule"
-                                  className="hv-td muted"
+                              return (
+                                <tr
+                                  key={prop.id}
+                                  onClick={() => handleOpenDetail(prop)}
+                                  className={`hv-job-row${isHighPriority ? " high-priority" : ""}`}
                                 >
-                                  {prop.scheduleDate
-                                    ? formatDate(prop.scheduleDate)
-                                    : "-"}
-                                </td>
-                                <td data-label="Client" className="hv-td">
-                                  <div className="mobile-client-cell">
-                                    <div className="hv-client-name-row">
-                                      {isHighPriority && (
-                                        <span
-                                          title="HIGH priority"
-                                          className="hv-badge-high"
-                                        >
-                                          <AlertTriangle size={11} /> HIGH
-                                        </span>
-                                      )}
-                                      {getClientName(prop.client)}
-                                      {prop.employeeFinishedBy && (
-                                        <span
-                                          title="Finished"
-                                          className="hv-finished-icon"
-                                        >
-                                          <CheckCircle
-                                            size={14}
-                                            color="#10b981"
-                                          />
-                                        </span>
-                                      )}
+                                  <td
+                                    data-label="Schedule"
+                                    className="hv-td muted"
+                                  >
+                                    {prop.scheduleDate
+                                      ? formatDate(prop.scheduleDate)
+                                      : "-"}
+                                  </td>
+                                  <td data-label="Client" className="hv-td">
+                                    <div className="mobile-client-cell">
+                                      <div className="hv-client-name-row">
+                                        {isHighPriority && (
+                                          <span
+                                            title="HIGH priority"
+                                            className="hv-badge-high"
+                                          >
+                                            <AlertTriangle size={11} /> HIGH
+                                          </span>
+                                        )}
+                                        {getClientName(prop.client)}
+                                        {prop.employeeFinishedBy && (
+                                          <span
+                                            title="Finished"
+                                            className="hv-finished-icon"
+                                          >
+                                            <CheckCircle
+                                              size={14}
+                                              color="#10b981"
+                                            />
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="hv-client-address">
+                                        {prop.address}
+                                      </div>
                                     </div>
-                                    <div className="hv-client-address">
-                                      {prop.address}
+                                  </td>
+                                  <td data-label="Time" className="hv-td muted">
+                                    {prop.timeIn || "08:00 AM"}
+                                  </td>
+                                  <td data-label="Type" className="hv-td strong">
+                                    {serviceName}
+                                  </td>
+                                  <td data-label="Team" className="hv-td muted">
+                                    {teamName}
+                                  </td>
+                                  <td data-label="Status" className="hv-td">
+                                    <StatusPillSelector
+                                      currentStatusId={prop.statusId}
+                                      statuses={statuses}
+                                      onChange={(newId) =>
+                                        handleQuickStatusChange(prop.id, newId)
+                                      }
+                                      disabled={
+                                        isSaving ||
+                                        !canEdit ||
+                                        !isVisible("workflow") ||
+                                        isFieldRO("statusId")
+                                      }
+                                      onRequestOpen={setStatusModal}
+                                      modalTitle={getClientName(prop.client)}
+                                      modalSubtitle={prop.address}
+                                    />
+                                  </td>
+                                  <td
+                                    data-label="Actions"
+                                    className="hv-td right"
+                                  >
+                                    <div className="hv-actions-cell-row">
+                                      {canEdit &&
+                                        isVisible("admin") &&
+                                        isElementVisible("btn_editDetails") && (
+                                          <button
+                                            className="action-btn-edit"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenForm(prop);
+                                            }}
+                                          >
+                                            <Edit2 size={16} />{" "}
+                                            <span className="mobile-action-text">
+                                              Editar
+                                            </span>
+                                          </button>
+                                        )}
+                                      {canDelete &&
+                                        isVisible("admin") &&
+                                        isElementVisible(
+                                          "btn_deleteProperty",
+                                        ) && (
+                                          <button
+                                            className="action-btn-delete"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDelete(prop);
+                                            }}
+                                          >
+                                            <Trash2 size={16} />{" "}
+                                            <span className="mobile-action-text">
+                                              Eliminar
+                                            </span>
+                                          </button>
+                                        )}
                                     </div>
-                                  </div>
-                                </td>
-                                <td data-label="Time" className="hv-td muted">
-                                  {prop.timeIn || "08:00 AM"}
-                                </td>
-                                <td data-label="Type" className="hv-td strong">
-                                  {serviceName}
-                                </td>
-                                <td data-label="Team" className="hv-td muted">
-                                  {teamName}
-                                </td>
-                                <td data-label="Status" className="hv-td">
-                                  <StatusPillSelector
-                                    currentStatusId={prop.statusId}
-                                    statuses={statuses}
-                                    onChange={(newId) =>
-                                      handleQuickStatusChange(prop.id, newId)
-                                    }
-                                    disabled={
-                                      isSaving ||
-                                      !canEdit ||
-                                      !isVisible("workflow") ||
-                                      isFieldRO("statusId")
-                                    }
-                                    onRequestOpen={setStatusModal}
-                                    modalTitle={getClientName(prop.client)}
-                                    modalSubtitle={prop.address}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                      {remainingJobs > 0 && (
+                        <div className="hv-loadmore-wrap">
+                          <button
+                            className="hv-btn-loadmore"
+                            onClick={() =>
+                              setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
+                            }
+                          >
+                            Load more ({remainingJobs})
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
+                    <div className="jobs-cards-wrap">
+                      {isLoading ? (
+                        <div className="hv-cards-empty">Loading database...</div>
+                      ) : filteredProperties.length === 0 ? (
+                        <div className="hv-cards-empty italic">
+                          No jobs to display for your team.
+                        </div>
+                      ) : (
+                        visibleProperties.map((prop) => {
+                          const teamName = getRelationName(
+                            teams,
+                            prop.teamId,
+                            "",
+                          );
+                          const teamColor = getRelationColor(teams, prop.teamId);
+                          const prObj = priorities.find(
+                            (pp) =>
+                              pp.id === prop.priorityId ||
+                              pp.name === prop.priorityId,
+                          );
+                          const isHighPriority =
+                            prObj?.name?.toLowerCase() === "high" ||
+                            prop.priorityId?.toLowerCase() === "high";
+                          const assignedLabel = teamName || "Unassigned";
+
+                          return (
+                            <div
+                              key={prop.id}
+                              onClick={() => handleOpenDetail(prop)}
+                              className="hv-job-card"
+                            >
+                              <div className="hv-card-top-row">
+                                <span className="hv-card-client-name">
+                                  {getClientName(prop.client)}
+                                </span>
+                                <div className="hv-card-flags">
+                                  {prop.employeeFinishedBy && (
+                                    <CheckCircle size={18} color="#10b981" />
+                                  )}
+                                  {isHighPriority && (
+                                    <AlertTriangle size={18} color="#dc2626" />
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="hv-card-info-col">
+                                <div className="hv-card-info-row">
+                                  <MapPin
+                                    size={18}
+                                    color="#94a3b8"
+                                    className="hv-shrink-0"
                                   />
-                                </td>
-                                <td
-                                  data-label="Actions"
-                                  className="hv-td right"
-                                >
-                                  <div className="hv-actions-cell-row">
+                                  <span className="hv-card-info-text">
+                                    {prop.address || "—"}
+                                  </span>
+                                </div>
+                                <div className="hv-card-info-row">
+                                  <CalendarDays
+                                    size={18}
+                                    color="#94a3b8"
+                                    className="hv-shrink-0"
+                                  />
+                                  <span>
+                                    {prop.scheduleDate
+                                      ? formatDate(prop.scheduleDate)
+                                      : "Sin fecha"}
+                                    {prop.timeIn ? `  ·  ${prop.timeIn}` : ""}
+                                  </span>
+                                </div>
+                                <div className="hv-card-team-row">
+                                  <span
+                                    className="hv-card-team-avatar"
+                                    style={
+                                      {
+                                        "--team-bg": teamColor
+                                          ? `${teamColor}20`
+                                          : "#f1f5f9",
+                                      } as CSSProperties
+                                    }
+                                  >
+                                    <Users
+                                      size={15}
+                                      color={teamColor || "#94a3b8"}
+                                    />
+                                  </span>
+                                  <span
+                                    className={`hv-card-team-label${teamName ? " assigned" : ""}`}
+                                  >
+                                    {assignedLabel}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <StatusPillSelector
+                                  fullWidth
+                                  currentStatusId={prop.statusId}
+                                  statuses={statuses}
+                                  onChange={(newId) =>
+                                    handleQuickStatusChange(prop.id, newId)
+                                  }
+                                  disabled={
+                                    isSaving ||
+                                    !canEdit ||
+                                    !isVisible("workflow") ||
+                                    isFieldRO("statusId")
+                                  }
+                                  onRequestOpen={setStatusModal}
+                                  modalTitle={getClientName(prop.client)}
+                                  modalSubtitle={prop.address}
+                                />
+                              </div>
+
+                              {/* ⭐ Botones de fotos en la tarjeta (táctiles, con feedback
+                                al presionar). Respetan el configurador de visibilidad. */}
+                              {isVisible("media") &&
+                                isElementVisible("btn_tabMedia") &&
+                                isElementVisible("card_photos") &&
+                                photosUnlockedFor(prop) && (
+                                  <div className="hv-card-photos-row">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenPhotosFromCard(prop, "before");
+                                      }}
+                                      className="hv-card-btn-photos before"
+                                    >
+                                      <Camera size={18} /> Before Photos
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenPhotosFromCard(prop, "after");
+                                      }}
+                                      className="hv-card-btn-photos after"
+                                    >
+                                      <ImageIcon size={18} /> After Photos
+                                    </button>
+                                  </div>
+                                )}
+
+                              {((canEdit &&
+                                isElementVisible("btn_editDetails")) ||
+                                (canDelete &&
+                                  isElementVisible("btn_deleteProperty"))) &&
+                                isVisible("admin") && (
+                                  <div className="hv-card-actions-row">
                                     {canEdit &&
-                                      isVisible("admin") &&
                                       isElementVisible("btn_editDetails") && (
                                         <button
-                                          className="action-btn-edit"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleOpenForm(prop);
                                           }}
+                                          className="hv-card-btn-edit"
                                         >
-                                          <Edit2 size={16} />{" "}
-                                          <span className="mobile-action-text">
-                                            Editar
-                                          </span>
+                                          <Edit2 size={17} /> Editar
                                         </button>
                                       )}
                                     {canDelete &&
-                                      isVisible("admin") &&
-                                      isElementVisible(
-                                        "btn_deleteProperty",
-                                      ) && (
+                                      isElementVisible("btn_deleteProperty") && (
                                         <button
-                                          className="action-btn-delete"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleDelete(prop);
                                           }}
+                                          className="hv-card-btn-delete"
                                         >
-                                          <Trash2 size={16} />{" "}
-                                          <span className="mobile-action-text">
-                                            Eliminar
-                                          </span>
+                                          <Trash2 size={17} /> Eliminar
                                         </button>
                                       )}
                                   </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                    {remainingJobs > 0 && (
-                      <div className="hv-loadmore-wrap">
-                        <button
-                          className="hv-btn-loadmore"
-                          onClick={() =>
-                            setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
-                          }
-                        >
-                          Load more ({remainingJobs})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
-                  <div className="jobs-cards-wrap">
-                    {isLoading ? (
-                      <div className="hv-cards-empty">Loading database...</div>
-                    ) : filteredProperties.length === 0 ? (
-                      <div className="hv-cards-empty italic">
-                        No jobs to display for your team.
-                      </div>
-                    ) : (
-                      visibleProperties.map((prop) => {
-                        const teamName = getRelationName(
-                          teams,
-                          prop.teamId,
-                          "",
-                        );
-                        const teamColor = getRelationColor(teams, prop.teamId);
-                        const prObj = priorities.find(
-                          (pp) =>
-                            pp.id === prop.priorityId ||
-                            pp.name === prop.priorityId,
-                        );
-                        const isHighPriority =
-                          prObj?.name?.toLowerCase() === "high" ||
-                          prop.priorityId?.toLowerCase() === "high";
-                        const assignedLabel = teamName || "Unassigned";
-
-                        return (
-                          <div
-                            key={prop.id}
-                            onClick={() => handleOpenDetail(prop)}
-                            className="hv-job-card"
-                          >
-                            <div className="hv-card-top-row">
-                              <span className="hv-card-client-name">
-                                {getClientName(prop.client)}
-                              </span>
-                              <div className="hv-card-flags">
-                                {prop.employeeFinishedBy && (
-                                  <CheckCircle size={18} color="#10b981" />
                                 )}
-                                {isHighPriority && (
-                                  <AlertTriangle size={18} color="#dc2626" />
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="hv-card-info-col">
-                              <div className="hv-card-info-row">
-                                <MapPin
-                                  size={18}
-                                  color="#94a3b8"
-                                  className="hv-shrink-0"
-                                />
-                                <span className="hv-card-info-text">
-                                  {prop.address || "—"}
-                                </span>
-                              </div>
-                              <div className="hv-card-info-row">
-                                <CalendarDays
-                                  size={18}
-                                  color="#94a3b8"
-                                  className="hv-shrink-0"
-                                />
-                                <span>
-                                  {prop.scheduleDate
-                                    ? formatDate(prop.scheduleDate)
-                                    : "Sin fecha"}
-                                  {prop.timeIn ? `  ·  ${prop.timeIn}` : ""}
-                                </span>
-                              </div>
-                              <div className="hv-card-team-row">
-                                <span
-                                  className="hv-card-team-avatar"
-                                  style={
-                                    {
-                                      "--team-bg": teamColor
-                                        ? `${teamColor}20`
-                                        : "#f1f5f9",
-                                    } as CSSProperties
-                                  }
-                                >
-                                  <Users
-                                    size={15}
-                                    color={teamColor || "#94a3b8"}
-                                  />
-                                </span>
-                                <span
-                                  className={`hv-card-team-label${teamName ? " assigned" : ""}`}
-                                >
-                                  {assignedLabel}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div onClick={(e) => e.stopPropagation()}>
-                              <StatusPillSelector
-                                fullWidth
-                                currentStatusId={prop.statusId}
-                                statuses={statuses}
-                                onChange={(newId) =>
-                                  handleQuickStatusChange(prop.id, newId)
-                                }
-                                disabled={
-                                  isSaving ||
-                                  !canEdit ||
-                                  !isVisible("workflow") ||
-                                  isFieldRO("statusId")
-                                }
-                                onRequestOpen={setStatusModal}
-                                modalTitle={getClientName(prop.client)}
-                                modalSubtitle={prop.address}
-                              />
-                            </div>
-
-                            {/* ⭐ Botones de fotos en la tarjeta (táctiles, con feedback
-                                al presionar). Respetan el configurador de visibilidad. */}
-                            {isVisible("media") &&
-                              isElementVisible("btn_tabMedia") &&
-                              isElementVisible("card_photos") &&
-                              photosUnlockedFor(prop) && (
-                                <div className="hv-card-photos-row">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenPhotosFromCard(prop, "before");
-                                    }}
-                                    className="hv-card-btn-photos before"
-                                  >
-                                    <Camera size={18} /> Before Photos
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenPhotosFromCard(prop, "after");
-                                    }}
-                                    className="hv-card-btn-photos after"
-                                  >
-                                    <ImageIcon size={18} /> After Photos
-                                  </button>
-                                </div>
-                              )}
-
-                            {((canEdit &&
-                              isElementVisible("btn_editDetails")) ||
-                              (canDelete &&
-                                isElementVisible("btn_deleteProperty"))) &&
-                              isVisible("admin") && (
-                                <div className="hv-card-actions-row">
-                                  {canEdit &&
-                                    isElementVisible("btn_editDetails") && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleOpenForm(prop);
-                                        }}
-                                        className="hv-card-btn-edit"
-                                      >
-                                        <Edit2 size={17} /> Editar
-                                      </button>
-                                    )}
-                                  {canDelete &&
-                                    isElementVisible("btn_deleteProperty") && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDelete(prop);
-                                        }}
-                                        className="hv-card-btn-delete"
-                                      >
-                                        <Trash2 size={17} /> Eliminar
-                                      </button>
-                                    )}
-                                </div>
-                              )}
-                          </div>
-                        );
-                      })
-                    )}
-                    {remainingJobs > 0 && (
-                      <div className="hv-loadmore-wrap">
-                        <button
-                          className="hv-btn-loadmore"
-                          onClick={() =>
-                            setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
-                          }
-                        >
-                          Load more ({remainingJobs})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: ACTIVE TEAMS (visibilidad por rol) */}
-              {isElementVisible("card_activeTeams") && (
-              <div className="right-col">
-                <div className="hv-panel-card">
-                  <h3 className="hv-panel-heading">Active Teams</h3>
-                  <div className="hv-teams-list">
-                    {isLoading ? (
-                      <div className="hv-teams-status-text">
-                        Loading teams...
-                      </div>
-                    ) : teamsWithScope.length === 0 ? (
-                      <div className="hv-teams-status-text empty">
-                        No configured teams.
-                      </div>
-                    ) : (
-                      teamsWithScope
-                        .filter((team) =>
-                          propertiesWithScope.some((p) => {
-                            const isAssignedToTeam =
-                              p.teamId === team.id || p.teamId === team.name;
-                            if (!isAssignedToTeam) return false;
-                            return !isHiddenPipelineStatus(p);
-                          }),
-                        )
-                        .map((team) => {
-                          const assignedProps = propertiesWithScope
-                            .filter((p) => {
-                              if (
-                                p.teamId !== team.id &&
-                                p.teamId !== team.name
-                              )
-                                return false;
-                              return !isHiddenPipelineStatus(p);
-                            })
-                            .sort((a, b) => {
-                              const stA = statuses.find(
-                                (s) =>
-                                  s.id === a.statusId || s.name === a.statusId,
-                              );
-                              const stB = statuses.find(
-                                (s) =>
-                                  s.id === b.statusId || s.name === b.statusId,
-                              );
-                              const isRecallA =
-                                stA?.name?.toLowerCase() === "recall" ||
-                                a.statusId?.toLowerCase() === "recall";
-                              const isRecallB =
-                                stB?.name?.toLowerCase() === "recall" ||
-                                b.statusId?.toLowerCase() === "recall";
-                              if (isRecallA && !isRecallB) return -1;
-                              if (!isRecallA && isRecallB) return 1;
-                              return 0;
-                            });
-                          const isExpanded = expandedTeamId === team.id;
-                          return (
-                            <div
-                              key={team.id}
-                              onClick={() =>
-                                setExpandedTeamId(isExpanded ? null : team.id)
-                              }
-                              className={`hv-team-item${isExpanded ? " expanded" : ""}`}
-                              style={
-                                {
-                                  "--team-color": team.color,
-                                  "--team-icon-bg": `${team.color}20`,
-                                } as CSSProperties
-                              }
-                            >
-                              <div className="hv-team-item-head">
-                                <div className="hv-team-info-row">
-                                  <div className="hv-team-icon-box">
-                                    <Users size={16} />
-                                  </div>
-                                  <div>
-                                    <div className="hv-team-name">
-                                      {team.name}
-                                    </div>
-                                    <div className="hv-team-job-count">
-                                      {assignedProps.length > 0
-                                        ? `${assignedProps.length} jobs`
-                                        : "Free"}
-                                    </div>
-                                  </div>
-                                </div>
-                                <ChevronDown
-                                  size={16}
-                                  color="#94a3b8"
-                                  className={`hv-team-chevron${isExpanded ? " expanded" : ""}`}
-                                />
-                              </div>
-                              <div className="hv-team-progress-track">
-                                <div
-                                  className={`hv-team-progress-fill${assignedProps.length > 0 ? " filled" : ""}`}
-                                  style={
-                                    {
-                                      "--team-color": team.color,
-                                    } as CSSProperties
-                                  }
-                                ></div>
-                              </div>
-
-                              {isExpanded && (
-                                <div className="hv-team-jobs-list">
-                                  {assignedProps.length === 0 ? (
-                                    <span className="hv-team-jobs-empty">
-                                      No hay casas asignadas a este equipo.
-                                    </span>
-                                  ) : (
-                                    assignedProps.map((prop) => {
-                                      const stProp = statuses.find(
-                                        (s) =>
-                                          s.id === prop.statusId ||
-                                          s.name === prop.statusId,
-                                      );
-                                      const isRecall =
-                                        stProp?.name?.toLowerCase() ===
-                                          "recall" ||
-                                        prop.statusId?.toLowerCase() ===
-                                          "recall";
-                                      const prObj = priorities.find(
-                                        (pp) =>
-                                          pp.id === prop.priorityId ||
-                                          pp.name === prop.priorityId,
-                                      );
-                                      const isHigh =
-                                        prObj?.name?.toLowerCase() === "high" ||
-                                        prop.priorityId?.toLowerCase() ===
-                                          "high";
-                                      return (
-                                        <div
-                                          key={prop.id}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenDetail(prop);
-                                          }}
-                                          className="hv-team-job-item"
-                                          style={
-                                            {
-                                              "--job-border": isRecall
-                                                ? "#fca5a5"
-                                                : isHigh
-                                                  ? "#fdba74"
-                                                  : "#e2e8f0",
-                                            } as CSSProperties
-                                          }
-                                        >
-                                          <div className="hv-team-job-top">
-                                            <div className="hv-team-job-name">
-                                              {getClientName(prop.client)}
-                                            </div>
-                                            <div className="hv-team-job-flags">
-                                              {isRecall && (
-                                                <span className="hv-badge-recall">
-                                                  Recall
-                                                </span>
-                                              )}
-                                              {isHigh && (
-                                                <span
-                                                  title="HIGH priority"
-                                                  className="hv-badge-high-orange"
-                                                >
-                                                  <AlertTriangle size={10} />{" "}
-                                                  High
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="hv-team-job-address">
-                                            <MapPin size={10} />{" "}
-                                            {prop.address || "-"}
-                                          </div>
-                                        </div>
-                                      );
-                                    })
-                                  )}
-                                </div>
-                              )}
                             </div>
                           );
                         })
-                    )}
+                      )}
+                      {remainingJobs > 0 && (
+                        <div className="hv-loadmore-wrap">
+                          <button
+                            className="hv-btn-loadmore"
+                            onClick={() =>
+                              setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
+                            }
+                          >
+                            Load more ({remainingJobs})
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {/* RIGHT COLUMN: ACTIVE TEAMS (visibilidad por rol) */}
+                {isElementVisible("card_activeTeams") && (
+                  <div className="right-col">
+                    <div className="hv-panel-card">
+                      <h3 className="hv-panel-heading">Active Teams</h3>
+                      <div className="hv-teams-list">
+                        {isLoading ? (
+                          <div className="hv-teams-status-text">
+                            Loading teams...
+                          </div>
+                        ) : teamsWithScope.length === 0 ? (
+                          <div className="hv-teams-status-text empty">
+                            No configured teams.
+                          </div>
+                        ) : (
+                          teamsWithScope
+                            .filter((team) =>
+                              propertiesWithScope.some((p) => {
+                                const isAssignedToTeam =
+                                  p.teamId === team.id || p.teamId === team.name;
+                                if (!isAssignedToTeam) return false;
+                                return !isHiddenPipelineStatus(p);
+                              }),
+                            )
+                            .map((team) => {
+                              const assignedProps = propertiesWithScope
+                                .filter((p) => {
+                                  if (
+                                    p.teamId !== team.id &&
+                                    p.teamId !== team.name
+                                  )
+                                    return false;
+                                  return !isHiddenPipelineStatus(p);
+                                })
+                                .sort((a, b) => {
+                                  const stA = statuses.find(
+                                    (s) =>
+                                      s.id === a.statusId || s.name === a.statusId,
+                                  );
+                                  const stB = statuses.find(
+                                    (s) =>
+                                      s.id === b.statusId || s.name === b.statusId,
+                                  );
+                                  const isRecallA =
+                                    stA?.name?.toLowerCase() === "recall" ||
+                                    a.statusId?.toLowerCase() === "recall";
+                                  const isRecallB =
+                                    stB?.name?.toLowerCase() === "recall" ||
+                                    b.statusId?.toLowerCase() === "recall";
+                                  if (isRecallA && !isRecallB) return -1;
+                                  if (!isRecallA && isRecallB) return 1;
+                                  return 0;
+                                });
+                              const isExpanded = expandedTeamId === team.id;
+                              return (
+                                <div
+                                  key={team.id}
+                                  onClick={() =>
+                                    setExpandedTeamId(isExpanded ? null : team.id)
+                                  }
+                                  className={`hv-team-item${isExpanded ? " expanded" : ""}`}
+                                  style={
+                                    {
+                                      "--team-color": team.color,
+                                      "--team-icon-bg": `${team.color}20`,
+                                    } as CSSProperties
+                                  }
+                                >
+                                  <div className="hv-team-item-head">
+                                    <div className="hv-team-info-row">
+                                      <div className="hv-team-icon-box">
+                                        <Users size={16} />
+                                      </div>
+                                      <div>
+                                        <div className="hv-team-name">
+                                          {team.name}
+                                        </div>
+                                        <div className="hv-team-job-count">
+                                          {assignedProps.length > 0
+                                            ? `${assignedProps.length} jobs`
+                                            : "Free"}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <ChevronDown
+                                      size={16}
+                                      color="#94a3b8"
+                                      className={`hv-team-chevron${isExpanded ? " expanded" : ""}`}
+                                    />
+                                  </div>
+                                  <div className="hv-team-progress-track">
+                                    <div
+                                      className={`hv-team-progress-fill${assignedProps.length > 0 ? " filled" : ""}`}
+                                      style={
+                                        {
+                                          "--team-color": team.color,
+                                        } as CSSProperties
+                                      }
+                                    ></div>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="hv-team-jobs-list">
+                                      {assignedProps.length === 0 ? (
+                                        <span className="hv-team-jobs-empty">
+                                          No hay casas asignadas a este equipo.
+                                        </span>
+                                      ) : (
+                                        assignedProps.map((prop) => {
+                                          const stProp = statuses.find(
+                                            (s) =>
+                                              s.id === prop.statusId ||
+                                              s.name === prop.statusId,
+                                          );
+                                          const isRecall =
+                                            stProp?.name?.toLowerCase() ===
+                                            "recall" ||
+                                            prop.statusId?.toLowerCase() ===
+                                            "recall";
+                                          const prObj = priorities.find(
+                                            (pp) =>
+                                              pp.id === prop.priorityId ||
+                                              pp.name === prop.priorityId,
+                                          );
+                                          const isHigh =
+                                            prObj?.name?.toLowerCase() === "high" ||
+                                            prop.priorityId?.toLowerCase() ===
+                                            "high";
+                                          return (
+                                            <div
+                                              key={prop.id}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenDetail(prop);
+                                              }}
+                                              className="hv-team-job-item"
+                                              style={
+                                                {
+                                                  "--job-border": isRecall
+                                                    ? "#fca5a5"
+                                                    : isHigh
+                                                      ? "#fdba74"
+                                                      : "#e2e8f0",
+                                                } as CSSProperties
+                                              }
+                                            >
+                                              <div className="hv-team-job-top">
+                                                <div className="hv-team-job-name">
+                                                  {getClientName(prop.client)}
+                                                </div>
+                                                <div className="hv-team-job-flags">
+                                                  {isRecall && (
+                                                    <span className="hv-badge-recall">
+                                                      Recall
+                                                    </span>
+                                                  )}
+                                                  {isHigh && (
+                                                    <span
+                                                      title="HIGH priority"
+                                                      className="hv-badge-high-orange"
+                                                    >
+                                                      <AlertTriangle size={10} />{" "}
+                                                      High
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="hv-team-job-address">
+                                                <MapPin size={10} />{" "}
+                                                {prop.address || "-"}
+                                              </div>
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              )}
-            </div>
             </>
           )}
         </>
@@ -4930,15 +4948,15 @@ export default function HousesView({
                     activeRole?.permissions?.find(
                       (p) => p.module === "Roles & Permissions",
                     )?.canEdit) && (
-                    <button
-                      type="button"
-                      onClick={openFieldConfigModal}
-                      className="hv-btn-configure"
-                      title="Configure which fields each role can see"
-                    >
-                      <Settings size={16} /> Configure Fields
-                    </button>
-                  )}
+                      <button
+                        type="button"
+                        onClick={openFieldConfigModal}
+                        className="hv-btn-configure"
+                        title="Configure which fields each role can see"
+                      >
+                        <Settings size={16} /> Configure Fields
+                      </button>
+                    )}
                 </div>
 
                 {/* CARD 1: GENERAL INFO */}
@@ -5313,8 +5331,8 @@ export default function HousesView({
                             //    del equipo anterior sin equipo visible.
                             const teamWorkers = val
                               ? employees
-                                  .filter((emp) => emp.teamId === val)
-                                  .map((emp) => emp.id)
+                                .filter((emp) => emp.teamId === val)
+                                .map((emp) => emp.id)
                               : [];
                             // Quitar el equipo es una decision explicita: cuenta
                             // como tocar la lista para que no se autocomplete.
@@ -5633,8 +5651,8 @@ export default function HousesView({
                                   <td className="hv-service-td strong">
                                     {emp
                                       ? [emp.firstName, emp.lastName]
-                                          .filter(Boolean)
-                                          .join(" ")
+                                        .filter(Boolean)
+                                        .join(" ")
                                       : "Unknown"}
                                   </td>
                                   <td className="hv-service-td right">
@@ -6173,14 +6191,14 @@ export default function HousesView({
                 {isVisible("media") &&
                   isElementVisible("btn_tabMedia") &&
                   photosUnlockedFor(selectedHouse) && (
-                  <button
-                    className={`hv-detail-tab${activeDetailTab === "media" ? " active" : ""}`}
-                    onClick={() => setActiveDetailTab("media")}
-                  >
-                    <FileImage size={14} className="hv-tab-icon-inline" /> Notes
-                    & Photos
-                  </button>
-                )}
+                    <button
+                      className={`hv-detail-tab${activeDetailTab === "media" ? " active" : ""}`}
+                      onClick={() => setActiveDetailTab("media")}
+                    >
+                      <FileImage size={14} className="hv-tab-icon-inline" /> Notes
+                      & Photos
+                    </button>
+                  )}
                 {/* ⭐ History: historial de cambios de status de ESTA casa */}
                 <button
                   className={`hv-detail-tab${activeDetailTab === "history" ? " active" : ""}`}
@@ -6201,74 +6219,74 @@ export default function HousesView({
                       "timeIn",
                       "timeOut",
                     ) && (
-                      <div className="hv-info-card">
-                        <div className="hv-info-header">
-                          <CalendarDays
-                            size={14}
-                            className="hv-icon-inline-tb"
-                          />{" "}
-                          Schedule & Timing
+                        <div className="hv-info-card">
+                          <div className="hv-info-header">
+                            <CalendarDays
+                              size={14}
+                              className="hv-icon-inline-tb"
+                            />{" "}
+                            Schedule & Timing
+                          </div>
+                          {isElementVisible("receiveDate") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Receive Date</span>
+                              <span className="hv-info-value">
+                                {selectedHouse.receiveDate
+                                  ? formatDate(selectedHouse.receiveDate)
+                                  : "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("scheduleDate") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Schedule Date</span>
+                              <span className="hv-info-value">
+                                {selectedHouse.scheduleDate
+                                  ? formatDate(selectedHouse.scheduleDate)
+                                  : "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("dateOfIssue") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Date of Issue</span>
+                              <span className="hv-info-value">
+                                {selectedHouse.dateOfIssue
+                                  ? formatDate(selectedHouse.dateOfIssue)
+                                  : "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("dueDate") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Due Date</span>
+                              <span className="hv-info-value">
+                                {selectedHouse.dueDate
+                                  ? formatDate(selectedHouse.dueDate)
+                                  : "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("timeIn") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Time In</span>
+                              <span className="hv-info-value">
+                                <Clock size={12} color="#94a3b8" />{" "}
+                                {selectedHouse.timeIn || "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("timeOut") && (
+                            <div className="hv-info-row no-border">
+                              <span className="hv-info-label">Time Out</span>
+                              <span className="hv-info-value">
+                                <Clock size={12} color="#94a3b8" />{" "}
+                                {selectedHouse.timeOut || "-"}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {isElementVisible("receiveDate") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Receive Date</span>
-                            <span className="hv-info-value">
-                              {selectedHouse.receiveDate
-                                ? formatDate(selectedHouse.receiveDate)
-                                : "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("scheduleDate") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Schedule Date</span>
-                            <span className="hv-info-value">
-                              {selectedHouse.scheduleDate
-                                ? formatDate(selectedHouse.scheduleDate)
-                                : "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("dateOfIssue") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Date of Issue</span>
-                            <span className="hv-info-value">
-                              {selectedHouse.dateOfIssue
-                                ? formatDate(selectedHouse.dateOfIssue)
-                                : "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("dueDate") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Due Date</span>
-                            <span className="hv-info-value">
-                              {selectedHouse.dueDate
-                                ? formatDate(selectedHouse.dueDate)
-                                : "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("timeIn") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Time In</span>
-                            <span className="hv-info-value">
-                              <Clock size={12} color="#94a3b8" />{" "}
-                              {selectedHouse.timeIn || "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("timeOut") && (
-                          <div className="hv-info-row no-border">
-                            <span className="hv-info-label">Time Out</span>
-                            <span className="hv-info-value">
-                              <Clock size={12} color="#94a3b8" />{" "}
-                              {selectedHouse.timeOut || "-"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      )}
 
                     {anyVisible(
                       "serviceId",
@@ -6276,69 +6294,69 @@ export default function HousesView({
                       "rooms",
                       "bathrooms",
                     ) && (
-                      <div className="hv-info-card">
-                        <div className="hv-info-header">
-                          <Wrench size={14} className="hv-icon-inline-tb" /> Job
-                          Specifications
+                        <div className="hv-info-card">
+                          <div className="hv-info-header">
+                            <Wrench size={14} className="hv-icon-inline-tb" /> Job
+                            Specifications
+                          </div>
+                          {isElementVisible("serviceId") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Service</span>
+                              <span className="hv-info-value">
+                                {getRelationName(
+                                  services,
+                                  selectedHouse.serviceId,
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("priorityId") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Priority</span>
+                              <span className="hv-info-value">
+                                {getRelationColor(
+                                  priorities,
+                                  selectedHouse.priorityId,
+                                ) && (
+                                    <span
+                                      className="hv-dot-10"
+                                      style={
+                                        {
+                                          "--dot-color": getRelationColor(
+                                            priorities,
+                                            selectedHouse.priorityId,
+                                          ),
+                                        } as CSSProperties
+                                      }
+                                    ></span>
+                                  )}
+                                {getRelationName(
+                                  priorities,
+                                  selectedHouse.priorityId,
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("rooms") && (
+                            <div className="hv-info-row">
+                              <span className="hv-info-label">Rooms</span>
+                              <span className="hv-info-value">
+                                <Hash size={12} color="#94a3b8" />{" "}
+                                {selectedHouse.rooms || "-"}
+                              </span>
+                            </div>
+                          )}
+                          {isElementVisible("bathrooms") && (
+                            <div className="hv-info-row no-border">
+                              <span className="hv-info-label">Bathrooms</span>
+                              <span className="hv-info-value">
+                                <Hash size={12} color="#94a3b8" />{" "}
+                                {selectedHouse.bathrooms || "-"}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {isElementVisible("serviceId") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Service</span>
-                            <span className="hv-info-value">
-                              {getRelationName(
-                                services,
-                                selectedHouse.serviceId,
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("priorityId") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Priority</span>
-                            <span className="hv-info-value">
-                              {getRelationColor(
-                                priorities,
-                                selectedHouse.priorityId,
-                              ) && (
-                                <span
-                                  className="hv-dot-10"
-                                  style={
-                                    {
-                                      "--dot-color": getRelationColor(
-                                        priorities,
-                                        selectedHouse.priorityId,
-                                      ),
-                                    } as CSSProperties
-                                  }
-                                ></span>
-                              )}
-                              {getRelationName(
-                                priorities,
-                                selectedHouse.priorityId,
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("rooms") && (
-                          <div className="hv-info-row">
-                            <span className="hv-info-label">Rooms</span>
-                            <span className="hv-info-value">
-                              <Hash size={12} color="#94a3b8" />{" "}
-                              {selectedHouse.rooms || "-"}
-                            </span>
-                          </div>
-                        )}
-                        {isElementVisible("bathrooms") && (
-                          <div className="hv-info-row no-border">
-                            <span className="hv-info-label">Bathrooms</span>
-                            <span className="hv-info-value">
-                              <Hash size={12} color="#94a3b8" />{" "}
-                              {selectedHouse.bathrooms || "-"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      )}
 
                     {anyVisible("statusId", "invoiceStatus", "teamId") && (
                       <div className="hv-info-card">
@@ -6390,18 +6408,18 @@ export default function HousesView({
                                 teams,
                                 selectedHouse.teamId,
                               ) && (
-                                <span
-                                  className="hv-dot-10"
-                                  style={
-                                    {
-                                      "--dot-color": getRelationColor(
-                                        teams,
-                                        selectedHouse.teamId,
-                                      ),
-                                    } as CSSProperties
-                                  }
-                                ></span>
-                              )}
+                                  <span
+                                    className="hv-dot-10"
+                                    style={
+                                      {
+                                        "--dot-color": getRelationColor(
+                                          teams,
+                                          selectedHouse.teamId,
+                                        ),
+                                      } as CSSProperties
+                                    }
+                                  ></span>
+                                )}
                               {getRelationName(
                                 teams,
                                 selectedHouse.teamId,
@@ -6743,8 +6761,8 @@ export default function HousesView({
                                   <td className="hv-fin-td strong">
                                     {emp
                                       ? [emp.firstName, emp.lastName]
-                                          .filter(Boolean)
-                                          .join(" ")
+                                        .filter(Boolean)
+                                        .join(" ")
                                       : "Unknown"}
                                   </td>
                                   <td className="hv-fin-td right">
@@ -6801,237 +6819,237 @@ export default function HousesView({
               {activeDetailTab === "media" &&
                 isVisible("media") &&
                 photosUnlockedFor(selectedHouse) && (
-                <div className="fade-in">
-                  {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
-                    <div className="hv-media-grid">
-                      {/* ⭐ Notas de OFICINA en azul, primero: son internas y deben
+                  <div className="fade-in">
+                    {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
+                      <div className="hv-media-grid">
+                        {/* ⭐ Notas de OFICINA en azul, primero: son internas y deben
                           distinguirse a simple vista del resto. */}
-                      {canSeeOfficeNotes() && (
-                        <div className="hv-note-box office">
-                          <span className="hv-detail-label office">
-                            <Briefcase
-                              size={14}
-                              className="hv-label-icon-inline"
-                            />{" "}
-                            OFFICE NOTES
-                          </span>
-                          {canEditDetailNote("officeNote") ? (
-                            <textarea
-                              className="hv-note-input office"
-                              placeholder="Notas internas de oficina..."
-                              value={detailNotes.officeNote}
-                              onChange={(e) => {
-                                setDetailNotes((p) => ({ ...p, officeNote: e.target.value }));
-                                setDetailNotesDirty(true);
-                              }}
-                            />
-                          ) : (
-                            <p className="hv-note-text">
-                              {(selectedHouse as PropertyU).officeNote || "No office notes."}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {isElementVisible("note") && (
-                        <div className="hv-note-box">
-                          <span className="hv-detail-label">
-                            <StickyNote
-                              size={14}
-                              className="hv-label-icon-inline"
-                            />{" "}
-                            GENERAL NOTE
-                          </span>
-                          {canEditDetailNote("note") ? (
-                            <textarea
-                              className="hv-note-input"
-                              placeholder="General instructions or notes..."
-                              value={detailNotes.note}
-                              onChange={(e) => {
-                                setDetailNotes((p) => ({ ...p, note: e.target.value }));
-                                setDetailNotesDirty(true);
-                              }}
-                            />
-                          ) : (
-                            <p className="hv-note-text">
-                              {selectedHouse.note || "No general notes."}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {isElementVisible("employeeNote") && (
-                        <div className="hv-note-box orange">
-                          <span className="hv-detail-label orange">
-                            <StickyNote
-                              size={14}
-                              className="hv-label-icon-inline"
-                            />{" "}
-                            EMPLOYEE'S NOTE
-                          </span>
-                          {canEditDetailNote("employeeNote") ? (
-                            <textarea
-                              className="hv-note-input orange"
-                              placeholder="Escribe aquí las notas del empleado..."
-                              value={detailNotes.employeeNote}
-                              onChange={(e) => {
-                                setDetailNotes((p) => ({ ...p, employeeNote: e.target.value }));
-                                setDetailNotesDirty(true);
-                              }}
-                            />
-                          ) : (
-                            <p className="hv-note-text">
-                              {selectedHouse.employeeNote || "No employee notes."}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        {canSeeOfficeNotes() && (
+                          <div className="hv-note-box office">
+                            <span className="hv-detail-label office">
+                              <Briefcase
+                                size={14}
+                                className="hv-label-icon-inline"
+                              />{" "}
+                              OFFICE NOTES
+                            </span>
+                            {canEditDetailNote("officeNote") ? (
+                              <textarea
+                                className="hv-note-input office"
+                                placeholder="Notas internas de oficina..."
+                                value={detailNotes.officeNote}
+                                onChange={(e) => {
+                                  setDetailNotes((p) => ({ ...p, officeNote: e.target.value }));
+                                  setDetailNotesDirty(true);
+                                }}
+                              />
+                            ) : (
+                              <p className="hv-note-text">
+                                {(selectedHouse as PropertyU).officeNote || "No office notes."}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {isElementVisible("note") && (
+                          <div className="hv-note-box">
+                            <span className="hv-detail-label">
+                              <StickyNote
+                                size={14}
+                                className="hv-label-icon-inline"
+                              />{" "}
+                              GENERAL NOTE
+                            </span>
+                            {canEditDetailNote("note") ? (
+                              <textarea
+                                className="hv-note-input"
+                                placeholder="General instructions or notes..."
+                                value={detailNotes.note}
+                                onChange={(e) => {
+                                  setDetailNotes((p) => ({ ...p, note: e.target.value }));
+                                  setDetailNotesDirty(true);
+                                }}
+                              />
+                            ) : (
+                              <p className="hv-note-text">
+                                {selectedHouse.note || "No general notes."}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {isElementVisible("employeeNote") && (
+                          <div className="hv-note-box orange">
+                            <span className="hv-detail-label orange">
+                              <StickyNote
+                                size={14}
+                                className="hv-label-icon-inline"
+                              />{" "}
+                              EMPLOYEE'S NOTE
+                            </span>
+                            {canEditDetailNote("employeeNote") ? (
+                              <textarea
+                                className="hv-note-input orange"
+                                placeholder="Escribe aquí las notas del empleado..."
+                                value={detailNotes.employeeNote}
+                                onChange={(e) => {
+                                  setDetailNotes((p) => ({ ...p, employeeNote: e.target.value }));
+                                  setDetailNotesDirty(true);
+                                }}
+                              />
+                            ) : (
+                              <p className="hv-note-text">
+                                {selectedHouse.employeeNote || "No employee notes."}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {/* ⭐ Guardar notas: aparece solo si el rol puede editar alguna
+                    {/* ⭐ Guardar notas: aparece solo si el rol puede editar alguna
                       y se habilita cuando hay cambios sin guardar. */}
-                  {(canEditDetailNote("note") ||
-                    canEditDetailNote("officeNote") ||
-                    canEditDetailNote("employeeNote")) && (
-                    <div className="hv-save-notes-row">
-                      <button
-                        onClick={handleSaveDetailNotes}
-                        disabled={isSaving || !detailNotesDirty}
-                        className="hv-btn-primary-modal green"
-                      >
-                        <Save size={16} />{" "}
-                        {isSaving ? "Saving..." : "Save Notes"}
-                      </button>
-                    </div>
-                  )}
-
-                  {isElementVisible("card_photos") && (
-                    <div className="hv-media-grid no-mb">
-                      <div id="hv-photos-before">
-                        <div className="hv-workers-header">
-                          <span className="hv-detail-label">
-                            <ImageIcon
-                              size={14}
-                              className="hv-label-icon-inline"
-                            />{" "}
-                            BEFORE PHOTOS
-                          </span>
-                          <div className="hv-photo-actions-row">
-                            {isElementVisible("btn_takePhoto") && (
-                              <button
-                                onClick={() => openBurstCamera("before")}
-                                disabled={isSaving}
-                                className="hv-btn-compact bg-blue"
-                              >
-                                <Camera size={14} /> Cámara rápida
-                              </button>
-                            )}
-                            {isElementVisible("btn_exportPdf") && (
-                              <button
-                                onClick={() => generatePDF("before")}
-                                disabled={isSaving}
-                                className="hv-btn-compact bg-dark-blue"
-                              >
-                                <FileImage size={14} /> Export PDF
-                              </button>
-                            )}
-                          </div>
+                    {(canEditDetailNote("note") ||
+                      canEditDetailNote("officeNote") ||
+                      canEditDetailNote("employeeNote")) && (
+                        <div className="hv-save-notes-row">
+                          <button
+                            onClick={handleSaveDetailNotes}
+                            disabled={isSaving || !detailNotesDirty}
+                            className="hv-btn-primary-modal green"
+                          >
+                            <Save size={16} />{" "}
+                            {isSaving ? "Saving..." : "Save Notes"}
+                          </button>
                         </div>
-                        <PhotoSection
-                          label="Before"
-                          type="before"
-                          urls={beforePhotoURLs}
-                          excludedUrls={beforeExcluded}
-                          pendingCount={pendingForHouse.before}
-                          canEdit={isElementVisible("btn_uploadPhoto")}
-                          isSaving={isSaving}
-                          isCompressing={isCompressing}
-                          photoConfig={photoConfig}
-                          reportSelectable
-                          onAddFiles={(f: FileList | null) =>
-                            addPhotoFiles(f, "before")
-                          }
-                          onRemove={(i: number) =>
-                            handleRemovePhoto(i, "before")
-                          }
-                          onToggleReport={(u: string) =>
-                            toggleReportPhoto(u, "before")
-                          }
-                        />
-                      </div>
-                      <div id="hv-photos-after">
-                        <div className="hv-workers-header">
-                          <span className="hv-detail-label">
-                            <ImageIcon
-                              size={14}
-                              className="hv-label-icon-inline"
-                            />{" "}
-                            AFTER PHOTOS
-                          </span>
-                          <div className="hv-photo-actions-row">
-                            {isElementVisible("btn_takePhoto") && (
-                              <button
-                                onClick={() => openBurstCamera("after")}
-                                disabled={isSaving}
-                                className="hv-btn-compact bg-green"
-                              >
-                                <Camera size={14} /> Cámara rápida
-                              </button>
-                            )}
-                            {isElementVisible("btn_exportPdf") && (
-                              <button
-                                onClick={() => generatePDF("after")}
-                                disabled={isSaving}
-                                className="hv-btn-compact bg-dark-green"
-                              >
-                                <FileImage size={14} /> Export PDF
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <PhotoSection
-                          label="After"
-                          type="after"
-                          urls={afterPhotoURLs}
-                          excludedUrls={afterExcluded}
-                          pendingCount={pendingForHouse.after}
-                          canEdit={isElementVisible("btn_uploadPhoto")}
-                          isSaving={isSaving}
-                          isCompressing={isCompressing}
-                          photoConfig={photoConfig}
-                          reportSelectable
-                          onAddFiles={(f: FileList | null) =>
-                            addPhotoFiles(f, "after")
-                          }
-                          onRemove={(i: number) =>
-                            handleRemovePhoto(i, "after")
-                          }
-                          onToggleReport={(u: string) =>
-                            toggleReportPhoto(u, "after")
-                          }
-                        />
-                      </div>
-                    </div>
-                  )}
+                      )}
 
-                  {/* ⭐ Save Photos: se muestra si el rol puede AGREGAR fotos según el
+                    {isElementVisible("card_photos") && (
+                      <div className="hv-media-grid no-mb">
+                        <div id="hv-photos-before">
+                          <div className="hv-workers-header">
+                            <span className="hv-detail-label">
+                              <ImageIcon
+                                size={14}
+                                className="hv-label-icon-inline"
+                              />{" "}
+                              BEFORE PHOTOS
+                            </span>
+                            <div className="hv-photo-actions-row">
+                              {isElementVisible("btn_takePhoto") && (
+                                <button
+                                  onClick={() => openBurstCamera("before")}
+                                  disabled={isSaving}
+                                  className="hv-btn-compact bg-blue"
+                                >
+                                  <Camera size={14} /> Cámara rápida
+                                </button>
+                              )}
+                              {isElementVisible("btn_exportPdf") && (
+                                <button
+                                  onClick={() => generatePDF("before")}
+                                  disabled={isSaving}
+                                  className="hv-btn-compact bg-dark-blue"
+                                >
+                                  <FileImage size={14} /> Export PDF
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <PhotoSection
+                            label="Before"
+                            type="before"
+                            urls={beforePhotoURLs}
+                            excludedUrls={beforeExcluded}
+                            pendingCount={pendingForHouse.before}
+                            canEdit={isElementVisible("btn_uploadPhoto")}
+                            isSaving={isSaving}
+                            isCompressing={isCompressing}
+                            photoConfig={photoConfig}
+                            reportSelectable
+                            onAddFiles={(f: FileList | null) =>
+                              addPhotoFiles(f, "before")
+                            }
+                            onRemove={(i: number) =>
+                              handleRemovePhoto(i, "before")
+                            }
+                            onToggleReport={(u: string) =>
+                              toggleReportPhoto(u, "before")
+                            }
+                          />
+                        </div>
+                        <div id="hv-photos-after">
+                          <div className="hv-workers-header">
+                            <span className="hv-detail-label">
+                              <ImageIcon
+                                size={14}
+                                className="hv-label-icon-inline"
+                              />{" "}
+                              AFTER PHOTOS
+                            </span>
+                            <div className="hv-photo-actions-row">
+                              {isElementVisible("btn_takePhoto") && (
+                                <button
+                                  onClick={() => openBurstCamera("after")}
+                                  disabled={isSaving}
+                                  className="hv-btn-compact bg-green"
+                                >
+                                  <Camera size={14} /> Cámara rápida
+                                </button>
+                              )}
+                              {isElementVisible("btn_exportPdf") && (
+                                <button
+                                  onClick={() => generatePDF("after")}
+                                  disabled={isSaving}
+                                  className="hv-btn-compact bg-dark-green"
+                                >
+                                  <FileImage size={14} /> Export PDF
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <PhotoSection
+                            label="After"
+                            type="after"
+                            urls={afterPhotoURLs}
+                            excludedUrls={afterExcluded}
+                            pendingCount={pendingForHouse.after}
+                            canEdit={isElementVisible("btn_uploadPhoto")}
+                            isSaving={isSaving}
+                            isCompressing={isCompressing}
+                            photoConfig={photoConfig}
+                            reportSelectable
+                            onAddFiles={(f: FileList | null) =>
+                              addPhotoFiles(f, "after")
+                            }
+                            onRemove={(i: number) =>
+                              handleRemovePhoto(i, "after")
+                            }
+                            onToggleReport={(u: string) =>
+                              toggleReportPhoto(u, "after")
+                            }
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ⭐ Save Photos: se muestra si el rol puede AGREGAR fotos según el
                       configurador (subir o cámara), aunque no tenga Edit del módulo. */}
-                  {(isElementVisible("btn_uploadPhoto") ||
-                    isElementVisible("btn_takePhoto")) &&
-                    isElementVisible("card_photos") && (
-                    <div className="hv-save-photos-row">
-                      <button
-                        onClick={handleSavePhotosFromDetail}
-                        disabled={isSaving}
-                        className="hv-btn-primary-modal center"
-                      >
-                        <Save size={16} />{" "}
-                        {isSaving ? "Saving..." : "Save Photos"}
-                      </button>
-                    </div>
-                  )}
+                    {(isElementVisible("btn_uploadPhoto") ||
+                      isElementVisible("btn_takePhoto")) &&
+                      isElementVisible("card_photos") && (
+                        <div className="hv-save-photos-row">
+                          <button
+                            onClick={handleSavePhotosFromDetail}
+                            disabled={isSaving}
+                            className="hv-btn-primary-modal center"
+                          >
+                            <Save size={16} />{" "}
+                            {isSaving ? "Saving..." : "Save Photos"}
+                          </button>
+                        </div>
+                      )}
 
-                </div>
-              )}
+                  </div>
+                )}
             </div>
 
             <footer className="hv-modal-footer-between">
@@ -7148,6 +7166,22 @@ export default function HousesView({
                     Revisa la información antes de enviarla. El evento se crea o
                     actualiza en el calendario al confirmar.
                   </p>
+                  {/* ⭐ DATOS OBLIGATORIOS: sin ellos no se puede enviar */}
+                  <div className={`hv-gcal-required${gp.canSend ? " ok" : ""}`}>
+                    <span className="hv-gcal-required-title">
+                      Datos obligatorios para enviar
+                    </span>
+                    {gp.required.map((r) => (
+                      <span
+                        key={r.label}
+                        className={`hv-gcal-req-row${r.ok ? " ok" : " missing"}`}
+                      >
+                        {r.ok ? <Check size={14} /> : <X size={14} />}
+                        <span className="hv-gcal-req-label">{r.label}:</span>{" "}
+                        {r.ok ? r.value : "FALTA — complétalo en Edit Details"}
+                      </span>
+                    ))}
+                  </div>
                   <div className="hv-gcal-row">
                     <span className="hv-gcal-label">Título</span>
                     <span className="hv-gcal-value strong">{gp.title}</span>
@@ -7220,11 +7254,20 @@ export default function HousesView({
                   </button>
                   <button
                     className="hv-btn-primary-modal"
-                    disabled={isSaving}
+                    disabled={isSaving || !gp.canSend}
+                    title={
+                      gp.canSend
+                        ? undefined
+                        : "Faltan datos obligatorios (ver lista arriba)"
+                    }
                     onClick={handleGoogleCalendarSend}
                   >
                     <Calendar size={16} />{" "}
-                    {isSaving ? "Enviando..." : "Confirmar y enviar"}
+                    {isSaving
+                      ? "Enviando..."
+                      : gp.canSend
+                        ? "Confirmar y enviar"
+                        : "Faltan datos obligatorios"}
                   </button>
                 </footer>
               </div>
@@ -8712,69 +8755,69 @@ export default function HousesView({
           y el obturador quede SIEMPRE visible en móvil. --- */}
       {cameraOpen &&
         createPortal(
-        <div className="hv-camera-overlay">
-          <div className="hv-camera-topbar">
-            <div className="hv-camera-title">
-              <Camera size={18} />{" "}
-              {cameraOpen === "before" ? "Fotos Before" : "Fotos After"} ·{" "}
-              {burstCount} tomada(s)
-            </div>
-            <button
-              onClick={() => {
-                // ⭐ "Cerrar" descarta la sesión de cámara SIN guardar. Si hay
-                //    fotos en modo autoguardado, pedir confirmación para no
-                //    perder el trabajo por un toque accidental.
-                if (
-                  cameraAutoSave &&
-                  burstCount > 0 &&
-                  !window.confirm(
-                    "Tienes fotos sin guardar. ¿Cerrar sin guardarlas?",
-                  )
-                ) {
-                  return;
-                }
-                setCameraOpen(null);
-                setCameraAutoSave(false);
-              }}
-              className="hv-camera-close-btn"
-            >
-              <X size={18} /> Cerrar
-            </button>
-          </div>
-          <div className="hv-camera-video-wrap">
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              className="hv-camera-video"
-            />
-            {isCompressing && (
-              <div className="hv-camera-processing-badge">Procesando…</div>
-            )}
-            {burstCount > 0 && (
-              <div className="hv-camera-count-badge">
-                {burstCount} foto(s) agregada(s)
+          <div className="hv-camera-overlay">
+            <div className="hv-camera-topbar">
+              <div className="hv-camera-title">
+                <Camera size={18} />{" "}
+                {cameraOpen === "before" ? "Fotos Before" : "Fotos After"} ·{" "}
+                {burstCount} tomada(s)
               </div>
-            )}
-          </div>
-          <div className="hv-camera-controls">
-            <button
-              onClick={captureBurst}
-              aria-label="Tomar foto"
-              className="hv-camera-shutter"
-            />
-            <button
-              onClick={closeBurstCamera}
-              className="hv-camera-done-btn"
-            >
-              {cameraAutoSave
-                ? `Guardar (${burstCount})`
-                : `Listo (${burstCount})`}
-            </button>
-          </div>
-        </div>,
-        document.body,
-      )}
+              <button
+                onClick={() => {
+                  // ⭐ "Cerrar" descarta la sesión de cámara SIN guardar. Si hay
+                  //    fotos en modo autoguardado, pedir confirmación para no
+                  //    perder el trabajo por un toque accidental.
+                  if (
+                    cameraAutoSave &&
+                    burstCount > 0 &&
+                    !window.confirm(
+                      "Tienes fotos sin guardar. ¿Cerrar sin guardarlas?",
+                    )
+                  ) {
+                    return;
+                  }
+                  setCameraOpen(null);
+                  setCameraAutoSave(false);
+                }}
+                className="hv-camera-close-btn"
+              >
+                <X size={18} /> Cerrar
+              </button>
+            </div>
+            <div className="hv-camera-video-wrap">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="hv-camera-video"
+              />
+              {isCompressing && (
+                <div className="hv-camera-processing-badge">Procesando…</div>
+              )}
+              {burstCount > 0 && (
+                <div className="hv-camera-count-badge">
+                  {burstCount} foto(s) agregada(s)
+                </div>
+              )}
+            </div>
+            <div className="hv-camera-controls">
+              <button
+                onClick={captureBurst}
+                aria-label="Tomar foto"
+                className="hv-camera-shutter"
+              />
+              <button
+                onClick={closeBurstCamera}
+                className="hv-camera-done-btn"
+              >
+                {cameraAutoSave
+                  ? `Guardar (${burstCount})`
+                  : `Listo (${burstCount})`}
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* --- MODAL DE CAMBIO DE ESTADO (reemplaza la lista desplegable) --- */}
       {statusModal && (
