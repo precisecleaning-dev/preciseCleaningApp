@@ -22,6 +22,8 @@ const InvoicesView = lazy(() => import('./views/InvoicesView'));
 const NoStatusView = lazy(() => import('./views/NoStatusView'));
 // ⭐ ACTIVITY LOG — bitacora de todo lo que se hace en la app
 const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
+// ⭐ Papelera de reciclaje: restaurar o eliminar definitivamente lo borrado.
+const TrashView = lazy(() => import('./views/TrashView'));
 const NoticeBoardView = lazy(() => import('./views/NoticeBoardView'));
 const RolesView = lazy(() => import('./views/admin/RolesView'));
 const UsersView = lazy(() => import('./views/admin/UsersView'));
@@ -54,12 +56,12 @@ import { auth, db } from './config/firebase';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -464,6 +466,10 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'trash' && effectiveUser && (
+          <TrashView onOpenMenu={toggleMenu} currentUser={effectiveUser} />
+        )}
+
         {activeTab === 'invoices' && (
           <InvoicesView 
             properties={visibleProperties} 
@@ -503,6 +509,8 @@ export default function App() {
             <QualityCheckHub 
               onOpenMenu={toggleMenu} 
               properties={visibleProperties as any}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
               houseToInspect={houseToInspect as any}
               clearHouseToInspect={() => setHouseToInspect(null)}
               currentUser={effectiveUser}

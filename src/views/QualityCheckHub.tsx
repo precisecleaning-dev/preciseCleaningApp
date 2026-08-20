@@ -23,6 +23,10 @@ import './QualityCheckHub.css';
 // ============================================================================
 
 interface Props {
+  // ⭐ Para el permiso 'Office Notes': las notas de oficina solo se muestran
+  //    a los roles que las tienen permitidas (o al super admin).
+  activeRole?: { permissions?: { module: string; canView?: boolean }[] } | null;
+  isSuperAdmin?: boolean;
   onOpenMenu: () => void;
   properties: Property[];
   houseToInspect: Property | null;
@@ -79,6 +83,8 @@ export default function QualityCheckHub(props: Props) {
           houseToInspect={props.houseToInspect}
           clearHouseToInspect={props.clearHouseToInspect}
           currentUser={props.currentUser}
+          activeRole={props.activeRole}
+          isSuperAdmin={props.isSuperAdmin}
           onOpenHouseDetail={props.onOpenHouseDetail}
           onOpenHouseEdit={props.onOpenHouseEdit}
           reportToEdit={reportToEdit}

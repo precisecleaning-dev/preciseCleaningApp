@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, FileBarChart, Eye
+  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -142,6 +142,13 @@ export default function Sidebar({
     {
       tab: 'activity_log', label: 'Activity Log', icon: ScrollText,
       visible: canViewOrLegacy('Activity Log', canViewSettings),
+    },
+    // ⭐ RECYCLE BIN — todo lo borrado llega aquí con quién/cuándo/motivo;
+    //    se restaura íntegro o se elimina definitivamente. Mismo permiso que
+    //    Activity Log (crear el permiso "Recycle Bin" en Roles para control fino).
+    {
+      tab: 'trash', label: 'Recycle Bin', icon: Trash2,
+      visible: canViewOrLegacy('Recycle Bin', canViewSettings),
     },
     // ⭐ EMPRESA — logo, nombre, correo y dirección (se usan en documentos, login y menú)
     { tab: 'company', label: 'Empresa', icon: Building2, visible: canViewOrLegacy('Company Settings', canViewSettings) },

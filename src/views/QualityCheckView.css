@@ -2125,3 +2125,9 @@
     min-height: 44px;
   }
 }
+
+/* ⭐ Nota de OFICINA en tarjetas de QC: azul para distinguirla de la general
+   (solo visible con el permiso 'Office Notes'). */
+.qcv-house-note.office { background: #eff6ff; border-color: #bfdbfe; }
+.qcv-house-note.office .qcv-house-note-icon { color: #1d4ed8; }
+.qcv-house-note.office .qcv-house-note-text { color: #1e3a8a; }

@@ -72,6 +72,8 @@ import type {
 
 import { propertiesService } from "../services/propertiesService";
 import { storageService } from "../services/storageService";
+// ⭐ Papelera: el borrado ya no destruye, mueve a `trash` con motivo obligatorio.
+import { trashService } from "../services/trashService";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
@@ -636,6 +638,10 @@ export default function HousesView({
   //    este modal con TODO lo que se va a enviar (título, horario, color,
   //    invitados, ubicación, nota) para rectificar antes de confirmar.
   const [isGcalPreviewOpen, setIsGcalPreviewOpen] = useState(false);
+  // ⭐ BORRADO CON MOTIVO OBLIGATORIO → PAPELERA. `deleteTarget` es la casa
+  //    que se quiere borrar; el modal exige la nota antes de permitirlo.
+  const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   // ⭐ VERIFICACIÓN: lo que Google REALMENTE guardó (releído del calendario
   //    por la Cloud Function tras guardar). Se muestra en un modal para poder
   //    rectificar título, color, invitados, y abrir el evento directamente.
@@ -3637,26 +3643,31 @@ export default function HousesView({
   // seleccionada anteriormente (ej. la última abierta en el modal de detalle), no la fila
   // en la que se acababa de hacer clic. `house` cubre ese caso; sin argumento (botón
   // "Delete Property" dentro del propio modal de detalle) sigue usando `selectedHouse`.
-  const handleDelete = async (house?: Property) => {
+  // ⭐ El botón de borrar SOLO abre el modal que exige el motivo. El movimiento
+  //    real a la papelera ocurre en handleConfirmDelete.
+  const handleDelete = (house?: Property) => {
     const target = house || selectedHouse;
     if (!target) return;
-    if (
-      !window.confirm(
-        "Are you sure you want to completely delete this job and all its related records?",
-      )
-    )
+    setDeleteReason("");
+    setDeleteTarget(target);
+  };
+
+  // ⭐ BORRADO SUAVE: la casa y sus relacionados (payroll + servicios
+  //    facturados) se mueven ÍNTEGROS a la papelera en un batch atómico, con
+  //    quién, cuándo y el motivo. Desde Recycle Bin se restauran o se
+  //    eliminan definitivamente.
+  const handleConfirmDelete = async () => {
+    const target = deleteTarget;
+    // Sin usuario identificado no hay borrado: la papelera exige saber QUIÉN.
+    if (!target || !currentUser) return;
+    if (!deleteReason.trim()) {
+      alert("La nota del motivo es obligatoria para borrar.");
       return;
+    }
 
     setIsSaving(true);
     try {
       const relatedPayrolls = await payrollService.getByPropertyId(target.id);
-      if (relatedPayrolls.length > 0) {
-        await Promise.all(
-          relatedPayrolls.map((record) =>
-            payrollService.delete(record.id as string),
-          ),
-        );
-      }
       // Se consulta directo a Firestore (en vez de usar `houseServices` del estado) porque
       // ese estado solo se llena al abrir el modal de detalle — al borrar directo desde la
       // tabla/tarjeta sin abrirlo, estaría vacío o correspondería a otra propiedad.
@@ -3666,27 +3677,62 @@ export default function HousesView({
           where("propertyId", "==", target.id),
         ),
       );
-      if (!relatedServicesSnap.empty) {
-        await Promise.all(
-          relatedServicesSnap.docs.map((d) => deleteDoc(d.ref)),
-        );
-      }
-      await propertiesService.delete(target.id);
-      // ⭐ Bitacora: borrado. Se guarda la etiqueta legible porque el registro
-      //    ya no va a existir para poder consultarlo despues.
+      // ⭐ Todo se MUEVE a la papelera (no se destruye): la casa con su mismo
+      //    id + payrolls + servicios facturados, en un solo batch.
+      const houseData: Record<string, unknown> = {
+        ...(target as unknown as Record<string, unknown>),
+      };
+      delete houseData.id;
+      await trashService.moveToTrash({
+        collectionName: "properties",
+        moduleLabel: "Houses",
+        originalId: target.id,
+        targetLabel: logLabel(target),
+        data: houseData as Record<string, unknown>,
+        related: [
+          ...relatedPayrolls.map((r) => {
+            const rest: Record<string, unknown> = {
+              ...(r as unknown as Record<string, unknown>),
+            };
+            delete rest.id;
+            return {
+              collectionName: "payroll_records",
+              originalId: String(r.id),
+              data: rest,
+            };
+          }),
+          ...relatedServicesSnap.docs.map((d) => ({
+            collectionName: "billing_services",
+            originalId: d.id,
+            data: d.data() as Record<string, unknown>,
+          })),
+        ],
+        deletedById: currentUser.id,
+        deletedByName:
+          [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" ") ||
+          currentUser.email,
+        reason: deleteReason.trim(),
+      });
+      // ⭐ Bitacora: quién, qué y POR QUÉ. La etiqueta legible se guarda porque
+      //    el registro ya no está en su colección para consultarlo después.
       logActivity({
         action: "delete",
         module: "Houses",
         user: currentUser,
         targetId: target.id,
         targetLabel: logLabel(target),
-        detail: `Se borraron tambien ${relatedPayrolls.length} registro(s) de payroll y ${relatedServicesSnap.size} servicio(s) facturado(s)`,
+        detail: `Enviado a la papelera. Motivo: "${deleteReason.trim()}". Incluye ${relatedPayrolls.length} payroll(s) y ${relatedServicesSnap.size} servicio(s) facturado(s). Recuperable en Recycle Bin.`,
       });
       setProperties(properties.filter((p) => p.id !== target.id));
+      setDeleteTarget(null);
+      setDeleteReason("");
       setIsDetailModalOpen(false);
     } catch (error) {
-      console.error("Error deleting from Firebase:", error);
-      alert("Error trying to delete property.");
+      console.error("Error moving to trash:", error);
+      const fbErr = error as { code?: string; message?: string };
+      alert(
+        `No se pudo enviar a la papelera.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -7274,6 +7320,67 @@ export default function HousesView({
             </div>
           );
         })()}
+
+      {/* --- MODAL: MOTIVO OBLIGATORIO DE BORRADO → PAPELERA --- */}
+      {deleteTarget && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div className="modal-50" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">Enviar a la papelera</h3>
+              <button
+                className="hv-gcal-close"
+                aria-label="Cerrar"
+                onClick={() => setDeleteTarget(null)}
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <div className="hv-gcal-body">
+              <p className="hv-gcal-hint">
+                <b>{logLabel(deleteTarget)}</b> no se borrará definitivamente:
+                irá a <b>Recycle Bin</b> junto con sus pagos y servicios, desde
+                donde se puede restaurar íntegra o eliminar para siempre. Quedará
+                registrado quién la borró, cuándo y el motivo.
+              </p>
+              <label className="hv-detail-label" htmlFor="hv-delete-reason">
+                Motivo del borrado (obligatorio)
+              </label>
+              <textarea
+                id="hv-delete-reason"
+                className="hv-note-input"
+                placeholder="Ej: casa duplicada, el cliente canceló el servicio, se capturó por error..."
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <footer className="hv-gcal-footer">
+              <button
+                className="hv-gcal-btn-cancel"
+                onClick={() => setDeleteTarget(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="hv-btn-danger-modal"
+                disabled={isSaving || !deleteReason.trim()}
+                title={
+                  deleteReason.trim()
+                    ? undefined
+                    : "Escribe el motivo para poder borrar"
+                }
+                onClick={handleConfirmDelete}
+              >
+                <Trash2 size={16} />{" "}
+                {isSaving ? "Enviando..." : "Enviar a la papelera"}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL: VERIFICACIÓN DEL EVENTO GUARDADO EN GOOGLE CALENDAR ---
           Muestra lo que Google confirmó (releído del calendario), con enlace

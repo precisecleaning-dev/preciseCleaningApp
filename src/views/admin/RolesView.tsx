@@ -45,6 +45,10 @@ const DEFAULT_MODULES = [
   'Customers',
   // --- Sistema ---
   'Activity Log',
+  // ⭐ Papelera de reciclaje: restaurar o eliminar definitivamente lo borrado.
+  //    El nombre DEBE coincidir con el usado en Sidebar.tsx
+  //    (canViewOrLegacy('Recycle Bin', ...)).
+  'Recycle Bin',
   'Roles & Permissions',
   'System Users',
   'Data Import',

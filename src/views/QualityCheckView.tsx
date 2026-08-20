@@ -9,13 +9,15 @@ import {
 } from 'lucide-react';
 import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '../types/index';
 import { getRelationName } from '../utils/relations';
+// ⭐ Velocidad: pinta con el caché local de Firestore y refresca en 2º plano.
+import { getDocsCacheFirst } from '../utils/cacheFirstFetch';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { propertiesService } from '../services/propertiesService';
 import { compressImage } from '../utils/imageCompression';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
 import { isInvoiceStatus } from '../utils/invoiceEntry';
 import { computeQCScore } from '../utils/qcScore';
@@ -120,6 +122,9 @@ interface QualityCheckViewProps {
   clearReportToEdit?: () => void;
   clearHouseToInspect: () => void;
   currentUser?: SystemUser | null;
+  // ⭐ Permiso 'Office Notes': información interna que no debe ver el campo.
+  activeRole?: { permissions?: { module: string; canView?: boolean }[] } | null;
+  isSuperAdmin?: boolean;
   onOpenHouseDetail?: (house: Property) => void; // ⭐ abre el detalle en HousesView
   onOpenHouseEdit?: (house: Property) => void;   // ⭐ abre el FORMULARIO de edición en HousesView
 }
@@ -292,7 +297,7 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
 }
 
 
-export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, onOpenHouseDetail, onOpenHouseEdit, reportToEdit, clearReportToEdit }: QualityCheckViewProps) {
+export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit, reportToEdit, clearReportToEdit }: QualityCheckViewProps) {
   const [qcList, setQcList] = useState<QCRecord[]>([]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
@@ -413,8 +418,26 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           settingsService.getAll('settings_tasks').catch(() => []),
           settingsService.getAll('settings_teams').catch(() => []),
           settingsService.getAll('settings_statuses').catch(() => []),
-          getDocs(collection(db, 'customers')).catch(() => ({ docs: [] })),
-          getDocs(collection(db, 'quality_checks')).catch(() => ({ docs: [] })),
+          // ⭐ cache-first: pinta al momento con lo local; el servidor llega
+          //    después (onFresh) solo para actualizar, sin bloquear la vista.
+          getDocsCacheFirst(collection(db, 'customers'), {
+            onFresh: (fresh) =>
+              setCustomersList(
+                fresh.docs.map((d) => ({ id: d.id, ...d.data() } as Customer)),
+              ),
+          }).catch(() => ({ docs: [] })),
+          getDocsCacheFirst(collection(db, 'quality_checks'), {
+            onFresh: (fresh) => {
+              const freshQCs: QCRecord[] = fresh.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+              } as QCRecord));
+              freshQCs.sort(
+                (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+              );
+              setQcList(freshQCs);
+            },
+          }).catch(() => ({ docs: [] })),
           getDoc(doc(db, 'settings_company', 'main')).catch(() => null),
         ]);
 
@@ -612,11 +635,19 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Nota general de la casa — misma fuente que la tarjeta del Pipeline
   //    (PipelineBoardView.tsx): `note` de la app o `generalNotes` importado de AppSheet.
   //    Tipo extendido local porque `generalNotes` aún no está declarado en Property.
-  type PropertyNotes = Property & { note?: string | null; generalNotes?: string | null };
+  type PropertyNotes = Property & { note?: string | null; generalNotes?: string | null; officeNote?: string | null };
   const houseNote = (h: Property): string => {
     const g = h as PropertyNotes;
     return String(g.note || g.generalNotes || '').trim();
   };
+
+  // ⭐ NOTAS DE OFICINA en las tarjetas de QC: solo para roles con el permiso
+  //    'Office Notes' (mismo criterio que el detalle de Houses) o super admin.
+  const canSeeOfficeNotes =
+    !!isSuperAdmin ||
+    !!activeRole?.permissions?.find((p) => p.module === 'Office Notes')?.canView;
+  const houseOfficeNote = (h: Property): string =>
+    String((h as PropertyNotes).officeNote || '').trim();
 
   // ⭐ Casas de la ruta con el nombre de cliente ya resuelto (entrada del drawer).
   //    Memoizado para que el drawer no re-sincronice/geocodifique en cada render del padre.
@@ -1935,6 +1966,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                         <span className="qcv-house-note-text">{houseNote(house)}</span>
                       </div>
                     )}
+                    {/* ⭐ Nota de OFICINA (solo con permiso 'Office Notes') */}
+                    {canSeeOfficeNotes && houseOfficeNote(house) && (
+                      <div className="qcv-house-note office">
+                        <StickyNote size={12} className="qcv-house-note-icon" />
+                        <span className="qcv-house-note-text">{houseOfficeNote(house)}</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); openHouseStatusModal(house); }}
@@ -2043,6 +2081,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     <div className="qcv-house-note">
                       <StickyNote size={12} className="qcv-house-note-icon" />
                       <span className="qcv-house-note-text">{houseNote(house)}</span>
+                    </div>
+                  )}
+                  {/* ⭐ Nota de OFICINA (solo con permiso 'Office Notes') */}
+                  {canSeeOfficeNotes && houseOfficeNote(house) && (
+                    <div className="qcv-house-note office">
+                      <StickyNote size={12} className="qcv-house-note-icon" />
+                      <span className="qcv-house-note-text">{houseOfficeNote(house)}</span>
                     </div>
                   )}
                   <button
