@@ -652,7 +652,6 @@ export default function HousesView({
     start: string;
     end: string;
     location: string;
-    attendees: string[];
     meetRemoved: boolean;
     remindersOff: boolean;
   } | null>(null);
@@ -2581,15 +2580,6 @@ export default function HousesView({
     const teamName = (team?.name || "").trim();
     const base = selectedHouse.address || getClientName(selectedHouse.client);
     const title = teamName ? `${teamName} - ${base}` : `Cleaning: ${base}`;
-    const guests = Array.from(
-      new Set(
-        (selectedHouse.assignedWorkers || [])
-          .map((id) => employees.find((e) => e.id === id))
-          .flatMap((w) => [w?.email, w?.altEmail])
-          .map((m) => String(m || "").toLowerCase().trim())
-          .filter((m) => m.includes("@") && m.includes(".")),
-      ),
-    );
     // ⭐ DATOS OBLIGATORIOS para poder enviar: sin ellos el evento no puede
     //    crearse (la fecha y la hora de entrada definen el evento). Se listan
     //    en el modal con su estado ✓/✗ y el botón de enviar se bloquea si
@@ -2616,7 +2606,6 @@ export default function HousesView({
     const warnings: string[] = [];
     if (!teamName) warnings.push("La casa no tiene Team asignado: el título saldrá sin equipo.");
     if (team && !team.color) warnings.push("El Team no tiene color en el catálogo: el evento usará el color por defecto.");
-    if (guests.length === 0) warnings.push("Sin colaboradores asignados (o sin email): el evento no tendrá invitados.");
     if (!selectedHouse.timeOut) warnings.push("Sin Time Out: se usarán 2 horas de duración como respaldo.");
     return {
       required,
@@ -2624,7 +2613,6 @@ export default function HousesView({
       title,
       teamColor: team?.color || "",
       teamName,
-      guests,
       warnings,
       date: selectedHouse.scheduleDate,
       timeIn: selectedHouse.timeIn,
@@ -2677,7 +2665,6 @@ export default function HousesView({
             start: string;
             end: string;
             location: string;
-            attendees: string[];
             meetRemoved: boolean;
             remindersOff: boolean;
           } | null;
@@ -2773,18 +2760,9 @@ export default function HousesView({
     const fallbackTitle = fallbackTeamName
       ? `${fallbackTeamName} - ${selectedHouse.address || getClientName(selectedHouse.client)}`
       : `Cleaning: ${selectedHouse.address || getClientName(selectedHouse.client)}`;
-    const fallbackGuests = Array.from(
-      new Set(
-        (selectedHouse.assignedWorkers || [])
-          .map((id) => employees.find((e) => e.id === id))
-          .flatMap((w) => [w?.email, w?.altEmail])
-          .map((m) => String(m || "").toLowerCase().trim())
-          .filter((m) => m.includes("@") && m.includes(".")),
-      ),
-    );
-    const addParam = fallbackGuests.length
-      ? `&add=${encodeURIComponent(fallbackGuests.join(","))}`
-      : "";
+    // ⭐ Sin invitados automáticos: los correos de los colaboradores ya no se
+    //    agregan al evento (pedido del 08/2026).
+    const addParam = "";
     const renderUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(fallbackTitle)}&dates=${startDateTime}/${endDateTime}&ctz=America/Chicago&details=${encodeURIComponent(selectedHouse.note || "")}&location=${encodeURIComponent(selectedHouse.address)}${addParam}&authuser=${encodeURIComponent(CALENDAR_ACCOUNT_EMAIL)}&sf=true&output=xml`;
     // Forzamos el selector de cuenta de Google a ese correo y de ahí continuamos al
     // formulario del evento. Si esa cuenta no está iniciada, Google pedirá entrar con ella,
@@ -3164,8 +3142,18 @@ export default function HousesView({
 
   const handleDuplicate = () => {
     if (!selectedHouse) return;
+    // ⭐ La copia NO hereda el vínculo con Google Calendar. Antes se copiaba
+    //    el gcalEventId del original y, al sincronizar la copia, se PARCHABA
+    //    el evento de la otra casa en el calendario ("se borraba una casa al
+    //    agendar otra"). La copia empieza sin evento y crea el suyo propio.
+    const duplicated = { ...selectedHouse } as Property & {
+      gcalEventId?: string;
+      gcalSyncedAt?: string;
+    };
+    delete duplicated.gcalEventId;
+    delete duplicated.gcalSyncedAt;
     setFormData({
-      ...selectedHouse,
+      ...duplicated,
       id: "",
       beforePhotos: [],
       afterPhotos: [],
@@ -7256,20 +7244,6 @@ export default function HousesView({
                     </span>
                   </div>
                   <div className="hv-gcal-row">
-                    <span className="hv-gcal-label">Invitados</span>
-                    <span className="hv-gcal-value">
-                      {gp.guests.length > 0 ? (
-                        <ul className="hv-gcal-guest-list">
-                          {gp.guests.map((g) => (
-                            <li key={g}>{g}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        "—"
-                      )}
-                    </span>
-                  </div>
-                  <div className="hv-gcal-row">
                     <span className="hv-gcal-label">Ubicación</span>
                     <span className="hv-gcal-value">{gp.location || "—"}</span>
                   </div>
@@ -7287,8 +7261,9 @@ export default function HousesView({
                     </div>
                   )}
                   <p className="hv-gcal-note">
-                    El evento se envía sin Google Meet y sin notificación. Los
-                    invitados recibirán la invitación en su correo.
+                    El evento se envía sin Google Meet, sin notificación y sin
+                    invitados (los correos de los colaboradores ya no se agregan
+                    al calendario).
                   </p>
                 </div>
                 <footer className="hv-gcal-footer">
@@ -7422,20 +7397,6 @@ export default function HousesView({
                   {gcalVerification.colorId
                     ? `Aplicado (colorId ${gcalVerification.colorId} de Google)`
                     : "Por defecto del calendario"}
-                </span>
-              </div>
-              <div className="hv-gcal-row">
-                <span className="hv-gcal-label">Invitados</span>
-                <span className="hv-gcal-value">
-                  {gcalVerification.attendees.length > 0 ? (
-                    <ul className="hv-gcal-guest-list">
-                      {gcalVerification.attendees.map((g) => (
-                        <li key={g}>{g}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    "—"
-                  )}
                 </span>
               </div>
               <div className="hv-gcal-row">

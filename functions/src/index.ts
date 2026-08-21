@@ -302,30 +302,10 @@ export const synchousetocalendar = onCall(
       }
     }
 
-    // ⭐ (4) Colaboradores asignados a la casa → invitados del evento.
-    //    Cada colaborador aporta sus DOS correos (email y altEmail) si los
-    //    tiene. Se deduplican y se descartan los vacíos o mal formados.
-    const attendees: calendar_v3.Schema$EventAttendee[] = [];
-    const workerIds = Array.isArray(house.assignedWorkers)
-      ? house.assignedWorkers.filter(Boolean)
-      : [];
-    if (workerIds.length > 0) {
-      const seen = new Set<string>();
-      const snaps = await db.getAll(
-        ...workerIds.map((id) => db.doc(`system_users/${id}`)),
-      );
-      for (const s of snaps) {
-        if (!s.exists) continue;
-        const w = s.data() as { email?: string; altEmail?: string };
-        for (const raw of [w.email, w.altEmail]) {
-          const mail = String(raw || "").toLowerCase().trim();
-          if (!mail || !mail.includes("@") || !mail.includes(".")) continue;
-          if (seen.has(mail)) continue;
-          seen.add(mail);
-          attendees.push({ email: mail });
-        }
-      }
-    }
+    // ⭐ SIN invitados automáticos (pedido del 08/2026): los correos de los
+    //    colaboradores YA NO se agregan al evento. Se manda `attendees: []`
+    //    para además LIMPIAR los invitados de eventos creados por la versión
+    //    anterior al re-sincronizarlos.
 
     // Título: "Team - Dirección". Sin equipo asignado se mantiene el formato
     // anterior con el cliente para no dejar eventos sin identificar.
@@ -336,7 +316,7 @@ export const synchousetocalendar = onCall(
         ? `${teamName} - ${summaryBase}`
         : `Cleaning: ${summaryBase}`,
       ...(teamColorId ? { colorId: teamColorId } : {}),
-      ...(attendees.length > 0 ? { attendees } : {}),
+      attendees: [],
       // ⭐ (3) Sin Google Meet: se pide explícitamente sin videoconferencia
       //    (ver también stripAutoMeet para el caso en que el calendario la
       //    agregue solo por configuración del dueño).
@@ -373,6 +353,30 @@ export const synchousetocalendar = onCall(
     }
     let eventId: string | null | undefined = house.gcalEventId || null;
 
+    // ⭐ GUARDIA: verificar que el evento guardado pertenezca a ESTA casa.
+    //    Las casas duplicadas heredaban el gcalEventId del original; al
+    //    sincronizar la copia se PARCHABA el evento de la otra casa (por eso
+    //    "se borraba una casa al agendar otra"). Cada evento lleva sellado su
+    //    houseId en extendedProperties; si no coincide, se crea evento nuevo.
+    if (eventId) {
+      try {
+        const existing = await calendar.events.get({
+          calendarId: CALENDAR_ID,
+          eventId,
+        });
+        const ownerHouseId = existing.data.extendedProperties?.private?.houseId;
+        if (ownerHouseId && ownerHouseId !== houseId) {
+          logger.warn(
+            `gcalEventId ${eventId} pertenece a la casa ${ownerHouseId}, no a ${houseId}: se creará un evento propio.`,
+          );
+          eventId = null;
+        }
+      } catch {
+        // 404/410: el evento ya no existe; el flujo de abajo crea uno nuevo.
+        eventId = null;
+      }
+    }
+
     // conferenceDataVersion=1: obligatorio para que Google respete el
     // `conferenceData: null` (sin Meet). sendUpdates="all": los invitados
     // reciben la invitación en su correo (cámbialo a "none" si no se quiere
@@ -384,7 +388,7 @@ export const synchousetocalendar = onCall(
           calendarId: CALENDAR_ID,
           eventId,
           conferenceDataVersion: 1,
-          sendUpdates: "all",
+          sendUpdates: "none",
           requestBody: event,
         });
         await stripAutoMeet(calendar, eventId, res.data);
@@ -392,7 +396,7 @@ export const synchousetocalendar = onCall(
         const res = await calendar.events.insert({
           calendarId: CALENDAR_ID,
           conferenceDataVersion: 1,
-          sendUpdates: "all",
+          sendUpdates: "none",
           requestBody: event,
         });
         eventId = res.data.id;
@@ -406,7 +410,7 @@ export const synchousetocalendar = onCall(
         const res = await calendar.events.insert({
           calendarId: CALENDAR_ID,
           conferenceDataVersion: 1,
-          sendUpdates: "all",
+          sendUpdates: "none",
           requestBody: event,
         });
         eventId = res.data.id;
@@ -451,9 +455,6 @@ export const synchousetocalendar = onCall(
             start: saved.start?.dateTime || saved.start?.date || "",
             end: saved.end?.dateTime || saved.end?.date || "",
             location: saved.location || "",
-            attendees: (saved.attendees || [])
-              .map((a) => String(a.email || ""))
-              .filter(Boolean),
             meetRemoved: !saved.conferenceData,
             remindersOff:
               saved.reminders?.useDefault === false &&
