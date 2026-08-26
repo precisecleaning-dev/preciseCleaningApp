@@ -869,8 +869,16 @@ export default function HousesView({
   //    en esa casa. Admins y super admin lo ven siempre.
   // ============================================================================
   const isEmployeeRole = !isSuperAdmin && !canEdit;
+  // ⭐ El candado de Start Job existe para el flujo de CAMPO: que el empleado
+  //    no cargue fotos antes de iniciar. Por eso se desbloquea también cuando
+  //    el trabajo ya inició/terminó o cuando la casa YA TIENE fotos: ocultar
+  //    fotos existentes no protege nada y dejaba a Invoices (roles sin Edit)
+  //    sin poder verlas en casas viejas sin employeeStartedBy.
   const photosUnlockedFor = (house: Property | null): boolean =>
-    !isEmployeeRole || !!house?.employeeStartedBy;
+    !isEmployeeRole ||
+    !!house?.employeeStartedBy ||
+    !!house?.employeeFinishedBy ||
+    (house?.beforePhotos?.length || 0) + (house?.afterPhotos?.length || 0) > 0;
 
   // ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
   const recordTotalMinusTax = (r: ServiceRecord): number => {

@@ -4,6 +4,9 @@ import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
+// ⭐ Aviso de versión nueva a todos los usuarios conectados.
+import { useVersionCheck, reloadForUpdate } from './hooks/useVersionCheck';
+import { RefreshCw } from 'lucide-react';
 import LoginView from './views/auth/LoginView';
 
 // ⭐ PERF: CODE SPLITTING. Antes las 19 vistas se empaquetaban en un solo
@@ -255,6 +258,9 @@ export default function App() {
   //    refresco, seria facil olvidarse y trabajar dias creyendo tener menos
   //    permisos de los reales.
   const [viewAs, setViewAs] = useState<ViewAsSelection | null>(null);
+  // ⭐ true cuando /version.json trae un sello distinto al del bundle en
+  //    memoria: hay versión nueva desplegada → banner + punto en la campana.
+  const updateAvailable = useVersionCheck();
   const [isViewAsModalOpen, setIsViewAsModalOpen] = useState(false);
 
   // Rol y usuario REALES (los de la sesion), antes de cualquier suplantacion.
@@ -385,7 +391,21 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* ⭐ BANNER GLOBAL: hay versión nueva desplegada — visible para TODOS
+          los usuarios en cualquier vista hasta que recarguen. */}
+      {updateAvailable && (
+        <div className="app-update-banner">
+          <span className="app-update-banner-text">
+            Nueva versión del app disponible — recarga para actualizar.
+          </span>
+          <button className="app-update-banner-btn" onClick={reloadForUpdate}>
+            <RefreshCw size={14} /> Actualizar ahora
+          </button>
+        </div>
+      )}
+
       <Sidebar 
+        updateAvailable={updateAvailable}
         onViewAsUser={canUseViewAs
           ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
           : undefined}

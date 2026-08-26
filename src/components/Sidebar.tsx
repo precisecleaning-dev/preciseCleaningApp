@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye
+  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -19,12 +19,19 @@ interface NavItemConfig {
   onClick?: () => void;
 }
 
+import { useState } from 'react';
+// ⭐ Panel de notificaciones: versión nueva + actividad reciente.
+import NotificationsPanel from './NotificationsPanel';
+
 interface SidebarProps {
   /** ⭐ Abre el selector "Ver como otro usuario". Si no se pasa, el boton no
    *  se renderiza (App decide si la funcion esta disponible). */
   onViewAsUser?: () => void;
   /** ⭐ Ya se esta viendo como otra persona: el boton pasa a "Salir". */
   isViewingAsUser?: boolean;
+  /** ⭐ Hay una versión nueva desplegada: punto rojo en la campana y aviso
+   *  dentro del panel de notificaciones. */
+  updateAvailable?: boolean;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeTab: TabOptions;
@@ -36,8 +43,10 @@ interface SidebarProps {
 
 export default function Sidebar({
   isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin,
-  onViewAsUser, isViewingAsUser = false,
+  updateAvailable, onViewAsUser, isViewingAsUser = false,
 }: SidebarProps) {
+  // ⭐ Panel de notificaciones abierto/cerrado.
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   // ⭐ Helper centralizado para chequear permisos por módulo.
   //    SuperAdmin siempre ve todo. Si no hay role cargado todavía, NO mostrar
@@ -215,6 +224,18 @@ export default function Sidebar({
         </nav>
 
         <div className="sidebar-footer">
+          {/* ⭐ NOTIFICACIONES: versión nueva (punto rojo) + actividad reciente */}
+          <button
+            type="button"
+            className="sb-notif-btn"
+            onClick={() => setIsNotifOpen(true)}
+          >
+            <span className="sb-notif-icon-wrap">
+              <Bell size={18} />
+              {updateAvailable && <span className="sb-notif-dot" />}
+            </span>
+            {isSidebarOpen && "Notificaciones"}
+          </button>
           {/* ⭐ VER COMO OTRO USUARIO — se muestra solo si App habilito la funcion
               (permiso "View As User" en Roles & Permissions). Vive en el pie, junto
               a Log Out, porque es una accion sobre la SESION, no una vista mas. */}
@@ -237,8 +258,23 @@ export default function Sidebar({
           >
             <LogOut size={18} /> {isSidebarOpen && "Log Out"}
           </button>
+          {/* ⭐ Versión del app (sello del build) + crédito */}
+          {isSidebarOpen && (
+            <div className="sb-version-box">
+              <span className="sb-version">
+                v{__BUILD_TIME__.slice(0, 16).replace("T", " ")}
+              </span>
+              <span className="sb-credit">Created by Jesus Molero</span>
+            </div>
+          )}
         </div>
       </aside>
+
+      <NotificationsPanel
+        open={isNotifOpen}
+        onClose={() => setIsNotifOpen(false)}
+        updateAvailable={!!updateAvailable}
+      />
     </>
   );
 }

@@ -1,0 +1,25 @@
+/* ⭐ Panel de notificaciones */
+.np-modal { max-width: 520px; }
+.np-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
+.np-title { margin: 0; font-size: 1.05rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.np-close { background: none; border: none; color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 6px; }
+.np-close:hover { color: #111827; background: #f3f4f6; }
+.np-body { padding: 16px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+
+.np-update-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 12px 14px; }
+.np-update-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-update-title { font-weight: 800; color: #1d4ed8; font-size: 0.95rem; }
+.np-update-sub { color: #1e3a8a; font-size: 0.82rem; line-height: 1.4; }
+.np-update-btn { display: flex; align-items: center; gap: 7px; background: #2563eb; color: #ffffff; border: none; padding: 9px 14px; border-radius: 9px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.np-update-btn:hover { background: #1d4ed8; }
+
+.np-section-title { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; font-weight: 800; margin-top: 2px; }
+.np-empty { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 22px; text-align: center; color: #64748b; font-size: 0.88rem; }
+
+.np-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.np-item { display: flex; flex-direction: column; gap: 2px; padding: 10px 2px; border-bottom: 1px solid #f1f5f9; }
+.np-item:last-child { border-bottom: none; }
+.np-item-line { font-size: 0.88rem; color: #111827; overflow-wrap: anywhere; }
+.np-item-module { color: #94a3b8; font-weight: 500; }
+.np-item-detail { font-size: 0.8rem; color: #64748b; overflow-wrap: anywhere; }
+.np-item-when { font-size: 0.75rem; color: #94a3b8; }

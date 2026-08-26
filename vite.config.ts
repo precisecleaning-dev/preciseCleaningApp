@@ -1,10 +1,32 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+// ⭐ SELLO DE VERSIÓN: fecha/hora exacta del `vite build`. Se inyecta en el
+//    código (__BUILD_TIME__) y se publica en /version.json. La app compara
+//    ambos periódicamente: si difieren, hay versión nueva desplegada y se
+//    avisa a TODOS los usuarios para que recarguen.
+const BUILD_TIME = new Date().toISOString()
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+  },
   plugins: [
+    {
+      // Publica dist/version.json con el mismo sello del bundle.
+      name: 'emit-version-json',
+      apply: 'build' as const,
+      closeBundle() {
+        writeFileSync(
+          resolve(__dirname, 'dist/version.json'),
+          JSON.stringify({ buildTime: BUILD_TIME }),
+        )
+      },
+    },
     react(),
     VitePWA({
       registerType: 'autoUpdate',
