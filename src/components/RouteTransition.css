@@ -19,8 +19,22 @@
    Por eso el último fotograma usa `transform: none` (no `translate3d(0,0,0)`,
    que SÍ cuenta como transform aplicado con `animation-fill-mode: both`). */
 .route-transition {
-  animation: route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  /* ⭐ `backwards` (NO `both`): con `both` la animación quedaba APLICADA para
+     siempre (fill hacia adelante de una animación con opacity/transform) y,
+     por especificación, eso convierte a este contenedor en un CONTEXTO DE
+     APILAMIENTO permanente: TODOS los modales de la vista quedaban atrapados
+     en una capa inferior (los iconos de z-index 900 se veían ENCIMA de
+     modales con z-index 9999) y anclados al contenedor en vez del viewport.
+     `backwards` solo rellena ANTES de iniciar; al terminar, la animación deja
+     de aplicar y el contenedor vuelve a ser un div normal. */
+  animation: route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
   height: 100%;
+}
+
+/* ⭐ Cinturón y tirantes: al terminar la animación, RouteTransition.tsx
+   agrega esta clase y la animación se elimina por completo del elemento. */
+.route-transition.settled {
+  animation: none;
 }
 
 @keyframes route-enter {

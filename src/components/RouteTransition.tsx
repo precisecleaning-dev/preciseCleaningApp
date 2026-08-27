@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './RouteTransition.css';
 
 // ============================================================================
@@ -26,12 +27,27 @@ interface RouteTransitionProps {
 
 export default function RouteTransition({ routeKey, children }: RouteTransitionProps) {
   // `key` es todo el mecanismo: al cambiar, React descarta el div anterior y
-  // monta uno nuevo, lo que reinicia la animación CSS. No hace falta estado ni
-  // efectos — y eso importa, porque cualquier render extra ocurriría justo
-  // cuando el hilo principal está montando la vista nueva, que es el momento
-  // con menos margen de toda la navegación.
+  // monta uno nuevo, lo que reinicia la animación CSS.
+  //
+  // ⭐ `settled`: cuando la animación termina, se ELIMINA del elemento
+  //    (animation: none). Una animación que queda aplicada convierte al
+  //    contenedor en contexto de apilamiento y atrapa a los modales de la
+  //    vista en una capa inferior — el bug de "los modales no están al
+  //    frente". Con esto, tras 180 ms el contenedor es un div común.
   return (
-    <div key={routeKey} className="route-transition">
+    <RouteShell key={routeKey}>{children}</RouteShell>
+  );
+}
+
+function RouteShell({ children }: { children: React.ReactNode }) {
+  const [settled, setSettled] = useState(false);
+  return (
+    <div
+      className={`route-transition${settled ? ' settled' : ''}`}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setSettled(true);
+      }}
+    >
       {children}
     </div>
   );
