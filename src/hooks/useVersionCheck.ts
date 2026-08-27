@@ -15,10 +15,15 @@ import { useEffect, useState } from 'react';
 //    solo en vite-env.d.ts) para que el sello funcione aunque ese .d.ts no se
 //    haya copiado: este archivo es autosuficiente.
 declare const __BUILD_TIME__: string;
+declare const __APP_VERSION__: string;
 
 /** Sello de versión del bundle en memoria (fecha/hora ISO del build). */
 export const BUILD_TIME: string =
   typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev';
+
+/** Número de versión visible (V00030, V00031...): sube uno en cada build. */
+export const APP_VERSION: string =
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'V-dev';
 
 const CHECK_EVERY_MS = 4 * 60 * 1000; // cada 4 minutos
 

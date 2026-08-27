@@ -203,8 +203,11 @@ textarea {
 .modal-90 { background-color: #ffffff; width: 100%; max-width: 1500px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; max-height: 95vh; }
 .modal-full { width: 95vw; max-width: 1400px; height: 90vh; background-color: #F8FAFC; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
 
-/* ⭐ Banner global de versión nueva (por encima de todo, incluso modales) */
-.app-update-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; background: #1d4ed8; color: #ffffff; padding: 9px 16px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25); }
-.app-update-banner-text { font-size: 0.88rem; font-weight: 600; }
-.app-update-banner-btn { display: flex; align-items: center; gap: 7px; background: #ffffff; color: #1d4ed8; border: none; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 0.82rem; cursor: pointer; }
-.app-update-banner-btn:hover { background: #eff6ff; }
+/* ⭐ ALERTA de versión nueva: flotante arriba a la DERECHA, por encima de
+   todo (incluidos modales). Persiste hasta que el usuario actualice. */
+.app-update-toast { position: fixed; top: 14px; right: 14px; z-index: 10002; display: flex; flex-direction: column; gap: 6px; background: #1d4ed8; color: #ffffff; padding: 14px 16px; border-radius: 14px; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.35); max-width: 320px; animation: app-toast-in 0.25s ease; }
+@keyframes app-toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.app-update-toast-title { font-weight: 800; font-size: 0.95rem; }
+.app-update-toast-text { font-size: 0.83rem; line-height: 1.4; color: #dbeafe; }
+.app-update-toast-btn { display: flex; align-items: center; justify-content: center; gap: 7px; background: #ffffff; color: #1d4ed8; border: none; padding: 8px 14px; border-radius: 9px; font-weight: 800; font-size: 0.85rem; cursor: pointer; margin-top: 2px; }
+.app-update-toast-btn:hover { background: #eff6ff; }

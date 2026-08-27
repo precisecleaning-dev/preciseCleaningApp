@@ -154,6 +154,41 @@ interface ProductRecord {
   color?: string;
 }
 
+// ============================================================================
+// ⭐ BORRADORES del formulario de casas (localStorage, por dispositivo).
+//    Guardan formData + servicios + pagos capturados para retomar la orden
+//    tal cual iba si el usuario sale del formulario (a propósito o por error).
+// ============================================================================
+interface HouseDraft {
+  id: string;
+  savedAt: string;
+  label: string;
+  formData: Property;
+  formServices: ServiceRecord[];
+  housePayrollRecords: PayrollRecord[];
+}
+
+const DRAFTS_KEY = "pc_house_form_drafts_v1";
+const DRAFTS_MAX = 10;
+
+const loadDrafts = (): HouseDraft[] => {
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    const list = raw ? (JSON.parse(raw) as HouseDraft[]) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistDrafts = (list: HouseDraft[]): void => {
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(list.slice(0, DRAFTS_MAX)));
+  } catch {
+    /* almacenamiento lleno: el borrador más viejo se pierde, nada más */
+  }
+};
+
 const collectionMap: Record<string, string> = {
   team: "settings_teams",
   priority: "settings_priorities",
@@ -640,6 +675,16 @@ export default function HousesView({
   const [isGcalPreviewOpen, setIsGcalPreviewOpen] = useState(false);
   // ⭐ BORRADO CON MOTIVO OBLIGATORIO → PAPELERA. `deleteTarget` es la casa
   //    que se quiere borrar; el modal exige la nota antes de permitirlo.
+  // ⭐ GUARDIA DE SALIDA DEL FORMULARIO + BORRADORES.
+  //    Al abrir el formulario se toma una "foto" de los datos; si al intentar
+  //    salir (Cancel, X o clic fuera) hay cambios sin guardar, se pregunta.
+  //    Y salga como salga, el trabajo NO se pierde: queda como borrador
+  //    recuperable desde el botón "Borradores" junto a New Job.
+  const formSnapshotRef = useRef<string>("");
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [drafts, setDrafts] = useState<HouseDraft[]>(() => loadDrafts());
+  const [isDraftsOpen, setIsDraftsOpen] = useState(false);
+
   const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   // ⭐ VERIFICACIÓN: lo que Google REALMENTE guardó (releído del calendario
@@ -3187,6 +3232,74 @@ export default function HousesView({
     setIsFormModalOpen(true);
   };
 
+  // ⭐ Al abrir el formulario, se congela la "foto" para detectar cambios.
+  useEffect(() => {
+    if (isFormModalOpen) {
+      formSnapshotRef.current = JSON.stringify({ formData, formServices, housePayrollRecords });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormModalOpen]);
+
+  const isFormDirty = (): boolean =>
+    JSON.stringify({ formData, formServices, housePayrollRecords }) !==
+    formSnapshotRef.current;
+
+  const saveDraftFromForm = (): void => {
+    const label =
+      [getClientName(formData.client), formData.address]
+        .filter(Boolean)
+        .join(" · ") || "(sin cliente ni dirección)";
+    const draft: HouseDraft = {
+      id: `draft-${Date.now()}`,
+      savedAt: new Date().toISOString(),
+      label,
+      formData,
+      formServices,
+      housePayrollRecords,
+    };
+    const next = [draft, ...drafts].slice(0, DRAFTS_MAX);
+    setDrafts(next);
+    persistDrafts(next);
+  };
+
+  // ⭐ CUALQUIER salida del formulario pasa por aquí: si hay cambios sin
+  //    guardar, pregunta. El cierre directo solo ocurre sin cambios.
+  const requestCloseForm = () => {
+    if (isSaving) return;
+    if (isFormDirty()) {
+      setShowExitConfirm(true);
+      return;
+    }
+    handleCloseForm();
+  };
+
+  // Salir CONFIRMADO: guarda borrador y cierra (el trabajo no se pierde).
+  const confirmExitForm = () => {
+    saveDraftFromForm();
+    setShowExitConfirm(false);
+    handleCloseForm();
+  };
+
+  const restoreDraft = (draft: HouseDraft) => {
+    setFormData(draft.formData);
+    setFormServices(draft.formServices || []);
+    setHousePayrollRecords(draft.housePayrollRecords || []);
+    setServicesToDelete([]);
+    setPayrollsToDelete([]);
+    // El borrador restaurado sale de la lista (si vuelve a salir, se re-crea).
+    const next = drafts.filter((d) => d.id !== draft.id);
+    setDrafts(next);
+    persistDrafts(next);
+    setIsDraftsOpen(false);
+    setIsFormModalOpen(true);
+  };
+
+  const deleteDraft = (draftId: string) => {
+    const next = drafts.filter((d) => d.id !== draftId);
+    setDrafts(next);
+    persistDrafts(next);
+  };
+
   const handleCloseForm = () => {
     setIsFormModalOpen(false);
     setSelectedHouse(null);
@@ -4182,12 +4295,24 @@ export default function HousesView({
               {(isSuperAdmin ||
                 activeRole?.permissions?.find((p) => p.module === "Houses")
                   ?.canAdd) && (
-                  <button
-                    className="add-btn-mobile hv-btn-add"
-                    onClick={() => handleOpenForm()}
-                  >
-                    <Plus size={16} /> New Job
-                  </button>
+                  <>
+                    <button
+                      className="add-btn-mobile hv-btn-add"
+                      onClick={() => handleOpenForm()}
+                    >
+                      <Plus size={16} /> New Job
+                    </button>
+                    {/* ⭐ Borradores: órdenes que salieron del formulario sin
+                        guardarse; se retoman con todos sus campos. */}
+                    {drafts.length > 0 && (
+                      <button
+                        onClick={() => setIsDraftsOpen(true)}
+                        className="hv-drafts-btn"
+                      >
+                        <FileText size={16} /> Borradores ({drafts.length})
+                      </button>
+                    )}
+                  </>
                 )}
             </div>
           </header>
@@ -4976,7 +5101,7 @@ export default function HousesView({
 
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
       {isFormModalOpen && (
-        <div className="modal-overlay-centered" onClick={handleCloseForm}>
+        <div className="modal-overlay-centered" onClick={requestCloseForm}>
           <div className="modal-full" onClick={(e) => e.stopPropagation()}>
             <div className="modal-full-left">
               <div className="hv-form-inner">
@@ -6015,7 +6140,7 @@ export default function HousesView({
                   <Save size={18} /> {isSaving ? "Saving..." : "Confirm & Save"}
                 </button>
                 <button
-                  onClick={handleCloseForm}
+                  onClick={requestCloseForm}
                   disabled={isSaving}
                   className="hv-btn-cancel-form"
                 >
@@ -7303,6 +7428,98 @@ export default function HousesView({
             </div>
           );
         })()}
+
+      {/* --- MODAL: ¿SALIR DEL FORMULARIO SIN GUARDAR? --- */}
+      {showExitConfirm && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setShowExitConfirm(false)}
+        >
+          <div className="modal-50 hv-exit-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">¿Salir sin guardar?</h3>
+            </header>
+            <div className="hv-gcal-body">
+              <p className="hv-gcal-hint">
+                Tienes cambios sin guardar en este formulario. Si sales, la
+                orden se conserva como <b>borrador</b> y puedes retomarla con
+                todos los campos desde el botón <b>Borradores</b> junto a New
+                Job.
+              </p>
+            </div>
+            <footer className="hv-gcal-footer">
+              <button
+                className="hv-gcal-btn-cancel"
+                onClick={() => setShowExitConfirm(false)}
+              >
+                Seguir editando
+              </button>
+              <button className="hv-btn-danger-modal" onClick={confirmExitForm}>
+                <XCircle size={16} /> Salir (guardar borrador)
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: BORRADORES DEL FORMULARIO --- */}
+      {isDraftsOpen && (
+        <div
+          className="modal-overlay-centered"
+          onClick={() => setIsDraftsOpen(false)}
+        >
+          <div className="modal-50" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">Borradores</h3>
+              <button
+                className="hv-gcal-close"
+                aria-label="Cerrar"
+                onClick={() => setIsDraftsOpen(false)}
+              >
+                <X size={22} />
+              </button>
+            </header>
+            <div className="hv-gcal-body">
+              {drafts.length === 0 ? (
+                <p className="hv-gcal-hint">No hay borradores guardados.</p>
+              ) : (
+                <ul className="hv-drafts-list">
+                  {drafts.map((d) => (
+                    <li key={d.id} className="hv-draft-item">
+                      <div className="hv-draft-info">
+                        <span className="hv-draft-label">{d.label}</span>
+                        <span className="hv-draft-when">
+                          {new Date(d.savedAt).toLocaleString("en-US", {
+                            month: "short",
+                            day: "2-digit",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                        </span>
+                      </div>
+                      <div className="hv-draft-actions">
+                        <button
+                          className="hv-draft-btn resume"
+                          onClick={() => restoreDraft(d)}
+                        >
+                          Retomar
+                        </button>
+                        <button
+                          className="hv-draft-btn remove"
+                          onClick={() => deleteDraft(d.id)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL: MOTIVO OBLIGATORIO DE BORRADO → PAPELERA --- */}
       {deleteTarget && (

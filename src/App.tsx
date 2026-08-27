@@ -394,11 +394,12 @@ export default function App() {
       {/* ⭐ BANNER GLOBAL: hay versión nueva desplegada — visible para TODOS
           los usuarios en cualquier vista hasta que recarguen. */}
       {updateAvailable && (
-        <div className="app-update-banner">
-          <span className="app-update-banner-text">
-            Nueva versión del app disponible — recarga para actualizar.
+        <div className="app-update-toast" role="alert">
+          <span className="app-update-toast-title">Nueva versión disponible</span>
+          <span className="app-update-toast-text">
+            Recarga para actualizar a la última versión del app.
           </span>
-          <button className="app-update-banner-btn" onClick={reloadForUpdate}>
+          <button className="app-update-toast-btn" onClick={reloadForUpdate}>
             <RefreshCw size={14} /> Actualizar ahora
           </button>
         </div>
