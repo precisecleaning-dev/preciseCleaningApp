@@ -3,8 +3,9 @@ import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2,
-  X, Activity, StickyNote, Menu, CheckCircle, FileImage
+  X, StickyNote, Menu, FileImage
 } from 'lucide-react';
+import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
 import type { Property, Team, SystemUser, Role, Status, Customer, PayrollRecord } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
@@ -152,92 +153,10 @@ const JobStatusPill = ({ currentStatusId, statuses, onRequestOpen, disabled, ful
 
 
 
-// ⭐ Modal central de cambio de estado — MISMO componente/UX que HousesView y QC.
-//    Reusa las clases globales ya existentes (modal-overlay-centered, status-modal*,
-//    hv-statuschange-*) definidas en HousesView.css/App.css (CSS global del bundle).
-type StatusModalConfig = {
-  currentId: string;
-  onSelect: (id: string) => void;
-  title?: string;
-  subtitle?: string;
-};
-
-const StatusChangeModal = ({ config, statuses, onClose }: { config: StatusModalConfig; statuses: Status[]; onClose: () => void }) => {
-  const cur = String(config.currentId || '').toLowerCase().trim();
-
-  const resolveCurrentId = () => {
-    const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
-    return match ? match.id : (config.currentId || '');
-  };
-  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
-  useEffect(() => { setSelectedId(resolveCurrentId()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [config]);
-
-  const selectedIsCurrent = (() => {
-    const selStatus = statuses.find(st => st.id === selectedId);
-    const selName = String(selStatus?.name || '').toLowerCase().trim();
-    return String(selectedId).toLowerCase().trim() === cur || (selName !== '' && selName === cur);
-  })();
-
-  const handleAccept = () => {
-    if (selectedId && !selectedIsCurrent) config.onSelect(selectedId);
-    onClose();
-  };
-
-  return (
-    <div className="modal-overlay-centered status-modal-overlay" onClick={onClose}>
-      <div className="status-modal" onClick={e => e.stopPropagation()}>
-        <header className="status-modal-head">
-          <div className="hv-statuschange-head-info">
-            <div className="hv-statuschange-icon">
-              <Activity size={20} color="#2563eb" />
-            </div>
-            <div className="hv-min-w-0">
-              <h3 className="hv-statuschange-title">Cambiar estado</h3>
-              {config.title && (
-                <p className="hv-statuschange-subtitle">
-                  {config.title}{config.subtitle ? ` · ${config.subtitle}` : ''}
-                </p>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Cerrar" className="hv-statuschange-close">
-            <X size={22} />
-          </button>
-        </header>
-
-        <div className="status-modal-grid">
-          {statuses.length === 0 ? (
-            <div className="hv-statuschange-empty">No hay estados configurados.</div>
-          ) : statuses.map(st => {
-            const isCurrent = String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur;
-            const isSelected = st.id === selectedId;
-            return (
-              <button
-                key={st.id}
-                className={`status-option${isSelected ? ' selected' : ''}`}
-                onClick={() => setSelectedId(st.id)}
-              >
-                <span className="hv-statuschange-dot" style={{ '--dot-color': st.color, '--dot-ring': `${st.color}1f` } as CSSProperties}></span>
-                <span className="hv-statuschange-name">{st.name}</span>
-                {isCurrent && !isSelected && (
-                  <span className="hv-statuschange-current-badge">Actual</span>
-                )}
-                {isSelected && <CheckCircle size={18} color="#2563eb" className="hv-shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-
-        <footer className="status-modal-foot">
-          <button onClick={onClose} className="status-btn-cancel">Cancelar</button>
-          <button onClick={handleAccept} disabled={selectedIsCurrent} className="status-btn-accept">
-            <CheckCircle size={16} /> Aceptar
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
-};
+// ⭐ Cambio de estado: se usa el MISMO componente compartido que Pipeline y
+//    Houses (src/components/StatusChangeModal), con su propio CSS. Antes esta
+//    vista tenía una copia local que dependea de clases que ya no existen y
+//    se pintaba sin estilo.
 
 interface InvoicesViewProps {
   onOpenMenu: () => void;
