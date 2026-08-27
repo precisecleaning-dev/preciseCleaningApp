@@ -1,0 +1,76 @@
+/* ⭐ Barra flotante de acciones arriba a la derecha (solo escritorio).
+   Va por debajo de los modales (z 9999) y de la alerta de versión (z 10002):
+   nunca tapa un modal abierto ni el aviso de actualizar. */
+.tra-bar {
+  position: fixed;
+  top: 12px;
+  right: 14px;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  padding: 5px 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.tra-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tra-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.tra-btn.active {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+
+.tra-btn.danger {
+  color: #fca5a5;
+}
+
+.tra-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.tra-icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tra-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #0f172a;
+}
+
+/* ⭐ En móvil la barra NO existe: esas acciones siguen en el pie del menú
+   lateral (la esquina superior del móvil la usan los encabezados de vista). */
+@media (max-width: 768px) {
+  .tra-bar {
+    display: none;
+  }
+}

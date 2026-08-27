@@ -4,6 +4,8 @@ import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
+// ⭐ Notificaciones / Ver como / Log Out arriba a la derecha (escritorio).
+import TopRightActions from './components/TopRightActions';
 // ⭐ Aviso de versión nueva a todos los usuarios conectados.
 import { useVersionCheck, reloadForUpdate } from './hooks/useVersionCheck';
 import { RefreshCw } from 'lucide-react';
@@ -404,6 +406,16 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* ⭐ Barra superior derecha (solo escritorio): Notificaciones, Ver
+          como otro usuario y Log Out. En móvil siguen en el menú lateral. */}
+      <TopRightActions
+        updateAvailable={updateAvailable}
+        onViewAsUser={canUseViewAs
+          ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
+          : undefined}
+        isViewingAsUser={!!viewAs}
+      />
 
       <Sidebar 
         updateAvailable={updateAvailable}

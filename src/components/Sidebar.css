@@ -108,3 +108,14 @@
 .sb-version-box { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 4px; }
 .sb-version { font-size: 0.72rem; color: #64748b; font-weight: 600; letter-spacing: 0.3px; }
 .sb-credit { font-size: 0.72rem; color: #475569; }
+
+/* ⭐ En escritorio, Notificaciones / Ver como / Log Out viven en la barra
+   flotante superior derecha (TopRightActions): se ocultan del pie del menu.
+   En movil (<=768px) siguen aqui, donde siempre han estado. */
+@media (min-width: 769px) {
+  .sidebar-footer .sb-notif-btn,
+  .sidebar-footer .vau-sidebar-btn,
+  .sidebar-footer .logout-btn {
+    display: none;
+  }
+}
