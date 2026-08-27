@@ -3266,16 +3266,15 @@ export default function HousesView({
   //    guardar, pregunta. El cierre directo solo ocurre sin cambios.
   const requestCloseForm = () => {
     if (isSaving) return;
-    if (isFormDirty()) {
-      setShowExitConfirm(true);
-      return;
-    }
-    handleCloseForm();
+    // ⭐ SIEMPRE pregunta — con o sin cambios — porque el clic fuera del
+    //    formulario suele ser accidental. El borrador solo se guarda cuando
+    //    hay algo capturado que valga la pena conservar.
+    setShowExitConfirm(true);
   };
 
   // Salir CONFIRMADO: guarda borrador y cierra (el trabajo no se pierde).
   const confirmExitForm = () => {
-    saveDraftFromForm();
+    if (isFormDirty()) saveDraftFromForm();
     setShowExitConfirm(false);
     handleCloseForm();
   };
@@ -7440,12 +7439,18 @@ export default function HousesView({
               <h3 className="hv-modal-title">¿Salir sin guardar?</h3>
             </header>
             <div className="hv-gcal-body">
-              <p className="hv-gcal-hint">
-                Tienes cambios sin guardar en este formulario. Si sales, la
-                orden se conserva como <b>borrador</b> y puedes retomarla con
-                todos los campos desde el botón <b>Borradores</b> junto a New
-                Job.
-              </p>
+              {isFormDirty() ? (
+                <p className="hv-gcal-hint">
+                  Tienes cambios sin guardar en este formulario. Si sales, la
+                  orden se conserva como <b>borrador</b> y puedes retomarla con
+                  todos los campos desde el botón <b>Borradores</b> junto a New
+                  Job.
+                </p>
+              ) : (
+                <p className="hv-gcal-hint">
+                  ¿Seguro que quieres salir del formulario?
+                </p>
+              )}
             </div>
             <footer className="hv-gcal-footer">
               <button
@@ -7455,7 +7460,8 @@ export default function HousesView({
                 Seguir editando
               </button>
               <button className="hv-btn-danger-modal" onClick={confirmExitForm}>
-                <XCircle size={16} /> Salir (guardar borrador)
+                <XCircle size={16} />{" "}
+                {isFormDirty() ? "Salir (guardar borrador)" : "Salir"}
               </button>
             </footer>
           </div>

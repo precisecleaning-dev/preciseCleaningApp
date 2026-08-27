@@ -10,18 +10,18 @@ import { resolve } from 'node:path'
 //    avisa a TODOS los usuarios para que recarguen.
 const BUILD_TIME = new Date().toISOString()
 
-// ⭐ NÚMERO DE VERSIÓN (V00030, V00031...): vive en app-version.json y SUBE
+// ⭐ NÚMERO DE VERSIÓN (V00031, V00032...): vive en app-version.json y SUBE
 //    UNO en cada build automáticamente. COMMITEAR app-version.json junto con
-//    los cambios para que el contador avance también en el pipeline.
+//    los cambios para que el contador avance también entre despliegues.
 const versionFile = resolve(__dirname, 'app-version.json')
-let buildNumber = 30
+let buildNumber = 31
 try {
   const parsed = JSON.parse(readFileSync(versionFile, 'utf8')) as { build?: number }
-  buildNumber = (Number(parsed.build) || 29) + 1
-} catch { /* primer build: arranca en 30 */ }
+  buildNumber = (Number(parsed.build) || 30) + 1
+} catch { /* sin archivo: arranca en 31 */ }
 try {
   writeFileSync(versionFile, JSON.stringify({ build: buildNumber }) + '\n')
-} catch { /* sistema de archivos de solo lectura: se usa el número igual */ }
+} catch { /* sistema de solo lectura: se usa el número igual */ }
 const APP_VERSION = `V${String(buildNumber).padStart(5, '0')}`
 
 // https://vite.dev/config/
@@ -32,9 +32,10 @@ export default defineConfig({
   },
   build: {
     // ⭐ TODO el CSS en UN archivo cargado de entrada. Antes cada vista traía
-    //    su CSS aparte y si un chunk llegaba tarde/viejo, los modales se
-    //    pintaban SIN estilo: transparentes y estáticos arriba (Invoices,
-    //    cambiar estado, etc.). Con un solo CSS eso es imposible.
+    //    su CSS aparte (27 chunks) y si uno llegaba tarde o desactualizado,
+    //    sus modales se pintaban SIN estilo: transparentes y estáticos arriba
+    //    (el 'Cambiar estado' de Invoices, formularios, etc.). Con un solo
+    //    CSS eso es imposible: los modales siempre flotan al frente.
     cssCodeSplit: false,
   },
   plugins: [
