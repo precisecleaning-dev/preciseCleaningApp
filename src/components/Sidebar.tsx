@@ -22,6 +22,7 @@ interface NavItemConfig {
 import { useState } from 'react';
 // ⭐ Panel de notificaciones: versión nueva + actividad reciente.
 import NotificationsPanel from './NotificationsPanel';
+import { BUILD_TIME } from '../hooks/useVersionCheck';
 
 interface SidebarProps {
   /** ⭐ Abre el selector "Ver como otro usuario". Si no se pasa, el boton no
@@ -262,7 +263,7 @@ export default function Sidebar({
           {isSidebarOpen && (
             <div className="sb-version-box">
               <span className="sb-version">
-                v{__BUILD_TIME__.slice(0, 16).replace("T", " ")}
+                v{BUILD_TIME.slice(0, 16).replace("T", " ")}
               </span>
               <span className="sb-credit">Created by Jesus Molero</span>
             </div>

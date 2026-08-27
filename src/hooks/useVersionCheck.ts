@@ -11,6 +11,15 @@
 // ============================================================================
 import { useEffect, useState } from 'react';
 
+// ⭐ Inyectada por `define` en vite.config.ts. La declaración vive AQUÍ (y no
+//    solo en vite-env.d.ts) para que el sello funcione aunque ese .d.ts no se
+//    haya copiado: este archivo es autosuficiente.
+declare const __BUILD_TIME__: string;
+
+/** Sello de versión del bundle en memoria (fecha/hora ISO del build). */
+export const BUILD_TIME: string =
+  typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev';
+
 const CHECK_EVERY_MS = 4 * 60 * 1000; // cada 4 minutos
 
 /** Recarga limpia: desregistra el Service Worker para que el bundle nuevo
@@ -41,7 +50,7 @@ export function useVersionCheck(): boolean {
         if (!res.ok) return;
         const data = (await res.json()) as { buildTime?: string };
         if (cancelled || !data.buildTime) return;
-        if (data.buildTime !== __BUILD_TIME__) setUpdateAvailable(true);
+        if (data.buildTime !== BUILD_TIME) setUpdateAvailable(true);
       } catch {
         /* sin red: se reintenta en el siguiente ciclo */
       }
