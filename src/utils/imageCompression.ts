@@ -35,6 +35,18 @@ export async function compressImage(
   const originalSize = file.size / 1024 / 1024; // MB
   console.log(`📷 Original: ${file.name} (${originalSize.toFixed(2)} MB)`);
 
+  // ⭐ CAMINO RÁPIDO: createImageBitmap decodifica fuera del hilo principal
+  //    (la app no se congela con fotos de 12MP), respeta la orientación EXIF
+  //    y es notablemente más rápido que FileReader+Image. Si el navegador no
+  //    lo soporta, cae al camino clásico de abajo.
+  if (typeof createImageBitmap === 'function') {
+    try {
+      return await compressViaBitmap(file, opts, originalSize);
+    } catch (err) {
+      console.warn('createImageBitmap falló; usando camino clásico:', err);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -123,6 +135,62 @@ export async function compressImage(
 
     reader.readAsDataURL(file);
   });
+}
+
+/** ⭐ Camino rápido con createImageBitmap (ver compressImage). */
+async function compressViaBitmap(
+  file: File,
+  opts: Required<CompressionOptions>,
+  originalSize: number
+): Promise<File> {
+  const bitmap = await createImageBitmap(file, {
+    // Respeta la rotación EXIF del teléfono (fotos verticales llegan derechas)
+    imageOrientation: 'from-image',
+  } as ImageBitmapOptions);
+  try {
+    let { width, height } = bitmap;
+    if (width > height) {
+      if (width > opts.maxWidth) {
+        height = Math.round((height * opts.maxWidth) / width);
+        width = opts.maxWidth;
+      }
+    } else if (height > opts.maxWidth) {
+      width = Math.round((width * opts.maxWidth) / height);
+      height = opts.maxWidth;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas 2d no disponible');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, width, height);
+
+    let quality = opts.quality;
+    let blob: Blob | null = null;
+    for (;;) {
+      blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, 'image/jpeg', quality)
+      );
+      if (!blob) throw new Error('toBlob falló');
+      if (blob.size / 1024 / 1024 <= opts.maxSizeMB || quality <= 0.5) break;
+      quality -= 0.1;
+    }
+
+    const newName = `${file.name.replace(/\.[^/.]+$/, '')}.jpg`;
+    const out = new File([blob], newName, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    });
+    const finalSize = out.size / 1024 / 1024;
+    const reduction = ((1 - finalSize / originalSize) * 100).toFixed(1);
+    console.log(`Compressed(bitmap): ${out.name} (${finalSize.toFixed(2)} MB) - ${reduction}% smaller, q ${quality.toFixed(2)}`);
+    return out;
+  } finally {
+    bitmap.close();
+  }
 }
 
 /**

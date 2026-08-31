@@ -1,6 +1,13 @@
 // src/services/storageService.ts
 import { storage } from '../config/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, deleteObject } from 'firebase/storage';
+// ⭐ Motor de subida: progreso real, 3 reintentos con espera creciente,
+//    vigilante de estancamiento (45s sin avanzar → cancela y reintenta) y
+//    concurrencia limitada a 3. Ver src/utils/photoUploader.ts.
+import { uploadBatchWithProgress } from '../utils/photoUploader';
+import type { UploadProgress } from '../utils/photoUploader';
+
+export type { UploadProgress };
 
 /**
  * Limpia un string para usarlo como parte de un path en Firebase Storage.
@@ -68,24 +75,21 @@ export const storageService = {
     files: File[],
     clientName: string,
     address: string,
-    type: 'before' | 'after'
+    type: 'before' | 'after',
+    onProgress?: (p: UploadProgress) => void
   ): Promise<string[]> {
     const safeClient = sanitizeForPath(clientName);
     const folderName = type === 'before' ? 'BeforePhotos' : 'AfterPhotos';
     const folderPath = `${safeClient}/${folderName}`;
     const safeAddress = sanitizeForPath(address);
 
-    // ⭐ Sin listado previo: el nombre es unico por construccion (ver arriba).
-    const uploads = files.map(async (file, index) => {
-      const fileName = uniqueFileName(safeAddress, file, index);
-      const fullPath = `${folderPath}/${fileName}`;
-
-      const storageRef = ref(storage, fullPath);
-      await uploadBytes(storageRef, file);
-      return await getDownloadURL(storageRef);
-    });
-
-    return Promise.all(uploads);
+    // ⭐ Nombre unico por construccion (ver arriba) + motor con progreso,
+    //    reintentos y concurrencia 3 (ver photoUploader.ts).
+    const tasks = files.map((file, index) => ({
+      file,
+      fullPath: `${folderPath}/${uniqueFileName(safeAddress, file, index)}`,
+    }));
+    return uploadBatchWithProgress(tasks, onProgress);
   },
 
   /**
@@ -95,23 +99,20 @@ export const storageService = {
   async uploadQualityCheckPhotos(
     files: File[],
     address: string,
-    placeName: string
+    placeName: string,
+    onProgress?: (p: UploadProgress) => void
   ): Promise<string[]> {
     const safeAddress = sanitizeForPath(address);
     const safePlaceName = sanitizeForPath(placeName);
     const folderPath = `${safeAddress}/QualityCheck/${safePlaceName}`;
 
-    // ⭐ Sin listado previo: el nombre es unico por construccion (ver arriba).
-    const uploads = files.map(async (file, index) => {
-      const fileName = uniqueFileName('photo', file, index);
-      const fullPath = `${folderPath}/${fileName}`;
-
-      const storageRef = ref(storage, fullPath);
-      await uploadBytes(storageRef, file);
-      return await getDownloadURL(storageRef);
-    });
-
-    return Promise.all(uploads);
+    // ⭐ Nombre unico por construccion (ver arriba) + motor con progreso,
+    //    reintentos y concurrencia 3 (ver photoUploader.ts).
+    const tasks = files.map((file, index) => ({
+      file,
+      fullPath: `${folderPath}/${uniqueFileName('photo', file, index)}`,
+    }));
+    return uploadBatchWithProgress(tasks, onProgress);
   },
 
   /**

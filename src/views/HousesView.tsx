@@ -685,6 +685,15 @@ export default function HousesView({
   const [drafts, setDrafts] = useState<HouseDraft[]>(() => loadDrafts());
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
 
+  // ⭐ PROGRESO DE SUBIDA DE FOTOS: barra visible mientras las fotos viajan.
+  //    { label, done, total, percent } — null cuando no hay subida activa.
+  const [photoUpload, setPhotoUpload] = useState<{
+    label: string;
+    done: number;
+    total: number;
+    percent: number;
+  } | null>(null);
+
   const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   // ⭐ VERIFICACIÓN: lo que Google REALMENTE guardó (releído del calendario
@@ -1077,12 +1086,17 @@ export default function HousesView({
     if (files.length === 0) return { urls: [], queued: 0 };
     if (navigator.onLine) {
       try {
+        // ⭐ Barra de progreso: el motor reporta bytes reales por foto.
+        const label = type === "before" ? "fotos Before" : "fotos After";
+        setPhotoUpload({ label, done: 0, total: files.length, percent: 0 });
         const urls = await storageService.uploadMultiplePropertyPhotos(
           files,
           clientName,
           address,
           type,
+          (p) => setPhotoUpload({ label, done: p.done, total: p.total, percent: p.percent }),
         );
+        setPhotoUpload(null);
         return { urls, queued: 0 };
       } catch (e) {
         // ⭐ CORRECCION "no se pueden guardar": antes CUALQUIER error de subida
@@ -1091,9 +1105,11 @@ export default function HousesView({
         //    guardaba, sin decirle al usuario el motivo real. Ahora solo se
         //    encola cuando el fallo es de CONEXION; los demás se reportan con
         //    su código para poder corregir la causa (ver alert del caller).
+        setPhotoUpload(null);
         const code = String((e as { code?: string })?.code || "");
         const isConnectivity =
-          !navigator.onLine || code === "storage/retry-limit-exceeded";
+          !navigator.onLine || code === "storage/retry-limit-exceeded" ||
+          code === "storage/canceled";
         if (!isConnectivity) throw e;
         console.error("Subida online falló por conexión, se encola:", e);
       }
@@ -2013,12 +2029,18 @@ export default function HousesView({
   //    amplíalo a string; el cast solo mantiene la compilación.
   const uploadDamagePhotos = async (files: File[]): Promise<string[]> => {
     if (!selectedHouse || files.length === 0) return [];
-    return await storageService.uploadMultiplePropertyPhotos(
-      files,
-      getClientName(selectedHouse.client),
-      selectedHouse.address,
-      "Damages" as unknown as "before",
-    );
+    setPhotoUpload({ label: "fotos de daños", done: 0, total: files.length, percent: 0 });
+    try {
+      return await storageService.uploadMultiplePropertyPhotos(
+        files,
+        getClientName(selectedHouse.client),
+        selectedHouse.address,
+        "Damages" as unknown as "before",
+        (p) => setPhotoUpload({ label: "fotos de daños", done: p.done, total: p.total, percent: p.percent }),
+      );
+    } finally {
+      setPhotoUpload(null);
+    }
   };
 
   const handleAddDamage = async () => {
@@ -7427,6 +7449,30 @@ export default function HousesView({
             </div>
           );
         })()}
+
+      {/* --- BARRA DE PROGRESO DE FOTOS ---
+          Flotante abajo al centro, POR ENCIMA de los modales (z 10001): el
+          usuario siempre ve que sus fotos están viajando y cuánto falta. */}
+      {photoUpload && (
+        <div className="hv-upload-toast" role="status">
+          <div className="hv-upload-toast-head">
+            <span className="hv-upload-spinner" />
+            <span className="hv-upload-title">
+              Subiendo {photoUpload.label}… {photoUpload.done}/{photoUpload.total}
+            </span>
+            <span className="hv-upload-pct">{photoUpload.percent}%</span>
+          </div>
+          <div className="hv-upload-track">
+            <div
+              className="hv-upload-fill"
+              style={{ "--pct": `${photoUpload.percent}%` } as CSSProperties}
+            />
+          </div>
+          <span className="hv-upload-hint">
+            No cierres la app hasta que termine.
+          </span>
+        </div>
+      )}
 
       {/* --- MODAL: ¿SALIR DEL FORMULARIO SIN GUARDAR? --- */}
       {showExitConfirm && (
