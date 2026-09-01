@@ -54,3 +54,29 @@ export function resolveCustomerName(
   });
   return found ? found.name : fallback;
 }
+
+/** ⭐ ¿El valor parece un ID y no un nombre humano? (para el respaldo visual
+ *  cuando el cliente fue borrado y no hay nombre que resolver). Un nombre
+ *  como "Linnemann" o "CMA" NO se marca; un hex tipo "5b836a0c" o un id de
+ *  Firestore de 20 caracteres, sí. */
+export function looksLikeOrphanId(value: string): boolean {
+  const v = String(value || '').trim();
+  if (!v || v.includes(' ')) return false;
+  if (!/^[0-9a-zA-Z_-]+$/.test(v)) return false;
+  const hasDigits = /[0-9]/.test(v);
+  return (hasDigits && v.length >= 8) || v.length >= 15;
+}
+
+/** Nombre para MOSTRAR: resuelve por todos los caminos y, si el cliente ya
+ *  no existe, devuelve una etiqueta legible en lugar del ID crudo. */
+export function displayClientName(
+  list: Customer[],
+  idOrName?: string | null,
+): string {
+  if (!idOrName) return 'Unknown';
+  const key = String(idOrName);
+  const resolved = resolveCustomerName(list, key, '');
+  if (resolved) return resolved;
+  if (looksLikeOrphanId(key)) return `Cliente eliminado · ${key.slice(0, 8)}`;
+  return key;
+}

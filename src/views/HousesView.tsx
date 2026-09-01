@@ -75,7 +75,7 @@ import { storageService } from "../services/storageService";
 // ⭐ Papelera: el borrado ya no destruye, mueve a `trash` con motivo obligatorio.
 import { trashService } from "../services/trashService";
 // ⭐ Clientes: mapeo correcto (legacy id aparte) y resolución por ambos ids.
-import { mapCustomerDoc, resolveCustomerName } from "../utils/customerDocs";
+import { mapCustomerDoc, displayClientName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
@@ -976,9 +976,10 @@ export default function HousesView({
     const key = String(clientIdOrName);
     const cached = clientNameCache.get(key);
     if (cached !== undefined) return cached;
-    // ⭐ Resuelve por id real, id legacy (AppSheet) o nombre; si nada
-    //    coincide, muestra el valor crudo (último recurso).
-    const name = resolveCustomerName(customersList, key, key);
+    // ⭐ Resuelve por id real, id legacy (AppSheet) o nombre; si el cliente
+    //    fue BORRADO (id huérfano), muestra "Cliente eliminado · xxxxxx" en
+    //    lugar del ID crudo: la tarjeta siempre dice algo legible.
+    const name = displayClientName(customersList, key);
     clientNameCache.set(key, name);
     return name;
   };

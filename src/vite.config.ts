@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { writeFileSync, readFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // ⭐ SELLO DE VERSIÓN: fecha/hora exacta del `vite build`. Se inyecta en el
@@ -10,18 +10,20 @@ import { resolve } from 'node:path'
 //    avisa a TODOS los usuarios para que recarguen.
 const BUILD_TIME = new Date().toISOString()
 
-// ⭐ NÚMERO DE VERSIÓN (V00030, V00031...): vive en app-version.json y SUBE
+// ⭐ NÚMERO DE VERSIÓN (V00031, V00032...): vive en app-version.json y SUBE
 //    UNO en cada build automáticamente. COMMITEAR app-version.json junto con
-//    los cambios para que el contador avance también en el pipeline.
-const versionFile = resolve(__dirname, 'app-version.json')
-let buildNumber = 30
-try {
-  const parsed = JSON.parse(readFileSync(versionFile, 'utf8')) as { build?: number }
-  buildNumber = (Number(parsed.build) || 29) + 1
-} catch { /* primer build: arranca en 30 */ }
-try {
-  writeFileSync(versionFile, JSON.stringify({ build: buildNumber }) + '\n')
-} catch { /* sistema de archivos de solo lectura: se usa el número igual */ }
+//    los cambios para que el contador avance también entre despliegues.
+// ⭐ NÚMERO DE VERSIÓN AUTOMÁTICO E IMPARABLE: se deriva de la FECHA/HORA
+//    del build (bloques de 5 minutos desde el 29/08/2026), así que SIEMPRE
+//    sube solo — en la máquina local, en Cloudflare, con o sin git, sin
+//    archivos que commitear. Cada build/deploy produce un número mayor que
+//    el anterior, garantizado.
+//    (Historia: v1 dependia de commitear app-version.json — se atoraba si el
+//    archivo no viajaba en el push; v2 contaba commits de git — pero
+//    Cloudflare clona "shallow" con 1 solo commit y volveria a atorarse.
+//    La fecha no depende de nada: no puede atorarse.)
+const VERSION_EPOCH = Date.parse('2026-08-29T00:00:00Z')
+const buildNumber = Math.floor((Date.now() - VERSION_EPOCH) / (5 * 60 * 1000))
 const APP_VERSION = `V${String(buildNumber).padStart(5, '0')}`
 
 // https://vite.dev/config/
@@ -32,9 +34,10 @@ export default defineConfig({
   },
   build: {
     // ⭐ TODO el CSS en UN archivo cargado de entrada. Antes cada vista traía
-    //    su CSS aparte y si un chunk llegaba tarde/viejo, los modales se
-    //    pintaban SIN estilo: transparentes y estáticos arriba (Invoices,
-    //    cambiar estado, etc.). Con un solo CSS eso es imposible.
+    //    su CSS aparte (27 chunks) y si uno llegaba tarde o desactualizado,
+    //    sus modales se pintaban SIN estilo: transparentes y estáticos arriba
+    //    (el 'Cambiar estado' de Invoices, formularios, etc.). Con un solo
+    //    CSS eso es imposible: los modales siempre flotan al frente.
     cssCodeSplit: false,
   },
   plugins: [
