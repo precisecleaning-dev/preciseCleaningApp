@@ -1,5 +1,5 @@
 // src/services/customersService.ts
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, deleteField } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Customer } from '../types/index';
 
@@ -51,10 +51,12 @@ export const customersService = {
 
   async update(id: string, customerData: Partial<Customer>): Promise<void> {
     const docRef = doc(db, COLLECTION_NAME, id);
-    // ⭐ Escribe los datos sin `id` y ADEMÁS borra el campo `id` interno si
-    //    el documento viejo lo tenía (deleteField). Así cada edición va
-    //    auto-limpiando los documentos contaminados.
-    await updateDoc(docRef, { ...stripId(customerData), id: deleteField() });
+    // ⭐ NO tocar el campo `id` interno del documento: es el id LEGACY de
+    //    AppSheet y es LA LLAVE con la que las casas migradas encuentran a su
+    //    cliente (guardan ese valor en `client`). La "auto-limpieza" anterior
+    //    lo borraba en cada edición y rompió el vínculo de varios clientes al
+    //    usar el toggle de Apply Tax (se veían como "Cliente eliminado").
+    await updateDoc(docRef, { ...stripId(customerData) });
   },
 
   async delete(id: string): Promise<void> {

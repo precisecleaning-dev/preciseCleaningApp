@@ -5001,3 +5001,6 @@
 .hv-upload-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.15); overflow: hidden; }
 .hv-upload-fill { height: 100%; width: var(--pct, 0%); background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 999px; transition: width 0.25s ease; }
 .hv-upload-hint { font-size: 0.72rem; color: #94a3b8; }
+
+/* ⭐ Selector del reparador de clientes */
+.hv-repair-select { min-width: 190px; padding: 8px 10px; }
