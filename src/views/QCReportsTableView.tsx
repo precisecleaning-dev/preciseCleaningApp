@@ -5,6 +5,8 @@ import {
   Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
 import { db } from '../config/firebase';
+// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
+import { mapCustomerDoc } from '../utils/customerDocs';
 import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
 import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import type { Customer, Property, Status, Team, Role, SystemUser } from '../types/index';
@@ -129,7 +131,7 @@ export default function QCReportsTableView({
       err => { console.error('Error cargando reportes QC:', err); setIsLoading(false); },
     );
     const unsubCust = onSnapshot(collection(db, 'customers'),
-      snap => setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer))),
+      snap => setCustomers(snap.docs.map(mapCustomerDoc)),
       err => console.error('Error cargando clientes:', err));
     const unsubStatuses = onSnapshot(collection(db, 'settings_statuses'),
       snap => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))),

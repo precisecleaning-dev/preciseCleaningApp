@@ -74,6 +74,8 @@ import { propertiesService } from "../services/propertiesService";
 import { storageService } from "../services/storageService";
 // ⭐ Papelera: el borrado ya no destruye, mueve a `trash` con motivo obligatorio.
 import { trashService } from "../services/trashService";
+// ⭐ Clientes: mapeo correcto (legacy id aparte) y resolución por ambos ids.
+import { mapCustomerDoc, resolveCustomerName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
@@ -974,7 +976,9 @@ export default function HousesView({
     const key = String(clientIdOrName);
     const cached = clientNameCache.get(key);
     if (cached !== undefined) return cached;
-    const name = getRelationName(customersList, key, key);
+    // ⭐ Resuelve por id real, id legacy (AppSheet) o nombre; si nada
+    //    coincide, muestra el valor crudo (último recurso).
+    const name = resolveCustomerName(customersList, key, key);
     clientNameCache.set(key, name);
     return name;
   };
@@ -1316,9 +1320,10 @@ export default function HousesView({
       onSnapshot(
         collection(db, "customers"),
         (snap) => {
-          const data = snap.docs.map(
-            (d) => ({ id: d.id, ...d.data() }) as Customer,
-          );
+          // ⭐ mapCustomerDoc: los clientes migrados traen DENTRO un campo `id`
+          //    legacy que con el spread viejo PISABA al id real → las casas que
+          //    guardan el id de Firestore no resolvían y mostraban el ID crudo.
+          const data = snap.docs.map(mapCustomerDoc);
           setCustomersList(data);
           markLoaded("customers");
         },

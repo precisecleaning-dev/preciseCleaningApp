@@ -11,6 +11,8 @@ import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '
 import { getRelationName } from '../utils/relations';
 // ⭐ Velocidad: pinta con el caché local de Firestore y refresca en 2º plano.
 import { getDocsCacheFirst } from '../utils/cacheFirstFetch';
+// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
+import { mapCustomerDoc } from '../utils/customerDocs';
 import { settingsService } from '../services/settingsService';
 import { storageService } from '../services/storageService';
 import { propertiesService } from '../services/propertiesService';
@@ -422,9 +424,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           //    después (onFresh) solo para actualizar, sin bloquear la vista.
           getDocsCacheFirst(collection(db, 'customers'), {
             onFresh: (fresh) =>
-              setCustomersList(
-                fresh.docs.map((d) => ({ id: d.id, ...d.data() } as Customer)),
-              ),
+              setCustomersList(fresh.docs.map(mapCustomerDoc)),
           }).catch(() => ({ docs: [] })),
           getDocsCacheFirst(collection(db, 'quality_checks'), {
             onFresh: (fresh) => {
@@ -460,7 +460,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         setTasks(sortedTasks);
         setTeams(teamsData as Team[]);
         setStatuses(statusesData as Status[]);
-        setCustomersList(((customersSnap as any).docs || []).map((d: any) => ({ id: d.id, ...d.data() } as Customer)));
+        setCustomersList(((customersSnap as any).docs || []).map(mapCustomerDoc));
 
         const docsArray = (qcSnap as any).docs || [];
         const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({

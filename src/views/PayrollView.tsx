@@ -8,6 +8,8 @@ import {
 import { payrollService } from '../services/payrollService';
 import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
 import { db, auth } from '../config/firebase';
+// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
+import { mapCustomerDoc } from '../utils/customerDocs';
 import { collection, onSnapshot, doc, updateDoc, deleteField } from 'firebase/firestore';
 import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer, Role } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
@@ -512,7 +514,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     // ⭐ NUEVO: customers
     unsubscribes.push(onSnapshot(
       collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[]); tick(); },
+      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
       (err) => { console.error("Error customers:", err); tick(); }
     ));
 

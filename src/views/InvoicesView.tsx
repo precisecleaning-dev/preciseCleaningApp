@@ -10,6 +10,8 @@ import StatusChangeModal, { type StatusModalConfig } from '../components/StatusC
 import type { Property, Team, SystemUser, Role, Status, Customer, PayrollRecord } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
+// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
+import { mapCustomerDoc } from '../utils/customerDocs';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import { stampInvoiceEntry, invoiceEntryMs } from '../utils/invoiceEntry';
@@ -301,7 +303,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
     unsubscribes.push(onSnapshot(
       collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[]); tick(); },
+      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
       (err) => { console.error("Error customers:", err); tick(); }
     ));
 

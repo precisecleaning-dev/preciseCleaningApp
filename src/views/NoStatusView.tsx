@@ -3,6 +3,8 @@ import { Menu, Search, MapPin, CalendarDays, Users, HelpCircle, Tag } from 'luci
 import type { Property, Status, Team, Customer, SystemUser, Role } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
+// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
+import { mapCustomerDoc } from '../utils/customerDocs';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName } from '../utils/relations';
 import { stampInvoiceEntry } from '../utils/invoiceEntry';
@@ -87,7 +89,7 @@ export default function NoStatusView({
     ));
     unsubscribes.push(onSnapshot(
       collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[]); tick(); },
+      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
       (err) => { console.error('Error customers:', err); tick(); }
     ));
 
