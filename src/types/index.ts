@@ -144,6 +144,10 @@ export interface Customer {
   note?: string; 
   cityStateZip?: string; 
   color?: string; 
+  /** ⭐ ¿Este cliente factura CON impuesto por defecto? Alimenta el valor
+   *  inicial de "Apply Tax" al agregar un Billed Service a sus casas
+   *  (modificable en cada servicio). 'Yes' si no está definido. */
+  applyTax?: 'Yes' | 'No';
 }
 
 export interface CategoryExpense { id: string; name: string; }

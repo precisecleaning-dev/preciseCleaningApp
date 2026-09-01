@@ -90,3 +90,14 @@
   .cx-detail-grid { grid-template-columns: 1fr; }
   .cx-detail-grid .cx-detail-row:nth-last-child(2) { border-bottom: 1px solid #f1f5f9; }
 }
+
+/* ⭐ Apply Tax del cliente: toggle en la tabla y segmentado del formulario */
+.cx-tax-toggle { border: 1px solid transparent; border-radius: 999px; padding: 4px 14px; font-weight: 800; font-size: 0.8rem; cursor: pointer; transition: filter 0.15s ease; }
+.cx-tax-toggle:hover { filter: brightness(0.95); }
+.cx-tax-toggle.yes { background: #dcfce7; border-color: #bbf7d0; color: #15803d; }
+.cx-tax-toggle.no { background: #fee2e2; border-color: #fecaca; color: #b91c1c; }
+.cx-tax-seg { display: flex; background: #f1f5f9; border-radius: 10px; padding: 3px; }
+.cx-tax-seg-btn { flex: 1; border: none; background: none; padding: 8px 0; border-radius: 8px; font-weight: 700; font-size: 0.9rem; color: #64748b; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
+.cx-tax-seg-btn.active { background: #ffffff; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); }
+.cx-tax-seg-btn.active.yes { color: #15803d; }
+.cx-tax-seg-btn.active.no { color: #b91c1c; }

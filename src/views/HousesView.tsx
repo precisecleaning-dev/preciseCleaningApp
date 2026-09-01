@@ -3055,10 +3055,28 @@ export default function HousesView({
       setServiceForm(record);
     } else {
       const defaultTax = taxes.length > 0 ? Number(taxes[0].percentage) : 0;
+      // ⭐ APPLY TAX inicial según el CLIENTE de la casa (campo "Apply Tax"
+      //    del módulo Customers). Es solo el VALOR INICIAL: en el formulario
+      //    del servicio se puede cambiar caso por caso. Sin cliente o sin
+      //    preferencia definida → "Yes" (comportamiento histórico).
+      const clientRef = fromForm ? formData?.client : selectedHouse?.client;
+      const customer = customersList.find(
+        (c) =>
+          c.id === clientRef ||
+          (c as Customer & { legacyId?: string }).legacyId === clientRef ||
+          c.name === clientRef,
+      );
+      const clientApplyTax: "Yes" | "No" =
+        customer?.applyTax === "No" ? "No" : "Yes";
       setServiceForm({
         ...defaultServiceForm,
         propertyId: propId,
         taxPercentage: defaultTax,
+        applyTax: clientApplyTax,
+        // minusTax NO se toca: es un control aparte en el formulario y su
+        // default es "No" (Apply Tax "No" del cliente = simplemente sin
+        // impuesto agregado, no impuesto restado).
+        minusTax: "No",
       });
     }
     setIsServiceModalOpen(true);

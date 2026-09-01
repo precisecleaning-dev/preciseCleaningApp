@@ -57,7 +57,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     if (customer) {
       setFormData(customer);
     } else {
-      setFormData({ id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6' });
+      setFormData({ id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6', applyTax: 'Yes' });
     }
     setIsFormModalOpen(true);
   };
@@ -90,8 +90,30 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     cityStateZip: c.cityStateZip || '',
     email: (c.email || '').trim(),
     phone: c.phone || '',
-    color: c.color || '#3b82f6'
+    color: c.color || '#3b82f6',
+    // ⭐ 'Yes' es el histórico: los servicios siempre arrancaban con impuesto
+    applyTax: c.applyTax === 'No' ? 'No' : 'Yes'
   });
+
+  // ⭐ Alterna el Apply Tax del cliente y lo guarda AL INSTANTE (sin abrir el
+  //    formulario): marcar la lista completa toma un clic por cliente.
+  const handleToggleApplyTax = async (c: Customer) => {
+    const next: 'Yes' | 'No' = (c.applyTax || 'Yes') === 'Yes' ? 'No' : 'Yes';
+    setCustomers((prev) =>
+      prev.map((x) => (x.id === c.id ? { ...x, applyTax: next } : x)),
+    );
+    try {
+      await customersService.update(c.id, { applyTax: next });
+    } catch (error) {
+      console.error('Error saving applyTax:', error);
+      // Revertir si Firestore rechazó el cambio
+      setCustomers((prev) =>
+        prev.map((x) => (x.id === c.id ? { ...x, applyTax: c.applyTax } : x)),
+      );
+      const fbErr = error as { code?: string; message?: string };
+      alert(`No se pudo guardar Apply Tax.\n\nCódigo: ${fbErr.code || 'desconocido'}\nDetalle: ${fbErr.message || String(error)}`);
+    }
+  };
 
   const handleSave = async () => {
     if (!formData.name) return alert('Name is required.');
@@ -179,15 +201,16 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
               <th className="cx-th">Note</th>
               <th className="cx-th">Address</th>
               <th className="cx-th">City/State/Zip</th>
+              <th className="cx-th">Apply Tax</th>
               <th className="cx-th">Email</th>
               <th className="cx-th right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="cx-empty-row">Loading customers...</td></tr>
+              <tr><td colSpan={10} className="cx-empty-row">Loading customers...</td></tr>
             ) : filteredCustomers.length === 0 ? (
-              <tr><td colSpan={9} className="cx-empty-row">No customers found.</td></tr>
+              <tr><td colSpan={10} className="cx-empty-row">No customers found.</td></tr>
             ) : (
               filteredCustomers.map(c => (
                 <tr key={c.id} onClick={() => handleOpenDetail(c)} className="cx-row-clickable" title="Ver detalle del cliente">
@@ -204,6 +227,21 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
 
                   <td data-label="City/State/Zip" className="cx-td"><div className="td-content">{c.cityStateZip || '-'}</div></td>
 
+                  {/* ⭐ APPLY TAX: toggle EN SITIO (clic = alterna y guarda).
+                      Alimenta el valor inicial del Apply Tax en Billed
+                      Services de las casas de este cliente. */}
+                  <td data-label="Apply Tax" className="cx-td">
+                    <div className="td-content">
+                      <button
+                        type="button"
+                        className={`cx-tax-toggle${(c.applyTax || 'Yes') === 'Yes' ? ' yes' : ' no'}`}
+                        title="Cambiar Apply Tax de este cliente"
+                        onClick={(e) => { e.stopPropagation(); handleToggleApplyTax(c); }}
+                      >
+                        {(c.applyTax || 'Yes') === 'Yes' ? 'Yes' : 'No'}
+                      </button>
+                    </div>
+                  </td>
                   <td data-label="Email" className="cx-td"><div className="td-content">{c.email || '-'}</div></td>
                   <td data-label="Actions" className="cx-td right">
                     <div className="td-content actions-cell cx-actions-cell">
@@ -301,6 +339,28 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                 <div>
                   <label className="cx-label">Color Marker</label>
                   <input type="color" className="cx-input color-input" value={formData.color || '#3b82f6'} onChange={e => setFormData({...formData, color: e.target.value})} />
+                </div>
+                <div>
+                  {/* ⭐ APPLY TAX del cliente: valor INICIAL del Apply Tax al
+                      agregar Billed Services en sus casas (ahí se puede
+                      cambiar por servicio). */}
+                  <label className="cx-label">Apply Tax</label>
+                  <div className="cx-tax-seg">
+                    <button
+                      type="button"
+                      className={`cx-tax-seg-btn${(formData.applyTax || 'Yes') === 'Yes' ? ' active yes' : ''}`}
+                      onClick={() => setFormData({ ...formData, applyTax: 'Yes' })}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`cx-tax-seg-btn${(formData.applyTax || 'Yes') === 'No' ? ' active no' : ''}`}
+                      onClick={() => setFormData({ ...formData, applyTax: 'No' })}
+                    >
+                      No
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="cx-label">Full Name <span className="cx-required">*</span></label>
