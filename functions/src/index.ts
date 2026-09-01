@@ -89,7 +89,10 @@ async function getCalendarClient(): Promise<calendar_v3.Calendar> {
   if (!clientSecret) faltantes.push("GCAL_CLIENT_SECRET");
   if (!refreshToken) faltantes.push("GCAL_REFRESH_TOKEN");
   if (faltantes.length) {
-    throw new Error(
+    // ⭐ HttpsError (no Error): un Error normal llega a la app como
+    //    "internal" SIN mensaje; con HttpsError la app muestra el motivo real.
+    throw new HttpsError(
+      "failed-precondition",
       `Faltan secretos: ${faltantes.join(", ")}. Cárgalos con: firebase functions:secrets:set <NOMBRE>`,
     );
   }
@@ -102,9 +105,17 @@ async function getCalendarClient(): Promise<calendar_v3.Calendar> {
     await oauth.getAccessToken();
   } catch (err) {
     const e = err as GoogleApiError;
-    throw new Error(
+    // ⭐ HttpsError con el motivo real (antes llegaba como "internal" mudo).
+    //    Causa típica: `invalid_grant` = el refresh token CADUCÓ o fue
+    //    revocado. Si la pantalla de consentimiento OAuth está en modo
+    //    "Testing", Google caduca los refresh tokens A LOS 7 DÍAS: publicar
+    //    la app OAuth en "In production" elimina esa caducidad.
+    throw new HttpsError(
+      "failed-precondition",
       `No se pudo renovar el acceso a Google Calendar (${e.message || String(err)}). ` +
-        "El refresh token puede haber sido revocado: vuelve a generarlo siguiendo las instrucciones y recarga el secreto GCAL_REFRESH_TOKEN.",
+        "Si el mensaje dice invalid_grant, el refresh token caducó o fue revocado: " +
+        "genera uno nuevo en OAuth Playground y recárgalo con firebase functions:secrets:set GCAL_REFRESH_TOKEN, " +
+        "y publica la pantalla OAuth en 'In production' para que no caduque cada 7 días.",
     );
   }
 
