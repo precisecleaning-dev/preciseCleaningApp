@@ -7733,20 +7733,34 @@ export default function HousesView({
               {(selectedHouse.notesHistory || []).length === 0 ? (
                 <p className="hv-gcal-hint">Sin cambios registrados todavía (el historial arranca con la próxima nota que se guarde).</p>
               ) : (
-                <ul className="hv-drafts-list">
-                  {[...(selectedHouse.notesHistory || [])].reverse().map((e, i) => (
-                    <li key={i} className="hv-draft-item">
-                      <div className="hv-draft-info">
-                        <span className="hv-draft-label">
-                          {e.field === "note" ? "Nota" : e.field === "officeNote" ? "Nota de oficina" : "Nota de empleados"}
-                          {" · "}{e.action === "created" ? "creada" : "editada"} por {e.user}
-                        </span>
-                        <span className="hv-draft-when">{fmtNoteWhen(e.at)}</span>
-                        <span className="hv-draft-when">{e.text ? e.text.slice(0, 160) : "(vaciada)"}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                // ⭐ SEPARADO POR NOTA: una sección por cada tipo, cada una con
+                //    sus propias versiones (más reciente primero).
+                ([
+                  { f: "officeNote" as const, t: "Office Notes" },
+                  { f: "note" as const, t: "General Note" },
+                  { f: "employeeNote" as const, t: "Employee's Note" },
+                ]).map(({ f, t }) => {
+                  const entries = (selectedHouse.notesHistory || []).filter((e) => e.field === f);
+                  if (entries.length === 0) return null;
+                  return (
+                    <div key={f} className="hv-notehist-section">
+                      <h4 className="hv-notehist-title">{t} ({entries.length})</h4>
+                      <ul className="hv-drafts-list">
+                        {[...entries].reverse().map((e, i) => (
+                          <li key={i} className="hv-draft-item">
+                            <div className="hv-draft-info">
+                              <span className="hv-draft-label">
+                                {e.action === "created" ? "Creada" : "Editada"} por {e.user}
+                              </span>
+                              <span className="hv-draft-when">{fmtNoteWhen(e.at)}</span>
+                              <span className="hv-draft-when">{e.text ? e.text.slice(0, 160) : "(vaciada)"}</span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

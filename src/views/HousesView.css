@@ -5007,3 +5007,7 @@
 
 /* ⭐ Firma de la ultima nota */
 .hv-note-meta { font-size: 0.76rem; color: #64748b; align-self: center; }
+
+/* ⭐ Historial de notas por seccion */
+.hv-notehist-section { margin-bottom: 16px; }
+.hv-notehist-title { margin: 0 0 8px; font-size: 0.85rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; }
