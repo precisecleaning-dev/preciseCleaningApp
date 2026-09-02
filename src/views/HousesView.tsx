@@ -853,6 +853,14 @@ export default function HousesView({
     employeeNote: string;
   }>({ note: "", officeNote: "", employeeNote: "" });
   const [detailNotesDirty, setDetailNotesDirty] = useState(false);
+  // ⭐ Modal de historial de notas (quién escribió/editó cada nota y cuándo)
+  const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
+  const lastNoteMeta = (field: "note" | "officeNote" | "employeeNote") => {
+    const h = (selectedHouse?.notesHistory || []).filter((e) => e.field === field);
+    return h.length ? h[h.length - 1] : null;
+  };
+  const fmtNoteWhen = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 
   const [beforeExcluded, setBeforeExcluded] = useState<string[]>([]);
   const [afterExcluded, setAfterExcluded] = useState<string[]>([]);
@@ -1728,6 +1736,29 @@ export default function HousesView({
   };
 
   // 1) Activa el canal de avisos de Google Calendar (se hace UNA sola vez)
+  // ⭐ Diagnóstico por capas: reporta EXACTAMENTE qué parte del Calendar
+  //    falla (secretos, refresh token, lectura) con el mensaje real.
+  const handleCfDiagnostics = async () => {
+    setIsCfTesting(true);
+    cfLog("Corriendo diagnóstico del Calendar…");
+    try {
+      const call = httpsCallable(getFunctions(), "calendardiagnostics");
+      const res = (await call({})) as {
+        data?: { ok?: boolean; steps?: { name: string; ok: boolean; detail: string }[] };
+      };
+      for (const s of res?.data?.steps || []) {
+        cfLog(`${s.ok ? "✅" : "❌"} ${s.name}: ${s.detail}`);
+      }
+      if (res?.data?.ok) cfLog("✅ Todo el Calendar está operativo.");
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      cfLog(`❌ No se pudo correr el diagnóstico: ${e.code || ""} ${e.message || String(err)}`);
+      cfLog("Si dice not-found: falta desplegar functions (firebase deploy --only functions).");
+    } finally {
+      setIsCfTesting(false);
+    }
+  };
+
   const handleCfActivateWatch = async () => {
     setIsCfTesting(true);
     cfLog("Activando watch del calendario…");
@@ -3720,6 +3751,26 @@ export default function HousesView({
     if (canEditDetailNote("officeNote")) payload.officeNote = detailNotes.officeNote;
     if (canEditDetailNote("employeeNote")) payload.employeeNote = detailNotes.employeeNote;
     if (Object.keys(payload).length === 0) return;
+
+    // ⭐ HISTORIAL DE NOTAS: por cada campo que CAMBIÓ, una entrada con
+    //    autor + fecha-hora + acción (creada/editada) + texto final.
+    const noteFields = ["note", "officeNote", "employeeNote"] as const;
+    const newEntries = noteFields
+      .filter((f) => f in payload)
+      .filter((f) => String((selectedHouse as PropertyU)[f] || "") !== String(payload[f] || ""))
+      .map((f) => ({
+        field: f,
+        text: String(payload[f] || ""),
+        user: currentUser?.email || "?",
+        at: new Date().toISOString(),
+        action: String((selectedHouse as PropertyU)[f] || "") === "" ? ("created" as const) : ("edited" as const),
+      }));
+    if (newEntries.length > 0) {
+      payload.notesHistory = [
+        ...(selectedHouse.notesHistory || []),
+        ...newEntries,
+      ];
+    }
 
     setIsSaving(true);
     try {
@@ -7190,6 +7241,18 @@ export default function HousesView({
                             <Save size={16} />{" "}
                             {isSaving ? "Saving..." : "Save Notes"}
                           </button>
+                        {/* ⭐ Trazabilidad: última edición + historial completo */}
+                        <button
+                          className="hv-drafts-btn"
+                          onClick={() => setIsNotesHistoryOpen(true)}
+                        >
+                          <FileText size={15} /> Historial ({(selectedHouse.notesHistory || []).length})
+                        </button>
+                        {lastNoteMeta("note") && (
+                          <span className="hv-note-meta">
+                            Última nota: {lastNoteMeta("note")!.user} · {fmtNoteWhen(lastNoteMeta("note")!.at)}
+                          </span>
+                        )}
                         </div>
                       )}
 
@@ -7646,6 +7709,40 @@ export default function HousesView({
                         >
                           <Trash2 size={13} />
                         </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: HISTORIAL DE NOTAS --- */}
+      {isNotesHistoryOpen && selectedHouse && (
+        <div className="modal-overlay-centered" onClick={() => setIsNotesHistoryOpen(false)}>
+          <div className="modal-50" onClick={(e) => e.stopPropagation()}>
+            <header className="hv-modal-header">
+              <h3 className="hv-modal-title">Historial de notas</h3>
+              <button className="hv-gcal-close" aria-label="Cerrar" onClick={() => setIsNotesHistoryOpen(false)}>
+                <X size={22} />
+              </button>
+            </header>
+            <div className="hv-gcal-body">
+              {(selectedHouse.notesHistory || []).length === 0 ? (
+                <p className="hv-gcal-hint">Sin cambios registrados todavía (el historial arranca con la próxima nota que se guarde).</p>
+              ) : (
+                <ul className="hv-drafts-list">
+                  {[...(selectedHouse.notesHistory || [])].reverse().map((e, i) => (
+                    <li key={i} className="hv-draft-item">
+                      <div className="hv-draft-info">
+                        <span className="hv-draft-label">
+                          {e.field === "note" ? "Nota" : e.field === "officeNote" ? "Nota de oficina" : "Nota de empleados"}
+                          {" · "}{e.action === "created" ? "creada" : "editada"} por {e.user}
+                        </span>
+                        <span className="hv-draft-when">{fmtNoteWhen(e.at)}</span>
+                        <span className="hv-draft-when">{e.text ? e.text.slice(0, 160) : "(vaciada)"}</span>
                       </div>
                     </li>
                   ))}
@@ -8474,6 +8571,18 @@ export default function HousesView({
               </p>
 
               <div className="hv-cftest-actions">
+                {/* ⭐ Paso 0: diagnóstico por capas del Calendar */}
+                <button
+                  className="hv-cftest-btn"
+                  disabled={isCfTesting}
+                  onClick={handleCfDiagnostics}
+                >
+                  0 · Diagnóstico del Calendar (qué está fallando)
+                </button>
+                <p className="hv-cftest-desc">
+                  Prueba secretos, token y lectura del calendario, y reporta la
+                  capa exacta que falla con su mensaje real.
+                </p>
                 <button
                   className="hv-cftest-btn primary"
                   onClick={handleCfActivateWatch}

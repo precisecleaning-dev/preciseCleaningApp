@@ -255,6 +255,71 @@ async function stripAutoMeet(
 // 1) synchousetocalendar — botón "Sync" de la app
 //    data: { houseId, clientName }
 // ===========================================================================
+// ============================================================================
+// ⭐ DIAGNÓSTICO DEL CALENDARIO — prueba cada capa y reporta cuál falla,
+//    con el mensaje real. Nunca lanza: siempre devuelve el reporte completo.
+//    Se consume desde el panel "Pruebas de Cloud Functions" de la app.
+// ============================================================================
+export const calendardiagnostics = onCall(
+  { region: "us-central1", secrets: CALENDAR_SECRETS },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
+    }
+    const steps: { name: string; ok: boolean; detail: string }[] = [];
+
+    // 1) Secretos presentes
+    try {
+      const missing = [
+        ["GCAL_CLIENT_ID", GCAL_CLIENT_ID.value()],
+        ["GCAL_CLIENT_SECRET", GCAL_CLIENT_SECRET.value()],
+        ["GCAL_REFRESH_TOKEN", GCAL_REFRESH_TOKEN.value()],
+      ].filter(([, v]) => !v).map(([n]) => n);
+      steps.push({
+        name: "Secretos",
+        ok: missing.length === 0,
+        detail: missing.length ? `Faltan: ${missing.join(", ")}` : "Los 3 presentes",
+      });
+    } catch (e) {
+      steps.push({ name: "Secretos", ok: false, detail: String((e as Error).message || e) });
+    }
+
+    // 2) Renovar el access token con el refresh token (aquí cae invalid_grant)
+    let calendar: calendar_v3.Calendar | null = null;
+    try {
+      calendar = await getCalendarClient();
+      steps.push({ name: "Refresh token", ok: true, detail: "Acceso renovado ✓" });
+    } catch (e) {
+      const msg = String((e as { message?: string }).message || e);
+      steps.push({
+        name: "Refresh token",
+        ok: false,
+        detail: msg.includes("invalid_grant")
+          ? "invalid_grant → el token CADUCÓ/fue revocado. Genera uno nuevo (OAuth Playground) y publica la app OAuth en 'In production' para que no caduque cada 7 días."
+          : msg,
+      });
+    }
+
+    // 3) Leer el calendario (permisos + calendarId correctos)
+    if (calendar) {
+      try {
+        const r = await calendar.events.list({ calendarId: CALENDAR_ID, maxResults: 1 });
+        steps.push({
+          name: "Lectura del calendario",
+          ok: true,
+          detail: `OK (${r.data.items?.length ?? 0} evento(s) leídos de prueba)`,
+        });
+      } catch (e) {
+        steps.push({ name: "Lectura del calendario", ok: false, detail: String((e as { message?: string }).message || e) });
+      }
+    } else {
+      steps.push({ name: "Lectura del calendario", ok: false, detail: "Omitido: sin acceso (paso anterior falló)" });
+    }
+
+    return { ok: steps.every((s) => s.ok), steps };
+  },
+);
+
 export const synchousetocalendar = onCall(
   { region: "us-central1", secrets: CALENDAR_SECRETS },
   async (request) => {

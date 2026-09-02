@@ -5004,3 +5004,6 @@
 
 /* ⭐ Selector del reparador de clientes */
 .hv-repair-select { min-width: 190px; padding: 8px 10px; }
+
+/* ⭐ Firma de la ultima nota */
+.hv-note-meta { font-size: 0.76rem; color: #64748b; align-self: center; }

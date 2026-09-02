@@ -48,6 +48,16 @@ export interface Property {
   scheduleDate: string;
   client: string;
   note: string;
+  /** ⭐ HISTORIAL DE NOTAS: cada creación/edición de note/officeNote/
+   *  employeeNote agrega una entrada con autor, fecha-hora, acción y el
+   *  texto que quedó — trazabilidad completa de quién escribió qué. */
+  notesHistory?: {
+    field: 'note' | 'officeNote' | 'employeeNote';
+    text: string;
+    user: string;
+    at: string;
+    action: 'created' | 'edited';
+  }[];
   address: string;
   employeeNote: string;
   /**
