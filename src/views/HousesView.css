@@ -5011,3 +5011,21 @@
 /* ⭐ Historial de notas por seccion */
 .hv-notehist-section { margin-bottom: 16px; }
 .hv-notehist-title { margin: 0 0 8px; font-size: 0.85rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* ⭐ Selector "Agrupar por" de Daily Jobs (Año / Mes / Semana / Día).
+   Los estilos del selector y de los encabezados de grupo viven en
+   src/components/DateGroupBar.css (compartidos con Invoices). */
+.houses-view .hv-group-bar-row {
+  padding: 10px 22px;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+.houses-view .jobs-cards-wrap > .dgb-group-card,
+.houses-view .jobs-cards-wrap > .dgb-more-btn {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .houses-view .hv-group-bar-row {
+    padding: 10px 16px;
+  }
+}

@@ -111,6 +111,13 @@ export interface Property {
   //    todos los puntos que cambian el status (ver src/utils/invoiceEntry.ts).
   //    Antes cada vista lo redeclaraba como extensión local del tipo.
   sentToInvoiceAt?: string | null;
+
+  // ⭐ Columnas de la hoja "Operations" llevadas a Invoices:
+  //    · issues: problemas del trabajo (columna "Issues"). Texto libre.
+  //    · taxExempt: el trabajo NO paga el 8.25% de Texas (en la hoja algunos
+  //      trabajos van con Taxes $0.00). Sin el campo = sí paga impuesto.
+  issues?: string;
+  taxExempt?: boolean;
 }
 
 // ==========================================

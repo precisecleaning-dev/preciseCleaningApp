@@ -1,0 +1,169 @@
+/* ===== Selector de agrupación por fecha (Invoices + Overview) ===== */
+.dgb-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dgb-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dgb-segmented {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.dgb-option {
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dgb-option:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+.dgb-option.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+/* ===== Encabezado de grupo (fila de tabla o bloque de tarjetas) ===== */
+.dgb-group-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+.dgb-group-row > td {
+  background: #eef2ff;
+  border-top: 1px solid #c7d2fe;
+  border-bottom: 1px solid #c7d2fe;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.dgb-group-row:hover > td {
+  background: #e0e7ff;
+}
+
+.dgb-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.dgb-group-chevron {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.dgb-group-chevron.open {
+  transform: rotate(90deg);
+}
+
+.dgb-group-count {
+  background: #ffffff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 8px;
+}
+
+.dgb-group-total {
+  font-weight: 800;
+  text-align: right;
+}
+
+.dgb-group-total.positive {
+  color: #047857;
+}
+
+.dgb-group-total.negative {
+  color: #dc2626;
+}
+
+/* Versión tarjeta (móvil) */
+.dgb-group-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.dgb-group-card-sub {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.dgb-more-row > td {
+  text-align: center;
+  padding: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dgb-more-btn {
+  border: 1px dashed #a5b4fc;
+  background: #ffffff;
+  color: #3730a3;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dgb-more-btn:hover {
+  background: #eef2ff;
+}
+
+@media (max-width: 700px) {
+  .dgb-segmented {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .dgb-segmented::-webkit-scrollbar {
+    display: none;
+  }
+  .dgb-option {
+    flex: 1 0 auto;
+  }
+}

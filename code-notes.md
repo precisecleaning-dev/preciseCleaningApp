@@ -199,6 +199,22 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Invoices con columnas de la hoja "Operations" + agrupar por fecha (2026-10-08)
+- **Invoices** ahora tiene las columnas de la hoja, en el mismo orden: Address, Client, Note, Date,
+  Team, Service Price, Taxes, Final Cost, Payroll, Profit, Profit Margin, Invoice, Notes, Issues, Week.
+  Fórmulas idénticas a la hoja: Taxes = 8.25% de Service Price (`TAX_RATE`), Final Cost = Price − Taxes,
+  Profit = Final Cost − Payroll, Margin = Profit / Final Cost. Service Price = suma de `billing_services`.
+- **Cambio de significado:** "Profit" antes era Billed − Payroll; ahora descuenta el impuesto (como la hoja).
+- Campos nuevos en `Property`: `issues` (columna Issues) y `taxExempt` (clic en la celda Taxes alterna
+  8.25% ↔ $0). "Notes" = `officeNote` y respeta el permiso 'Office Notes' (sin permiso, la columna no sale).
+- La columna Job Status salió de la TABLA (la hoja no la tiene); sigue en las tarjetas móviles y en el detalle.
+- **Agrupar por Año / Mes / Semana / Día** en Invoices y en Daily Jobs del Overview: lógica compartida en
+  `src/utils/dateGrouping.ts` (semana ISO = "Week Number" de la hoja), estado en `src/utils/useDateGroups.ts`
+  y selector `src/components/DateGroupBar.tsx`. Se agrupa la lista COMPLETA filtrada; los grupos arrancan
+  cerrados salvo el primero y cada uno pagina con "Mostrar más" (rendimiento con ~3,700 casas). En Invoices el
+  encabezado de grupo trae subtotales alineados a sus columnas. La preferencia se recuerda por navegador.
+- Fix de paso (móvil, Invoices): la búsqueda tenía `flex-basis: 260px` y en columna se volvía 260px de ALTO.
+
 ## Revisión del envío a Google Calendar (2026-10-07) — `functions/src/index.ts` + `HousesView.tsx`
 - **Evento borrado en Calendar se "actualizaba" igual:** `events.get` de un evento borrado NO da
   404, devuelve `status: "cancelled"`. La guardia solo miraba el `houseId`, así que se parchaba

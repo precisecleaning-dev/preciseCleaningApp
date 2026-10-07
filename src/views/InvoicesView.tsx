@@ -1,10 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
-  Search, MapPin, CalendarDays, ChevronDown, Users, Edit2, Trash2,
+  Search, MapPin, CalendarDays, ChevronDown, ChevronRight, Users, Edit2, Trash2,
   X, StickyNote, Menu, FileImage
 } from 'lucide-react';
+import DateGroupBar from '../components/DateGroupBar';
+import { groupByDate, weekNumberOf } from '../utils/dateGrouping';
+import { useDateGroups } from '../utils/useDateGroups';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
 import type { Property, Team, SystemUser, Role, Status, Customer, PayrollRecord } from '../types/index';
@@ -13,7 +16,7 @@ import { db } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
 import { mapCustomerDoc } from '../utils/customerDocs';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { getRelationName } from '../utils/relations';
+import { getRelationName, getRelationColor } from '../utils/relations';
 import { stampInvoiceEntry, invoiceEntryMs } from '../utils/invoiceEntry';
 import HousesView from './HousesView';
 import './InvoicesView.css';
@@ -33,6 +36,38 @@ const houseNote = (h: Property): string => {
   const g = h as PropertyNotes;
   return String(g.note || g.generalNotes || '').trim();
 };
+
+// ⭐ Impuesto de venta de Texas. Es el que usa la hoja "Operations":
+//    $200 → $16.50 · $425 → $35.06. Final Cost = Service Price − Taxes.
+const TAX_RATE = 0.0825;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(2)}%`);
+
+interface JobFinancials {
+  servicePrice: number;
+  taxes: number;
+  finalCost: number;
+  payroll: number;
+  profit: number;
+  /** Profit / Final Cost en %, igual que la hoja. null si Final Cost = 0. */
+  margin: number | null;
+}
+
+const marginOf = (profit: number, finalCost: number): number | null =>
+  finalCost > 0 ? (profit / finalCost) * 100 : null;
+
+// ⭐ Campos de texto editables desde las columnas Note / Notes / Issues.
+//    Note = nota general de la casa · Notes = nota de OFICINA (seguimiento:
+//    "After Photos Sent", "NO VA A PAGAR"…) · Issues = problemas del trabajo.
+type TextField = 'note' | 'officeNote' | 'issues';
+const TEXT_FIELD_LABEL: Record<TextField, string> = {
+  note: 'Note',
+  officeNote: 'Notes (oficina)',
+  issues: 'Issues',
+};
+const fieldText = (h: Property, field: TextField): string =>
+  field === 'note' ? houseNote(h) : String(h[field] || '').trim();
 
 // billing_services no tiene un tipo compartido en types/index.ts todavía.
 interface BilledServiceRecord {
@@ -198,6 +233,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filterStatus, searchClient, startDate, endDate]);
 
+  // ⭐ Agrupación por Año / Mes / Semana / Día (preferencia recordada por navegador)
+  const grouping = useDateGroups('pc.invoices.groupMode');
+
   // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
   //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
   //    exactamente el mismo que en Overview.
@@ -225,16 +263,18 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setDetailTab('media');
     setHouseToView(house);
   };
-  // ⭐ NOTA en modal: antes se pintaba dentro de la celda de cliente y hacia
-  //    que las filas crecieran mucho. Ahora se abre desde el boton de notas y
-  //    se puede editar. Se guarda en el campo `note` de la casa.
+  // ⭐ EDITOR DE TEXTO en modal para las columnas Note / Notes / Issues: la
+  //    celda muestra UNA línea truncada (la fila no crece) y al tocarla se abre
+  //    el texto completo para verlo o editarlo. Cada columna guarda su campo.
   const [noteHouse, setNoteHouse] = useState<Property | null>(null);
+  const [noteField, setNoteField] = useState<TextField>('note');
   const [noteDraft, setNoteDraft] = useState('');
   const [isSavingNote, setIsSavingNote] = useState(false);
 
-  const openNote = (prop: Property) => {
+  const openNote = (prop: Property, field: TextField = 'note') => {
     setNoteHouse(prop);
-    setNoteDraft(houseNote(prop));
+    setNoteField(field);
+    setNoteDraft(fieldText(prop, field));
   };
 
   const saveNote = async () => {
@@ -242,8 +282,10 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSavingNote(true);
     try {
       const value = noteDraft.trim();
-      await propertiesService.update(noteHouse.id, { note: value });
-      setProperties(properties.map(p => p.id === noteHouse.id ? { ...p, note: value } : p));
+      const payload: Partial<Property> = {};
+      payload[noteField] = value;
+      await propertiesService.update(noteHouse.id, payload);
+      setProperties(properties.map(p => p.id === noteHouse.id ? { ...p, ...payload } : p));
       setNoteHouse(null);
     } catch (error) {
       console.error("Error saving note:", error);
@@ -258,6 +300,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
   const canDelete = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canDelete;
+  // ⭐ La columna "Notes" es la nota de OFICINA: mismo permiso 'Office Notes'
+  //    que el detalle de Houses y Quality Check. Sin permiso, la columna no sale.
+  const canSeeOfficeNotes = !!isSuperAdmin || !!activeRole?.permissions?.find(p => p.module === 'Office Notes')?.canView;
 
   // ⭐ Resolver el nombre del cliente a partir del ID guardado en la propiedad.
   //    Retrocompatible: si el valor es un nombre legacy se devuelve igual.
@@ -354,6 +399,22 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     }
   };
 
+  // ⭐ Exento de impuestos (columna Taxes): alterna el 8.25% del trabajo.
+  //    Recibe la casa del clic (no un "seleccionado") — ver CLAUDE.md.
+  const handleToggleTax = async (prop: Property) => {
+    const taxExempt = !prop.taxExempt;
+    setIsSaving(true);
+    try {
+      await propertiesService.update(prop.id, { taxExempt });
+      setProperties(properties.map(p => p.id === prop.id ? { ...p, taxExempt } : p));
+    } catch (error) {
+      console.error("Error updating tax:", error);
+      alert("Failed to update taxes.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDelete = async (propertyId: string) => {
     if (!window.confirm("Are you sure you want to completely delete this job?")) return;
     setIsSaving(true);
@@ -369,6 +430,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   };
 
   const getTeamName = (teamId?: string) => getRelationName(teams, teamId || '', 'Unassigned');
+  const getTeamColor = (teamId?: string) => getRelationColor(teams, teamId || '') || '#94a3b8';
 
   // Filtro de scope (sólo lo que el usuario tiene permitido ver)
 
@@ -489,24 +551,270 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     return m;
   }, [billedServices, payrolls]);
 
-  const calcFinancials = (prop: Property) => {
+  // ⭐ Mismas fórmulas que la hoja "Operations":
+  //    Service Price = suma de los servicios cobrados (billing_services)
+  //    Taxes         = 8.25% del Service Price (0 si la casa está exenta)
+  //    Final Cost    = Service Price − Taxes
+  //    Profit        = Final Cost − Payroll
+  //    Profit Margin = Profit / Final Cost
+  const calcFinancials = (prop: Property): JobFinancials => {
     const e = financialsByProp.get(prop.id);
-    const totalCost = e?.totalCost || 0;
-    const payrollTotal = e?.payrollTotal || 0;
-    return { totalCost, payrollTotal, profit: totalCost - payrollTotal };
+    const servicePrice = round2(e?.totalCost || 0);
+    const payroll = round2(e?.payrollTotal || 0);
+    const taxes = prop.taxExempt ? 0 : round2(servicePrice * TAX_RATE);
+    const finalCost = round2(servicePrice - taxes);
+    const profit = round2(finalCost - payroll);
+    return { servicePrice, taxes, finalCost, payroll, profit, margin: marginOf(profit, finalCost) };
+  };
+
+  const sumFinancials = (list: Property[]): JobFinancials => {
+    const t = { servicePrice: 0, taxes: 0, finalCost: 0, payroll: 0, profit: 0 };
+    list.forEach(p => {
+      const f = calcFinancials(p);
+      t.servicePrice += f.servicePrice;
+      t.taxes += f.taxes;
+      t.finalCost += f.finalCost;
+      t.payroll += f.payroll;
+      t.profit += f.profit;
+    });
+    return { ...t, margin: marginOf(t.profit, t.finalCost) };
   };
 
   // ⭐ Totales del rango que se esta viendo (respeta chips, fechas y busqueda).
-  const filteredTotals = useMemo(() => {
-    let billed = 0;
-    let payroll = 0;
-    filteredProperties.forEach(p => {
-      const e = financialsByProp.get(p.id);
-      billed += e?.totalCost || 0;
-      payroll += e?.payrollTotal || 0;
-    });
-    return { billed, payroll, profit: billed - payroll };
-  }, [filteredProperties, financialsByProp]);
+  const filteredTotals = useMemo(
+    () => sumFinancials(filteredProperties),
+    // calcFinancials solo depende de financialsByProp
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredProperties, financialsByProp]
+  );
+
+  // ⭐ Grupos por fecha (Schedule Date). Dentro de cada grupo las casas van de la
+  //    más reciente a la más antigua; cada grupo trae sus subtotales.
+  const groups = useMemo(() => {
+    if (grouping.mode === 'none') return [];
+    const byDate = [...filteredProperties].sort(
+      (a, b) => parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate)
+    );
+    return groupByDate(byDate, p => p.scheduleDate, grouping.mode, 'desc').map(g => ({
+      ...g,
+      totals: sumFinancials(g.items),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredProperties, financialsByProp, grouping.mode]);
+
+  // Al cambiar los filtros, los grupos vuelven a su estado inicial
+  useEffect(() => {
+    grouping.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, searchClient, startDate, endDate]);
+
+  const isGrouped = grouping.mode !== 'none';
+  // Columnas de la tabla: "Notes" (oficina) solo con permiso
+  const COLS = canSeeOfficeNotes ? 16 : 15;
+
+  // Celda de texto de una línea (Note / Notes / Issues): abre el editor
+  const textCell = (prop: Property, field: TextField) => {
+    const text = fieldText(prop, field);
+    return (
+      <td
+        className={`inv-td inv-col-text${field === 'issues' && text ? ' issue' : ''}`}
+        title={text || (canEdit ? `Agregar ${TEXT_FIELD_LABEL[field]}` : '')}
+        onClick={(e) => { e.stopPropagation(); openNote(prop, field); }}
+      >
+        {text ? <span className="inv-cell-ellipsis">{text}</span> : <span className="inv-cell-empty">—</span>}
+      </td>
+    );
+  };
+
+  const renderRow = (prop: Property) => {
+    const f = calcFinancials(prop);
+    const week = weekNumberOf(prop.scheduleDate);
+    return (
+      <tr key={prop.id} onClick={() => openDetail(prop)} className="inv-row">
+        <td className="inv-td inv-col-address" title={prop.address || ''}>
+          <span className="inv-cell-ellipsis">{prop.address || '-'}</span>
+        </td>
+        <td className="inv-td inv-col-client" title={getClientName(prop.client)}>
+          <span className="inv-cell-ellipsis strong">{getClientName(prop.client)}</span>
+        </td>
+        {textCell(prop, 'note')}
+        <td className="inv-td strong nowrap">{prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}</td>
+        <td className="inv-td nowrap">
+          <span className="inv-team-pill" style={{ '--team-color': getTeamColor(prop.teamId) } as CSSProperties}>
+            {getTeamName(prop.teamId)}
+          </span>
+        </td>
+        <td className="inv-td right money">{money(f.servicePrice)}</td>
+        <td className="inv-td right money" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className={`inv-tax-btn${prop.taxExempt ? ' exempt' : ''}`}
+            disabled={isSaving || !canEdit}
+            onClick={() => handleToggleTax(prop)}
+            title={prop.taxExempt ? 'Exento de impuestos — clic para cobrar 8.25%' : '8.25% Texas — clic para marcar exento'}
+          >
+            {money(f.taxes)}
+          </button>
+        </td>
+        <td className="inv-td right money">{money(f.finalCost)}</td>
+        <td className="inv-td right money payroll">{money(f.payroll)}</td>
+        <td className={`inv-td right money profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>{money(f.profit)}</td>
+        <td className={`inv-td right money ${f.margin !== null && f.margin < 0 ? 'negative' : ''}`}>{pct(f.margin)}</td>
+        <td className="inv-td" onClick={(e) => e.stopPropagation()}>
+          <InvoiceStatusPill
+            currentStatus={prop.invoiceStatus || 'Pending'}
+            onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
+            disabled={isSaving || (!isSuperAdmin && !canEdit)}
+          />
+        </td>
+        {canSeeOfficeNotes && textCell(prop, 'officeNote')}
+        {textCell(prop, 'issues')}
+        <td className="inv-td center muted">{week ?? '—'}</td>
+        <td className="inv-td center" onClick={(e) => e.stopPropagation()}>
+          <div className="inv-actions-cell">
+            <button
+              onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
+              title="Photos / Export PDF"
+              className="inv-icon-btn photos"
+            >
+              <FileImage size={16} />
+            </button>
+            {canEdit && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
+                title="Edit Job"
+                className="inv-icon-btn edit"
+              >
+                <Edit2 size={16} />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+                title="Delete Job"
+                className="inv-icon-btn delete"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderCard = (prop: Property) => {
+    const f = calcFinancials(prop);
+    const clientName = getClientName(prop.client);
+    const officeNote = canSeeOfficeNotes ? fieldText(prop, 'officeNote') : '';
+    const issues = fieldText(prop, 'issues');
+    return (
+      <div key={prop.id} onClick={() => openDetail(prop)} className="inv-job-card">
+        {/* Título + profit */}
+        <div className="inv-card-top-row">
+          <span className="inv-card-client-name">{clientName}</span>
+          <span className={`inv-card-profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>
+            {money(f.profit)} <span className="inv-card-margin">{pct(f.margin)}</span>
+          </span>
+        </div>
+
+        {/* Info con iconos */}
+        <div className="inv-card-info-col">
+          <div className="inv-card-info-row">
+            <MapPin size={16} color="#94a3b8" className="inv-shrink-0" />
+            <span className="inv-card-info-text">{prop.address || '—'}</span>
+          </div>
+          <div className="inv-card-info-row">
+            <CalendarDays size={16} color="#94a3b8" className="inv-shrink-0" />
+            <span>
+              {prop.scheduleDate ? formatDate(prop.scheduleDate) : 'Sin fecha'}
+              {weekNumberOf(prop.scheduleDate) !== null && ` · Week ${weekNumberOf(prop.scheduleDate)}`}
+            </span>
+          </div>
+          <div className="inv-card-info-row">
+            <Users size={16} color="#94a3b8" className="inv-shrink-0" />
+            <span>{getTeamName(prop.teamId)}</span>
+          </div>
+          {/* ⭐ Notas: maximo 2 lineas, para que la tarjeta no crezca sin
+              control. El texto completo se abre tocando la nota. */}
+          {houseNote(prop) !== '' && (
+            <div className="inv-card-note" onClick={(e) => { e.stopPropagation(); openNote(prop, 'note'); }}>
+              <StickyNote size={14} className="inv-shrink-0 inv-card-note-icon" />
+              <span className="inv-card-note-text">{houseNote(prop)}</span>
+            </div>
+          )}
+          {officeNote !== '' && (
+            <div className="inv-card-note" onClick={(e) => { e.stopPropagation(); openNote(prop, 'officeNote'); }}>
+              <StickyNote size={14} className="inv-shrink-0 inv-card-note-icon" />
+              <span className="inv-card-note-text">{officeNote}</span>
+            </div>
+          )}
+          {issues !== '' && (
+            <div className="inv-card-note issue" onClick={(e) => { e.stopPropagation(); openNote(prop, 'issues'); }}>
+              <StickyNote size={14} className="inv-shrink-0 inv-card-note-icon" />
+              <span className="inv-card-note-text">{issues}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Pills de estado (ancho completo) */}
+        <div className="inv-card-pills-col" onClick={(e) => e.stopPropagation()}>
+          <InvoiceStatusPill
+            fullWidth
+            currentStatus={prop.invoiceStatus || 'Pending'}
+            onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
+            disabled={isSaving || (!isSuperAdmin && !canEdit)}
+          />
+          <JobStatusPill
+            fullWidth
+            currentStatusId={prop.statusId}
+            statuses={statuses}
+            onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
+            onRequestOpen={setStatusModal}
+            modalTitle={getClientName(prop.client)}
+            modalSubtitle={prop.address}
+            disabled={isSaving || (!isSuperAdmin && !canEdit)}
+          />
+        </div>
+
+        {/* Resumen financiero (mismas fórmulas que la hoja) */}
+        <dl className="inv-card-fin-grid">
+          <div><dt>Service Price</dt><dd>{money(f.servicePrice)}</dd></div>
+          <div><dt>Taxes{prop.taxExempt ? ' (exento)' : ''}</dt><dd>{money(f.taxes)}</dd></div>
+          <div><dt>Final Cost</dt><dd>{money(f.finalCost)}</dd></div>
+          <div><dt>Payroll</dt><dd>{money(f.payroll)}</dd></div>
+        </dl>
+
+        {/* Acciones */}
+        <div className="inv-card-actions-row" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => { e.stopPropagation(); openNote(prop, 'note'); }}
+            className={`inv-card-btn note${houseNote(prop) !== '' ? ' has-note' : ''}`}>
+            <StickyNote size={16} /> Nota
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
+            className="inv-card-btn photos">
+            <FileImage size={16} /> Fotos
+          </button>
+          {canEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
+              className="inv-card-btn edit">
+              <Edit2 size={16} /> Editar
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+              className="inv-card-btn delete">
+              <Trash2 size={16} /> Borrar
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="fade-in invoices-view inv-page">
@@ -523,20 +831,28 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       </header>
 
 
-      {/* ⭐ RESUMEN del rango filtrado: mismos numeros que ya calcula la tabla. */}
+      {/* ⭐ RESUMEN del rango filtrado — mismas columnas de dinero que la hoja. */}
       <div className="inv-kpi-grid">
         <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Billed (filtered)</div>
-          <div className="inv-kpi-value">${filteredTotals.billed.toFixed(2)}</div>
+          <div className="inv-kpi-label">Service Price</div>
+          <div className="inv-kpi-value">{money(filteredTotals.servicePrice)}</div>
+        </div>
+        <div className="inv-kpi-card">
+          <div className="inv-kpi-label">Taxes (8.25%)</div>
+          <div className="inv-kpi-value">{money(filteredTotals.taxes)}</div>
+        </div>
+        <div className="inv-kpi-card">
+          <div className="inv-kpi-label">Final Cost</div>
+          <div className="inv-kpi-value">{money(filteredTotals.finalCost)}</div>
         </div>
         <div className="inv-kpi-card">
           <div className="inv-kpi-label">Payroll</div>
-          <div className="inv-kpi-value">${filteredTotals.payroll.toFixed(2)}</div>
+          <div className="inv-kpi-value">{money(filteredTotals.payroll)}</div>
         </div>
         <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Net Profit</div>
+          <div className="inv-kpi-label">Profit · {pct(filteredTotals.margin)}</div>
           <div className={`inv-kpi-value profit${filteredTotals.profit < 0 ? " negative" : ""}`}>
-            ${filteredTotals.profit.toFixed(2)}
+            {money(filteredTotals.profit)}
           </div>
         </div>
       </div>
@@ -591,146 +907,79 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </div>
       </div>
 
+      {/* ⭐ Agrupar por Año / Mes / Semana / Día */}
+      <div className="inv-group-row">
+        <DateGroupBar mode={grouping.mode} onChange={grouping.setMode} />
+      </div>
+
       </div>{/* /inv-filters-card */}
 
-      {/* TABLA PRINCIPAL (escritorio) */}
+      {/* TABLA PRINCIPAL (escritorio) — mismas columnas y orden que la hoja "Operations" */}
       <div className="inv-table-wrap">
         <table className="inv-table">
           <thead>
             <tr>
-              <th className="inv-th">Invoice Status</th>
-              <th className="inv-th">Job Status</th>
-              <th className="inv-th">Client / Address</th>
-              <th className="inv-th">Schedule Date</th>
+              <th className="inv-th">Address</th>
+              <th className="inv-th">Client</th>
+              <th className="inv-th">Note</th>
+              <th className="inv-th">Date</th>
               <th className="inv-th">Team</th>
-              <th className="inv-th right">Total Cost</th>
-              <th className="inv-th right">Payroll Total</th>
+              <th className="inv-th right">Service Price</th>
+              <th className="inv-th right">Taxes</th>
+              <th className="inv-th right">Final Cost</th>
+              <th className="inv-th right">Payroll</th>
               <th className="inv-th right">Profit</th>
-              {/* ⭐ Actions al final de la tabla */}
+              <th className="inv-th right">Profit Margin</th>
+              <th className="inv-th">Invoice</th>
+              {canSeeOfficeNotes && <th className="inv-th">Notes</th>}
+              <th className="inv-th">Issues</th>
+              <th className="inv-th center">Week</th>
               <th className="inv-th center">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="inv-empty-row">Loading financial data...</td></tr>
+              <tr><td colSpan={COLS} className="inv-empty-row">Loading financial data...</td></tr>
             ) : invoiceProps.length === 0 ? (
-              <tr><td colSpan={9} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
+              <tr><td colSpan={COLS} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
             ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={9} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
-            ) : visibleProperties.map(prop => {
-
-              const { totalCost, payrollTotal, profit } = calcFinancials(prop);
-              const clientName = getClientName(prop.client);
-
+              <tr><td colSpan={COLS} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
+            ) : !isGrouped ? (
+              visibleProperties.map(renderRow)
+            ) : groups.map((g, i) => {
+              const open = grouping.isOpen(g.key, i);
+              const shown = grouping.visibleCount(g.key);
+              const t = g.totals;
               return (
-                <tr
-                  key={prop.id}
-                  onClick={() => openDetail(prop)}
-                  className="inv-row"
-                >
-
-                  <td className="inv-td" onClick={(e) => e.stopPropagation()}>
-                    <InvoiceStatusPill
-                      currentStatus={prop.invoiceStatus || 'Pending'}
-                      onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
-                      disabled={isSaving || (!isSuperAdmin && !canEdit)}
-                    />
-                  </td>
-
-                  {/* JOB STATUS editable inline */}
-                  <td className="inv-td" onClick={(e) => e.stopPropagation()}>
-                    <JobStatusPill
-                      currentStatusId={prop.statusId}
-                      statuses={statuses}
-                      onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
-                      onRequestOpen={setStatusModal}
-                      modalTitle={getClientName(prop.client)}
-                      modalSubtitle={prop.address}
-                      disabled={isSaving || (!isSuperAdmin && !canEdit)}
-                    />
-                  </td>
-
-                  <td className="inv-td">
-                    <div className="inv-client-name">{clientName}</div>
-                    <div className="inv-client-address">
-                      <MapPin size={12} /> {prop.address || '-'}
-                    </div>
-                    {/* ⭐ Nota en UNA sola linea truncada. Antes ocupaba varias
-                        lineas y estiraba la fila; ahora el alto es fijo y el
-                        texto completo se ve en el tooltip o en el modal. */}
-                    {houseNote(prop) !== '' && (
-                      <div
-                        className="inv-note-line"
-                        title={houseNote(prop)}
-                        onClick={(e) => { e.stopPropagation(); openNote(prop); }}
-                      >
-                        <StickyNote size={11} className="inv-note-line-icon" />
-                        <span className="inv-note-line-text">{houseNote(prop)}</span>
-                      </div>
-                    )}
-                  </td>
-
-                  <td className="inv-td strong">
-                    {prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}
-                  </td>
-
-                  <td className="inv-td muted">
-                    <div className="inv-team-cell">
-                      <Users size={14} /> {getTeamName(prop.teamId)}
-                    </div>
-                  </td>
-
-                  <td className="inv-td right cost">
-                    ${totalCost.toFixed(2)}
-                  </td>
-
-                  <td className="inv-td right payroll">
-                    ${payrollTotal.toFixed(2)}
-                  </td>
-
-                  <td className={`inv-td right profit ${profit >= 0 ? 'positive' : 'negative'}`}>
-                    ${profit.toFixed(2)}
-                  </td>
-
-                  {/* ⭐ ACTIONS al final. Sin el ojo: el detalle se abre haciendo
-                      click en la fila. La nota se edita en su propio modal. */}
-                  <td className="inv-td center" onClick={(e) => e.stopPropagation()}>
-                    <div className="inv-actions-cell">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openNote(prop); }}
-                        title={houseNote(prop) !== '' ? houseNote(prop) : "Add note"}
-                        className={`inv-icon-btn note${houseNote(prop) !== '' ? ' has-note' : ''}`}
-                      >
-                        <StickyNote size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
-                        title="Photos / Export PDF"
-                        className="inv-icon-btn photos"
-                      >
-                        <FileImage size={16} />
-                      </button>
-                      {canEdit && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
-                          title="Edit Job"
-                          className="inv-icon-btn edit"
-                        >
-                          <Edit2 size={16} />
+                <Fragment key={g.key}>
+                  {/* Encabezado del grupo con SUBTOTALES alineados a sus columnas */}
+                  <tr className="dgb-group-row" onClick={() => grouping.toggle(g.key, i, groups[0]?.key)}>
+                    <td colSpan={5}>
+                      <span className="dgb-group-title">
+                        <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
+                        {g.label}
+                        <span className="dgb-group-count">{g.items.length} jobs</span>
+                      </span>
+                    </td>
+                    <td className="dgb-group-total">{money(t.servicePrice)}</td>
+                    <td className="dgb-group-total">{money(t.taxes)}</td>
+                    <td className="dgb-group-total">{money(t.finalCost)}</td>
+                    <td className="dgb-group-total">{money(t.payroll)}</td>
+                    <td className={`dgb-group-total ${t.profit >= 0 ? 'positive' : 'negative'}`}>{money(t.profit)}</td>
+                    <td className="dgb-group-total">{pct(t.margin)}</td>
+                    <td colSpan={COLS - 11}></td>
+                  </tr>
+                  {open && g.items.slice(0, shown).map(renderRow)}
+                  {open && g.items.length > shown && (
+                    <tr className="dgb-more-row">
+                      <td colSpan={COLS}>
+                        <button className="dgb-more-btn" onClick={() => grouping.showMore(g.key)}>
+                          Mostrar más — viendo {shown} de {g.items.length}
                         </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
-                          title="Delete Job"
-                          className="inv-icon-btn delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -745,120 +994,38 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
         ) : filteredProperties.length === 0 ? (
           <div className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</div>
-        ) : visibleProperties.map(prop => {
-
-          const { totalCost, payrollTotal, profit } = calcFinancials(prop);
-          const clientName = getClientName(prop.client);
-
+        ) : !isGrouped ? (
+          visibleProperties.map(renderCard)
+        ) : groups.map((g, i) => {
+          const open = grouping.isOpen(g.key, i);
+          const shown = grouping.visibleCount(g.key);
           return (
-            <div
-              key={prop.id}
-              onClick={() => openDetail(prop)}
-              className="inv-job-card"
-            >
-              {/* Título + profit */}
-              <div className="inv-card-top-row">
-                <span className="inv-card-client-name">
-                  {clientName}
+            <Fragment key={g.key}>
+              <button type="button" className="dgb-group-card" onClick={() => grouping.toggle(g.key, i, groups[0]?.key)}>
+                <span className="dgb-group-title">
+                  <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
+                  {g.label}
+                  <span className="dgb-group-count">{g.items.length}</span>
                 </span>
-                <span className={`inv-card-profit ${profit >= 0 ? 'positive' : 'negative'}`}>
-                  ${profit.toFixed(2)}
+                <span className={`dgb-group-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>
+                  {money(g.totals.profit)}
+                  <span className="dgb-group-card-sub"> · {money(g.totals.servicePrice)}</span>
                 </span>
-              </div>
-
-              {/* Info con iconos */}
-              <div className="inv-card-info-col">
-                <div className="inv-card-info-row">
-                  <MapPin size={16} color="#94a3b8" className="inv-shrink-0" />
-                  <span className="inv-card-info-text">{prop.address || '—'}</span>
-                </div>
-                <div className="inv-card-info-row">
-                  <CalendarDays size={16} color="#94a3b8" className="inv-shrink-0" />
-                  <span>{prop.scheduleDate ? formatDate(prop.scheduleDate) : 'Sin fecha'}</span>
-                </div>
-                <div className="inv-card-info-row">
-                  <Users size={16} color="#94a3b8" className="inv-shrink-0" />
-                  <span>{getTeamName(prop.teamId)}</span>
-                </div>
-                {/* ⭐ Nota: maximo 2 lineas, para que la tarjeta no crezca sin
-                    control. El texto completo se abre con el boton "Nota". */}
-                {houseNote(prop) !== '' && (
-                  <div
-                    className="inv-card-note"
-                    onClick={(e) => { e.stopPropagation(); openNote(prop); }}
-                  >
-                    <StickyNote size={14} className="inv-shrink-0 inv-card-note-icon" />
-                    <span className="inv-card-note-text">{houseNote(prop)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Pills de estado (ancho completo) */}
-              <div className="inv-card-pills-col" onClick={(e) => e.stopPropagation()}>
-                <InvoiceStatusPill
-                  fullWidth
-                  currentStatus={prop.invoiceStatus || 'Pending'}
-                  onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
-                  disabled={isSaving || (!isSuperAdmin && !canEdit)}
-                />
-                <JobStatusPill
-                  fullWidth
-                  currentStatusId={prop.statusId}
-                  statuses={statuses}
-                  onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
-                  onRequestOpen={setStatusModal}
-                  modalTitle={getClientName(prop.client)}
-                  modalSubtitle={prop.address}
-                  disabled={isSaving || (!isSuperAdmin && !canEdit)}
-                />
-              </div>
-
-              {/* Mini resumen financiero */}
-              <div className="inv-card-mini-summary">
-                <div className="inv-card-mini-box cost">
-                  <div className="inv-card-mini-label cost">Total Cost</div>
-                  <div className="inv-card-mini-value cost">${totalCost.toFixed(2)}</div>
-                </div>
-                <div className="inv-card-mini-box payroll">
-                  <div className="inv-card-mini-label payroll">Payroll</div>
-                  <div className="inv-card-mini-value payroll">${payrollTotal.toFixed(2)}</div>
-                </div>
-              </div>
-
-              {/* Acciones */}
-              <div className="inv-card-actions-row" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openNote(prop); }}
-                  className={`inv-card-btn note${houseNote(prop) !== '' ? ' has-note' : ''}`}>
-                  <StickyNote size={16} /> Nota
+              </button>
+              {open && g.items.slice(0, shown).map(renderCard)}
+              {open && g.items.length > shown && (
+                <button className="dgb-more-btn" onClick={() => grouping.showMore(g.key)}>
+                  Mostrar más — viendo {shown} de {g.items.length}
                 </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); openPhotosPdf(prop); }}
-                  className="inv-card-btn photos">
-                  <FileImage size={16} /> Fotos
-                </button>
-                {canEdit && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openEdit(prop); }}
-                    className="inv-card-btn edit">
-                    <Edit2 size={16} /> Editar
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
-                    className="inv-card-btn delete">
-                    <Trash2 size={16} /> Borrar
-                  </button>
-                )}
-              </div>
-            </div>
+              )}
+            </Fragment>
           );
         })}
       </div>
 
-      {/* ⭐ Paginación: carga el resto por bloques (aplica a tabla y tarjetas) */}
-      {!isLoading && filteredProperties.length > visibleCount && (
+      {/* ⭐ Paginación: carga el resto por bloques (aplica a tabla y tarjetas).
+          Agrupado, cada grupo tiene su propio "Mostrar más". */}
+      {!isLoading && !isGrouped && filteredProperties.length > visibleCount && (
         <div className="inv-load-more-row">
           <button className="inv-load-more-btn" onClick={() => setVisibleCount(c => c + 100)}>
             Mostrar más — viendo {visibleCount} de {filteredProperties.length}
@@ -872,7 +1039,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <div className="modal-70 inv-note-modal" onClick={e => e.stopPropagation()}>
             <header className="inv-modal-header">
               <div>
-                <h3 className="inv-modal-title">Note</h3>
+                <h3 className="inv-modal-title">{TEXT_FIELD_LABEL[noteField]}</h3>
                 <p className="inv-note-modal-sub">{getClientName(noteHouse.client)} · {noteHouse.address || '-'}</p>
               </div>
               <button className="inv-modal-close" onClick={() => setNoteHouse(null)}><X size={24} /></button>
@@ -884,7 +1051,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 value={noteDraft}
                 onChange={e => setNoteDraft(e.target.value)}
                 disabled={!canEdit || isSavingNote}
-                placeholder={canEdit ? "Escribe la nota de esta casa..." : "Sin nota"}
+                placeholder={canEdit ? `Escribe ${TEXT_FIELD_LABEL[noteField]} de esta casa...` : "Sin texto"}
                 rows={8}
               />
             </div>

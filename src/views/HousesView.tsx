@@ -55,6 +55,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  ChevronRight,
 } from "lucide-react";
 
 import type {
@@ -77,6 +78,9 @@ import { trashService } from "../services/trashService";
 // ⭐ Clientes: mapeo correcto (legacy id aparte) y resolución por ambos ids.
 import { mapCustomerDoc, displayClientName, resolveCustomerName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import DateGroupBar from "../components/DateGroupBar";
+import { groupByDate, type DateGroup } from "../utils/dateGrouping";
+import { useDateGroups } from "../utils/useDateGroups";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
 import type { PhotoConfig } from "../services/photoConfigService";
@@ -2459,6 +2463,45 @@ export default function HousesView({
   );
   const remainingJobs = filteredProperties.length - visibleProperties.length;
 
+  // ⭐ AGRUPAR Daily Jobs por Año / Mes / Semana / Día. Se agrupa la lista
+  //    COMPLETA filtrada (no solo la página visible) para que el conteo de cada
+  //    grupo sea real; las filas de cada grupo se pintan por bloques.
+  const jobGrouping = useDateGroups("pc.overview.groupMode");
+  const isJobsGrouped = jobGrouping.mode !== "none";
+  const jobGroups = useMemo(
+    () =>
+      isJobsGrouped
+        ? groupByDate(filteredProperties, (p) => p.scheduleDate, jobGrouping.mode, "desc")
+        : [],
+    [filteredProperties, isJobsGrouped, jobGrouping.mode],
+  );
+  useEffect(() => {
+    jobGrouping.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter, houseFilter, invoiceFilter, statusFilter, priorityFilter, searchTerm]);
+
+  // Lista "aplanada" que pintan la tabla y las tarjetas: encabezado de grupo,
+  // trabajos del grupo abierto y, si quedan, un "Mostrar más" del grupo.
+  type JobEntry =
+    | { kind: "group"; group: DateGroup<Property>; index: number; open: boolean }
+    | { kind: "job"; prop: Property }
+    | { kind: "more"; key: string; shown: number; total: number };
+  const jobEntries: JobEntry[] = isJobsGrouped
+    ? jobGroups.flatMap((g, index): JobEntry[] => {
+        const open = jobGrouping.isOpen(g.key, index);
+        const shown = jobGrouping.visibleCount(g.key);
+        const out: JobEntry[] = [{ kind: "group", group: g, index, open }];
+        if (open) {
+          g.items.slice(0, shown).forEach((prop) => out.push({ kind: "job", prop }));
+          if (g.items.length > shown)
+            out.push({ kind: "more", key: g.key, shown, total: g.items.length });
+        }
+        return out;
+      })
+    : visibleProperties.map((prop): JobEntry => ({ kind: "job", prop }));
+  const toggleJobGroup = (key: string, index: number) =>
+    jobGrouping.toggle(key, index, jobGroups[0]?.key);
+
   // ⭐ TABLERO (Pipeline): incluye Quality Check; solo oculta Invoice.
   const boardProperties = useMemo(
     () =>
@@ -4698,6 +4741,14 @@ export default function HousesView({
                       </div>
                     </div>
 
+                    {/* ⭐ Agrupar por Año / Mes / Semana / Día */}
+                    <div className="hv-group-bar-row">
+                      <DateGroupBar
+                        mode={jobGrouping.mode}
+                        onChange={jobGrouping.setMode}
+                      />
+                    </div>
+
                     {/* ====== VISTA TABLA (escritorio) ====== */}
                     <div className="jobs-table-wrap hv-jobs-table-wrap">
                       <table className="responsive-table hv-table">
@@ -4726,7 +4777,47 @@ export default function HousesView({
                               </td>
                             </tr>
                           ) : (
-                            visibleProperties.map((prop) => {
+                            jobEntries.map((entry) => {
+                              if (entry.kind === "group") {
+                                return (
+                                  <tr
+                                    key={`g-${entry.group.key}`}
+                                    className="dgb-group-row"
+                                    onClick={() =>
+                                      toggleJobGroup(entry.group.key, entry.index)
+                                    }
+                                  >
+                                    <td colSpan={7}>
+                                      <span className="dgb-group-title">
+                                        <ChevronRight
+                                          size={16}
+                                          className={`dgb-group-chevron${entry.open ? " open" : ""}`}
+                                        />
+                                        {entry.group.label}
+                                        <span className="dgb-group-count">
+                                          {entry.group.items.length} jobs
+                                        </span>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              if (entry.kind === "more") {
+                                return (
+                                  <tr key={`m-${entry.key}`} className="dgb-more-row">
+                                    <td colSpan={7}>
+                                      <button
+                                        className="dgb-more-btn"
+                                        onClick={() => jobGrouping.showMore(entry.key)}
+                                      >
+                                        Mostrar más — viendo {entry.shown} de{" "}
+                                        {entry.total}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              const prop = entry.prop;
                               const teamName = getRelationName(
                                 teams,
                                 prop.teamId,
@@ -4863,7 +4954,7 @@ export default function HousesView({
                           )}
                         </tbody>
                       </table>
-                      {remainingJobs > 0 && (
+                      {!isJobsGrouped && remainingJobs > 0 && (
                         <div className="hv-loadmore-wrap">
                           <button
                             className="hv-btn-loadmore"
@@ -4886,7 +4977,42 @@ export default function HousesView({
                           No jobs to display for your team.
                         </div>
                       ) : (
-                        visibleProperties.map((prop) => {
+                        jobEntries.map((entry) => {
+                          if (entry.kind === "group") {
+                            return (
+                              <button
+                                type="button"
+                                key={`g-${entry.group.key}`}
+                                className="dgb-group-card"
+                                onClick={() =>
+                                  toggleJobGroup(entry.group.key, entry.index)
+                                }
+                              >
+                                <span className="dgb-group-title">
+                                  <ChevronRight
+                                    size={16}
+                                    className={`dgb-group-chevron${entry.open ? " open" : ""}`}
+                                  />
+                                  {entry.group.label}
+                                </span>
+                                <span className="dgb-group-count">
+                                  {entry.group.items.length}
+                                </span>
+                              </button>
+                            );
+                          }
+                          if (entry.kind === "more") {
+                            return (
+                              <button
+                                key={`m-${entry.key}`}
+                                className="dgb-more-btn"
+                                onClick={() => jobGrouping.showMore(entry.key)}
+                              >
+                                Mostrar más — viendo {entry.shown} de {entry.total}
+                              </button>
+                            );
+                          }
+                          const prop = entry.prop;
                           const teamName = getRelationName(
                             teams,
                             prop.teamId,
@@ -5055,7 +5181,7 @@ export default function HousesView({
                           );
                         })
                       )}
-                      {remainingJobs > 0 && (
+                      {!isJobsGrouped && remainingJobs > 0 && (
                         <div className="hv-loadmore-wrap">
                           <button
                             className="hv-btn-loadmore"
