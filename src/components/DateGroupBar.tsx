@@ -7,14 +7,18 @@ import './DateGroupBar.css';
 interface DateGroupBarProps {
   mode: DateGroupMode;
   onChange: (mode: DateGroupMode) => void;
+  /** false cuando la vista ya pone su propia etiqueta (p. ej. Invoices). */
+  showLabel?: boolean;
 }
 
-export default function DateGroupBar({ mode, onChange }: DateGroupBarProps) {
+export default function DateGroupBar({ mode, onChange, showLabel = true }: DateGroupBarProps) {
   return (
     <div className="dgb-bar">
-      <span className="dgb-label">
-        <Layers size={14} /> Agrupar por
-      </span>
+      {showLabel && (
+        <span className="dgb-label">
+          <Layers size={14} /> Agrupar por
+        </span>
+      )}
       <div className="dgb-segmented" role="radiogroup" aria-label="Agrupar por fecha">
         {DATE_GROUP_MODES.map((m) => (
           <button

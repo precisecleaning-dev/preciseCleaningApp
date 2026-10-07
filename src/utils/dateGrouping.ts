@@ -23,6 +23,8 @@ export const DATE_GROUP_MODES: { id: DateGroupMode; label: string }[] = [
 export interface DateGroup<T> {
   key: string;
   label: string;
+  /** Detalle opcional (rango de fechas de la semana). */
+  detail?: string;
   /** Timestamp del inicio del grupo (0 = sin fecha). Sirve para ordenar. */
   start: number;
   items: T[];
@@ -67,7 +69,7 @@ const mondayOf = (d: Date): Date => {
   return m;
 };
 
-function groupInfo(d: Date, mode: DateGroupMode): { key: string; label: string; start: number } {
+function groupInfo(d: Date, mode: DateGroupMode): { key: string; label: string; detail?: string; start: number } {
   switch (mode) {
     case 'year':
       return { key: `${d.getFullYear()}`, label: `${d.getFullYear()}`, start: new Date(d.getFullYear(), 0, 1).getTime() };
@@ -83,7 +85,8 @@ function groupInfo(d: Date, mode: DateGroupMode): { key: string; label: string; 
       const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
       return {
         key: `${year}-W${pad(week)}`,
-        label: `Semana ${week} · ${mdy(mon)} – ${mdy(sun)}`,
+        label: `Semana ${week}`,
+        detail: `${mdy(mon)} – ${mdy(sun)}`,
         start: mon.getTime(),
       };
     }

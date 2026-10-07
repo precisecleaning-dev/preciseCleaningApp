@@ -199,6 +199,18 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Overview e Invoices para gerencia (2026-10-08)
+- **Active Teams eliminado** del Overview (pedido del usuario): panel, opción `card_activeTeams` de
+  Configure Fields, `teamsWithScope`, `expandedTeamId` y todo su CSS (`.right-col`, `.hv-team*`,
+  `.hv-panel-heading`, `.hv-badge-recall`, `.hv-badge-high-orange`). Daily Jobs ocupa todo el ancho.
+- **Overview:** "Agrupar por" + Filters en una barra junto al título (antes Filters iba en `position:absolute`);
+  conteo de trabajos bajo el título; chips de status ocultos si solo existiría "All"; Team con su color;
+  filas más compactas y columnas Schedule/Status/Actions sin recortes.
+- **Invoices:** 5 KPIs en una fila con contexto (jobs, 8.25%, fórmula, % payroll, margen; Profit resaltado);
+  filtros y "Agrupar por" en una sola línea; tabla tipo hoja con encabezado y Address fijos, fila TOTAL fija
+  al pie y filas compactas. En semanas, el grupo muestra "Semana N" en la columna fija y el rango al lado.
+- `HousesView.css` usa CRLF: editarlo conservando ese formato (si no, el diff marca el archivo entero).
+
 ## Invoices con columnas de la hoja "Operations" + agrupar por fecha (2026-10-08)
 - **Invoices** ahora tiene las columnas de la hoja, en el mismo orden: Address, Client, Note, Date,
   Team, Service Price, Taxes, Final Cost, Payroll, Profit, Profit Margin, Invoice, Notes, Issues, Week.

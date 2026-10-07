@@ -1446,12 +1446,15 @@
 .inv-page .inv-tax-btn:disabled { cursor: default; }
 .inv-page .inv-tax-btn.exempt { color: #94a3b8; text-decoration: line-through; }
 
-/* Fila del selector de agrupación dentro de la tarjeta de filtros */
-.inv-page .inv-group-row {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #f1f5f9;
+/* "Agrupar por" en la misma línea que fechas y búsqueda */
+.inv-page .inv-group-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
 }
+.inv-page .inv-group-cell .dgb-segmented { padding: 4px; }
+.inv-page .inv-group-cell .dgb-option { padding: 8px 12px; }
 
 /* Tarjetas (móvil) */
 .inv-page .inv-card-margin { font-size: 0.75rem; font-weight: 700; color: #64748b; }
@@ -1482,3 +1485,117 @@
   color: #0f172a;
   font-variant-numeric: tabular-nums;
 }
+
+/* =====================================================================
+   ⭐ Presentación para gerencia
+   ===================================================================== */
+
+/* KPIs: una sola fila de 5 en escritorio, en el orden de la hoja */
+@media (min-width: 1100px) {
+  .inv-page .inv-kpi-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+.inv-page .inv-kpi-card { display: flex; flex-direction: column; min-width: 0; }
+.inv-page .inv-kpi-value {
+  font-size: clamp(1.25rem, 1.6vw, 1.6rem);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inv-page .inv-kpi-sub {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.inv-page .inv-kpi-card.highlight {
+  border-color: #a7f3d0;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+}
+.inv-page .inv-kpi-card.highlight .inv-kpi-sub { color: #047857; }
+.inv-page .inv-kpi-card.highlight.negative {
+  border-color: #fecaca;
+  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
+}
+.inv-page .inv-kpi-card.highlight.negative .inv-kpi-sub { color: #b91c1c; }
+
+/* Tabla tipo hoja de cálculo: encabezado y Address fijos al desplazar,
+   total general fijo al pie. El scroll vive dentro de la tabla. */
+.inv-page .inv-table-wrap {
+  max-height: 72vh;
+  overflow: auto;
+}
+.inv-page .inv-table { border-collapse: separate; border-spacing: 0; }
+.inv-page .inv-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.inv-page .inv-table thead th:first-child { left: 0; z-index: 4; }
+.inv-page .inv-row > td { background-color: #ffffff; }
+.inv-page .inv-row:hover > td { background-color: #f8fafc; }
+.inv-page .inv-row > td:first-child,
+.inv-page .inv-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  box-shadow: inset -1px 0 0 #e5e7eb;
+}
+.inv-page .inv-row > td:first-child { z-index: 1; }
+/* Título del grupo y del total: quedan visibles al desplazar a la derecha */
+.inv-page .dgb-group-row > td.inv-group-first {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: inset -1px 0 0 #c7d2fe;
+}
+
+.inv-page .inv-total-row > td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.inv-page .inv-total-row > td.right { text-align: right; }
+.inv-page .inv-total-row > td.positive { color: #6ee7b7; }
+.inv-page .inv-total-row > td.negative { color: #fca5a5; }
+
+@media (max-width: 900px) {
+  .inv-page .inv-group-cell { width: 100%; }
+  .inv-page .inv-group-cell .dgb-bar,
+  .inv-page .inv-group-cell .dgb-segmented { width: 100%; }
+}
+
+/* Densidad de hoja de cálculo: más filas por pantalla */
+.inv-page .inv-table .inv-td { padding-top: 7px; padding-bottom: 7px; }
+.inv-page .inv-table .inv-status-pill { min-height: 28px; padding: 3px 10px; }
+.inv-page .inv-table .inv-icon-btn { padding: 5px; }
+
+/* Filtros en UNA línea en escritorio: fechas compactas, búsqueda flexible */
+@media (min-width: 901px) {
+  .inv-page .inv-secondary-filters { flex-wrap: nowrap; }
+  .inv-page .inv-secondary-filters > div:not(.inv-search-cell):not(.inv-group-cell) .inv-input-wrap { min-width: 150px; }
+  .inv-page .inv-search-cell { flex: 1 1 180px; min-width: 160px; }
+  .inv-page .inv-search-cell .inv-input-wrap { min-width: 0; }
+}
+@media (min-width: 901px) and (max-width: 1180px) {
+  .inv-page .inv-secondary-filters { flex-wrap: wrap; }
+}
+
+/* Celda "TOTAL" fija junto a Address */
+.inv-page .inv-total-row > td.inv-total-first {
+  left: 0;
+  z-index: 3;
+  box-shadow: inset -1px 0 0 #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.inv-page .inv-total-row > td.muted { color: #94a3b8; font-weight: 700; }

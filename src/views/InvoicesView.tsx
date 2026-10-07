@@ -831,31 +831,43 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       </header>
 
 
-      {/* ⭐ RESUMEN del rango filtrado — mismas columnas de dinero que la hoja. */}
-      <div className="inv-kpi-grid">
+      {/* ⭐ RESUMEN del rango filtrado — lectura de gerencia, de izquierda a
+          derecha igual que la hoja: lo cobrado → impuesto → neto → costo → ganancia. */}
+      <section className="inv-kpi-grid" aria-label="Resumen financiero">
         <div className="inv-kpi-card">
           <div className="inv-kpi-label">Service Price</div>
           <div className="inv-kpi-value">{money(filteredTotals.servicePrice)}</div>
+          <div className="inv-kpi-sub">
+            {filteredProperties.length.toLocaleString('en-US')} {filteredProperties.length === 1 ? 'job' : 'jobs'}
+          </div>
         </div>
         <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Taxes (8.25%)</div>
+          <div className="inv-kpi-label">Taxes</div>
           <div className="inv-kpi-value">{money(filteredTotals.taxes)}</div>
+          <div className="inv-kpi-sub">8.25% Texas</div>
         </div>
         <div className="inv-kpi-card">
           <div className="inv-kpi-label">Final Cost</div>
           <div className="inv-kpi-value">{money(filteredTotals.finalCost)}</div>
+          <div className="inv-kpi-sub">Service Price − Taxes</div>
         </div>
         <div className="inv-kpi-card">
           <div className="inv-kpi-label">Payroll</div>
           <div className="inv-kpi-value">{money(filteredTotals.payroll)}</div>
+          <div className="inv-kpi-sub">
+            {filteredTotals.finalCost > 0
+              ? `${((filteredTotals.payroll / filteredTotals.finalCost) * 100).toFixed(1)}% del Final Cost`
+              : '—'}
+          </div>
         </div>
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Profit · {pct(filteredTotals.margin)}</div>
+        <div className={`inv-kpi-card highlight${filteredTotals.profit < 0 ? ' negative' : ''}`}>
+          <div className="inv-kpi-label">Profit</div>
           <div className={`inv-kpi-value profit${filteredTotals.profit < 0 ? " negative" : ""}`}>
             {money(filteredTotals.profit)}
           </div>
+          <div className="inv-kpi-sub">Margen {pct(filteredTotals.margin)}</div>
         </div>
-      </div>
+      </section>
 
       {/* ⭐ Filtros agrupados en una sola tarjeta (chips + fechas + busqueda) */}
       <div className="inv-filters-card">
@@ -905,11 +917,11 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             <input type="text" className="inv-input" placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
           </div>
         </div>
-      </div>
-
-      {/* ⭐ Agrupar por Año / Mes / Semana / Día */}
-      <div className="inv-group-row">
-        <DateGroupBar mode={grouping.mode} onChange={grouping.setMode} />
+        {/* ⭐ Agrupar por Año / Mes / Semana / Día, en la misma línea que los filtros */}
+        <div className="inv-group-cell">
+          <span className="inv-label">Agrupar por</span>
+          <DateGroupBar mode={grouping.mode} onChange={grouping.setMode} showLabel={false} />
+        </div>
       </div>
 
       </div>{/* /inv-filters-card */}
@@ -954,12 +966,17 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 <Fragment key={g.key}>
                   {/* Encabezado del grupo con SUBTOTALES alineados a sus columnas */}
                   <tr className="dgb-group-row" onClick={() => grouping.toggle(g.key, i, groups[0]?.key)}>
-                    <td colSpan={5}>
+                    {/* Nombre del grupo en la columna FIJA (Address): sigue
+                        visible al desplazar la tabla hacia la derecha. */}
+                    <td className="inv-group-first" title={g.detail ? `${g.label} · ${g.detail}` : g.label}>
                       <span className="dgb-group-title">
                         <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
                         {g.label}
-                        <span className="dgb-group-count">{g.items.length} jobs</span>
                       </span>
+                    </td>
+                    <td colSpan={4}>
+                      {g.detail && <span className="dgb-group-detail">{g.detail}</span>}
+                      <span className="dgb-group-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
                     </td>
                     <td className="dgb-group-total">{money(t.servicePrice)}</td>
                     <td className="dgb-group-total">{money(t.taxes)}</td>
@@ -983,6 +1000,24 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               );
             })}
           </tbody>
+          {/* ⭐ TOTAL GENERAL del rango filtrado, fijo al pie de la tabla */}
+          {!isLoading && filteredProperties.length > 0 && (
+            <tfoot>
+              <tr className="inv-total-row">
+                <td className="inv-total-first">Total</td>
+                <td colSpan={4} className="muted">
+                  {filteredProperties.length.toLocaleString('en-US')} {filteredProperties.length === 1 ? 'job' : 'jobs'}
+                </td>
+                <td className="right">{money(filteredTotals.servicePrice)}</td>
+                <td className="right">{money(filteredTotals.taxes)}</td>
+                <td className="right">{money(filteredTotals.finalCost)}</td>
+                <td className="right">{money(filteredTotals.payroll)}</td>
+                <td className={`right ${filteredTotals.profit >= 0 ? 'positive' : 'negative'}`}>{money(filteredTotals.profit)}</td>
+                <td className="right">{pct(filteredTotals.margin)}</td>
+                <td colSpan={COLS - 11}></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -1005,6 +1040,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 <span className="dgb-group-title">
                   <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
                   {g.label}
+                  {g.detail && <span className="dgb-group-detail">{g.detail}</span>}
                   <span className="dgb-group-count">{g.items.length}</span>
                 </span>
                 <span className={`dgb-group-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>

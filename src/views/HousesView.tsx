@@ -292,11 +292,6 @@ const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     section: "Pipeline",
   },
   {
-    id: "card_activeTeams",
-    label: "Active Teams (panel del Overview)",
-    section: "Overview",
-  },
-  {
     id: "card_checklist",
     label: "Checklist (botón y visor en el detalle)",
     section: "Sections",
@@ -614,7 +609,6 @@ export default function HousesView({
   const [invoiceFilter, setInvoiceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("All");
 
@@ -2318,12 +2312,6 @@ export default function HousesView({
     }).length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, userScope, currentUser, statusIndex, statuses.length]);
-
-  const teamsWithScope = teams.filter((team) => {
-    if (userScope === "All") return true;
-    if (!currentUser) return false;
-    return team.id === currentUser.teamId;
-  });
 
   const uniqueHouses = useMemo(
     () =>
@@ -4616,28 +4604,24 @@ export default function HousesView({
                     <div className="hv-table-header">
                       <div>
                         <h2 className="hv-panel-title">Daily Jobs</h2>
-                        <p className="hv-panel-date">{dateCapitalized}</p>
+                        <p className="hv-panel-date">
+                          {dateCapitalized}
+                          {!isLoading && (
+                            <span className="hv-panel-count">
+                              {" "}· {filteredProperties.length.toLocaleString("en-US")}{" "}
+                              {filteredProperties.length === 1 ? "job" : "jobs"}
+                            </span>
+                          )}
+                        </p>
                       </div>
 
-                      <div className="filters-section">
-                        <div className="tabs-container">
-                          <button
-                            onClick={() => setActiveFilter("All")}
-                            className={`hv-pill-btn${activeFilter === "All" ? " active" : ""}`}
-                          >
-                            All
-                          </button>
-                          {dashboardTabs.map((st) => (
-                            <button
-                              key={st.id}
-                              onClick={() => setActiveFilter(st.name)}
-                              className={`hv-pill-btn${activeFilter === st.name ? " active" : ""}`}
-                            >
-                              {st.name}
-                            </button>
-                          ))}
-                        </div>
-
+                      {/* ⭐ Barra de herramientas a la derecha del título:
+                          agrupación por fecha + filtros avanzados. */}
+                      <div className="hv-jobs-toolbar">
+                        <DateGroupBar
+                          mode={jobGrouping.mode}
+                          onChange={jobGrouping.setMode}
+                        />
                         <div className="property-select-container">
                           <button
                             onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
@@ -4651,7 +4635,6 @@ export default function HousesView({
                                 <span className="hv-filter-badge-dot">!</span>
                               )}
                           </button>
-
                           {isFilterMenuOpen && (
                             <div className="hv-filter-dropdown">
                               <div>
@@ -4739,14 +4722,30 @@ export default function HousesView({
                           )}
                         </div>
                       </div>
-                    </div>
 
-                    {/* ⭐ Agrupar por Año / Mes / Semana / Día */}
-                    <div className="hv-group-bar-row">
-                      <DateGroupBar
-                        mode={jobGrouping.mode}
-                        onChange={jobGrouping.setMode}
-                      />
+                      {/* Chips de status: solo si hay pestañas configuradas
+                          (un "All" solitario no filtra nada). */}
+                      {dashboardTabs.length > 0 && (
+                      <div className="filters-section">
+                        <div className="tabs-container">
+                          <button
+                            onClick={() => setActiveFilter("All")}
+                            className={`hv-pill-btn${activeFilter === "All" ? " active" : ""}`}
+                          >
+                            All
+                          </button>
+                          {dashboardTabs.map((st) => (
+                            <button
+                              key={st.id}
+                              onClick={() => setActiveFilter(st.name)}
+                              className={`hv-pill-btn${activeFilter === st.name ? " active" : ""}`}
+                            >
+                              {st.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      )}
                     </div>
 
                     {/* ====== VISTA TABLA (escritorio) ====== */}
@@ -4794,8 +4793,14 @@ export default function HousesView({
                                           className={`dgb-group-chevron${entry.open ? " open" : ""}`}
                                         />
                                         {entry.group.label}
+                                        {entry.group.detail && (
+                                          <span className="dgb-group-detail">
+                                            {entry.group.detail}
+                                          </span>
+                                        )}
                                         <span className="dgb-group-count">
-                                          {entry.group.items.length} jobs
+                                          {entry.group.items.length}{" "}
+                                          {entry.group.items.length === 1 ? "job" : "jobs"}
                                         </span>
                                       </span>
                                     </td>
@@ -4887,7 +4892,24 @@ export default function HousesView({
                                     {serviceName}
                                   </td>
                                   <td data-label="Team" className="hv-td muted">
-                                    {teamName}
+                                    {/* ⭐ Equipo con el color del catálogo
+                                        (mismo estilo que Invoices). */}
+                                    {prop.teamId && teamName !== "Unassigned" ? (
+                                      <span
+                                        className="hv-team-pill"
+                                        style={
+                                          {
+                                            "--team-color":
+                                              getRelationColor(teams, prop.teamId) ||
+                                              "#94a3b8",
+                                          } as CSSProperties
+                                        }
+                                      >
+                                        {teamName}
+                                      </span>
+                                    ) : (
+                                      <span className="hv-team-none">Unassigned</span>
+                                    )}
                                   </td>
                                   <td data-label="Status" className="hv-td">
                                     <StatusPillSelector
@@ -4994,6 +5016,11 @@ export default function HousesView({
                                     className={`dgb-group-chevron${entry.open ? " open" : ""}`}
                                   />
                                   {entry.group.label}
+                                  {entry.group.detail && (
+                                    <span className="dgb-group-detail">
+                                      {entry.group.detail}
+                                    </span>
+                                  )}
                                 </span>
                                 <span className="dgb-group-count">
                                   {entry.group.items.length}
@@ -5196,192 +5223,6 @@ export default function HousesView({
                     </div>
                   </div>
                 </div>
-
-                {/* RIGHT COLUMN: ACTIVE TEAMS (visibilidad por rol) */}
-                {isElementVisible("card_activeTeams") && (
-                  <div className="right-col">
-                    <div className="hv-panel-card">
-                      <h3 className="hv-panel-heading">Active Teams</h3>
-                      <div className="hv-teams-list">
-                        {isLoading ? (
-                          <div className="hv-teams-status-text">
-                            Loading teams...
-                          </div>
-                        ) : teamsWithScope.length === 0 ? (
-                          <div className="hv-teams-status-text empty">
-                            No configured teams.
-                          </div>
-                        ) : (
-                          teamsWithScope
-                            .filter((team) =>
-                              propertiesWithScope.some((p) => {
-                                const isAssignedToTeam =
-                                  p.teamId === team.id || p.teamId === team.name;
-                                if (!isAssignedToTeam) return false;
-                                return !isHiddenPipelineStatus(p);
-                              }),
-                            )
-                            .map((team) => {
-                              const assignedProps = propertiesWithScope
-                                .filter((p) => {
-                                  if (
-                                    p.teamId !== team.id &&
-                                    p.teamId !== team.name
-                                  )
-                                    return false;
-                                  return !isHiddenPipelineStatus(p);
-                                })
-                                .sort((a, b) => {
-                                  const stA = statuses.find(
-                                    (s) =>
-                                      s.id === a.statusId || s.name === a.statusId,
-                                  );
-                                  const stB = statuses.find(
-                                    (s) =>
-                                      s.id === b.statusId || s.name === b.statusId,
-                                  );
-                                  const isRecallA =
-                                    stA?.name?.toLowerCase() === "recall" ||
-                                    a.statusId?.toLowerCase() === "recall";
-                                  const isRecallB =
-                                    stB?.name?.toLowerCase() === "recall" ||
-                                    b.statusId?.toLowerCase() === "recall";
-                                  if (isRecallA && !isRecallB) return -1;
-                                  if (!isRecallA && isRecallB) return 1;
-                                  return 0;
-                                });
-                              const isExpanded = expandedTeamId === team.id;
-                              return (
-                                <div
-                                  key={team.id}
-                                  onClick={() =>
-                                    setExpandedTeamId(isExpanded ? null : team.id)
-                                  }
-                                  className={`hv-team-item${isExpanded ? " expanded" : ""}`}
-                                  style={
-                                    {
-                                      "--team-color": team.color,
-                                      "--team-icon-bg": `${team.color}20`,
-                                    } as CSSProperties
-                                  }
-                                >
-                                  <div className="hv-team-item-head">
-                                    <div className="hv-team-info-row">
-                                      <div className="hv-team-icon-box">
-                                        <Users size={16} />
-                                      </div>
-                                      <div>
-                                        <div className="hv-team-name">
-                                          {team.name}
-                                        </div>
-                                        <div className="hv-team-job-count">
-                                          {assignedProps.length > 0
-                                            ? `${assignedProps.length} jobs`
-                                            : "Free"}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <ChevronDown
-                                      size={16}
-                                      color="#94a3b8"
-                                      className={`hv-team-chevron${isExpanded ? " expanded" : ""}`}
-                                    />
-                                  </div>
-                                  <div className="hv-team-progress-track">
-                                    <div
-                                      className={`hv-team-progress-fill${assignedProps.length > 0 ? " filled" : ""}`}
-                                      style={
-                                        {
-                                          "--team-color": team.color,
-                                        } as CSSProperties
-                                      }
-                                    ></div>
-                                  </div>
-
-                                  {isExpanded && (
-                                    <div className="hv-team-jobs-list">
-                                      {assignedProps.length === 0 ? (
-                                        <span className="hv-team-jobs-empty">
-                                          No hay casas asignadas a este equipo.
-                                        </span>
-                                      ) : (
-                                        assignedProps.map((prop) => {
-                                          const stProp = statuses.find(
-                                            (s) =>
-                                              s.id === prop.statusId ||
-                                              s.name === prop.statusId,
-                                          );
-                                          const isRecall =
-                                            stProp?.name?.toLowerCase() ===
-                                            "recall" ||
-                                            prop.statusId?.toLowerCase() ===
-                                            "recall";
-                                          const prObj = priorities.find(
-                                            (pp) =>
-                                              pp.id === prop.priorityId ||
-                                              pp.name === prop.priorityId,
-                                          );
-                                          const isHigh =
-                                            prObj?.name?.toLowerCase() === "high" ||
-                                            prop.priorityId?.toLowerCase() ===
-                                            "high";
-                                          return (
-                                            <div
-                                              key={prop.id}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleOpenDetail(prop);
-                                              }}
-                                              className="hv-team-job-item"
-                                              style={
-                                                {
-                                                  "--job-border": isRecall
-                                                    ? "#fca5a5"
-                                                    : isHigh
-                                                      ? "#fdba74"
-                                                      : "#e2e8f0",
-                                                } as CSSProperties
-                                              }
-                                            >
-                                              <div className="hv-team-job-top">
-                                                <div className="hv-team-job-name">
-                                                  {getClientName(prop.client)}
-                                                </div>
-                                                <div className="hv-team-job-flags">
-                                                  {isRecall && (
-                                                    <span className="hv-badge-recall">
-                                                      Recall
-                                                    </span>
-                                                  )}
-                                                  {isHigh && (
-                                                    <span
-                                                      title="HIGH priority"
-                                                      className="hv-badge-high-orange"
-                                                    >
-                                                      <AlertTriangle size={10} />{" "}
-                                                      High
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <div className="hv-team-job-address">
-                                                <MapPin size={10} />{" "}
-                                                {prop.address || "-"}
-                                              </div>
-                                            </div>
-                                          );
-                                        })
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </>
           )}
