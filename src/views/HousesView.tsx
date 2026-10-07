@@ -1753,7 +1753,14 @@ export default function HousesView({
     } catch (err) {
       const e = err as { code?: string; message?: string };
       cfLog(`❌ No se pudo correr el diagnóstico: ${e.code || ""} ${e.message || String(err)}`);
-      cfLog("Si dice not-found: falta desplegar functions (firebase deploy --only functions).");
+      // ⭐ Un callable que NO está desplegado (o sin permiso público de
+      //    invocación) no responde "not-found": el navegador bloquea la
+      //    respuesta por CORS y el SDK la reporta como "functions/internal".
+      if (e.code === "functions/internal" || e.code === "functions/not-found") {
+        cfLog(
+          "La función calendardiagnostics no respondió: no está desplegada o no tiene permiso de invocación. Ejecuta: firebase deploy --only functions",
+        );
+      }
     } finally {
       setIsCfTesting(false);
     }
@@ -1796,9 +1803,10 @@ export default function HousesView({
       const res = (await call({
         houseId: selectedHouse.id,
         clientName: getClientName(selectedHouse.client),
-      })) as { data?: { ok?: boolean; eventId?: string } };
+      })) as { data?: { ok?: boolean; eventId?: string; htmlLink?: string } };
       if (res?.data?.ok) {
         cfLog(`✅ Evento creado/actualizado. ID: ${res.data.eventId}`);
+        if (res.data.htmlLink) cfLog(`Enlace: ${res.data.htmlLink}`);
         cfLog(
           "Revisa el calendario. Cambia la hora del evento y vuelve a abrir esta casa en ~30 s.",
         );
@@ -8593,10 +8601,10 @@ export default function HousesView({
                 >
                   0 · Diagnóstico del Calendar (qué está fallando)
                 </button>
-                <p className="hv-cftest-desc">
-                  Prueba secretos, token y lectura del calendario, y reporta la
-                  capa exacta que falla con su mensaje real.
-                </p>
+                <span className="hv-cftest-note">
+                  Prueba secretos, token, lectura del calendario y el watch, y
+                  reporta la capa exacta que falla con su mensaje real.
+                </span>
                 <button
                   className="hv-cftest-btn primary"
                   onClick={handleCfActivateWatch}

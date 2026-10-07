@@ -194,6 +194,30 @@ Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea pre
 _(Ninguno por ahora — los últimos 4 hallazgos grandes de esta sección se resolvieron en esta
 ronda; ver "Extracciones compartidas" más abajo, entradas de `PhotoSettingsView.tsx`, el
 modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
+- **Borrar una casa NO borra su evento de Google Calendar** (decisión de producto pendiente).
+  El evento queda huérfano en el calendario; el webhook ya lo ignora (la casa no existe),
+  así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
+  al eliminar la casa.
+
+## Revisión del envío a Google Calendar (2026-10-07) — `functions/src/index.ts` + `HousesView.tsx`
+- **Evento borrado en Calendar se "actualizaba" igual:** `events.get` de un evento borrado NO da
+  404, devuelve `status: "cancelled"`. La guardia solo miraba el `houseId`, así que se parchaba
+  el evento borrado, la app decía "creado/actualizado" y en Calendar salía "Could not find the
+  requested event". Ahora `cancelled` → se crea evento nuevo, y la verificación final nunca
+  reporta éxito si el evento quedó cancelado.
+- **Enlace "Ver en Google Calendar":** el `htmlLink` abría con la cuenta por defecto del navegador
+  → "Could not find the requested event" si no era `account@`. Se añade `authuser=CALENDAR_ID`.
+- **Cualquier error en la guardia creaba un evento NUEVO** (duplicado). Ahora solo 404/410.
+- **El insert de respaldo (404 al parchar) lanzaba error crudo** → llegaba como `internal` mudo.
+- **Hora/fecha:** validación (`timeToMinutes`/`normalizeDate`, acepta M/D/YYYY de AppSheet);
+  respaldo +2h cruza medianoche (antes 23:30 sin Time Out = evento de duración cero).
+- **Webhook (Calendar → app):** `timeZone: America/Chicago` en `events.list` (antes dependía de la
+  zona de la cuenta); `syncToken`/`singleEvents`/`timeMin` iguales en todas las páginas; solo el
+  evento ACTUALMENTE vinculado (`gcalEventId`) puede modificar o desvincular la casa (antes un
+  evento viejo pisaba datos o quitaba el vínculo al nuevo); se ignoran canales no vigentes;
+  la descripción HTML de Calendar web se pasa a texto plano antes de guardarla en `note`.
+- **Panel de pruebas:** el diagnóstico añade el estado del watch; `functions/internal` sin mensaje
+  = callable no desplegado o sin permiso de invocación (CORS), no "not-found".
 
 ## Extracciones compartidas (resueltas)
 - [x] **Ícono hamburguesa → `Menu` de `lucide-react`.** El SVG de 3 líneas horizontales
