@@ -241,7 +241,14 @@
 .ujt-pill.none { background: transparent; color: #5b6475; }
 
 .ujt-team {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 128px;
+  height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #ffffff;
   background-color: var(--team-color);
   border-radius: 999px;
@@ -349,7 +356,16 @@
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 10px 10px;
-  max-width: 170px;
+  /* Mismo tamaño en todas las filas (Team y Billing): ancho y alto fijos, el
+     texto largo se corta con "…" dentro de la pastilla, no la deforma. Se
+     anula el mínimo táctil global de 48px (la tabla es de escritorio). */
+  box-sizing: border-box;
+  width: 128px;
+  height: 28px;
+  min-height: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ujt-select:focus-visible {
   outline: 2px solid #1d3fcf;

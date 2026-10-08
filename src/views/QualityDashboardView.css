@@ -1,5 +1,8 @@
 /* =====================================================================
-   ⭐ QC Dashboard — diseño "Quality Check dashboard" del lienzo
+   ⭐ QC Dashboard — diseño "Quality Check dashboard" del lienzo, con el
+   MISMO aspecto que el Overview: encabezado, barra de periodo con Filters,
+   rejilla de indicadores y tabla con grupos por fecha, columnas fijas y
+   scroll propio (barra horizontal siempre visible).
    (barra de periodo en PeriodBar.css, indicadores en KpiGrid.css,
    panel lateral en QcInspectionPanel.css)
    ===================================================================== */
@@ -17,65 +20,130 @@
   background: #f4f6fb;
   min-width: 0;
 }
+.qd-page > * {
+  flex-shrink: 0;
+}
 
-/* ---- Encabezado ---- */
+/* ---- Encabezado (mismas medidas que el del Overview) ---- */
 .qd-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
-.qd-title-group { display: flex; align-items: center; gap: 14px; }
-.qd-title { margin: 0; font-size: 26px; font-weight: 800; }
-.qd-subtitle { margin: 2px 0 0; font-size: 13px; color: #5b6475; }
-.qd-search { position: relative; display: flex; align-items: center; }
-.qd-search-icon { position: absolute; left: 12px; color: #5b6475; }
+.qd-title-group { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.qd-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #0f172a;
+}
+.qd-subtitle { margin: 4px 0 0; font-size: 0.875rem; font-weight: 500; color: #64748b; }
+.qd-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 340px;
+  min-width: 260px;
+}
+.qd-search-icon { position: absolute; left: 16px; color: #9ca3af; pointer-events: none; }
 .qd-search-input {
-  height: 40px;
-  width: 280px;
-  max-width: 100%;
-  border: 1px solid #e3e7ef;
+  width: 100%;
+  height: 44px;
+  min-height: 0;
+  border: 1px solid #e2e8f0;
   border-radius: 999px;
-  padding: 0 14px 0 36px;
-  font-size: 13px;
+  padding: 0 16px 0 42px;
+  font-size: 14px;
   background: #ffffff;
   color: #1e293b;
   box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
-.qd-search-input:focus { outline: none; border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(29, 63, 207, 0.1); }
+.qd-search-input::placeholder { color: #94a3b8; }
+.qd-search-input:focus { outline: none; border-color: #bfdbfe; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); }
 
-/* ---- Filtros en la barra de periodo ---- */
-.qd-filters { display: flex; align-items: center; gap: 10px; }
-.qd-filter { display: flex; align-items: center; gap: 8px; }
-.qd-lbl {
-  margin: 0;
+/* ---- Botón Filters + menú (igual que en el Overview) ---- */
+.qd-filters { position: relative; }
+.qd-filters-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  min-height: 0;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.qd-filters-btn.on { border-color: #c7d2fe; color: #1d3fcf; background: #eef2ff; }
+.qd-filters-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.qd-filters-dot {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #1d3fcf;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.qd-filters-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  width: 260px;
+  max-width: calc(100vw - 28px);
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.qd-field { display: flex; flex-direction: column; gap: 6px; }
+.qd-field-lbl {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #5b6475;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 .qd-select {
-  height: 36px;
+  width: 100%;
+  height: 40px;
+  min-height: 0;
   border: 1px solid #e3e7ef;
   border-radius: 10px;
-  padding: 0 8px;
-  font-size: 13px;
+  padding: 0 10px;
+  font-size: 14px;
   background: #ffffff;
   color: #1e293b;
-  max-width: 170px;
 }
+.qd-select:focus { outline: none; border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(29, 63, 207, 0.1); }
+.qd-filters-foot { display: flex; justify-content: flex-end; gap: 8px; }
 
-/* ---- Cuerpo: lista + columna lateral ---- */
+/* ---- Cuerpo: tabla + columna lateral ---- */
 .qd-body {
   display: flex;
-  flex-wrap: wrap;
   gap: 20px;
-  align-items: flex-start;
+  align-items: stretch;
+  min-width: 0;
 }
 .qd-card {
   background: #ffffff;
@@ -83,53 +151,93 @@
   border-radius: 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.qd-main { flex: 999 1 720px; min-width: 0; overflow: hidden; }
-.qd-side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.qd-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.qd-side {
+  flex: 0 0 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .qd-pad { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 
-.qd-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; }
+/* Pestañas */
+.qd-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e3e7ef;
+  flex-shrink: 0;
+}
 .qd-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 34px;
   min-height: 0;
-  padding: 0 14px;
+  padding: 0 12px 0 14px;
   border-radius: 999px;
   border: 1px solid #e3e7ef;
   background: #ffffff;
   font-size: 13px;
   font-weight: 600;
-  color: #1e293b;
+  color: #334155;
   cursor: pointer;
+  white-space: nowrap;
 }
-.qd-chip:hover { border-color: #c7d2fe; }
-.qd-chip.on { background: #eef2ff; border-color: #1d3fcf; color: #1d3fcf; }
+.qd-chip:hover { border-color: #c7d2fe; background: #f8faff; }
+.qd-chip.on { background: #1d3fcf; border-color: #1d3fcf; color: #ffffff; }
 .qd-cnt {
+  min-width: 22px;
+  text-align: center;
   font-size: 11px;
   font-weight: 700;
-  background: #eef0f5;
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 2px 7px;
+  background: #eef0f5;
   color: #334155;
 }
-.qd-chip.on .qd-cnt { background: #ffffff; }
+.qd-chip.todo .qd-cnt { background: #fffbeb; color: #b45309; }
+.qd-chip.reclean .qd-cnt { background: #fef2f2; color: #b91c1c; }
+.qd-chip.passed .qd-cnt { background: #ecfdf5; color: #047857; }
+.qd-chip.on .qd-cnt { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
 
-/* ---- Tabla (scroll horizontal siempre visible) ---- */
+/* ---- Tabla (scroll propio; barra horizontal SIEMPRE visible) ----
+   App.css da a todo lo que está dentro de `.fade-in` una barra fina y casi
+   transparente con `scrollbar-color`, que en Chrome anula ::-webkit-scrollbar;
+   aquí se devuelve a `auto` para que se vea la barra gruesa de abajo. */
 .qd-scroll {
-  overflow-x: scroll;
-  border-top: 1px solid #e3e7ef;
+  overflow: scroll;
+  max-height: 78vh;
+  min-height: 0;
 }
 .fade-in .qd-scroll { scrollbar-width: auto; scrollbar-color: auto; }
 .fade-in .qd-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
 .fade-in .qd-scroll::-webkit-scrollbar-track { background: #eef1f6; }
 .fade-in .qd-scroll::-webkit-scrollbar-thumb { background: #b8c1d1; border-radius: 8px; border: 3px solid #eef1f6; }
 .fade-in .qd-scroll::-webkit-scrollbar-thumb:hover { background: #94a0b8; }
+.fade-in .qd-scroll::-webkit-scrollbar-corner { background: #eef1f6; }
 @supports not selector(::-webkit-scrollbar) {
   .fade-in .qd-scroll { scrollbar-color: #b8c1d1 #eef1f6; }
 }
-.qd-table { border-collapse: collapse; width: 100%; min-width: 1180px; }
+
+.qd-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  min-width: 1480px;
+}
 .qd-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -148,35 +256,108 @@
   color: #1e293b;
   vertical-align: middle;
   white-space: nowrap;
+  background: #ffffff;
 }
 .qd-table .right { text-align: right; }
 .qd-table .strong,
 .qd-page .strong { font-weight: 700; }
 .qd-table .semibold { font-weight: 600; }
-.qd-row { cursor: pointer; }
-.qd-row:hover > td { background: #f8faff; }
-.qd-client { white-space: normal !important; min-width: 210px; }
-.qd-muted { color: #5b6475; font-size: 12px; }
-.qd-muted.italic { font-style: italic; }
-.qd-muted-strong { color: #334155; }
-.qd-empty { text-align: center; padding: 40px !important; color: #5b6475 !important; }
+/* La tabla es de escritorio: sus botones usan el tamaño del diseño, no el
+   mínimo táctil global de 48px de index.css. */
+.qd-table button { min-height: 0; min-width: 0; }
 
-.qd-team {
-  display: inline-block;
-  color: #ffffff;
-  background-color: var(--team-color);
-  border-radius: 999px;
-  padding: 4px 10px;
+/* Columnas fijas: Date y Client & address quedan a la vista al desplazar */
+.qd-table th:nth-child(1),
+.qd-row > td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  width: 104px;
+  min-width: 104px;
+  max-width: 104px;
+}
+.qd-table th:nth-child(2),
+.qd-row > td:nth-child(2) {
+  position: sticky;
+  left: 104px;
+  box-shadow: inset -1px 0 0 #e3e7ef;
+}
+.qd-row > td:nth-child(1),
+.qd-row > td:nth-child(2) { z-index: 1; }
+.qd-table th:nth-child(1),
+.qd-table th:nth-child(2) { z-index: 3; }
+
+/* Fila de grupo (fecha) — igual que en el Overview */
+.qd-group { cursor: pointer; user-select: none; }
+.qd-group > td {
+  background: #eef2ff;
+  border-bottom: 1px solid #c7d2fe;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.qd-group:hover > td { background: #e0e7ff; }
+.qd-group-title {
+  position: sticky;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+.qd-group-range { font-weight: 500; color: #334155; }
+.qd-chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+.qd-chevron.open { transform: rotate(90deg); }
+.qd-count {
   font-size: 11px;
   font-weight: 700;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+}
+.qd-group-avg { font-size: 12px; color: #334155; }
+.qd-group-avg strong { font-weight: 800; color: #1e3a8a; }
+.qd-group-stats { display: inline-flex; gap: 6px; }
+
+/* Filas */
+.qd-row { cursor: pointer; }
+.qd-row:hover > td { background: #f8faff; }
+.qd-client { white-space: normal !important; min-width: 240px; max-width: 280px; }
+.qd-muted { color: #5b6475; font-size: 12px; }
+.qd-muted-strong { color: #334155; font-weight: 600; }
+.qd-empty { text-align: center; padding: 48px 12px !important; color: #5b6475 !important; }
+
+/* Team: pastilla de tamaño fijo (igual que en el Overview) */
+.qd-team {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 128px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #ffffff;
+  background-color: var(--team-color);
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
+.qd-team.none {
+  color: #5b6475;
+  font-style: italic;
+  background-color: #f1f5f9;
+  border: 1px solid #e3e7ef;
+}
 
-.qd-scorecell { display: flex; align-items: center; gap: 8px; }
+/* Score */
+.qd-scorecell { display: flex; align-items: center; gap: 10px; }
 .qd-bar {
   display: block;
   height: 8px;
-  width: 90px;
+  width: 80px;
   border-radius: 999px;
   background: #eef0f5;
   overflow: hidden;
@@ -191,14 +372,23 @@
 .qd-bar-fill.good { background: #059669; }
 .qd-bar-fill.warn { background: #d97706; }
 .qd-bar-fill.bad { background: #dc2626; }
-.qd-score { font-weight: 800; font-variant-numeric: tabular-nums; }
+.qd-score {
+  min-width: 40px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.qd-score.good { color: #047857; }
+.qd-score.warn { color: #b45309; }
+.qd-score.bad { color: #b91c1c; }
 
+/* Resultado + Recall */
 .qd-result-cell { display: flex; align-items: center; gap: 6px; }
 .qd-pill {
   display: inline-flex;
   align-items: center;
+  height: 24px;
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 0 10px;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -210,8 +400,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  height: 22px;
   border-radius: 6px;
-  padding: 2px 7px;
+  padding: 0 7px;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -223,22 +414,24 @@
 }
 .qd-recall svg { flex-shrink: 0; }
 
-.qd-issues { white-space: normal !important; min-width: 150px; }
+.qd-issues { white-space: normal !important; min-width: 160px; }
 .qd-tags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .qd-tag {
   font-size: 11px;
   font-weight: 600;
   color: #334155;
   background: #f1f5f9;
+  border: 1px solid #e3e7ef;
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: 2px 8px;
 }
-.qd-follow { white-space: normal !important; min-width: 170px; font-size: 12px !important; color: #334155 !important; }
+.qd-follow { white-space: normal !important; min-width: 180px; max-width: 220px; font-size: 12px !important; color: #334155 !important; }
 
+/* Acciones */
 .qd-actions { display: inline-flex; align-items: center; gap: 6px; }
 .qd-iconbtn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   min-width: 0;
   min-height: 0;
   border-radius: 10px;
@@ -250,19 +443,17 @@
   justify-content: center;
   cursor: pointer;
 }
-.qd-iconbtn:hover:not(:disabled) { filter: brightness(0.97); }
+.qd-iconbtn:hover:not(:disabled) { filter: brightness(0.96); }
 .qd-iconbtn:disabled { opacity: 0.5; cursor: default; }
 .qd-iconbtn.wa { border-color: #a7f3d0; background: #ecfdf5; color: #059669; }
-.qd-iconbtn.menu {
-  width: 48px;
-  height: 48px;
-  border-color: #e3e7ef;
-  background: #ffffff;
-  color: #0f172a;
-}
 .qd-btn {
-  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
   min-height: 0;
+  min-width: 84px;
   padding: 0 14px;
   border-radius: 10px;
   border: 1px solid #e3e7ef;
@@ -273,40 +464,105 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.qd-btn:hover { background: #f8f9fc; }
+.qd-btn:hover:not(:disabled) { background: #f8f9fc; }
+.qd-btn:disabled { opacity: 0.5; cursor: default; }
 .qd-btn.primary { background: #1d3fcf; border-color: #1d3fcf; color: #ffffff; }
 .qd-btn.primary:hover { background: #1734b0; }
 
 /* ---- Columna lateral ---- */
+.qd-lbl {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b6475;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .qd-teamlist, .qd-arealist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .qd-teamrow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 0;
+  padding: 9px 0;
   border-bottom: 1px solid #eef0f5;
 }
 .qd-teamrow:last-child { border-bottom: 0; }
-.qd-teamstats { margin: 0; display: flex; gap: 16px; text-align: right; }
-.qd-teamstats > div { display: flex; flex-direction: column; }
-.qd-teamstats dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.qd-teamrow .qd-team { width: 92px; flex-shrink: 0; }
+.qd-teamrow.head {
+  padding: 0 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.qd-teamstats-head,
+.qd-teamstats {
+  display: grid;
+  grid-template-columns: 50px 54px 64px;
+  text-align: right;
+  white-space: nowrap;
+}
+.qd-teamstats { margin: 0; }
+/* La etiqueta va en la cabecera de la lista; en cada fila solo el número */
+.qd-teamstats dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.qd-teamstats dd { margin: 0; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: #0f172a; }
+.qd-teamstats dd.good { color: #047857; }
+.qd-teamstats dd.warn { color: #b45309; }
 .qd-teamstats dd.bad { color: #b91c1c; }
-.qd-teamstats dt { font-size: 12px; color: #5b6475; }
 .qd-arealist { gap: 12px; }
 .qd-area { display: flex; flex-direction: column; gap: 6px; }
 .qd-area-top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
 
 .qd-ai { background: #f5f3ff; border-color: #ddd6fe; gap: 8px; }
 .qd-lbl.ai { color: #6d28d9; }
-.qd-ai-text { margin: 0; font-size: 13px; line-height: 1.5; color: #2e1065; }
+.qd-ai-text { margin: 0; font-size: 13px; line-height: 1.55; color: #2e1065; }
 
-@media (max-width: 700px) {
-  .qd-search, .qd-search-input { width: 100%; }
-  .qd-filters { width: 100%; flex-wrap: wrap; }
-  .qd-filter { flex: 1 1 140px; }
-  .qd-select { flex: 1; max-width: none; }
+/* =====================================================================
+   Pantalla de ALTURA FIJA (como el Overview): encabezado, barra de periodo
+   e indicadores quedan quietos; la tabla y la columna lateral ocupan el
+   resto, cada una con su propio scroll.
+   (App.css pone `height:auto !important` en ≤1024px; aquí se impone.)
+   ===================================================================== */
+@media (min-width: 1200px) and (min-height: 640px) {
+  .qd-page {
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  .qd-page > .qd-body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .qd-main .qd-scroll {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+  .qd-side {
+    overflow-y: auto;
+    padding-right: 2px;
+  }
 }
-@media (min-width: 769px) {
-  .qd-filters .qd-select { min-height: 0; }
+
+/* Angosto: la columna lateral pasa debajo de la tabla */
+@media (max-width: 1199px) {
+  .qd-body { flex-direction: column; }
+  .qd-side { flex: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+}
+@media (max-width: 768px) {
+  .qd-search { flex: 1 1 100%; min-width: 0; }
+  .qd-search-input { font-size: 16px; } /* iOS: evita el zoom al escribir */
+  .qd-filters, .qd-filters-btn { width: 100%; justify-content: center; }
+  .qd-filters-menu { left: 0; right: 0; width: auto; }
+  .qd-select { font-size: 16px; }
 }

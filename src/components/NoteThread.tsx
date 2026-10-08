@@ -3,7 +3,7 @@
 //    compositor para escribir la siguiente. Se usa en el detalle de la casa
 //    (tab Notes & Photos) para Office Notes, General Note y Employee's Note.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Send } from 'lucide-react';
+import { Send, StickyNote } from 'lucide-react';
 import './NoteThread.css';
 
 export interface NoteMessage {
@@ -31,12 +31,22 @@ interface NoteThreadProps {
   onSend: (text: string) => Promise<boolean>;
 }
 
-const fmtWhen = (iso: string) =>
-  iso
-    ? new Date(iso).toLocaleString('en-US', {
-        month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true,
-      })
-    : '';
+const fmtTime = (iso: string) =>
+  iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+const fmtDay = (iso: string) =>
+  iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '';
+
+/** Inicial del autor para el círculo (como en WhatsApp). */
+const initialOf = (name: string) => (name.trim().match(/[A-Za-zÀ-ÿ0-9]/)?.[0] || '?').toUpperCase();
+
+/** Color fijo por autor: siempre el mismo tono para la misma persona
+ *  (6 tonos posibles → clases modificadoras, no estilos en línea). */
+const AVATAR_TONES = 6;
+const toneOf = (name: string) => {
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `t${h % AVATAR_TONES}`;
+};
 
 export default function NoteThread({
   title, icon, tone, messages, emptyText, canWrite, placeholder, sending, onSend,
@@ -67,18 +77,34 @@ export default function NoteThread({
         {messages.length === 0 ? (
           <li className="nt-empty">{emptyText}</li>
         ) : (
-          messages.map((m) => (
-            <li key={m.key} className={`nt-msg${m.mine ? ' mine' : ''}`}>
-              <div className="nt-bubble">
-                <p className="nt-text">{m.text}</p>
-              </div>
-              <span className="nt-meta">
-                {m.author}
-                {m.at && ` · ${fmtWhen(m.at)}`}
-                {m.edited && ' · editada'}
-              </span>
-            </li>
-          ))
+          messages.map((m, i) => {
+            const legacy = !m.at;
+            // Separador de día cuando cambia la fecha (como en un chat)
+            const day = fmtDay(m.at);
+            const showDay = !!day && (i === 0 || fmtDay(messages[i - 1].at) !== day);
+            return (
+              <li key={m.key} className="nt-item">
+                {showDay && <span className="nt-day">{day}</span>}
+                <div className={`nt-msg${m.mine ? ' mine' : ''}`}>
+                  <span
+                    className={`nt-avatar ${legacy ? 'legacy' : toneOf(m.author)}`}
+                    aria-hidden="true"
+                    title={m.author}
+                  >
+                    {legacy ? <StickyNote size={14} /> : initialOf(m.author)}
+                  </span>
+                  <div className="nt-bubble">
+                    <span className={`nt-author ${legacy ? 'legacy' : toneOf(m.author)}`}>{m.author}</span>
+                    <p className="nt-text">{m.text}</p>
+                    <span className="nt-meta">
+                      {m.edited && 'editada · '}
+                      {fmtTime(m.at)}
+                    </span>
+                  </div>
+                </div>
+              </li>
+            );
+          })
         )}
       </ol>
 

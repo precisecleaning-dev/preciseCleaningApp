@@ -199,6 +199,16 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Pulido: Team uniforme, notas tipo WhatsApp y QC Dashboard con el aspecto del Overview (2026-10-08, ronda 4)
+- **Team / Billing / Status en la tabla:** pastillas de alto fijo 28px; Team y Billing además con
+  ancho fijo (128px) y "…" si el nombre es largo, para que ninguna fila se deforme.
+- **Notas (`NoteThread`):** círculo con la inicial del autor (color fijo por persona, 6 tonos como
+  clases modificadoras), nombre dentro de la burbuja, hora abajo a la derecha, separador por día y
+  scroll vertical siempre visible (mismo arreglo de `.fade-in *` que la tabla).
+- **QC Dashboard:** mismo encabezado, barra de periodo con botón **Filters** (Team / Inspector en
+  un menú, como el Overview), tabla agrupada por fecha con columnas fijas y scroll propio, y
+  pantalla de altura fija desde 1200px (en angosto la columna lateral pasa abajo).
+
 ## Edición en la tabla, grado QC, notas tipo chat y QC Dashboard (2026-10-08, ronda 3)
 - **Overview (`UnifiedJobsTable`):** Team y Billing se editan desde la celda (select nativo con
   forma de píldora). Status ya se editaba desde la columna. `HousesView.handleQuickFieldChange`

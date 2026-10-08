@@ -4885,8 +4885,10 @@
 /* Selector de status dentro de la tabla unificada: tamaño de pastilla del diseño */
 .houses-view .ujt-table .hv-statuspill {
   font-size: 11px;
-  padding: 4px 10px;
+  padding: 0 10px;
   min-height: 0;
+  height: 28px;
+  box-sizing: border-box;
   gap: 6px;
 }
 

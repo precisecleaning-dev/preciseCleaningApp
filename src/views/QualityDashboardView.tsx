@@ -14,7 +14,7 @@
 // ============================================================================
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { Menu, Search, Mail, Printer, RotateCcw, Sparkles } from 'lucide-react';
+import { ChevronRight, Filter, Menu, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
 import { db } from '../config/firebase';
 import type { Customer, Property, Role, Status, SystemUser, Team } from '../types/index';
 import { mapCustomerDoc } from '../utils/customerDocs';
@@ -22,6 +22,7 @@ import { getRelationName } from '../utils/relations';
 import { formatDate } from '../utils/dateFormat';
 import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
 import { isRecallText } from '../utils/recallStatus';
+import { groupByDate } from '../utils/dateGrouping';
 import { useRecallHouses } from '../utils/jobRecall';
 import {
   dashboardSummary, failedAreas, followUp, latestByHouse, recordScore, resultOf, RESULT_LABEL,
@@ -88,6 +89,14 @@ export default function QualityDashboardView({
   const [teamFilter, setTeamFilter] = useState('all');
   const [inspectorFilter, setInspectorFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   const [openRow, setOpenRow] = useState<QcDashRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
@@ -181,6 +190,23 @@ export default function QualityDashboardView({
   }, [rows, teamFilter, inspectorFilter, search, customers]);
 
   const tabRows = scoped.filter((r) => tab === 'all' || r.result === tab);
+  // Grupos por fecha, igual que el Overview (día en Day/Week/Custom, semana en
+  // Month, mes en Year), con un resumen de cada grupo.
+  const groups = useMemo(
+    () => groupByDate(tabRows, (r) => r.prop.scheduleDate, range.groupBy, 'desc').map((g) => {
+      const insp = g.items.filter((r) => r.result !== 'todo');
+      const sc = insp.filter((r) => r.score !== null).map((r) => r.score as number);
+      return {
+        ...g,
+        passed: g.items.filter((r) => r.result === 'passed').length,
+        reclean: g.items.filter((r) => r.result === 'reclean').length,
+        todo: g.items.length - insp.length,
+        avg: sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null,
+      };
+    }),
+    [tabRows, range.groupBy],
+  );
+  const filtersOn = teamFilter !== 'all' || inspectorFilter !== 'all';
   const inspectors = useMemo(() => [...new Set(rows.map((r) => r.inspector).filter(Boolean))].sort(), [rows]);
 
   // ---- Indicadores ----
@@ -316,16 +342,19 @@ export default function QualityDashboardView({
     { key: 'todo', label: 'Not inspected', value: String(todo.length), sub: 'completed, no QC yet', tone: 'warn' as const },
   ];
 
+  const scoreTone = (n: number) => (n >= 85 ? 'good' : n >= 70 ? 'warn' : 'bad');
+
   return (
     <div className="fade-in qd-page">
+      {/* Encabezado igual al del Overview */}
       <header className="qd-header">
         <div className="qd-title-group">
-          <button type="button" className="qd-iconbtn menu" aria-label="Open menu" onClick={onOpenMenu}>
-            <Menu size={20} />
+          <button type="button" className="hamburger-btn" aria-label="Open menu" onClick={onOpenMenu}>
+            <Menu size={24} />
           </button>
           <div>
             <h1 className="qd-title">QC Dashboard</h1>
-            <p className="qd-subtitle">Inspections, re-cleans and team scores</p>
+            <p className="qd-subtitle">Inspections, re-cleans &amp; team scores</p>
           </div>
         </div>
         <label className="qd-search">
@@ -333,8 +362,8 @@ export default function QualityDashboardView({
           <input
             type="text"
             className="qd-search-input"
-            placeholder="Search client or address"
-            aria-label="Search client or address"
+            placeholder="Buscar cliente o dirección"
+            aria-label="Buscar cliente o dirección"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -346,20 +375,44 @@ export default function QualityDashboardView({
         onChange={setPeriod}
         extra={
           <div className="qd-filters">
-            <label className="qd-filter">
-              <span className="qd-lbl">Team</span>
-              <select className="qd-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-                <option value="all">All teams</option>
-                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </label>
-            <label className="qd-filter">
-              <span className="qd-lbl">Inspector</span>
-              <select className="qd-select" value={inspectorFilter} onChange={(e) => setInspectorFilter(e.target.value)}>
-                <option value="all">All</option>
-                {inspectors.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
+            <button
+              type="button"
+              className={`qd-filters-btn${filtersOn ? ' on' : ''}`}
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((o) => !o)}
+            >
+              <Filter size={16} /> Filters
+              {filtersOn && <span className="qd-filters-dot">{(teamFilter !== 'all' ? 1 : 0) + (inspectorFilter !== 'all' ? 1 : 0)}</span>}
+            </button>
+            {filtersOpen && (
+              <div className="qd-filters-menu" role="dialog" aria-label="Filters">
+                <label className="qd-field">
+                  <span className="qd-field-lbl">Team</span>
+                  <select className="qd-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+                    <option value="all">All teams</option>
+                    {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </label>
+                <label className="qd-field">
+                  <span className="qd-field-lbl">Inspector</span>
+                  <select className="qd-select" value={inspectorFilter} onChange={(e) => setInspectorFilter(e.target.value)}>
+                    <option value="all">All inspectors</option>
+                    {inspectors.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <div className="qd-filters-foot">
+                  <button
+                    type="button"
+                    className="qd-btn"
+                    disabled={!filtersOn}
+                    onClick={() => { setTeamFilter('all'); setInspectorFilter('all'); }}
+                  >
+                    <X size={14} /> Clear
+                  </button>
+                  <button type="button" className="qd-btn primary" onClick={() => setFiltersOpen(false)}>Done</button>
+                </div>
+              </div>
+            )}
           </div>
         }
       />
@@ -375,7 +428,7 @@ export default function QualityDashboardView({
                 type="button"
                 role="tab"
                 aria-selected={tab === t.id}
-                className={`qd-chip${tab === t.id ? ' on' : ''}`}
+                className={`qd-chip ${t.id}${tab === t.id ? ' on' : ''}`}
                 onClick={() => setTab(t.id)}
               >
                 {t.label}
@@ -399,97 +452,126 @@ export default function QualityDashboardView({
                   <th className="right">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={10} className="qd-empty">Loading inspections…</td></tr>
-                ) : tabRows.length === 0 ? (
-                  <tr><td colSpan={10} className="qd-empty">No jobs here for this period.</td></tr>
-                ) : tabRows.map((r) => {
-                  const t = team(r.prop);
-                  const tone = RESULT_TONE[r.result];
-                  return (
-                    <tr key={r.prop.id} className="qd-row" onClick={() => setOpenRow(r)}>
-                      <td className="strong">{r.date}</td>
-                      <td className="qd-client">
-                        <div className="strong">{clientName(r.prop)}</div>
-                        <div className="qd-muted">{r.prop.address}</div>
-                      </td>
-                      <td className="semibold">{typeName(r.prop)}</td>
-                      <td>
-                        {t ? (
-                          <span className="qd-team" style={{ '--team-color': t.color || '#64748b' } as CSSProperties}>{t.name}</span>
-                        ) : <span className="qd-muted italic">Unassigned</span>}
-                      </td>
-                      <td className="qd-muted-strong">{r.inspector || '—'}</td>
-                      <td>
-                        {r.score === null ? <span className="qd-muted">—</span> : (
-                          <div className="qd-scorecell">
-                            <span className="qd-bar">
-                              <span
-                                className={`qd-bar-fill ${r.score >= 85 ? 'good' : r.score >= 70 ? 'warn' : 'bad'}`}
-                                style={{ '--w': `${r.score}%` } as CSSProperties}
-                              />
-                            </span>
-                            <span className="qd-score">{r.score}</span>
-                          </div>
-                        )}
+              {loading ? (
+                <tbody><tr><td colSpan={10} className="qd-empty">Loading inspections…</td></tr></tbody>
+              ) : groups.length === 0 ? (
+                <tbody><tr><td colSpan={10} className="qd-empty">No jobs here for this period. Use ← → or Today to move the period.</td></tr></tbody>
+              ) : groups.map((g) => {
+                const open = !collapsed.has(g.key);
+                return (
+                  <tbody key={g.key}>
+                    <tr className="qd-group" onClick={() => toggleGroup(g.key)}>
+                      <td colSpan={5}>
+                        <span className="qd-group-title">
+                          <ChevronRight size={16} className={`qd-chevron${open ? ' open' : ''}`} />
+                          {g.label}
+                          {g.detail && <span className="qd-group-range">{g.detail}</span>}
+                          <span className="qd-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
+                        </span>
                       </td>
                       <td>
-                        <div className="qd-result-cell">
-                          <span className={`qd-pill ${tone}`}>{RESULT_LABEL[r.result]}</span>
-                          {r.recall && <span className="qd-recall" title="Esta casa estuvo en Recall"><RotateCcw size={11} /> Recall</span>}
-                        </div>
+                        {g.avg !== null && <span className="qd-group-avg">avg <strong>{g.avg}</strong></span>}
                       </td>
-                      <td className="qd-issues">
-                        {r.issues.length === 0 ? <span className="qd-muted">—</span> : (
-                          <ul className="qd-tags">{r.issues.map((i) => <li key={i} className="qd-tag">{i}</li>)}</ul>
-                        )}
-                      </td>
-                      <td className="qd-follow">{r.follow}</td>
-                      <td className="right" onClick={(e) => e.stopPropagation()}>
-                        <div className="qd-actions">
-                          {r.rec && r.result !== 'todo' && (
-                            <>
-                              <button type="button" className="qd-iconbtn wa" disabled={busy === r.prop.id} onClick={() => handleWhatsApp(r)} aria-label="Enviar por WhatsApp" title="WhatsApp">
-                                <WhatsAppIcon size={15} />
-                              </button>
-                              <button type="button" className="qd-iconbtn" disabled={busy === r.prop.id} onClick={() => handleEmail(r)} aria-label="Enviar por email" title="Email">
-                                <Mail size={15} />
-                              </button>
-                              <button type="button" className="qd-iconbtn" disabled={busy === r.prop.id} onClick={() => handlePrint(r)} aria-label="Imprimir / PDF" title="PDF">
-                                <Printer size={15} />
-                              </button>
-                            </>
-                          )}
-                          {r.result === 'passed' || !canInspect || !onInspect ? (
-                            <button type="button" className="qd-btn" onClick={() => setOpenRow(r)}>View</button>
-                          ) : (
-                            <button type="button" className="qd-btn primary" onClick={() => onInspect(r.prop)}>
-                              {r.result === 'reclean' ? 'Re-inspect' : 'Inspect'}
-                            </button>
-                          )}
-                        </div>
+                      <td colSpan={4}>
+                        <span className="qd-group-stats">
+                          {g.passed > 0 && <span className="qd-pill good">{g.passed} passed</span>}
+                          {g.reclean > 0 && <span className="qd-pill bad">{g.reclean} re-clean</span>}
+                          {g.todo > 0 && <span className="qd-pill warn">{g.todo} not inspected</span>}
+                        </span>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
+                    {open && g.items.map((r) => {
+                      const t = team(r.prop);
+                      const tone = RESULT_TONE[r.result];
+                      return (
+                        <tr key={r.prop.id} className="qd-row" onClick={() => setOpenRow(r)}>
+                          <td className="strong">{r.date}</td>
+                          <td className="qd-client">
+                            <div className="strong">{clientName(r.prop)}</div>
+                            <div className="qd-muted">{r.prop.address}</div>
+                          </td>
+                          <td className="semibold">{typeName(r.prop)}</td>
+                          <td>
+                            {t ? (
+                              <span className="qd-team" style={{ '--team-color': t.color || '#64748b' } as CSSProperties}>{t.name}</span>
+                            ) : <span className="qd-team none">Unassigned</span>}
+                          </td>
+                          <td className="qd-muted-strong">{r.inspector || '—'}</td>
+                          <td>
+                            {r.score === null ? <span className="qd-muted">—</span> : (
+                              <div className="qd-scorecell">
+                                <span className="qd-bar">
+                                  <span
+                                    className={`qd-bar-fill ${scoreTone(r.score)}`}
+                                    style={{ '--w': `${r.score}%` } as CSSProperties}
+                                  />
+                                </span>
+                                <span className={`qd-score ${scoreTone(r.score)}`}>{r.score}%</span>
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <div className="qd-result-cell">
+                              <span className={`qd-pill ${tone}`}>{RESULT_LABEL[r.result]}</span>
+                              {r.recall && <span className="qd-recall" title="Esta casa estuvo en Recall"><RotateCcw size={11} /> Recall</span>}
+                            </div>
+                          </td>
+                          <td className="qd-issues">
+                            {r.issues.length === 0 ? <span className="qd-muted">—</span> : (
+                              <ul className="qd-tags">{r.issues.map((i) => <li key={i} className="qd-tag">{i}</li>)}</ul>
+                            )}
+                          </td>
+                          <td className="qd-follow">{r.follow}</td>
+                          <td className="right" onClick={(e) => e.stopPropagation()}>
+                            <div className="qd-actions">
+                              {r.rec && r.result !== 'todo' && (
+                                <>
+                                  <button type="button" className="qd-iconbtn wa" disabled={busy === r.prop.id} onClick={() => handleWhatsApp(r)} aria-label="Enviar por WhatsApp" title="WhatsApp">
+                                    <WhatsAppIcon size={15} />
+                                  </button>
+                                  <button type="button" className="qd-iconbtn" disabled={busy === r.prop.id} onClick={() => handleEmail(r)} aria-label="Enviar por email" title="Email">
+                                    <Mail size={15} />
+                                  </button>
+                                  <button type="button" className="qd-iconbtn" disabled={busy === r.prop.id} onClick={() => handlePrint(r)} aria-label="Imprimir / PDF" title="PDF">
+                                    <Printer size={15} />
+                                  </button>
+                                </>
+                              )}
+                              {r.result === 'passed' || !canInspect || !onInspect ? (
+                                <button type="button" className="qd-btn" onClick={() => setOpenRow(r)}>View</button>
+                              ) : (
+                                <button type="button" className="qd-btn primary" onClick={() => onInspect(r.prop)}>
+                                  {r.result === 'reclean' ? 'Re-inspect' : 'Inspect'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                );
+              })}
             </table>
           </div>
         </section>
 
-        <aside className="qd-side">
+        <aside className="qd-side" aria-label="Resumen del periodo">
           <section className="qd-card qd-pad" aria-label="Team scorecard">
             <p className="qd-lbl">Team scorecard</p>
             {teamCards.length === 0 ? <p className="qd-muted">No inspections in this period.</p> : (
               <ul className="qd-teamlist">
+                <li className="qd-teamrow head" aria-hidden="true">
+                  <span>Team</span>
+                  <span className="qd-teamstats-head"><span>Avg</span><span>Pass</span><span>Re-clean</span></span>
+                </li>
                 {teamCards.map((tc) => (
                   <li key={tc.name} className="qd-teamrow">
                     <span className="qd-team" style={{ '--team-color': tc.color } as CSSProperties}>{tc.name}</span>
                     <dl className="qd-teamstats">
-                      <div><dd>{tc.avg ?? '—'}</dd><dt>avg</dt></div>
-                      <div><dd>{tc.n ? `${Math.round((tc.pass / tc.n) * 100)}%` : '—'}</dd><dt>pass</dt></div>
-                      <div><dd className="bad">{tc.re}</dd><dt>re-clean</dt></div>
+                      <div><dt>Avg</dt><dd className={tc.avg === null ? '' : scoreTone(tc.avg)}>{tc.avg ?? '—'}</dd></div>
+                      <div><dt>Pass</dt><dd>{tc.n ? `${Math.round((tc.pass / tc.n) * 100)}%` : '—'}</dd></div>
+                      <div><dt>Re-clean</dt><dd className={tc.re > 0 ? 'bad' : ''}>{tc.re}</dd></div>
                     </dl>
                   </li>
                 ))}
