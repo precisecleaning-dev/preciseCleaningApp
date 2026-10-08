@@ -91,6 +91,9 @@ import {
 import { useJobFinancials } from "../utils/jobFinancials";
 import { qcCounts, qcInfoFor, useQcRecords } from "../utils/jobQuality";
 import { buildUnifiedGroups, type UnifiedGroup } from "../utils/unifiedRows";
+import { useRecallHouses } from "../utils/jobRecall";
+import NoteThread, { type NoteMessage } from "../components/NoteThread";
+import { isRecallText } from "../utils/recallStatus";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
 import type { PhotoConfig } from "../services/photoConfigService";
@@ -596,6 +599,8 @@ interface HousesViewProps {
   renderMode?: "full" | "modals-only";
 }
 
+type NoteField = "note" | "officeNote" | "employeeNote";
+
 type DetailTab = "overview" | "financials" | "media" | "history";
 
 export default function HousesView({
@@ -854,18 +859,10 @@ export default function HousesView({
   // ⭐ NOTAS EDITABLES EN EL DETALLE: borrador local de las notas para poder
   //    editarlas directo en "Notes & Photos" (sin abrir el formulario). Cada
   //    campo respeta su visibilidad y su solo-lectura por rol (isFieldRO).
-  const [detailNotes, setDetailNotes] = useState<{
-    note: string;
-    officeNote: string;
-    employeeNote: string;
-  }>({ note: "", officeNote: "", employeeNote: "" });
-  const [detailNotesDirty, setDetailNotesDirty] = useState(false);
   // ⭐ Modal de historial de notas (quién escribió/editó cada nota y cuándo)
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
-  const lastNoteMeta = (field: "note" | "officeNote" | "employeeNote") => {
-    const h = (selectedHouse?.notesHistory || []).filter((e) => e.field === field);
-    return h.length ? h[h.length - 1] : null;
-  };
+  // Campo cuya nota se está enviando (deshabilita su botón mientras guarda)
+  const [sendingNote, setSendingNote] = useState<NoteField | null>(null);
   const fmtNoteWhen = (iso: string) =>
     new Date(iso).toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 
@@ -2419,6 +2416,7 @@ export default function HousesView({
   const unifiedEnabled = renderMode === "full" && viewMode !== "board";
   const jobFin = useJobFinancials(unifiedEnabled);
   const qcRecords = useQcRecords(unifiedEnabled);
+  const recallHouses = useRecallHouses(statuses, unifiedEnabled);
 
   // Dentro del mismo día, por hora de entrada (agenda del día).
   const timeSortValue = (t?: string) => {
@@ -2552,6 +2550,51 @@ export default function HousesView({
     if (!p) return "";
     const cli = getClientName(p.client);
     return p.address ? `${cli} — ${p.address}` : cli;
+  };
+
+  // ⭐ Edición EN LÍNEA desde la tabla del Overview (Team y Billing), con el
+  //    mismo cuidado que el status: respeta permisos y "solo lectura" del
+  //    campo, deja rastro en la bitácora y actualiza la lista al instante.
+  const handleQuickFieldChange = async (
+    prop: Property,
+    field: "teamId" | "invoiceStatus",
+    value: string,
+  ) => {
+    if (isFieldRO(field)) {
+      alert("Este campo es de SOLO LECTURA para tu rol.");
+      return;
+    }
+    const before = String(prop[field] || "");
+    if (before === value) return;
+    setIsSaving(true);
+    try {
+      const payload: Partial<Property> =
+        field === "teamId" ? { teamId: value } : { invoiceStatus: value };
+      await propertiesService.update(prop.id, payload);
+      const label = (v: string) =>
+        field === "teamId"
+          ? teams.find((t) => t.id === v)?.name || (v ? v : "Unassigned")
+          : v || "(sin status de invoice)";
+      logActivity({
+        action: "update",
+        module: "Houses",
+        user: currentUser,
+        targetId: prop.id,
+        targetLabel: logLabel(prop),
+        changes: [{ field, before: label(before), after: label(value) }],
+      });
+      setProperties(
+        properties.map((p) => (p.id === prop.id ? { ...p, ...payload } : p)),
+      );
+      if (selectedHouse && selectedHouse.id === prop.id) {
+        setSelectedHouse({ ...selectedHouse, ...payload });
+      }
+    } catch (error) {
+      console.error(`Error updating ${field}:`, error);
+      alert(field === "teamId" ? "Failed to update team." : "Failed to update invoice status.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleQuickStatusChange = async (
@@ -3806,64 +3849,81 @@ export default function HousesView({
     return isElementVisible(fieldId) && !isFieldRO(fieldId);
   };
 
-  const handleSaveDetailNotes = async () => {
-    if (!selectedHouse) return;
-    // Solo se mandan a Firestore los campos que el rol puede editar.
-    const payload: Partial<PropertyU> = {};
-    if (canEditDetailNote("note")) payload.note = detailNotes.note;
-    if (canEditDetailNote("officeNote")) payload.officeNote = detailNotes.officeNote;
-    if (canEditDetailNote("employeeNote")) payload.employeeNote = detailNotes.employeeNote;
-    if (Object.keys(payload).length === 0) return;
+  // ⭐ Nombre legible del autor de una nota (el historial guarda el email).
+  const noteAuthorName = (email: string) => {
+    const u = employees.find((e) => String(e.email || "").toLowerCase() === String(email || "").toLowerCase());
+    const full = u ? `${u.firstName || ""} ${u.lastName || ""}`.trim() : "";
+    return full || String(email || "?").split("@")[0];
+  };
 
-    // ⭐ HISTORIAL DE NOTAS: por cada campo que CAMBIÓ, una entrada con
-    //    autor + fecha-hora + acción (creada/editada) + texto final.
-    const noteFields = ["note", "officeNote", "employeeNote"] as const;
-    const newEntries = noteFields
-      .filter((f) => f in payload)
-      .filter((f) => String((selectedHouse as PropertyU)[f] || "") !== String(payload[f] || ""))
-      .map((f) => ({
-        field: f,
-        text: String(payload[f] || ""),
-        user: currentUser?.email || "?",
-        at: new Date().toISOString(),
-        action: String((selectedHouse as PropertyU)[f] || "") === "" ? ("created" as const) : ("edited" as const),
+  // ⭐ Mensajes de una nota: cada entrada del historial es un mensaje. Si la
+  //    nota tiene texto pero aún no tiene historial (casas viejas o importadas
+  //    de AppSheet), ese texto se muestra como un primer mensaje "Nota anterior".
+  const noteMessages = (field: NoteField): NoteMessage[] => {
+    if (!selectedHouse) return [];
+    const me = String(currentUser?.email || "").toLowerCase();
+    const msgs: NoteMessage[] = (selectedHouse.notesHistory || [])
+      .filter((e) => e.field === field && String(e.text || "").trim() !== "")
+      .map((e, i) => ({
+        key: `${field}-${i}-${e.at}`,
+        text: e.text,
+        author: noteAuthorName(e.user),
+        at: e.at,
+        mine: !!me && String(e.user || "").toLowerCase() === me,
+        edited: e.action === "edited",
       }));
-    if (newEntries.length > 0) {
-      payload.notesHistory = [
-        ...(selectedHouse.notesHistory || []),
-        ...newEntries,
-      ];
+    const current = String((selectedHouse as PropertyU)[field] || "").trim();
+    if (msgs.length === 0 && current) {
+      msgs.push({ key: `${field}-legacy`, text: current, author: "Nota anterior", at: "", mine: false });
     }
+    return msgs;
+  };
 
-    setIsSaving(true);
+  // ⭐ Enviar un mensaje a una nota. El campo de la casa ACUMULA los mensajes
+  //    (texto anterior + salto de línea + mensaje nuevo) para que tarjetas,
+  //    Invoices y Quality Check sigan mostrando la nota completa; el historial
+  //    guarda el mensaje suelto con su autor y hora.
+  const handleSendNote = async (field: NoteField, text: string): Promise<boolean> => {
+    if (!selectedHouse || !canEditDetailNote(field)) return false;
+    const prev = String((selectedHouse as PropertyU)[field] || "").trim();
+    const nextValue = prev ? `${prev}\n${text}` : text;
+    const entry = {
+      field,
+      text,
+      user: currentUser?.email || "?",
+      at: new Date().toISOString(),
+      action: "created" as const,
+    };
+    const payload: Partial<PropertyU> = {
+      [field]: nextValue,
+      notesHistory: [...(selectedHouse.notesHistory || []), entry],
+    };
+    setSendingNote(field);
     try {
       await propertiesService.update(selectedHouse.id, payload as Partial<Property>);
       const updatedHouse = { ...selectedHouse, ...payload } as Property;
-      // ⭐ Bitacora con diff campo a campo, igual que el guardado del formulario.
       logActivity({
         action: "update",
         module: "Houses",
         user: currentUser,
         targetId: selectedHouse.id,
         targetLabel: logLabel(updatedHouse),
-        changes: diffObjects(
-          selectedHouse as unknown as Record<string, unknown>,
-          updatedHouse as unknown as Record<string, unknown>,
-        ),
+        changes: [{ field, before: prev, after: nextValue }],
       });
       setSelectedHouse(updatedHouse);
       setProperties(
         properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
       );
-      setDetailNotesDirty(false);
+      return true;
     } catch (error) {
-      console.error("❌ Error saving notes:", error);
+      console.error("❌ Error saving note:", error);
       const fbErr = error as { code?: string; message?: string };
       alert(
-        `No se pudieron guardar las notas.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+        `No se pudo guardar la nota.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
       );
+      return false;
     } finally {
-      setIsSaving(false);
+      setSendingNote(null);
     }
   };
 
@@ -4059,12 +4119,6 @@ export default function HousesView({
     setSelectedHouse(house);
     setIsAssigningWorker(false);
     setActiveDetailTab("overview");
-    setDetailNotes({
-      note: house.note || "",
-      officeNote: (house as PropertyU).officeNote || "",
-      employeeNote: house.employeeNote || "",
-    });
-    setDetailNotesDirty(false);
     setBeforeFiles([]);
     setAfterFiles([]);
     setBeforePhotoURLs(house.beforePhotos || []);
@@ -4802,6 +4856,21 @@ export default function HousesView({
                       canDelete && isVisible("admin") && isElementVisible("btn_deleteProperty")
                         ? (prop) => handleDelete(prop)
                         : undefined
+                    }
+                    teams={teams}
+                    onTeamChange={
+                      canEdit && !isFieldRO("teamId") && !isSaving
+                        ? (prop, teamId) => handleQuickFieldChange(prop, "teamId", teamId)
+                        : undefined
+                    }
+                    onBillingChange={
+                      canEdit && !isFieldRO("invoiceStatus") && !isSaving
+                        ? (prop, v) => handleQuickFieldChange(prop, "invoiceStatus", v)
+                        : undefined
+                    }
+                    wasRecall={(prop) =>
+                      recallHouses.has(prop.id) ||
+                      isRecallText(findStatusOf(prop)?.name || prop.statusId)
                     }
                   />
                 </div>
@@ -6919,119 +6988,65 @@ export default function HousesView({
                 isVisible("media") &&
                 photosUnlockedFor(selectedHouse) && (
                   <div className="fade-in">
+                    {/* ⭐ NOTAS EN FORMATO DE MENSAJES: cada nota es un mensaje
+                        con autor y hora (historial notesHistory) y se escribe la
+                        siguiente abajo, como en un chat. Office Notes primero:
+                        es interna y solo la ve quien tiene el permiso. */}
                     {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
-                      <div className="hv-media-grid">
-                        {/* ⭐ Notas de OFICINA en azul, primero: son internas y deben
-                          distinguirse a simple vista del resto. */}
+                      <div className="hv-media-grid hv-notes-grid">
                         {canSeeOfficeNotes() && (
-                          <div className="hv-note-box office">
-                            <span className="hv-detail-label office">
-                              <Briefcase
-                                size={14}
-                                className="hv-label-icon-inline"
-                              />{" "}
-                              OFFICE NOTES
-                            </span>
-                            {canEditDetailNote("officeNote") ? (
-                              <textarea
-                                className="hv-note-input office"
-                                placeholder="Notas internas de oficina..."
-                                value={detailNotes.officeNote}
-                                onChange={(e) => {
-                                  setDetailNotes((p) => ({ ...p, officeNote: e.target.value }));
-                                  setDetailNotesDirty(true);
-                                }}
-                              />
-                            ) : (
-                              <p className="hv-note-text">
-                                {(selectedHouse as PropertyU).officeNote || "No office notes."}
-                              </p>
-                            )}
-                          </div>
+                          <NoteThread
+                            title="Office Notes"
+                            icon={<Briefcase size={14} />}
+                            tone="office"
+                            messages={noteMessages("officeNote")}
+                            emptyText="Sin notas de oficina todavía."
+                            canWrite={canEditDetailNote("officeNote")}
+                            placeholder="Nota interna de oficina…"
+                            sending={sendingNote === "officeNote"}
+                            onSend={(t) => handleSendNote("officeNote", t)}
+                          />
                         )}
                         {isElementVisible("note") && (
-                          <div className="hv-note-box">
-                            <span className="hv-detail-label">
-                              <StickyNote
-                                size={14}
-                                className="hv-label-icon-inline"
-                              />{" "}
-                              GENERAL NOTE
-                            </span>
-                            {canEditDetailNote("note") ? (
-                              <textarea
-                                className="hv-note-input"
-                                placeholder="General instructions or notes..."
-                                value={detailNotes.note}
-                                onChange={(e) => {
-                                  setDetailNotes((p) => ({ ...p, note: e.target.value }));
-                                  setDetailNotesDirty(true);
-                                }}
-                              />
-                            ) : (
-                              <p className="hv-note-text">
-                                {selectedHouse.note || "No general notes."}
-                              </p>
-                            )}
-                          </div>
+                          <NoteThread
+                            title="General Note"
+                            icon={<StickyNote size={14} />}
+                            tone="general"
+                            messages={noteMessages("note")}
+                            emptyText="Sin notas generales todavía."
+                            canWrite={canEditDetailNote("note")}
+                            placeholder="Instrucciones o notas generales…"
+                            sending={sendingNote === "note"}
+                            onSend={(t) => handleSendNote("note", t)}
+                          />
                         )}
                         {isElementVisible("employeeNote") && (
-                          <div className="hv-note-box orange">
-                            <span className="hv-detail-label orange">
-                              <StickyNote
-                                size={14}
-                                className="hv-label-icon-inline"
-                              />{" "}
-                              EMPLOYEE'S NOTE
-                            </span>
-                            {canEditDetailNote("employeeNote") ? (
-                              <textarea
-                                className="hv-note-input orange"
-                                placeholder="Escribe aquí las notas del empleado..."
-                                value={detailNotes.employeeNote}
-                                onChange={(e) => {
-                                  setDetailNotes((p) => ({ ...p, employeeNote: e.target.value }));
-                                  setDetailNotesDirty(true);
-                                }}
-                              />
-                            ) : (
-                              <p className="hv-note-text">
-                                {selectedHouse.employeeNote || "No employee notes."}
-                              </p>
-                            )}
-                          </div>
+                          <NoteThread
+                            title="Employee's Note"
+                            icon={<StickyNote size={14} />}
+                            tone="employee"
+                            messages={noteMessages("employeeNote")}
+                            emptyText="Sin notas del empleado todavía."
+                            canWrite={canEditDetailNote("employeeNote")}
+                            placeholder="Escribe aquí la nota del empleado…"
+                            sending={sendingNote === "employeeNote"}
+                            onSend={(t) => handleSendNote("employeeNote", t)}
+                          />
                         )}
                       </div>
                     )}
 
-                    {/* ⭐ Guardar notas: aparece solo si el rol puede editar alguna
-                      y se habilita cuando hay cambios sin guardar. */}
-                    {(canEditDetailNote("note") ||
-                      canEditDetailNote("officeNote") ||
-                      canEditDetailNote("employeeNote")) && (
-                        <div className="hv-save-notes-row">
-                          <button
-                            onClick={handleSaveDetailNotes}
-                            disabled={isSaving || !detailNotesDirty}
-                            className="hv-btn-primary-modal green"
-                          >
-                            <Save size={16} />{" "}
-                            {isSaving ? "Saving..." : "Save Notes"}
-                          </button>
-                        {/* ⭐ Trazabilidad: última edición + historial completo */}
+                    {/* Historial completo (quién escribió/editó cada nota y cuándo) */}
+                    {(anyVisible("note", "employeeNote") || canSeeOfficeNotes()) && (
+                      <div className="hv-save-notes-row">
                         <button
                           className="hv-drafts-btn"
                           onClick={() => setIsNotesHistoryOpen(true)}
                         >
                           <FileText size={15} /> Historial ({(selectedHouse.notesHistory || []).length})
                         </button>
-                        {lastNoteMeta("note") && (
-                          <span className="hv-note-meta">
-                            Última nota: {lastNoteMeta("note")!.user} · {fmtNoteWhen(lastNoteMeta("note")!.at)}
-                          </span>
-                        )}
-                        </div>
-                      )}
+                      </div>
+                    )}
 
                     {isElementVisible("card_photos") && (
                       <div className="hv-media-grid no-mb">

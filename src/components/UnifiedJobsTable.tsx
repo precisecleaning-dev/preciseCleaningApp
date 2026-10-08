@@ -2,13 +2,16 @@
 //    View": operaciones, Quality Check, cobro, resumen automático y finanzas en
 //    una sola fila por trabajo, agrupada por periodo con subtotales.
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ChevronRight, Pencil, Trash2, Sparkles } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2, Sparkles, RotateCcw } from 'lucide-react';
 import type { Property } from '../types/index';
 import { money, pct, marginTone, type JobFinancials } from '../utils/jobFinancials';
 import type { UnifiedGroup } from '../utils/unifiedRows';
 import './UnifiedJobsTable.css';
 
 const PAGE = 50;
+
+/** Opciones del status del invoice (mismas que Invoices y el formulario). */
+const BILLING_OPTIONS = ['Needs Invoice', 'Pending', 'Paid', 'Pre-Paid'];
 
 const BILLING_TONE: Record<string, string> = {
   'needs invoice': 'warn',
@@ -39,10 +42,19 @@ interface UnifiedJobsTableProps {
   onOpenQc: (prop: Property) => void;
   onEdit?: (prop: Property) => void;
   onDelete?: (prop: Property) => void;
+  /** Catálogo de equipos para el selector de Team. */
+  teams: { id: string; name: string; color?: string }[];
+  /** Si viene, Team se edita en la misma celda. */
+  onTeamChange?: (prop: Property, teamId: string) => void;
+  /** Si viene, Billing (status del invoice) se edita en la misma celda. */
+  onBillingChange?: (prop: Property, value: string) => void;
+  /** ¿La casa estuvo alguna vez en Recall? */
+  wasRecall?: (prop: Property) => boolean;
 }
 
 export default function UnifiedJobsTable({
   groups, loading, emptyText, renderStatus, onOpen, onOpenQc, onEdit, onDelete,
+  teams, onTeamChange, onBillingChange, wasRecall,
 }: UnifiedJobsTableProps) {
   // Grupos ABIERTOS por defecto (el periodo ya acota el volumen); se pliegan.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -120,8 +132,23 @@ export default function UnifiedJobsTable({
                         {r.note && <div className="ujt-muted ujt-note" title={r.note}>{r.note}</div>}
                       </td>
                       <td className="ujt-semibold">{r.type}</td>
-                      <td>
-                        {r.teamName ? (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {onTeamChange ? (
+                          // ⭐ Team editable en la misma celda: select nativo con
+                          //    forma de pastilla (teclado y lector de pantalla).
+                          <select
+                            className={`ujt-select team${r.teamName ? '' : ' empty'}`}
+                            style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}
+                            value={r.teamName ? String(r.prop.teamId || '') : ''}
+                            aria-label={`Team de ${r.client}`}
+                            onChange={(e) => onTeamChange(r.prop, e.target.value)}
+                          >
+                            <option value="">Unassigned</option>
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                        ) : r.teamName ? (
                           <span className="ujt-team" style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}>{r.teamName}</span>
                         ) : (
                           <span className="ujt-team-none">Unassigned</span>
@@ -129,15 +156,48 @@ export default function UnifiedJobsTable({
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>{renderStatus(r.prop)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        {r.qc.state === 'none' ? (
-                          <span className="ujt-pill none">—</span>
+                        {/* ⭐ Grado de Quality Check (el % de la inspección) + si
+                            la casa estuvo alguna vez en Recall. */}
+                        <div className="ujt-qc">
+                          {r.qc.state === 'none' ? (
+                            <span className="ujt-pill none">—</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`ujt-grade ${r.qc.tone}`}
+                              onClick={() => onOpenQc(r.prop)}
+                              title="Ver inspección"
+                            >
+                              {r.qc.score !== null && <span className="ujt-grade-num">{r.qc.score}%</span>}
+                              <span className="ujt-grade-txt">
+                                {r.qc.state === 'passed' ? 'Passed' : r.qc.state === 'failed' ? 'Re-clean' : 'QC pending'}
+                              </span>
+                            </button>
+                          )}
+                          {wasRecall?.(r.prop) && (
+                            <span className="ujt-recall" title="Esta casa estuvo en Recall">
+                              <RotateCcw size={11} /> Recall
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {onBillingChange ? (
+                          <select
+                            className={`ujt-select pill ${billingTone(r.billing)}`}
+                            value={BILLING_OPTIONS.find((o) => o.toLowerCase() === r.billing.toLowerCase().trim()) || ''}
+                            aria-label={`Billing de ${r.client}`}
+                            onChange={(e) => onBillingChange(r.prop, e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {BILLING_OPTIONS.map((o) => (
+                              <option key={o} value={o}>{o}</option>
+                            ))}
+                          </select>
                         ) : (
-                          <button type="button" className={`ujt-pill ${r.qc.tone} as-btn`} onClick={() => onOpenQc(r.prop)}>
-                            {r.qc.label}
-                          </button>
+                          <span className={`ujt-pill ${billingTone(r.billing)}`}>{r.billing || '—'}</span>
                         )}
                       </td>
-                      <td><span className={`ujt-pill ${billingTone(r.billing)}`}>{r.billing || '—'}</span></td>
                       <td className="ujt-ai">
                         <span className={`ujt-aitag ${INSIGHT_TONE[r.insight.tag]}`}>{r.insight.tag}</span>
                         <div>{r.insight.text}</div>

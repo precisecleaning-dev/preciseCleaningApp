@@ -37,6 +37,7 @@ const DEFAULT_MODULES = [
   // --- Calidad ---
   'Quality Check',
   'Quality Check Reports',
+  'QC Dashboard',
   'Recalls',
   // --- Administracion del negocio ---
   'Status History',

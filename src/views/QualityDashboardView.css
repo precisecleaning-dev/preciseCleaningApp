@@ -1,0 +1,312 @@
+/* =====================================================================
+   ⭐ QC Dashboard — diseño "Quality Check dashboard" del lienzo
+   (barra de periodo en PeriodBar.css, indicadores en KpiGrid.css,
+   panel lateral en QcInspectionPanel.css)
+   ===================================================================== */
+/* App.css fija `* { font-family: system-ui }`: la letra del diseño se aplica
+   a cada elemento. */
+.qd-page,
+.qd-page * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+.qd-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: #0f172a;
+  background: #f4f6fb;
+  min-width: 0;
+}
+
+/* ---- Encabezado ---- */
+.qd-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.qd-title-group { display: flex; align-items: center; gap: 14px; }
+.qd-title { margin: 0; font-size: 26px; font-weight: 800; }
+.qd-subtitle { margin: 2px 0 0; font-size: 13px; color: #5b6475; }
+.qd-search { position: relative; display: flex; align-items: center; }
+.qd-search-icon { position: absolute; left: 12px; color: #5b6475; }
+.qd-search-input {
+  height: 40px;
+  width: 280px;
+  max-width: 100%;
+  border: 1px solid #e3e7ef;
+  border-radius: 999px;
+  padding: 0 14px 0 36px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+.qd-search-input:focus { outline: none; border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(29, 63, 207, 0.1); }
+
+/* ---- Filtros en la barra de periodo ---- */
+.qd-filters { display: flex; align-items: center; gap: 10px; }
+.qd-filter { display: flex; align-items: center; gap: 8px; }
+.qd-lbl {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6475;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.qd-select {
+  height: 36px;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #1e293b;
+  max-width: 170px;
+}
+
+/* ---- Cuerpo: lista + columna lateral ---- */
+.qd-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+.qd-card {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.qd-main { flex: 999 1 720px; min-width: 0; overflow: hidden; }
+.qd-side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.qd-pad { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+
+.qd-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; }
+.qd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-height: 0;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #e3e7ef;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+}
+.qd-chip:hover { border-color: #c7d2fe; }
+.qd-chip.on { background: #eef2ff; border-color: #1d3fcf; color: #1d3fcf; }
+.qd-cnt {
+  font-size: 11px;
+  font-weight: 700;
+  background: #eef0f5;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+}
+.qd-chip.on .qd-cnt { background: #ffffff; }
+
+/* ---- Tabla (scroll horizontal siempre visible) ---- */
+.qd-scroll {
+  overflow-x: scroll;
+  border-top: 1px solid #e3e7ef;
+}
+.fade-in .qd-scroll { scrollbar-width: auto; scrollbar-color: auto; }
+.fade-in .qd-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
+.fade-in .qd-scroll::-webkit-scrollbar-track { background: #eef1f6; }
+.fade-in .qd-scroll::-webkit-scrollbar-thumb { background: #b8c1d1; border-radius: 8px; border: 3px solid #eef1f6; }
+.fade-in .qd-scroll::-webkit-scrollbar-thumb:hover { background: #94a0b8; }
+@supports not selector(::-webkit-scrollbar) {
+  .fade-in .qd-scroll { scrollbar-color: #b8c1d1 #eef1f6; }
+}
+.qd-table { border-collapse: collapse; width: 100%; min-width: 1180px; }
+.qd-table th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5b6475;
+  text-align: left;
+  padding: 12px;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e3e7ef;
+  white-space: nowrap;
+}
+.qd-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eef0f5;
+  font-size: 13px;
+  color: #1e293b;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.qd-table .right { text-align: right; }
+.qd-table .strong,
+.qd-page .strong { font-weight: 700; }
+.qd-table .semibold { font-weight: 600; }
+.qd-row { cursor: pointer; }
+.qd-row:hover > td { background: #f8faff; }
+.qd-client { white-space: normal !important; min-width: 210px; }
+.qd-muted { color: #5b6475; font-size: 12px; }
+.qd-muted.italic { font-style: italic; }
+.qd-muted-strong { color: #334155; }
+.qd-empty { text-align: center; padding: 40px !important; color: #5b6475 !important; }
+
+.qd-team {
+  display: inline-block;
+  color: #ffffff;
+  background-color: var(--team-color);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.qd-scorecell { display: flex; align-items: center; gap: 8px; }
+.qd-bar {
+  display: block;
+  height: 8px;
+  width: 90px;
+  border-radius: 999px;
+  background: #eef0f5;
+  overflow: hidden;
+}
+.qd-bar.wide { width: 100%; }
+.qd-bar-fill {
+  display: block;
+  height: 100%;
+  width: var(--w);
+  border-radius: 999px;
+}
+.qd-bar-fill.good { background: #059669; }
+.qd-bar-fill.warn { background: #d97706; }
+.qd-bar-fill.bad { background: #dc2626; }
+.qd-score { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.qd-result-cell { display: flex; align-items: center; gap: 6px; }
+.qd-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.qd-pill.good { background: #ecfdf5; color: #047857; }
+.qd-pill.bad { background: #fef2f2; color: #b91c1c; }
+.qd-pill.warn { background: #fffbeb; color: #b45309; }
+.qd-recall {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7c2d12;
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+  white-space: nowrap;
+}
+.qd-recall svg { flex-shrink: 0; }
+
+.qd-issues { white-space: normal !important; min-width: 150px; }
+.qd-tags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.qd-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+.qd-follow { white-space: normal !important; min-width: 170px; font-size: 12px !important; color: #334155 !important; }
+
+.qd-actions { display: inline-flex; align-items: center; gap: 6px; }
+.qd-iconbtn {
+  width: 34px;
+  height: 34px;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 10px;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  color: #1d3fcf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.qd-iconbtn:hover:not(:disabled) { filter: brightness(0.97); }
+.qd-iconbtn:disabled { opacity: 0.5; cursor: default; }
+.qd-iconbtn.wa { border-color: #a7f3d0; background: #ecfdf5; color: #059669; }
+.qd-iconbtn.menu {
+  width: 48px;
+  height: 48px;
+  border-color: #e3e7ef;
+  background: #ffffff;
+  color: #0f172a;
+}
+.qd-btn {
+  height: 34px;
+  min-height: 0;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #e3e7ef;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d3fcf;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.qd-btn:hover { background: #f8f9fc; }
+.qd-btn.primary { background: #1d3fcf; border-color: #1d3fcf; color: #ffffff; }
+.qd-btn.primary:hover { background: #1734b0; }
+
+/* ---- Columna lateral ---- */
+.qd-teamlist, .qd-arealist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.qd-teamrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eef0f5;
+}
+.qd-teamrow:last-child { border-bottom: 0; }
+.qd-teamstats { margin: 0; display: flex; gap: 16px; text-align: right; }
+.qd-teamstats > div { display: flex; flex-direction: column; }
+.qd-teamstats dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.qd-teamstats dd.bad { color: #b91c1c; }
+.qd-teamstats dt { font-size: 12px; color: #5b6475; }
+.qd-arealist { gap: 12px; }
+.qd-area { display: flex; flex-direction: column; gap: 6px; }
+.qd-area-top { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+
+.qd-ai { background: #f5f3ff; border-color: #ddd6fe; gap: 8px; }
+.qd-lbl.ai { color: #6d28d9; }
+.qd-ai-text { margin: 0; font-size: 13px; line-height: 1.5; color: #2e1065; }
+
+@media (max-width: 700px) {
+  .qd-search, .qd-search-input { width: 100%; }
+  .qd-filters { width: 100%; flex-wrap: wrap; }
+  .qd-filter { flex: 1 1 140px; }
+  .qd-select { flex: 1; max-width: none; }
+}
+@media (min-width: 769px) {
+  .qd-filters .qd-select { min-height: 0; }
+}

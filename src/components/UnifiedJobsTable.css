@@ -334,3 +334,106 @@
   position: sticky;
   left: 12px;
 }
+
+/* ---- Selectores en línea (Team y Billing): pastilla con flecha propia ---- */
+.ujt-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 26px 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px 10px;
+  max-width: 170px;
+}
+.ujt-select:focus-visible {
+  outline: 2px solid #1d3fcf;
+  outline-offset: 2px;
+}
+.ujt-select option {
+  color: #0f172a;
+  background: #ffffff;
+  font-weight: 500;
+}
+/* Team: el color del equipo de fondo, texto blanco y flecha blanca */
+.ujt-select.team {
+  color: #ffffff;
+  background-color: var(--team-color);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.ujt-select.team.empty {
+  color: #5b6475;
+  font-style: italic;
+  background-color: #f1f5f9;
+  border-color: #e3e7ef;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b6475' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.ujt-select.team:hover {
+  filter: brightness(1.06);
+}
+/* Billing: mismos tonos que las pastillas */
+.ujt-select.pill {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.ujt-select.pill.good { background-color: #ecfdf5; color: #047857; }
+.ujt-select.pill.warn { background-color: #fffbeb; color: #b45309; }
+.ujt-select.pill.bad { background-color: #fef2f2; color: #b91c1c; }
+.ujt-select.pill.info { background-color: #f5f3ff; color: #6d28d9; }
+.ujt-select.pill.none { background-color: #f8f9fc; color: #5b6475; border-color: #e3e7ef; }
+.ujt-select.pill:hover { border-color: #c7d2fe; }
+
+/* ---- Grado de QC + marca de Recall ---- */
+.ujt-qc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ujt-grade {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px 3px 4px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ujt-grade:hover { filter: brightness(0.96); }
+.ujt-grade-num {
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+.ujt-grade-txt {
+  font-size: 11px;
+  font-weight: 700;
+}
+.ujt-grade.good { background: #ecfdf5; color: #047857; }
+.ujt-grade.good .ujt-grade-num { background: #059669; }
+.ujt-grade.bad { background: #fef2f2; color: #b91c1c; }
+.ujt-grade.bad .ujt-grade-num { background: #dc2626; }
+.ujt-grade.warn { background: #fffbeb; color: #b45309; padding-left: 10px; }
+.ujt-recall {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7c2d12;
+  background: #ffedd5;
+  border: 1px solid #fed7aa;
+  white-space: nowrap;
+}

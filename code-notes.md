@@ -199,6 +199,23 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Edición en la tabla, grado QC, notas tipo chat y QC Dashboard (2026-10-08, ronda 3)
+- **Overview (`UnifiedJobsTable`):** Team y Billing se editan desde la celda (select nativo con
+  forma de píldora). Status ya se editaba desde la columna. `HousesView.handleQuickFieldChange`
+  respeta `isFieldRO`, guarda con `propertiesService.update` y deja registro en el activity log.
+- **Columna QC:** muestra el grado (% de Quality Check, `passRate` o `computeQCScore`) y una
+  insignia **Recall** si la casa pasó por un status Recall (`utils/jobRecall.ts`: `status_history`
+  + colección `recalls`, lectura única con `getDocs` porque es histórico).
+- **Notas (`NoteThread`):** las 3 notas se ven como conversación. Cada mensaje nuevo se AGREGA al
+  campo (`texto anterior + "\n" + nuevo`) y crea una entrada en `notesHistory`; las burbujas salen
+  de `notesHistory`. Notas viejas sin historial aparecen como un mensaje "Nota anterior". El modal
+  Historial se mantiene.
+- **QC Dashboard (vista nueva `qc_dashboard`, módulo de permisos "QC Dashboard"):** diseño del
+  lienzo. Quality Check y QC Reports NO se tocaron — son features paralelas a propósito (pedido
+  del usuario); si más adelante se quiere quedar con una sola, es decisión de producto.
+  El panel lateral (`QcInspectionPanel`) es de lectura; para corregir se usa Inspect/Re-inspect →
+  Quality Check, así no hay dos editores del mismo reporte. Reglas en `utils/qcDashboard.ts`.
+
 ## Overview e Invoices: presentación profesional (2026-10-08, ronda 2)
 - **Indicadores en `KpiGrid`** (reemplaza `KpiBand`, eliminado): UNA rejilla de columnas iguales para
   todos los grupos → todos los cuadros miden lo mismo. Etiqueta hasta 2 líneas (reserva 2 siempre),

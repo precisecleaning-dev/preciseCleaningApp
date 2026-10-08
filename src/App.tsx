@@ -40,6 +40,10 @@ const RecallsView = lazy(() => import('./views/RecallsView'));
 //    (sin montos). Es una vista propia del menu, distinta de la pestana
 //    "Reportes" del hub de QC, que es un listado de tarjetas con metricas.
 const QCReportsTableView = lazy(() => import('./views/QCReportsTableView'));
+// ⭐ QC DASHBOARD — vista nueva (diseño del lienzo): indicadores de calidad,
+//    inspecciones con score/resultado/áreas con fallas y scorecard por equipo.
+//    No reemplaza a Quality Check ni a Quality Check Reports.
+const QualityDashboardView = lazy(() => import('./views/QualityDashboardView'));
 // ⭐ Vista de historial de status por casa
 const StatusHistoryView = lazy(() => import('./views/StatusHistoryView'));
 // ⭐ Modulo de empresa (logo, nombre, correo, direccion)
@@ -61,12 +65,12 @@ import { auth, db } from './config/firebase';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -301,6 +305,7 @@ export default function App() {
     const TAB_MODULE: Partial<Record<TabOptions, string[]>> = {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
       qc_report: ['Quality Check'], qc_reports_table: ['Quality Check'],
+      qc_dashboard: ['QC Dashboard', 'Quality Check'],
       status_history: ['Status History'], payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
       data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
@@ -580,6 +585,32 @@ export default function App() {
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
+        )}
+
+        {/* ⭐ QC DASHBOARD — vista nueva del lienzo. "Inspect" abre la inspección
+            en Quality Check; el detalle de la casa se abre aquí mismo. */}
+        {activeTab === 'qc_dashboard' && (
+          <>
+            <QualityDashboardView
+              onOpenMenu={toggleMenu}
+              properties={visibleProperties}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
+              onInspect={handleCheckHouse}
+              onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
+            />
+            <HousesView
+              renderMode="modals-only"
+              properties={visibleProperties}
+              setProperties={setProperties}
+              onOpenMenu={toggleMenu}
+              currentUser={effectiveUser}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
+              houseToOpenDetail={houseToOpenDetail}
+              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+            />
+          </>
         )}
 
         {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}

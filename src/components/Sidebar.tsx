@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye
+  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye, Gauge
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -127,6 +127,10 @@ export default function Sidebar({
     //    Comparte el permiso "Quality Check": quien puede inspeccionar tambien
     //    puede revisar lo inspeccionado.
     { tab: 'qc_reports_table', label: 'Quality Check Reports', icon: FileBarChart, visible: canViewOrLegacy('Quality Check Reports', canView('Quality Check')) },
+    // ⭐ QC DASHBOARD — vista nueva (indicadores de calidad y scorecard por
+    //    equipo). Permiso propio "QC Dashboard"; si el rol aún no lo tiene
+    //    declarado, hereda el de "Quality Check".
+    { tab: 'qc_dashboard', label: 'QC Dashboard', icon: Gauge, visible: canViewOrLegacy('QC Dashboard', canView('Quality Check')) },
     // ⭐ STATUS HISTORY — historial de status por casa
     // ⭐ STATUS HISTORY — SOLO su propio permiso (el fallback a Houses se eliminó:
     //    existía de antes de que el módulo estuviera en Roles y hacía que roles sin

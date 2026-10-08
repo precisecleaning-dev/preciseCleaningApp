@@ -1,0 +1,164 @@
+/* ===== Nota en formato de conversación (detalle de la casa) ===== */
+.nt-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 14px;
+  border: 1px solid #e3e7ef;
+  background: #ffffff;
+  overflow: hidden;
+}
+.nt-box.office { border-color: #bfdbfe; }
+.nt-box.employee { border-color: #fed7aa; }
+
+.nt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef0f5;
+  background: #f8f9fc;
+}
+.nt-box.office .nt-head { background: #eff6ff; border-bottom-color: #dbeafe; }
+.nt-box.employee .nt-head { background: #fff7ed; border-bottom-color: #ffedd5; }
+
+.nt-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+.nt-box.office .nt-title { color: #1d4ed8; }
+.nt-box.employee .nt-title { color: #c2410c; }
+
+.nt-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* Lista de mensajes con scroll propio; el más reciente abajo */
+.nt-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 260px;
+  overflow-y: auto;
+  background: #fbfcfe;
+}
+.nt-empty {
+  margin: auto;
+  font-size: 13px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.nt-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 88%;
+}
+.nt-msg.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.nt-bubble {
+  border-radius: 14px 14px 14px 4px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.03);
+}
+.nt-msg.mine .nt-bubble {
+  border-radius: 14px 14px 4px 14px;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+.nt-box.office .nt-msg.mine .nt-bubble { background: #dbeafe; border-color: #bfdbfe; }
+.nt-box.employee .nt-msg.mine .nt-bubble { background: #ffedd5; border-color: #fed7aa; }
+
+.nt-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #0f172a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nt-meta {
+  font-size: 11px;
+  color: #64748b;
+  padding: 0 4px;
+}
+
+/* Compositor */
+.nt-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #eef0f5;
+  background: #ffffff;
+}
+.nt-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #0f172a;
+  background: #f8f9fc;
+}
+.nt-input:focus {
+  outline: none;
+  border-color: #a5b4fc;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(29, 63, 207, 0.1);
+}
+.nt-send {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #1d3fcf;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.nt-send:hover:not(:disabled) { background: #1734b0; }
+.nt-send:disabled { background: #c7d2fe; cursor: default; }
+.nt-box.office .nt-send { background: #1d4ed8; }
+.nt-box.employee .nt-send { background: #ea580c; }
+.nt-box.employee .nt-send:disabled,
+.nt-box.office .nt-send:disabled { background: #cbd5e1; }
+
+@media (max-width: 768px) {
+  .nt-list { height: 220px; }
+  .nt-input { font-size: 16px; } /* iOS: evita el zoom al escribir */
+  .nt-send { width: 44px; height: 44px; }
+}
