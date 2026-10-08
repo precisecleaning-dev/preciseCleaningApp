@@ -1,7 +1,7 @@
 // src/utils/dateGrouping.ts
-// ⭐ Agrupación de trabajos por Año / Mes / Semana / Día. La comparten
-//    InvoicesView y la tabla Daily Jobs del Overview (HousesView) para que las
-//    dos vistas agrupen EXACTAMENTE igual.
+// ⭐ Agrupación de trabajos por Año / Mes / Semana / Día. La usan el Overview
+//    unificado e Invoices a través de la barra de periodo (src/utils/periods.ts):
+//    Year → meses · Month → semanas · Week → días.
 //
 //    · La fecha se lee con dateSortValue (utils/dateFormat): misma regla de
 //      formatos mixtos (ISO, MM/DD, DD/MM) que el resto de la app.
@@ -11,14 +11,6 @@
 import { dateSortValue } from './dateFormat';
 
 export type DateGroupMode = 'none' | 'year' | 'month' | 'week' | 'day';
-
-export const DATE_GROUP_MODES: { id: DateGroupMode; label: string }[] = [
-  { id: 'none', label: 'Sin agrupar' },
-  { id: 'year', label: 'Año' },
-  { id: 'month', label: 'Mes' },
-  { id: 'week', label: 'Semana' },
-  { id: 'day', label: 'Día' },
-];
 
 export interface DateGroup<T> {
   key: string;
@@ -128,22 +120,4 @@ export function groupByDate<T>(
   const groups = [...map.values()].sort((a, b) => (order === 'desc' ? b.start - a.start : a.start - b.start));
   if (noDate.items.length) groups.push(noDate);
   return groups;
-}
-
-/** Lee el modo guardado (preferencia por navegador); nunca lanza. */
-export function loadGroupMode(storageKey: string): DateGroupMode {
-  try {
-    const v = localStorage.getItem(storageKey) as DateGroupMode | null;
-    return v && DATE_GROUP_MODES.some((m) => m.id === v) ? v : 'none';
-  } catch {
-    return 'none';
-  }
-}
-
-export function saveGroupMode(storageKey: string, mode: DateGroupMode): void {
-  try {
-    localStorage.setItem(storageKey, mode);
-  } catch {
-    /* almacenamiento bloqueado: la preferencia simplemente no se recuerda */
-  }
 }

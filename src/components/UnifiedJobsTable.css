@@ -1,0 +1,269 @@
+/* ===== Tabla unificada — diseño "Precise Cleaning – Unified Jobs View" ===== */
+.ujt-card {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ujt-scroll {
+  overflow: auto;
+  max-height: 78vh;
+}
+
+.ujt-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  min-width: 1800px;
+}
+
+.ujt-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5b6475;
+  text-align: left;
+  padding: 12px;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e3e7ef;
+  white-space: nowrap;
+}
+
+.ujt-table td {
+  padding: 12px;
+  border-bottom: 1px solid #eef0f5;
+  font-size: 13px;
+  color: #1e293b;
+  vertical-align: middle;
+  white-space: nowrap;
+  background: #ffffff;
+}
+
+.ujt-table th.n,
+.ujt-table td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ujt-table .money {
+  border-left: 2px solid #dbe3ff;
+}
+
+.ujt-ai-head {
+  color: #6d28d9 !important;
+}
+.ujt-ai-head svg,
+.ujt-group-ai svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+
+/* La tabla es solo de escritorio (en móvil se ven tarjetas): sus botones usan
+   el tamaño del diseño, no el mínimo táctil global de 48px de index.css. */
+.ujt-table button {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---- Fila de grupo ---- */
+.ujt-group {
+  cursor: pointer;
+  user-select: none;
+}
+.ujt-group > td {
+  background: #eef2ff;
+  border-bottom: 1px solid #c7d2fe;
+}
+.ujt-group:hover > td {
+  background: #e0e7ff;
+}
+.ujt-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+.ujt-group-range {
+  font-weight: 500;
+  color: #334155;
+}
+.ujt-chevron {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+.ujt-chevron.open {
+  transform: rotate(90deg);
+}
+.ujt-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+}
+.ujt-group-ai {
+  color: #4c1d95 !important;
+  font-weight: 600;
+}
+.ujt-table td.strong {
+  font-weight: 800;
+}
+
+/* ---- Filas ---- */
+.ujt-row {
+  cursor: pointer;
+}
+.ujt-row:hover > td {
+  background: #f8faff;
+}
+.ujt-strong {
+  font-weight: 700;
+}
+.ujt-semibold {
+  font-weight: 600;
+}
+.ujt-muted {
+  color: #5b6475;
+  font-size: 12px;
+}
+.ujt-client {
+  white-space: normal !important;
+  min-width: 240px;
+  max-width: 300px;
+}
+.ujt-note {
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ujt-table td.pos {
+  color: #047857;
+}
+.ujt-table td.neg {
+  color: #b91c1c;
+}
+
+/* ---- Resumen automático ---- */
+.ujt-ai {
+  white-space: normal !important;
+  min-width: 270px;
+  max-width: 320px;
+  font-size: 12px !important;
+  line-height: 1.45;
+  color: #1e293b;
+}
+.ujt-aitag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-bottom: 4px;
+}
+
+/* ---- Pastillas (status de QC, cobro, margen, etiqueta del resumen) ---- */
+.ujt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ujt-pill.as-btn {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ujt-pill.as-btn:hover {
+  filter: brightness(0.96);
+  text-decoration: underline;
+}
+.ujt-pill.good,
+.ujt-aitag.good { background: #ecfdf5; color: #047857; }
+.ujt-pill.warn,
+.ujt-aitag.warn { background: #fffbeb; color: #b45309; }
+.ujt-pill.bad,
+.ujt-aitag.bad { background: #fef2f2; color: #b91c1c; }
+.ujt-pill.info { background: #f5f3ff; color: #6d28d9; }
+.ujt-pill.none { background: transparent; color: #5b6475; }
+
+.ujt-team {
+  display: inline-block;
+  color: #ffffff;
+  background-color: var(--team-color);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ujt-team-none {
+  color: #5b6475;
+  font-style: italic;
+}
+
+/* ---- Acciones ---- */
+.ujt-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.ujt-iconbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #e3e7ef;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #1d3fcf;
+}
+.ujt-iconbtn:hover {
+  background: #eef2ff;
+}
+.ujt-iconbtn.danger {
+  color: #b91c1c;
+}
+.ujt-iconbtn.danger:hover {
+  background: #fef2f2;
+}
+
+.ujt-empty {
+  text-align: center;
+  padding: 40px !important;
+  color: #5b6475 !important;
+}
+
+.ujt-more > td {
+  text-align: center;
+}
+.ujt-more-btn {
+  border: 1px dashed #a5b4fc;
+  background: #ffffff;
+  color: #1d3fcf;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ujt-more-btn:hover {
+  background: #eef2ff;
+}

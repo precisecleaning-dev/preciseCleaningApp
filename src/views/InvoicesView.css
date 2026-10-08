@@ -1446,16 +1446,6 @@
 .inv-page .inv-tax-btn:disabled { cursor: default; }
 .inv-page .inv-tax-btn.exempt { color: #94a3b8; text-decoration: line-through; }
 
-/* "Agrupar por" en la misma línea que fechas y búsqueda */
-.inv-page .inv-group-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 0 0 auto;
-}
-.inv-page .inv-group-cell .dgb-segmented { padding: 4px; }
-.inv-page .inv-group-cell .dgb-option { padding: 8px 12px; }
-
 /* Tarjetas (móvil) */
 .inv-page .inv-card-margin { font-size: 0.75rem; font-weight: 700; color: #64748b; }
 .inv-page .inv-card-note.issue { background: #fef2f2; border-color: #fecaca; }
@@ -1542,7 +1532,7 @@
 }
 .inv-page .inv-row > td:first-child { z-index: 1; }
 /* Título del grupo y del total: quedan visibles al desplazar a la derecha */
-.inv-page .dgb-group-row > td.inv-group-first {
+.inv-page .inv-grp-row > td.inv-group-first {
   position: sticky;
   left: 0;
   z-index: 2;
@@ -1568,27 +1558,10 @@
 .inv-page .inv-total-row > td.positive { color: #6ee7b7; }
 .inv-page .inv-total-row > td.negative { color: #fca5a5; }
 
-@media (max-width: 900px) {
-  .inv-page .inv-group-cell { width: 100%; }
-  .inv-page .inv-group-cell .dgb-bar,
-  .inv-page .inv-group-cell .dgb-segmented { width: 100%; }
-}
-
 /* Densidad de hoja de cálculo: más filas por pantalla */
 .inv-page .inv-table .inv-td { padding-top: 7px; padding-bottom: 7px; }
 .inv-page .inv-table .inv-status-pill { min-height: 28px; padding: 3px 10px; }
 .inv-page .inv-table .inv-icon-btn { padding: 5px; }
-
-/* Filtros en UNA línea en escritorio: fechas compactas, búsqueda flexible */
-@media (min-width: 901px) {
-  .inv-page .inv-secondary-filters { flex-wrap: nowrap; }
-  .inv-page .inv-secondary-filters > div:not(.inv-search-cell):not(.inv-group-cell) .inv-input-wrap { min-width: 150px; }
-  .inv-page .inv-search-cell { flex: 1 1 180px; min-width: 160px; }
-  .inv-page .inv-search-cell .inv-input-wrap { min-width: 0; }
-}
-@media (min-width: 901px) and (max-width: 1180px) {
-  .inv-page .inv-secondary-filters { flex-wrap: wrap; }
-}
 
 /* Celda "TOTAL" fija junto a Address */
 .inv-page .inv-total-row > td.inv-total-first {
@@ -1599,3 +1572,203 @@
   letter-spacing: 0.06em;
 }
 .inv-page .inv-total-row > td.muted { color: #94a3b8; font-weight: 700; }
+
+/* =====================================================================
+   ⭐ Invoices con el lenguaje visual del Overview unificado (diseño
+   "Precise Cleaning – Unified Jobs View"): misma letra, fondo, barra de
+   periodo, tiles, chips y pastillas. PeriodBar.css y KpiBand.css traen
+   los componentes compartidos.
+   ===================================================================== */
+/* App.css fija `* { font-family: system-ui }`: se aplica a cada elemento. */
+.inv-page.inv-unified,
+.inv-page.inv-unified * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+.inv-page.inv-unified {
+  background-color: #f4f6fb;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.inv-page.inv-unified > * { flex-shrink: 0; margin-bottom: 0; }
+.inv-page.inv-unified .inv-title { font-size: 26px; font-weight: 800; color: #0f172a; }
+.inv-page.inv-unified .inv-subtitle { font-size: 13px; color: #5b6475; }
+
+/* Filtros: chips de status + búsqueda en una barra */
+.inv-page .inv-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inv-page .inv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inv-page .inv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  min-height: 0;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #e3e7ef;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+}
+.inv-page .inv-chip:hover { border-color: #c7d2fe; }
+.inv-page .inv-chip.on {
+  background: #eef2ff;
+  border-color: #1d3fcf;
+  color: #1d3fcf;
+}
+.inv-page .inv-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-color);
+}
+.inv-page .inv-chip-cnt {
+  font-size: 11px;
+  font-weight: 700;
+  background: #eef0f5;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+}
+.inv-page .inv-chip.on .inv-chip-cnt { background: #ffffff; }
+.inv-page .inv-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.inv-page .inv-search-icon {
+  position: absolute;
+  left: 12px;
+  color: #5b6475;
+}
+.inv-page .inv-search-input {
+  height: 40px;
+  width: 280px;
+  max-width: 100%;
+  border: 1px solid #e3e7ef;
+  border-radius: 999px;
+  padding: 0 14px 0 36px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #1e293b;
+  box-sizing: border-box;
+}
+
+/* Tabla con la piel del diseño */
+.inv-page.inv-unified .inv-table-wrap { border-color: #e3e7ef; border-radius: 16px; }
+.inv-page.inv-unified .inv-th {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: #5b6475;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e3e7ef;
+  padding: 12px;
+}
+.inv-page.inv-unified .inv-td {
+  font-size: 13px;
+  color: #1e293b;
+  border-bottom-color: #eef0f5;
+  padding: 10px 12px;
+}
+.inv-page.inv-unified .money-start { border-left: 2px solid #dbe3ff; }
+.inv-page.inv-unified .inv-table button { min-height: 0; min-width: 0; }
+
+/* Fila de grupo (periodo) */
+.inv-page .inv-grp-row { cursor: pointer; user-select: none; }
+.inv-page .inv-grp-row > td {
+  background: #eef2ff;
+  border-bottom: 1px solid #c7d2fe;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #1e293b;
+  white-space: nowrap;
+}
+.inv-page .inv-grp-row:hover > td { background: #e0e7ff; }
+.inv-page .inv-grp-row > td.right { text-align: right; font-variant-numeric: tabular-nums; }
+.inv-page .inv-grp-row > td.strong { font-weight: 800; }
+.inv-page .inv-grp-row > td.positive { color: #047857; }
+.inv-page .inv-grp-row > td.negative { color: #b91c1c; }
+.inv-page .inv-grp-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+.inv-page .inv-grp-chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+.inv-page .inv-grp-chevron.open { transform: rotate(90deg); }
+.inv-page .inv-grp-range { font-weight: 500; color: #334155; margin-right: 8px; }
+.inv-page .inv-grp-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #334155;
+}
+.inv-page .inv-grp-more > td { text-align: center; padding: 10px; border-bottom: 1px solid #eef0f5; }
+.inv-page .inv-more-btn {
+  border: 1px dashed #a5b4fc;
+  background: #ffffff;
+  color: #1d3fcf;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.inv-page .inv-more-btn:hover { background: #eef2ff; }
+
+/* Margen como pastilla: ≥45% verde · ≥35% ámbar · menos rojo (diseño) */
+.inv-page .inv-mpill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.inv-page .inv-mpill.good { background: #ecfdf5; color: #047857; }
+.inv-page .inv-mpill.warn { background: #fffbeb; color: #b45309; }
+.inv-page .inv-mpill.bad { background: #fef2f2; color: #b91c1c; }
+.inv-page .inv-mpill.none { background: transparent; color: #5b6475; }
+
+/* Tarjetas (móvil): encabezado de grupo */
+.inv-page .inv-grp-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+}
+.inv-page .inv-grp-card .inv-grp-title { flex-wrap: wrap; }
+.inv-page .inv-grp-card-total { font-weight: 800; white-space: nowrap; }
+.inv-page .inv-grp-card-total.positive { color: #047857; }
+.inv-page .inv-grp-card-total.negative { color: #b91c1c; }
+
+@media (max-width: 700px) {
+  .inv-page .inv-search,
+  .inv-page .inv-search-input { width: 100%; }
+  .inv-page .inv-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .inv-page .inv-chip { flex-shrink: 0; }
+}

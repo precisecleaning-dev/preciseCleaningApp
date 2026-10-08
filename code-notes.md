@@ -199,6 +199,32 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Overview unificado según el lienzo "Precise Cleaning – Unified Jobs View" (2026-10-08)
+- **Overview** = diseño del tablero "Unified Overview (ops + billing + QC)": barra de periodo
+  (Day/Week/Month/Year/Custom con ←/→/Today), bandas KPI "Operations" (tiles de status, clic = filtro)
+  y "Quality check" (Passed / Re-clean / QC pending del periodo) y UNA tabla con Date/time, Client &
+  address, Type, Team, Job status, Quality check, Billing, ✦ AI summary, Service price, Taxes, Final
+  cost, Payroll, Profit, Margin y Actions, agrupada por periodo con subtotales y resumen del grupo.
+- **Cambio de alcance:** la tabla ahora INCLUYE trabajos en Quality Check e Invoice (antes Daily Jobs
+  los ocultaba). Siguen fuera los trabajos sin status. Los chips de status desaparecen (los tiles de
+  Operations filtran); Filters vive en la barra de periodo.
+- **AI summary = reglas** (`src/utils/jobInsights.ts`, decisión del usuario): duplicado, QC fallido,
+  sin equipo, listo para facturar, margen negativo, pago pendiente, pagado sin QC, etc.
+- **Compartido:** `utils/periods.ts`, `utils/jobFinancials.ts` (fórmulas de la hoja + hook de
+  billing_services/payroll; Invoices ya no tiene copia propia), `utils/jobQuality.ts` (último QC por
+  casa), `utils/unifiedRows.ts`, componentes `PeriodBar`, `KpiBand`, `UnifiedJobsTable`.
+- **Invoices** con el mismo lenguaje: PeriodBar (default Month) en lugar de Start/End Date y
+  "Agrupar por"; KPIs con KpiBand; chips de status; margen como pastilla. Columnas de la hoja intactas.
+- Eliminados (código muerto): `DateGroupBar.tsx/.css`, `useDateGroups.ts`.
+- `App.css` fija `* { font-family: system-ui }` e `index.css` da min 48px a todo botón: las vistas
+  unificadas aplican Plus Jakarta Sans a cada elemento y la tabla de escritorio anula el mínimo táctil
+  (en móvil se ven tarjetas, que lo conservan).
+- **Pendiente (otros tableros del lienzo):** panel de Quality Check (hoy el clic en la pastilla QC abre
+  el detalle de la casa), dashboard de QC, portal del limpiador (notas con fotos) y módulo Carpet.
+- **Pendiente de limpieza:** CSS muerto de la tabla vieja Daily Jobs en `HousesView.css` (`.hv-table`,
+  `.hv-th`, `.hv-pill-btn`, `.main-columns`…) y de los filtros viejos de Invoices (`.inv-filters-card`,
+  `.inv-secondary-filters`…). No afecta, se dejó para borrarlo con calma.
+
 ## Overview e Invoices para gerencia (2026-10-08)
 - **Active Teams eliminado** del Overview (pedido del usuario): panel, opción `card_activeTeams` de
   Configure Fields, `teamsWithScope`, `expandedTeamId` y todo su CSS (`.right-col`, `.hv-team*`,

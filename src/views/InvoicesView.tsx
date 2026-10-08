@@ -5,12 +5,14 @@ import {
   Search, MapPin, CalendarDays, ChevronDown, ChevronRight, Users, Edit2, Trash2,
   X, StickyNote, Menu, FileImage
 } from 'lucide-react';
-import DateGroupBar from '../components/DateGroupBar';
+import PeriodBar from '../components/PeriodBar';
+import KpiBand from '../components/KpiBand';
 import { groupByDate, weekNumberOf } from '../utils/dateGrouping';
-import { useDateGroups } from '../utils/useDateGroups';
+import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
+import { money, pct, marginTone, useJobFinancials } from '../utils/jobFinancials';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
-import type { Property, Team, SystemUser, Role, Status, Customer, PayrollRecord } from '../types/index';
+import type { Property, Team, SystemUser, Role, Status, Customer } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { db } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
@@ -37,25 +39,8 @@ const houseNote = (h: Property): string => {
   return String(g.note || g.generalNotes || '').trim();
 };
 
-// ⭐ Impuesto de venta de Texas. Es el que usa la hoja "Operations":
-//    $200 → $16.50 · $425 → $35.06. Final Cost = Service Price − Taxes.
-const TAX_RATE = 0.0825;
-const round2 = (n: number) => Math.round(n * 100) / 100;
-const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(2)}%`);
-
-interface JobFinancials {
-  servicePrice: number;
-  taxes: number;
-  finalCost: number;
-  payroll: number;
-  profit: number;
-  /** Profit / Final Cost en %, igual que la hoja. null si Final Cost = 0. */
-  margin: number | null;
-}
-
-const marginOf = (profit: number, finalCost: number): number | null =>
-  finalCost > 0 ? (profit / finalCost) * 100 : null;
+// ⭐ Fórmulas de la hoja (Taxes 8.25%, Final Cost, Profit, Margin): viven en
+//    src/utils/jobFinancials.ts, compartidas con el Overview unificado.
 
 // ⭐ Campos de texto editables desde las columnas Note / Notes / Issues.
 //    Note = nota general de la casa · Notes = nota de OFICINA (seguimiento:
@@ -68,22 +53,6 @@ const TEXT_FIELD_LABEL: Record<TextField, string> = {
 };
 const fieldText = (h: Property, field: TextField): string =>
   field === 'note' ? houseNote(h) : String(h[field] || '').trim();
-
-// billing_services no tiene un tipo compartido en types/index.ts todavía.
-interface BilledServiceRecord {
-  id: string;
-  propertyId: string;
-  total: number;
-}
-
-// ⭐ FIX (payroll): los documentos de `payroll` NO guardan `totalAmount`, solo
-//    baseAmount / extraAmount / discountAmount. Calculamos el total al vuelo.
-//    Si existiera totalAmount guardado y distinto de 0, se respeta.
-const getPayrollTotal = (pay: PayrollRecord): number => {
-  if (!pay) return 0;
-  if (pay.totalAmount != null && Number(pay.totalAmount) !== 0) return Number(pay.totalAmount);
-  return Number(pay.baseAmount || 0) + Number(pay.extraAmount || 0) - Number(pay.discountAmount || 0);
-};
 
 // Parser de fecha robusto: acepta "YYYY-MM-DD" y "DD/MM/YYYY"; vacíos al final
 const parseDateForSort = (dateStr?: string | null): number => {
@@ -215,26 +184,37 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   const [teams, setTeams] = useState<Team[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);       // ⭐ Job statuses
   const [customers, setCustomers] = useState<Customer[]>([]);   // ⭐ Para resolver nombre del cliente
-  const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
-  const [billedServices, setBilledServices] = useState<BilledServiceRecord[]>([]);
+  // ⭐ billing_services + payroll en tiempo real y fórmulas de la hoja
+  const jobFin = useJobFinancials();
+
+  // ⭐ Periodo (Day / Week / Month / Year / Custom) — misma barra que el
+  //    Overview. Reemplaza Start/End Date y "Agrupar por": el periodo filtra y
+  //    agrupa (Year → meses · Month → semanas · Week → días).
+  const PERIOD_KEY = 'pc.invoices.period';
+  const [period, setPeriodState] = useState<PeriodState>(() => loadPeriod(PERIOD_KEY, 'month'));
+  const setPeriod = (p: PeriodState) => { setPeriodState(p); savePeriod(PERIOD_KEY, p); };
+  const range = useMemo(() => periodRange(period), [period]);
 
   // Filtros UI
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
   const [searchClient, setSearchClient] = useState('');
   // ⭐ Default 'All' para que TODAS las casas se vean al entrar (antes 'Pending' las ocultaba)
   const [filterStatus, setFilterStatus] = useState<string>('All');
 
   // ⭐ RENDIMIENTO — paginación incremental: con ~3,700 registros, renderizar TODAS
-  //    las filas (y además duplicadas en las tarjetas móviles) congelaba la vista:
-  //    cada clic o tecla re-renderizaba miles de nodos. Se muestran 50 y el botón
-  //    "Mostrar más" trae el resto por bloques.
+  //    las filas congelaba la vista. Cada grupo del periodo muestra 50 filas y
+  //    "Show more" trae el resto por bloques.
   const PAGE_SIZE = 50;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filterStatus, searchClient, startDate, endDate]);
 
-  // ⭐ Agrupación por Año / Mes / Semana / Día (preferencia recordada por navegador)
-  const grouping = useDateGroups('pc.invoices.groupMode');
+  // Grupos del periodo: abiertos por defecto, plegables, por bloques de filas.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [groupShown, setGroupShown] = useState<Record<string, number>>({});
+  const toggleGroup = (key: string) =>
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
   //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
@@ -327,7 +307,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     // ⭐ Ya no se cargan aqui: 'properties' (llega por props desde App.tsx) ni
     //    priorities/services (el modal de detalle es el de HousesView, que trae
     //    sus propios catalogos).
-    const TOTAL = 5;
+    const TOTAL = 3;
     const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
 
     unsubscribes.push(onSnapshot(
@@ -350,18 +330,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       collection(db, 'customers'),
       (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
       (err) => { console.error("Error customers:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'payroll'),
-      (snap) => { setPayrolls(snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollRecord))); tick(); },
-      (err) => { console.error("Error payroll:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'billing_services'),
-      (snap) => { setBilledServices(snap.docs.map(d => ({ id: d.id, ...d.data() } as BilledServiceRecord))); tick(); },
-      (err) => { console.error("Error services:", err); tick(); }
     ));
 
     return () => unsubscribes.forEach(u => u());
@@ -495,20 +463,14 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   // debajo, conservando el orden por Schedule Date DESCENDENTE de siempre.
   const filteredProperties = useMemo(() => {
     const q = searchClient.toLowerCase();
-    const startT = startDate ? parseDateForSort(startDate) : null;
-    const endT = endDate ? parseDateForSort(endDate) + (24 * 60 * 60 * 1000 - 1) : null;
     return invoiceProps.filter(prop => {
       if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
       if (q && !(searchTextByProp.get(prop.id) || '').includes(q)) return false;
-      if (startT !== null || endT !== null) {
-        if (!prop.scheduleDate) return false;
-        const recT = parseDateForSort(prop.scheduleDate);
-        if (startT !== null && recT < startT) return false;
-        if (endT !== null && recT > endT) return false;
-      }
-      return true;
+      // ⭐ Periodo de la barra superior (Schedule Date dentro del rango)
+      return inPeriod(prop.scheduleDate, range);
     }).sort((a, b) => {
-      // ⭐ Prioridad 1: últimas agregadas a Invoices, más reciente arriba
+      // ⭐ Dentro de cada grupo: últimas agregadas a Invoices arriba
+      //    (sentToInvoiceAt); las viejas sin marca, por Schedule Date desc.
       const sentA = invoiceEntryMs(a);
       const sentB = invoiceEntryMs(b);
       if (sentA !== null || sentB !== null) {
@@ -516,99 +478,25 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         if (sentB === null) return -1;
         return sentB - sentA;
       }
-      // Prioridad 2: el resto por Schedule Date descendente (comportamiento original)
-      const hasA = !!a.scheduleDate;
-      const hasB = !!b.scheduleDate;
-      if (!hasA && !hasB) return 0;
-      if (!hasA) return 1;
-      if (!hasB) return -1;
       return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
     });
-  }, [invoiceProps, filterStatus, searchClient, startDate, endDate, searchTextByProp]);
+  }, [invoiceProps, filterStatus, searchClient, range, searchTextByProp]);
 
-  // Solo se renderiza la página visible (tabla Y tarjetas usan esta lista)
-  const visibleProperties = useMemo(
-    () => filteredProperties.slice(0, visibleCount),
-    [filteredProperties, visibleCount]
+  const calcFinancials = jobFin.calc;
+
+  // ⭐ Totales del periodo que se está viendo (respeta chips y búsqueda).
+  const filteredTotals = useMemo(() => jobFin.sum(filteredProperties), [jobFin, filteredProperties]);
+
+  // ⭐ Grupos del periodo (Year → meses · Month → semanas · Week → días), cada
+  //    uno con sus subtotales.
+  const groups = useMemo(
+    () =>
+      groupByDate(filteredProperties, p => p.scheduleDate, range.groupBy, 'desc').map(g => ({
+        ...g,
+        totals: jobFin.sum(g.items),
+      })),
+    [filteredProperties, range.groupBy, jobFin]
   );
-
-  // ⭐ Financieros por propiedad en UNA pasada por colección (Map O(1) por fila),
-  //    en vez de filtrar payroll y servicios completos por cada fila renderizada.
-  const financialsByProp = useMemo(() => {
-    const m = new Map<string, { totalCost: number; payrollTotal: number }>();
-    billedServices.forEach(srv => {
-      if (!srv.propertyId) return;
-      const e = m.get(srv.propertyId) || { totalCost: 0, payrollTotal: 0 };
-      e.totalCost += Number(srv.total) || 0;
-      m.set(srv.propertyId, e);
-    });
-    payrolls.forEach(pay => {
-      if (!pay.propertyId) return;
-      const e = m.get(pay.propertyId) || { totalCost: 0, payrollTotal: 0 };
-      e.payrollTotal += getPayrollTotal(pay);
-      m.set(pay.propertyId, e);
-    });
-    return m;
-  }, [billedServices, payrolls]);
-
-  // ⭐ Mismas fórmulas que la hoja "Operations":
-  //    Service Price = suma de los servicios cobrados (billing_services)
-  //    Taxes         = 8.25% del Service Price (0 si la casa está exenta)
-  //    Final Cost    = Service Price − Taxes
-  //    Profit        = Final Cost − Payroll
-  //    Profit Margin = Profit / Final Cost
-  const calcFinancials = (prop: Property): JobFinancials => {
-    const e = financialsByProp.get(prop.id);
-    const servicePrice = round2(e?.totalCost || 0);
-    const payroll = round2(e?.payrollTotal || 0);
-    const taxes = prop.taxExempt ? 0 : round2(servicePrice * TAX_RATE);
-    const finalCost = round2(servicePrice - taxes);
-    const profit = round2(finalCost - payroll);
-    return { servicePrice, taxes, finalCost, payroll, profit, margin: marginOf(profit, finalCost) };
-  };
-
-  const sumFinancials = (list: Property[]): JobFinancials => {
-    const t = { servicePrice: 0, taxes: 0, finalCost: 0, payroll: 0, profit: 0 };
-    list.forEach(p => {
-      const f = calcFinancials(p);
-      t.servicePrice += f.servicePrice;
-      t.taxes += f.taxes;
-      t.finalCost += f.finalCost;
-      t.payroll += f.payroll;
-      t.profit += f.profit;
-    });
-    return { ...t, margin: marginOf(t.profit, t.finalCost) };
-  };
-
-  // ⭐ Totales del rango que se esta viendo (respeta chips, fechas y busqueda).
-  const filteredTotals = useMemo(
-    () => sumFinancials(filteredProperties),
-    // calcFinancials solo depende de financialsByProp
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredProperties, financialsByProp]
-  );
-
-  // ⭐ Grupos por fecha (Schedule Date). Dentro de cada grupo las casas van de la
-  //    más reciente a la más antigua; cada grupo trae sus subtotales.
-  const groups = useMemo(() => {
-    if (grouping.mode === 'none') return [];
-    const byDate = [...filteredProperties].sort(
-      (a, b) => parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate)
-    );
-    return groupByDate(byDate, p => p.scheduleDate, grouping.mode, 'desc').map(g => ({
-      ...g,
-      totals: sumFinancials(g.items),
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredProperties, financialsByProp, grouping.mode]);
-
-  // Al cambiar los filtros, los grupos vuelven a su estado inicial
-  useEffect(() => {
-    grouping.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, searchClient, startDate, endDate]);
-
-  const isGrouped = grouping.mode !== 'none';
   // Columnas de la tabla: "Notes" (oficina) solo con permiso
   const COLS = canSeeOfficeNotes ? 16 : 15;
 
@@ -644,7 +532,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             {getTeamName(prop.teamId)}
           </span>
         </td>
-        <td className="inv-td right money">{money(f.servicePrice)}</td>
+        <td className="inv-td right money money-start">{money(f.servicePrice)}</td>
         <td className="inv-td right money" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
@@ -659,7 +547,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         <td className="inv-td right money">{money(f.finalCost)}</td>
         <td className="inv-td right money payroll">{money(f.payroll)}</td>
         <td className={`inv-td right money profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>{money(f.profit)}</td>
-        <td className={`inv-td right money ${f.margin !== null && f.margin < 0 ? 'negative' : ''}`}>{pct(f.margin)}</td>
+        <td className="inv-td right"><span className={`inv-mpill ${marginTone(f.margin)}`}>{pct(f.margin)}</span></td>
         <td className="inv-td" onClick={(e) => e.stopPropagation()}>
           <InvoiceStatusPill
             currentStatus={prop.invoiceStatus || 'Pending'}
@@ -817,114 +705,79 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   };
 
   return (
-    <div className="fade-in invoices-view inv-page">
+    <div className="fade-in invoices-view inv-page inv-unified">
 
-      {/* HEADER */}
+      {/* HEADER — mismo estilo que el Overview unificado */}
       <header className="inv-header">
         <button onClick={onOpenMenu} className="inv-hamburger-btn" aria-label="Open menu">
           <Menu size={24} />
         </button>
         <div>
           <h1 className="inv-title">Invoices</h1>
-          <p className="inv-subtitle">Financial tracking and billing status</p>
+          <p className="inv-subtitle">Billing, taxes &amp; profit per job</p>
         </div>
       </header>
 
+      {/* ⭐ Periodo — misma barra que el Overview */}
+      <PeriodBar period={period} onChange={setPeriod} />
 
-      {/* ⭐ RESUMEN del rango filtrado — lectura de gerencia, de izquierda a
-          derecha igual que la hoja: lo cobrado → impuesto → neto → costo → ganancia. */}
-      <section className="inv-kpi-grid" aria-label="Resumen financiero">
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Service Price</div>
-          <div className="inv-kpi-value">{money(filteredTotals.servicePrice)}</div>
-          <div className="inv-kpi-sub">
-            {filteredProperties.length.toLocaleString('en-US')} {filteredProperties.length === 1 ? 'job' : 'jobs'}
-          </div>
-        </div>
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Taxes</div>
-          <div className="inv-kpi-value">{money(filteredTotals.taxes)}</div>
-          <div className="inv-kpi-sub">8.25% Texas</div>
-        </div>
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Final Cost</div>
-          <div className="inv-kpi-value">{money(filteredTotals.finalCost)}</div>
-          <div className="inv-kpi-sub">Service Price − Taxes</div>
-        </div>
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-label">Payroll</div>
-          <div className="inv-kpi-value">{money(filteredTotals.payroll)}</div>
-          <div className="inv-kpi-sub">
-            {filteredTotals.finalCost > 0
-              ? `${((filteredTotals.payroll / filteredTotals.finalCost) * 100).toFixed(1)}% del Final Cost`
-              : '—'}
-          </div>
-        </div>
-        <div className={`inv-kpi-card highlight${filteredTotals.profit < 0 ? ' negative' : ''}`}>
-          <div className="inv-kpi-label">Profit</div>
-          <div className={`inv-kpi-value profit${filteredTotals.profit < 0 ? " negative" : ""}`}>
-            {money(filteredTotals.profit)}
-          </div>
-          <div className="inv-kpi-sub">Margen {pct(filteredTotals.margin)}</div>
-        </div>
-      </section>
+      {/* ⭐ RESUMEN del periodo — de izquierda a derecha igual que la hoja:
+          lo cobrado → impuesto → neto → costo → ganancia. */}
+      <KpiBand
+        title="Financials"
+        color="#1d3fcf"
+        minTile={170}
+        tiles={[
+          { key: 'price', label: 'Service price', value: money(filteredTotals.servicePrice), sub: `${filteredProperties.length.toLocaleString('en-US')} ${filteredProperties.length === 1 ? 'job' : 'jobs'}` },
+          { key: 'tax', label: 'Taxes', value: money(filteredTotals.taxes), sub: '8.25% Texas' },
+          { key: 'final', label: 'Final cost', value: money(filteredTotals.finalCost), sub: 'Service price − taxes' },
+          {
+            key: 'payroll', label: 'Payroll', value: money(filteredTotals.payroll),
+            sub: filteredTotals.finalCost > 0 ? `${((filteredTotals.payroll / filteredTotals.finalCost) * 100).toFixed(1)}% of final cost` : '—',
+          },
+          {
+            key: 'profit', label: 'Profit', value: money(filteredTotals.profit),
+            tone: filteredTotals.profit < 0 ? 'bad' : 'good',
+            highlight: filteredTotals.profit < 0 ? 'bad' : 'good',
+            sub: `Margin ${pct(filteredTotals.margin)}`,
+          },
+        ]}
+      />
 
-      {/* ⭐ Filtros agrupados en una sola tarjeta (chips + fechas + busqueda) */}
-      <div className="inv-filters-card">
-
-      {/* ⭐ PILL BUTTONS — Filtro por Invoice Status (un botón por cada status + All) */}
-      <div className="inv-status-filters-row">
-        <button
-          onClick={() => setFilterStatus('All')}
-          className={`inv-filter-pill${filterStatus === 'All' ? ' active' : ''}`}
-          style={{ '--pill-color': '#64748b', '--pill-color-15': '#64748b15', '--pill-color-20': '#64748b20' } as CSSProperties}
-        >
-          All <span className={`inv-filter-count-badge${filterStatus === 'All' ? ' active' : ''}`}>{totalScopedCount}</span>
-        </button>
-        {INVOICE_STATUSES.map(st => (
+      {/* ⭐ Filtros: status del invoice (chips) + búsqueda */}
+      <div className="inv-filters-bar">
+        <div className="inv-chips">
           <button
-            key={st.id}
-            onClick={() => setFilterStatus(st.id)}
-            className={`inv-filter-pill${filterStatus === st.id ? ' active' : ''}`}
-            style={{ '--pill-color': st.color, '--pill-color-15': `${st.color}15`, '--pill-color-20': `${st.color}20`, '--dot-color': st.color } as CSSProperties}
+            type="button"
+            onClick={() => setFilterStatus('All')}
+            className={`inv-chip${filterStatus === 'All' ? ' on' : ''}`}
           >
-            <span className="inv-filter-dot"></span>
-            {st.name} <span className={`inv-filter-count-badge${filterStatus === st.id ? ' active' : ''}`}>{invoiceCounts[st.id] || 0}</span>
+            All <span className="inv-chip-cnt">{totalScopedCount}</span>
           </button>
-        ))}
+          {INVOICE_STATUSES.map(st => (
+            <button
+              type="button"
+              key={st.id}
+              onClick={() => setFilterStatus(st.id)}
+              className={`inv-chip${filterStatus === st.id ? ' on' : ''}`}
+            >
+              <span className="inv-chip-dot" style={{ '--dot-color': st.color } as CSSProperties}></span>
+              {st.name} <span className="inv-chip-cnt">{invoiceCounts[st.id] || 0}</span>
+            </button>
+          ))}
+        </div>
+        <label className="inv-search">
+          <Search className="inv-search-icon" size={16} />
+          <input
+            type="text"
+            className="inv-search-input"
+            placeholder="Search client or address"
+            aria-label="Search client or address"
+            value={searchClient}
+            onChange={e => setSearchClient(e.target.value)}
+          />
+        </label>
       </div>
-
-      {/* Filtros secundarios */}
-      <div className="inv-secondary-filters">
-        <div>
-          <label className="inv-label">Start Date</label>
-          <div className="inv-input-wrap">
-            <CalendarDays className="inv-input-icon" size={16} />
-            <input type="date" className="inv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <label className="inv-label">End Date</label>
-          <div className="inv-input-wrap">
-            <CalendarDays className="inv-input-icon" size={16} />
-            <input type="date" className="inv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-        </div>
-        <div className="inv-search-cell">
-          <label className="inv-label">Search (client or address)</label>
-          <div className="inv-input-wrap">
-            <Search className="inv-input-icon" size={16} />
-            <input type="text" className="inv-input" placeholder="Buscar por cliente o dirección..." value={searchClient} onChange={e => setSearchClient(e.target.value)} />
-          </div>
-        </div>
-        {/* ⭐ Agrupar por Año / Mes / Semana / Día, en la misma línea que los filtros */}
-        <div className="inv-group-cell">
-          <span className="inv-label">Agrupar por</span>
-          <DateGroupBar mode={grouping.mode} onChange={grouping.setMode} showLabel={false} />
-        </div>
-      </div>
-
-      </div>{/* /inv-filters-card */}
 
       {/* TABLA PRINCIPAL (escritorio) — mismas columnas y orden que la hoja "Operations" */}
       <div className="inv-table-wrap">
@@ -936,12 +789,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <th className="inv-th">Note</th>
               <th className="inv-th">Date</th>
               <th className="inv-th">Team</th>
-              <th className="inv-th right">Service Price</th>
+              <th className="inv-th right money-start">Service Price</th>
               <th className="inv-th right">Taxes</th>
               <th className="inv-th right">Final Cost</th>
               <th className="inv-th right">Payroll</th>
               <th className="inv-th right">Profit</th>
-              <th className="inv-th right">Profit Margin</th>
+              <th className="inv-th right">Margin</th>
               <th className="inv-th">Invoice</th>
               {canSeeOfficeNotes && <th className="inv-th">Notes</th>}
               <th className="inv-th">Issues</th>
@@ -950,48 +803,50 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
+            {isLoading || jobFin.loading ? (
               <tr><td colSpan={COLS} className="inv-empty-row">Loading financial data...</td></tr>
             ) : invoiceProps.length === 0 ? (
               <tr><td colSpan={COLS} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
             ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={COLS} className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</td></tr>
-            ) : !isGrouped ? (
-              visibleProperties.map(renderRow)
-            ) : groups.map((g, i) => {
-              const open = grouping.isOpen(g.key, i);
-              const shown = grouping.visibleCount(g.key);
+              <tr><td colSpan={COLS} className="inv-empty-row">No jobs in this period. Use ← → or Today to move the period, or click "All".</td></tr>
+            ) : groups.map(g => {
+              const open = !collapsed.has(g.key);
+              const shown = groupShown[g.key] ?? PAGE_SIZE;
               const t = g.totals;
               return (
                 <Fragment key={g.key}>
                   {/* Encabezado del grupo con SUBTOTALES alineados a sus columnas */}
-                  <tr className="dgb-group-row" onClick={() => grouping.toggle(g.key, i, groups[0]?.key)}>
+                  <tr className="inv-grp-row" onClick={() => toggleGroup(g.key)}>
                     {/* Nombre del grupo en la columna FIJA (Address): sigue
                         visible al desplazar la tabla hacia la derecha. */}
                     <td className="inv-group-first" title={g.detail ? `${g.label} · ${g.detail}` : g.label}>
-                      <span className="dgb-group-title">
-                        <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
+                      <span className="inv-grp-title">
+                        <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
                         {g.label}
                       </span>
                     </td>
                     <td colSpan={4}>
-                      {g.detail && <span className="dgb-group-detail">{g.detail}</span>}
-                      <span className="dgb-group-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
+                      {g.detail && <span className="inv-grp-range">{g.detail}</span>}
+                      <span className="inv-grp-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
                     </td>
-                    <td className="dgb-group-total">{money(t.servicePrice)}</td>
-                    <td className="dgb-group-total">{money(t.taxes)}</td>
-                    <td className="dgb-group-total">{money(t.finalCost)}</td>
-                    <td className="dgb-group-total">{money(t.payroll)}</td>
-                    <td className={`dgb-group-total ${t.profit >= 0 ? 'positive' : 'negative'}`}>{money(t.profit)}</td>
-                    <td className="dgb-group-total">{pct(t.margin)}</td>
+                    <td className="right strong money-start">{money(t.servicePrice)}</td>
+                    <td className="right strong">{money(t.taxes)}</td>
+                    <td className="right strong">{money(t.finalCost)}</td>
+                    <td className="right strong">{money(t.payroll)}</td>
+                    <td className={`right strong ${t.profit >= 0 ? 'positive' : 'negative'}`}>{money(t.profit)}</td>
+                    <td className="right"><span className={`inv-mpill ${marginTone(t.margin)}`}>{pct(t.margin)}</span></td>
                     <td colSpan={COLS - 11}></td>
                   </tr>
                   {open && g.items.slice(0, shown).map(renderRow)}
                   {open && g.items.length > shown && (
-                    <tr className="dgb-more-row">
+                    <tr className="inv-grp-more">
                       <td colSpan={COLS}>
-                        <button className="dgb-more-btn" onClick={() => grouping.showMore(g.key)}>
-                          Mostrar más — viendo {shown} de {g.items.length}
+                        <button
+                          type="button"
+                          className="inv-more-btn"
+                          onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
+                        >
+                          Show more — {shown} of {g.items.length}
                         </button>
                       </td>
                     </tr>
@@ -1000,7 +855,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               );
             })}
           </tbody>
-          {/* ⭐ TOTAL GENERAL del rango filtrado, fijo al pie de la tabla */}
+          {/* ⭐ TOTAL GENERAL del periodo, fijo al pie de la tabla */}
           {!isLoading && filteredProperties.length > 0 && (
             <tfoot>
               <tr className="inv-total-row">
@@ -1023,51 +878,42 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
       {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
       <div className="inv-cards-wrap">
-        {isLoading ? (
+        {isLoading || jobFin.loading ? (
           <div className="inv-empty-row">Loading financial data...</div>
         ) : invoiceProps.length === 0 ? (
           <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
         ) : filteredProperties.length === 0 ? (
-          <div className="inv-empty-row">No properties match your filters. Try clicking "All" above or clearing the search.</div>
-        ) : !isGrouped ? (
-          visibleProperties.map(renderCard)
-        ) : groups.map((g, i) => {
-          const open = grouping.isOpen(g.key, i);
-          const shown = grouping.visibleCount(g.key);
+          <div className="inv-empty-row">No jobs in this period.</div>
+        ) : groups.map(g => {
+          const open = !collapsed.has(g.key);
+          const shown = groupShown[g.key] ?? PAGE_SIZE;
           return (
             <Fragment key={g.key}>
-              <button type="button" className="dgb-group-card" onClick={() => grouping.toggle(g.key, i, groups[0]?.key)}>
-                <span className="dgb-group-title">
-                  <ChevronRight size={16} className={`dgb-group-chevron${open ? ' open' : ''}`} />
+              <button type="button" className="inv-grp-card" onClick={() => toggleGroup(g.key)}>
+                <span className="inv-grp-title">
+                  <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
                   {g.label}
-                  {g.detail && <span className="dgb-group-detail">{g.detail}</span>}
-                  <span className="dgb-group-count">{g.items.length}</span>
+                  {g.detail && <span className="inv-grp-range">{g.detail}</span>}
+                  <span className="inv-grp-count">{g.items.length}</span>
                 </span>
-                <span className={`dgb-group-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>
+                <span className={`inv-grp-card-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>
                   {money(g.totals.profit)}
-                  <span className="dgb-group-card-sub"> · {money(g.totals.servicePrice)}</span>
                 </span>
               </button>
               {open && g.items.slice(0, shown).map(renderCard)}
               {open && g.items.length > shown && (
-                <button className="dgb-more-btn" onClick={() => grouping.showMore(g.key)}>
-                  Mostrar más — viendo {shown} de {g.items.length}
+                <button
+                  type="button"
+                  className="inv-more-btn"
+                  onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
+                >
+                  Show more — {shown} of {g.items.length}
                 </button>
               )}
             </Fragment>
           );
         })}
       </div>
-
-      {/* ⭐ Paginación: carga el resto por bloques (aplica a tabla y tarjetas).
-          Agrupado, cada grupo tiene su propio "Mostrar más". */}
-      {!isLoading && !isGrouped && filteredProperties.length > visibleCount && (
-        <div className="inv-load-more-row">
-          <button className="inv-load-more-btn" onClick={() => setVisibleCount(c => c + 100)}>
-            Mostrar más — viendo {visibleCount} de {filteredProperties.length}
-          </button>
-        </div>
-      )}
 
       {/* ⭐ MODAL DE NOTA — ver y editar la nota de la casa sin abrir el detalle */}
       {noteHouse && (

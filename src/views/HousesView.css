@@ -4767,55 +4767,125 @@
 .hv-notehist-section { margin-bottom: 16px; }
 .hv-notehist-title { margin: 0 0 8px; font-size: 0.85rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; }
 
-/* ⭐ Daily Jobs — barra de herramientas junto al título (Agrupar por + Filters).
-   Los estilos del selector y de los encabezados de grupo viven en
-   src/components/DateGroupBar.css (compartidos con Invoices). */
-.houses-view .hv-jobs-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+/* =====================================================================
+   ⭐ Overview unificado — diseño "Precise Cleaning – Unified Jobs View"
+   (tabla en src/components/UnifiedJobsTable.css, barra de periodo en
+   PeriodBar.css, bandas de KPIs en KpiBand.css)
+   ===================================================================== */
+/* App.css fija `* { font-family: system-ui }`: hay que aplicar la letra del
+   diseño a cada elemento de la página, no solo heredarla. */
+.houses-view.hv-unified-page,
+.houses-view.hv-unified-page * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
-.houses-view .hv-panel-count {
-  color: #475569;
-  font-weight: 600;
+.houses-view.hv-unified-page {
+  background-color: #f4f6fb;
+  gap: 20px;
 }
-.houses-view .jobs-cards-wrap > .dgb-group-card,
-.houses-view .jobs-cards-wrap > .dgb-more-btn {
+
+/* En columna con height:100%, los bloques NO deben encogerse: la página
+   hace scroll y la tabla conserva su alto (scroll interno propio). */
+.houses-view.hv-unified-page > * {
   flex-shrink: 0;
 }
+.houses-view.hv-unified-page .hv-header.main-header,
+.houses-view.hv-unified-page .hv-nostatus-banner {
+  margin-bottom: 0;
+}
 
-/* Equipo con su color de catálogo (mismo estilo que Invoices) */
-.houses-view .hv-team-pill {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.76rem;
+.houses-view .hv-unified {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Escritorio: tabla; móvil: tarjetas (mismo corte que antes, 768px) */
+.houses-view .hv-unified-cards {
+  display: none;
+}
+@media (max-width: 768px) {
+  .houses-view .hv-unified-table {
+    display: none;
+  }
+  .houses-view .hv-unified-cards {
+    display: block;
+  }
+}
+
+/* Encabezado de grupo en las tarjetas móviles */
+.houses-view .hv-cgroup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  flex-shrink: 0;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-align: left;
+}
+.houses-view .hv-cgroup-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #1e3a8a;
+  flex-wrap: wrap;
+}
+.houses-view .hv-cgroup-chevron {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+.houses-view .hv-cgroup-chevron.open {
+  transform: rotate(90deg);
+}
+.houses-view .hv-cgroup-detail {
+  font-weight: 500;
+  color: #334155;
+}
+.houses-view .hv-cgroup-count {
+  font-size: 0.72rem;
   font-weight: 700;
-  color: #ffffff;
-  background-color: var(--team-color);
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: #334155;
 }
-.houses-view .hv-team-none {
-  color: #94a3b8;
-  font-style: italic;
+.houses-view .hv-cgroup-more {
+  flex-shrink: 0;
+  border: 1px dashed #a5b4fc;
+  background: #ffffff;
+  color: #1d3fcf;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
 }
 
+/* Filters vive dentro de la barra de periodo */
+.houses-view .pb-bar .property-select-container {
+  position: relative;
+}
 @media (max-width: 700px) {
-  .houses-view .hv-jobs-toolbar {
-    width: 100%;
-    justify-content: stretch;
-  }
-  .houses-view .hv-jobs-toolbar .dgb-bar {
-    width: 100%;
-  }
-  .houses-view .hv-jobs-toolbar .property-select-container,
-  .houses-view .hv-jobs-toolbar .hv-btn-filters {
+  .houses-view .pb-bar .property-select-container,
+  .houses-view .pb-bar .hv-btn-filters {
     width: 100%;
     justify-content: center;
   }
+}
+
+/* Selector de status dentro de la tabla unificada: tamaño de pastilla del diseño */
+.houses-view .ujt-table .hv-statuspill {
+  font-size: 11px;
+  padding: 4px 10px;
+  min-height: 0;
+  gap: 6px;
 }

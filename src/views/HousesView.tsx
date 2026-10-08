@@ -78,9 +78,19 @@ import { trashService } from "../services/trashService";
 // ⭐ Clientes: mapeo correcto (legacy id aparte) y resolución por ambos ids.
 import { mapCustomerDoc, displayClientName, resolveCustomerName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import DateGroupBar from "../components/DateGroupBar";
-import { groupByDate, type DateGroup } from "../utils/dateGrouping";
-import { useDateGroups } from "../utils/useDateGroups";
+import PeriodBar from "../components/PeriodBar";
+import KpiBand from "../components/KpiBand";
+import UnifiedJobsTable from "../components/UnifiedJobsTable";
+import {
+  inPeriod,
+  loadPeriod,
+  periodRange,
+  savePeriod,
+  type PeriodState,
+} from "../utils/periods";
+import { useJobFinancials } from "../utils/jobFinancials";
+import { qcCounts, qcInfoFor, useQcRecords } from "../utils/jobQuality";
+import { buildUnifiedGroups, type UnifiedGroup } from "../utils/unifiedRows";
 import { payrollService } from "../services/payrollService";
 import { DEFAULT_PHOTO_CONFIG } from "../services/photoConfigService";
 import type { PhotoConfig } from "../services/photoConfigService";
@@ -635,7 +645,6 @@ export default function HousesView({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [visibleJobs, setVisibleJobs] = useState(JOBS_PAGE_SIZE);
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
   const [workerSearch, setWorkerSearch] = useState(""); // ⭐ buscador de empleados
@@ -2406,18 +2415,56 @@ export default function HousesView({
   const byDateDesc = (a: Property, b: Property) =>
     dateSortValue(b.scheduleDate) - dateSortValue(a.scheduleDate);
 
-  // Tabla / Daily Jobs: sin Invoice ni Quality Check (QC se gestiona en su vista)
-  const filteredProperties = useMemo(
+  // ⭐ OVERVIEW UNIFICADO — diseño "Precise Cleaning – Unified Jobs View".
+  //    Operaciones, Quality Check, cobro y finanzas en UNA tabla. A diferencia
+  //    de la antigua "Daily Jobs", aquí SÍ entran los trabajos en Quality Check
+  //    e Invoice (el diseño muestra trabajos completados, pagados, con QC…).
+  //    Quedan fuera solo los trabajos SIN status (tienen su módulo propio).
+  //    El periodo (Day / Week / Month / Year / Custom) filtra la tabla y define
+  //    la agrupación: Week → días, Month → semanas, Year → meses.
+  const PERIOD_KEY = "pc.overview.period";
+  const [period, setPeriodState] = useState<PeriodState>(() =>
+    loadPeriod(PERIOD_KEY, "week"),
+  );
+  const setPeriod = (p: PeriodState) => {
+    setPeriodState(p);
+    savePeriod(PERIOD_KEY, p);
+  };
+  const range = useMemo(() => periodRange(period), [period]);
+  // Solo la página completa del Overview (no el tablero ni el modo
+  // 'modals-only') abre los listeners de finanzas y QC.
+  const unifiedEnabled = renderMode === "full" && viewMode !== "board";
+  const jobFin = useJobFinancials(unifiedEnabled);
+  const qcRecords = useQcRecords(unifiedEnabled);
+
+  // Dentro del mismo día, por hora de entrada (agenda del día).
+  const timeSortValue = (t?: string) => {
+    const s = String(t || "").trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!m) return 24 * 60;
+    let h = Number(m[1]) % (m[3] ? 12 : 24);
+    if (m[3] && /PM/i.test(m[3])) h += 12;
+    return h * 60 + Number(m[2]);
+  };
+
+  const periodProperties = useMemo(
     () =>
       filterByVisibleStatus(
-        propertiesWithScope
-          .filter((p) => !isHiddenPipelineStatus(p) && passesListFilters(p))
-          .sort(byDateDesc),
+        propertiesWithScope.filter(
+          (p) =>
+            !!findStatusOf(p) &&
+            passesListFilters(p) &&
+            inPeriod(p.scheduleDate, range),
+        ),
+      ).sort(
+        (a, b) =>
+          byDateDesc(a, b) || timeSortValue(a.timeIn) - timeSortValue(b.timeIn),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       propertiesWithScope,
       statusIndex,
+      range,
       activeFilter,
       houseFilter,
       invoiceFilter,
@@ -2432,63 +2479,57 @@ export default function HousesView({
     ],
   );
 
-  // ⭐ PERF: solo se pinta el primer bloque de resultados; el resto se agrega
-  //    con "Load more". Al cambiar filtros o busqueda se vuelve al inicio.
-  useEffect(() => {
-    setVisibleJobs(JOBS_PAGE_SIZE);
-  }, [
-    activeFilter,
-    houseFilter,
-    invoiceFilter,
-    statusFilter,
-    priorityFilter,
-    searchTerm,
-  ]);
-
-  const visibleProperties = useMemo(
-    () => filteredProperties.slice(0, visibleJobs),
-    [filteredProperties, visibleJobs],
-  );
-  const remainingJobs = filteredProperties.length - visibleProperties.length;
-
-  // ⭐ AGRUPAR Daily Jobs por Año / Mes / Semana / Día. Se agrupa la lista
-  //    COMPLETA filtrada (no solo la página visible) para que el conteo de cada
-  //    grupo sea real; las filas de cada grupo se pintan por bloques.
-  const jobGrouping = useDateGroups("pc.overview.groupMode");
-  const isJobsGrouped = jobGrouping.mode !== "none";
-  const jobGroups = useMemo(
+  const unifiedGroups = useMemo(
     () =>
-      isJobsGrouped
-        ? groupByDate(filteredProperties, (p) => p.scheduleDate, jobGrouping.mode, "desc")
-        : [],
-    [filteredProperties, isJobsGrouped, jobGrouping.mode],
-  );
-  useEffect(() => {
-    jobGrouping.reset();
+      buildUnifiedGroups(periodProperties, range.groupBy, {
+        getClientName: (p) => getClientName(p.client),
+        getTeam: (p) => {
+          const t = p.teamId ? teams.find((tm) => tm.id === p.teamId) : undefined;
+          return t ? { name: t.name, color: t.color || "#64748b" } : null;
+        },
+        getStatusName: (p) => findStatusOf(p)?.name || "",
+        getTypeName: (p) => getRelationName(services, p.serviceId, "Regular"),
+        getNote: (p) =>
+          String(
+            p.note || (p as Property & { generalNotes?: string }).generalNotes || "",
+          ).trim(),
+        qcFor: (p) => qcInfoFor(p.id, p.statusId, statuses, qcRecords.latest),
+        calc: jobFin.calc,
+        sum: jobFin.sum,
+      }),
+    // getClientName/findStatusOf dependen de customersList y statusIndex
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, houseFilter, invoiceFilter, statusFilter, priorityFilter, searchTerm]);
+    [periodProperties, range.groupBy, teams, services, statuses, qcRecords.latest, jobFin.calc, jobFin.sum, customersList, statusIndex],
+  );
+  const periodQc = qcCounts(unifiedGroups.flatMap((g) => g.rows.map((r) => r.qc)));
 
-  // Lista "aplanada" que pintan la tabla y las tarjetas: encabezado de grupo,
-  // trabajos del grupo abierto y, si quedan, un "Mostrar más" del grupo.
+  // Tarjetas (móvil): mismos grupos que la tabla, plegables y por bloques.
+  const [cardCollapsed, setCardCollapsed] = useState<Set<string>>(new Set());
+  const [cardShown, setCardShown] = useState<Record<string, number>>({});
   type JobEntry =
-    | { kind: "group"; group: DateGroup<Property>; index: number; open: boolean }
+    | { kind: "group"; group: UnifiedGroup; open: boolean }
     | { kind: "job"; prop: Property }
     | { kind: "more"; key: string; shown: number; total: number };
-  const jobEntries: JobEntry[] = isJobsGrouped
-    ? jobGroups.flatMap((g, index): JobEntry[] => {
-        const open = jobGrouping.isOpen(g.key, index);
-        const shown = jobGrouping.visibleCount(g.key);
-        const out: JobEntry[] = [{ kind: "group", group: g, index, open }];
-        if (open) {
-          g.items.slice(0, shown).forEach((prop) => out.push({ kind: "job", prop }));
-          if (g.items.length > shown)
-            out.push({ kind: "more", key: g.key, shown, total: g.items.length });
-        }
-        return out;
-      })
-    : visibleProperties.map((prop): JobEntry => ({ kind: "job", prop }));
-  const toggleJobGroup = (key: string, index: number) =>
-    jobGrouping.toggle(key, index, jobGroups[0]?.key);
+  const jobEntries: JobEntry[] = unifiedGroups.flatMap((g): JobEntry[] => {
+    const open = !cardCollapsed.has(g.key);
+    const shown = cardShown[g.key] ?? JOBS_PAGE_SIZE;
+    const out: JobEntry[] = [{ kind: "group", group: g, open }];
+    if (open) {
+      g.rows.slice(0, shown).forEach((r) => out.push({ kind: "job", prop: r.prop }));
+      if (g.rows.length > shown)
+        out.push({ kind: "more", key: g.key, shown, total: g.rows.length });
+    }
+    return out;
+  });
+  const toggleJobGroup = (key: string) =>
+    setCardCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const showMoreCards = (key: string) =>
+    setCardShown((c) => ({ ...c, [key]: (c[key] ?? JOBS_PAGE_SIZE) + 100 }));
 
   // ⭐ TABLERO (Pipeline): incluye Quality Check; solo oculta Invoice.
   const boardProperties = useMemo(
@@ -4405,9 +4446,6 @@ export default function HousesView({
   }));
   const kpiIcons = [Briefcase, Clock, ShieldCheck, AlertTriangle];
 
-  const dateFormatted = formatDate(new Date()); // ⭐ MM/DD/YYYY unificado
-  const dateCapitalized =
-    dateFormatted.charAt(0).toUpperCase() + dateFormatted.slice(1);
 
   const totalBilled = houseServices.reduce((sum, r) => sum + r.total, 0);
   const totalPayroll = housePayrollRecords.reduce(
@@ -4421,7 +4459,9 @@ export default function HousesView({
   return (
     <div
       className={
-        renderMode === "modals-only" ? "hv-modals-only" : "fade-in houses-view"
+        renderMode === "modals-only"
+          ? "hv-modals-only"
+          : `fade-in houses-view${viewMode === "board" ? "" : " hv-unified-page"}`
       }
     >
       {renderMode === "full" && (
@@ -4438,7 +4478,11 @@ export default function HousesView({
               </button>
               <div>
                 <h1 className="hv-title">Overview</h1>
-                <p className="hv-subtitle">General operations overview</p>
+                <p className="hv-subtitle">
+                  {viewMode === "board"
+                    ? "General operations overview"
+                    : "Operations, billing & quality in one place"}
+                </p>
               </div>
             </div>
 
@@ -4511,117 +4555,15 @@ export default function HousesView({
             </div>
           </header>
 
-          {isElementVisible("card_kpis") && (
-            <div className="dash-grid hv-kpi-grid">
-              {isLoading ? (
-                <div className="hv-loading-text">Loading metrics...</div>
-              ) : (
-                statuses
-                  .filter((s) => isStatusVisibleForRole(s.id))
-                  .slice(0, 4)
-                  .map((status, index) => {
-                    const Icon = kpiIcons[index % kpiIcons.length];
-                    const count = propertiesWithScope.filter(
-                      (p) => p.statusId === status.id || p.statusId === status.name,
-                    ).length;
-                    const isActive = activeFilter === status.name;
-                    return (
-                      <div
-                        className={`hv-kpi-card${isActive ? " active" : ""}`}
-                        style={
-                          {
-                            "--kpi-color": status.color,
-                            "--kpi-color-30": `${status.color}30`,
-                            "--kpi-icon-bg": `${status.color}15`,
-                          } as CSSProperties
-                        }
-                        key={status.id}
-                        onClick={() =>
-                          setActiveFilter(isActive ? "All" : status.name)
-                        }
-                        title={
-                          isActive
-                            ? "Click para limpiar filtro"
-                            : `Filtrar trabajos por ${status.name}`
-                        }
-                      >
-                        <div className="hv-kpi-icon-box">
-                          <Icon size={18} />
-                        </div>
-                        <div className="hv-min-w-0">
-                          <div className="hv-kpi-label">{status.name}</div>
-                          <div className="hv-kpi-count">{count}</div>
-                        </div>
-                      </div>
-                    );
-                  })
-              )}
-            </div>
-          )}
-
-          {viewMode === "board" ? (
-            /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
-               puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
-               no se pase siquiera al componente cuando no hay permiso. */
-            <PipelineBoardView
-              properties={boardProperties}
-              statuses={statuses.filter((s) => isStatusVisibleForRole(s.id))}
-              teams={teams}
-              priorities={priorities}
-              getClientName={getClientName}
-              onOpenDetail={handleOpenDetail}
-              onQuickStatusChange={handleQuickStatusChange}
-              canEdit={!!canEdit}
-              isSaving={isSaving}
-              showBeforePhotos={isElementVisible("board_beforePhotos")}
-              showAfterPhotos={isElementVisible("board_afterPhotos")}
-              photoGate={photosUnlockedFor}
-              showOfficeNote={canSeeOfficeNotes()}
-              onOpenPhotos={(prop) => {
-                handleOpenDetail(prop);
-                setActiveDetailTab("media");
-              }}
-            />
-          ) : (
+          {/* ⭐ Overview unificado: barra de periodo + bandas Operations y
+              Quality check (diseño "Unified Jobs View"). El tablero Pipeline
+              conserva sus KPIs de siempre. */}
+          {viewMode !== "board" && (
             <>
-              {/* ⭐ AVISO: casas fuera de la lista por no tener status. Va FUERA
-                de .main-columns: ese contenedor es flex y meter aqui un item
-                extra descuadraba las columnas. */}
-              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
-                <div className="hv-nostatus-banner">
-                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
-                  <span>
-                    {hiddenNoStatusCount} job(s) are not shown here because they
-                    have no status assigned. They are in the "No Status" module.
-                  </span>
-                </div>
-              )}
-
-              <div className="main-columns">
-                {/* LEFT COLUMN: DAILY JOBS */}
-                <div className="left-col">
-                  <div className="hv-panel-card">
-                    <div className="hv-table-header">
-                      <div>
-                        <h2 className="hv-panel-title">Daily Jobs</h2>
-                        <p className="hv-panel-date">
-                          {dateCapitalized}
-                          {!isLoading && (
-                            <span className="hv-panel-count">
-                              {" "}· {filteredProperties.length.toLocaleString("en-US")}{" "}
-                              {filteredProperties.length === 1 ? "job" : "jobs"}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-
-                      {/* ⭐ Barra de herramientas a la derecha del título:
-                          agrupación por fecha + filtros avanzados. */}
-                      <div className="hv-jobs-toolbar">
-                        <DateGroupBar
-                          mode={jobGrouping.mode}
-                          onChange={jobGrouping.setMode}
-                        />
+              <PeriodBar
+                period={period}
+                onChange={setPeriod}
+                extra={
                         <div className="property-select-container">
                           <button
                             onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
@@ -4721,282 +4663,178 @@ export default function HousesView({
                             </div>
                           )}
                         </div>
-                      </div>
+                }
+              />
+              <div className="kb-row">
+                {isElementVisible("card_kpis") && (
+                  <KpiBand
+                    title="Operations"
+                    color="#1d3fcf"
+                    tiles={(dashboardTabs.length > 0
+                      ? dashboardTabs
+                      : statuses.filter((st) => isStatusVisibleForRole(st.id)).slice(0, 4)
+                    ).map((status) => {
+                      const isActive = activeFilter === status.name;
+                      return {
+                        key: status.id,
+                        label: status.name,
+                        value: isLoading
+                          ? "…"
+                          : propertiesWithScope
+                              .filter((p) => p.statusId === status.id || p.statusId === status.name)
+                              .length.toLocaleString("en-US"),
+                        active: isActive,
+                        onClick: () => setActiveFilter(isActive ? "All" : status.name),
+                        title: isActive ? "Click para limpiar filtro" : `Filtrar por ${status.name}`,
+                      };
+                    })}
+                  />
+                )}
+                <KpiBand
+                  title="Quality check"
+                  color="#047857"
+                  grow="narrow"
+                  minTile={110}
+                  tiles={[
+                    { key: "passed", label: "Passed", value: String(periodQc.passed), tone: "good", sub: "this period" },
+                    { key: "failed", label: "Re-clean", value: String(periodQc.failed), tone: "bad", sub: "this period" },
+                    { key: "pending", label: "QC pending", value: String(periodQc.pending), tone: "warn", sub: "this period" },
+                  ]}
+                />
+              </div>
+            </>
+          )}
 
-                      {/* Chips de status: solo si hay pestañas configuradas
-                          (un "All" solitario no filtra nada). */}
-                      {dashboardTabs.length > 0 && (
-                      <div className="filters-section">
-                        <div className="tabs-container">
-                          <button
-                            onClick={() => setActiveFilter("All")}
-                            className={`hv-pill-btn${activeFilter === "All" ? " active" : ""}`}
-                          >
-                            All
-                          </button>
-                          {dashboardTabs.map((st) => (
-                            <button
-                              key={st.id}
-                              onClick={() => setActiveFilter(st.name)}
-                              className={`hv-pill-btn${activeFilter === st.name ? " active" : ""}`}
-                            >
-                              {st.name}
-                            </button>
-                          ))}
+          {viewMode === "board" && isElementVisible("card_kpis") && (
+            <div className="dash-grid hv-kpi-grid">
+              {isLoading ? (
+                <div className="hv-loading-text">Loading metrics...</div>
+              ) : (
+                statuses
+                  .filter((s) => isStatusVisibleForRole(s.id))
+                  .slice(0, 4)
+                  .map((status, index) => {
+                    const Icon = kpiIcons[index % kpiIcons.length];
+                    const count = propertiesWithScope.filter(
+                      (p) => p.statusId === status.id || p.statusId === status.name,
+                    ).length;
+                    const isActive = activeFilter === status.name;
+                    return (
+                      <div
+                        className={`hv-kpi-card${isActive ? " active" : ""}`}
+                        style={
+                          {
+                            "--kpi-color": status.color,
+                            "--kpi-color-30": `${status.color}30`,
+                            "--kpi-icon-bg": `${status.color}15`,
+                          } as CSSProperties
+                        }
+                        key={status.id}
+                        onClick={() =>
+                          setActiveFilter(isActive ? "All" : status.name)
+                        }
+                        title={
+                          isActive
+                            ? "Click para limpiar filtro"
+                            : `Filtrar trabajos por ${status.name}`
+                        }
+                      >
+                        <div className="hv-kpi-icon-box">
+                          <Icon size={18} />
+                        </div>
+                        <div className="hv-min-w-0">
+                          <div className="hv-kpi-label">{status.name}</div>
+                          <div className="hv-kpi-count">{count}</div>
                         </div>
                       </div>
-                      )}
-                    </div>
+                    );
+                  })
+              )}
+            </div>
+          )}
 
-                    {/* ====== VISTA TABLA (escritorio) ====== */}
-                    <div className="jobs-table-wrap hv-jobs-table-wrap">
-                      <table className="responsive-table hv-table">
-                        <thead>
-                          <tr>
-                            <th className="hv-th sticky">Schedule</th>
-                            <th className="hv-th sticky">Client</th>
-                            <th className="hv-th sticky">Time</th>
-                            <th className="hv-th sticky">Type</th>
-                            <th className="hv-th sticky">Team</th>
-                            <th className="hv-th sticky">Status</th>
-                            <th className="hv-th sticky w-100 right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {isLoading ? (
-                            <tr>
-                              <td colSpan={7} className="hv-empty-row">
-                                Loading database...
-                              </td>
-                            </tr>
-                          ) : filteredProperties.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="hv-empty-row italic">
-                                No jobs to display for your team.
-                              </td>
-                            </tr>
-                          ) : (
-                            jobEntries.map((entry) => {
-                              if (entry.kind === "group") {
-                                return (
-                                  <tr
-                                    key={`g-${entry.group.key}`}
-                                    className="dgb-group-row"
-                                    onClick={() =>
-                                      toggleJobGroup(entry.group.key, entry.index)
-                                    }
-                                  >
-                                    <td colSpan={7}>
-                                      <span className="dgb-group-title">
-                                        <ChevronRight
-                                          size={16}
-                                          className={`dgb-group-chevron${entry.open ? " open" : ""}`}
-                                        />
-                                        {entry.group.label}
-                                        {entry.group.detail && (
-                                          <span className="dgb-group-detail">
-                                            {entry.group.detail}
-                                          </span>
-                                        )}
-                                        <span className="dgb-group-count">
-                                          {entry.group.items.length}{" "}
-                                          {entry.group.items.length === 1 ? "job" : "jobs"}
-                                        </span>
-                                      </span>
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                              if (entry.kind === "more") {
-                                return (
-                                  <tr key={`m-${entry.key}`} className="dgb-more-row">
-                                    <td colSpan={7}>
-                                      <button
-                                        className="dgb-more-btn"
-                                        onClick={() => jobGrouping.showMore(entry.key)}
-                                      >
-                                        Mostrar más — viendo {entry.shown} de{" "}
-                                        {entry.total}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                              const prop = entry.prop;
-                              const teamName = getRelationName(
-                                teams,
-                                prop.teamId,
-                                "Unassigned",
-                              );
-                              const serviceName = getRelationName(
-                                services,
-                                prop.serviceId,
-                                "Regular",
-                              );
-                              const prObj = priorities.find(
-                                (pp) =>
-                                  pp.id === prop.priorityId ||
-                                  pp.name === prop.priorityId,
-                              );
-                              const isHighPriority =
-                                prObj?.name?.toLowerCase() === "high" ||
-                                prop.priorityId?.toLowerCase() === "high";
+          {viewMode === "board" ? (
+            /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
+               puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
+               no se pase siquiera al componente cuando no hay permiso. */
+            <PipelineBoardView
+              properties={boardProperties}
+              statuses={statuses.filter((s) => isStatusVisibleForRole(s.id))}
+              teams={teams}
+              priorities={priorities}
+              getClientName={getClientName}
+              onOpenDetail={handleOpenDetail}
+              onQuickStatusChange={handleQuickStatusChange}
+              canEdit={!!canEdit}
+              isSaving={isSaving}
+              showBeforePhotos={isElementVisible("board_beforePhotos")}
+              showAfterPhotos={isElementVisible("board_afterPhotos")}
+              photoGate={photosUnlockedFor}
+              showOfficeNote={canSeeOfficeNotes()}
+              onOpenPhotos={(prop) => {
+                handleOpenDetail(prop);
+                setActiveDetailTab("media");
+              }}
+            />
+          ) : (
+            <>
+              {/* ⭐ AVISO: casas fuera de la lista por no tener status. */}
+              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
+                <div className="hv-nostatus-banner">
+                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
+                  <span>
+                    {hiddenNoStatusCount} job(s) are not shown here because they
+                    have no status assigned. They are in the "No Status" module.
+                  </span>
+                </div>
+              )}
 
-                              return (
-                                <tr
-                                  key={prop.id}
-                                  onClick={() => handleOpenDetail(prop)}
-                                  className={`hv-job-row${isHighPriority ? " high-priority" : ""}`}
-                                >
-                                  <td
-                                    data-label="Schedule"
-                                    className="hv-td muted"
-                                  >
-                                    {prop.scheduleDate
-                                      ? formatDate(prop.scheduleDate)
-                                      : "-"}
-                                  </td>
-                                  <td data-label="Client" className="hv-td">
-                                    <div className="mobile-client-cell">
-                                      <div className="hv-client-name-row">
-                                        {isHighPriority && (
-                                          <span
-                                            title="HIGH priority"
-                                            className="hv-badge-high"
-                                          >
-                                            <AlertTriangle size={11} /> HIGH
-                                          </span>
-                                        )}
-                                        {getClientName(prop.client)}
-                                        {prop.employeeFinishedBy && (
-                                          <span
-                                            title="Finished"
-                                            className="hv-finished-icon"
-                                          >
-                                            <CheckCircle
-                                              size={14}
-                                              color="#10b981"
-                                            />
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="hv-client-address">
-                                        {prop.address}
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td data-label="Time" className="hv-td muted">
-                                    {prop.timeIn || "08:00 AM"}
-                                  </td>
-                                  <td data-label="Type" className="hv-td strong">
-                                    {serviceName}
-                                  </td>
-                                  <td data-label="Team" className="hv-td muted">
-                                    {/* ⭐ Equipo con el color del catálogo
-                                        (mismo estilo que Invoices). */}
-                                    {prop.teamId && teamName !== "Unassigned" ? (
-                                      <span
-                                        className="hv-team-pill"
-                                        style={
-                                          {
-                                            "--team-color":
-                                              getRelationColor(teams, prop.teamId) ||
-                                              "#94a3b8",
-                                          } as CSSProperties
-                                        }
-                                      >
-                                        {teamName}
-                                      </span>
-                                    ) : (
-                                      <span className="hv-team-none">Unassigned</span>
-                                    )}
-                                  </td>
-                                  <td data-label="Status" className="hv-td">
-                                    <StatusPillSelector
-                                      currentStatusId={prop.statusId}
-                                      statuses={statuses}
-                                      onChange={(newId) =>
-                                        handleQuickStatusChange(prop.id, newId)
-                                      }
-                                      disabled={
-                                        isSaving ||
-                                        !canEdit ||
-                                        !isVisible("workflow") ||
-                                        isFieldRO("statusId")
-                                      }
-                                      onRequestOpen={setStatusModal}
-                                      modalTitle={getClientName(prop.client)}
-                                      modalSubtitle={prop.address}
-                                    />
-                                  </td>
-                                  <td
-                                    data-label="Actions"
-                                    className="hv-td right"
-                                  >
-                                    <div className="hv-actions-cell-row">
-                                      {canEdit &&
-                                        isVisible("admin") &&
-                                        isElementVisible("btn_editDetails") && (
-                                          <button
-                                            className="action-btn-edit"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleOpenForm(prop);
-                                            }}
-                                          >
-                                            <Edit2 size={16} />{" "}
-                                            <span className="mobile-action-text">
-                                              Editar
-                                            </span>
-                                          </button>
-                                        )}
-                                      {canDelete &&
-                                        isVisible("admin") &&
-                                        isElementVisible(
-                                          "btn_deleteProperty",
-                                        ) && (
-                                          <button
-                                            className="action-btn-delete"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDelete(prop);
-                                            }}
-                                          >
-                                            <Trash2 size={16} />{" "}
-                                            <span className="mobile-action-text">
-                                              Eliminar
-                                            </span>
-                                          </button>
-                                        )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                      {!isJobsGrouped && remainingJobs > 0 && (
-                        <div className="hv-loadmore-wrap">
-                          <button
-                            className="hv-btn-loadmore"
-                            onClick={() =>
-                              setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
-                            }
-                          >
-                            Load more ({remainingJobs})
-                          </button>
-                        </div>
-                      )}
-                    </div>
+              {/* ⭐ Tabla unificada (escritorio) y tarjetas (móvil) */}
+              <div className="hv-unified">
+                <div className="hv-unified-table">
+                  <UnifiedJobsTable
+                    groups={unifiedGroups}
+                    loading={isLoading}
+                    emptyText="No jobs in this period. Use ← → or Today to move the period."
+                    renderStatus={(prop) => (
+                      <StatusPillSelector
+                        currentStatusId={prop.statusId}
+                        statuses={statuses}
+                        onChange={(newId) => handleQuickStatusChange(prop.id, newId)}
+                        disabled={
+                          isSaving ||
+                          !canEdit ||
+                          !isVisible("workflow") ||
+                          isFieldRO("statusId")
+                        }
+                        onRequestOpen={setStatusModal}
+                        modalTitle={getClientName(prop.client)}
+                        modalSubtitle={prop.address}
+                      />
+                    )}
+                    onOpen={handleOpenDetail}
+                    onOpenQc={handleOpenDetail}
+                    onEdit={
+                      canEdit && isVisible("admin") && isElementVisible("btn_editDetails")
+                        ? (prop) => handleOpenForm(prop)
+                        : undefined
+                    }
+                    onDelete={
+                      canDelete && isVisible("admin") && isElementVisible("btn_deleteProperty")
+                        ? (prop) => handleDelete(prop)
+                        : undefined
+                    }
+                  />
+                </div>
 
-                    {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
+                {/* ====== VISTA TARJETAS (MÓVIL - estilo AppSheet) ====== */}
+                <div className="hv-panel-card hv-unified-cards">
                     <div className="jobs-cards-wrap">
                       {isLoading ? (
                         <div className="hv-cards-empty">Loading database...</div>
-                      ) : filteredProperties.length === 0 ? (
+                      ) : periodProperties.length === 0 ? (
                         <div className="hv-cards-empty italic">
-                          No jobs to display for your team.
+                          No jobs in this period.
                         </div>
                       ) : (
                         jobEntries.map((entry) => {
@@ -5005,25 +4843,23 @@ export default function HousesView({
                               <button
                                 type="button"
                                 key={`g-${entry.group.key}`}
-                                className="dgb-group-card"
-                                onClick={() =>
-                                  toggleJobGroup(entry.group.key, entry.index)
-                                }
+                                className="hv-cgroup"
+                                onClick={() => toggleJobGroup(entry.group.key)}
                               >
-                                <span className="dgb-group-title">
+                                <span className="hv-cgroup-title">
                                   <ChevronRight
                                     size={16}
-                                    className={`dgb-group-chevron${entry.open ? " open" : ""}`}
+                                    className={`hv-cgroup-chevron${entry.open ? " open" : ""}`}
                                   />
                                   {entry.group.label}
                                   {entry.group.detail && (
-                                    <span className="dgb-group-detail">
+                                    <span className="hv-cgroup-detail">
                                       {entry.group.detail}
                                     </span>
                                   )}
                                 </span>
-                                <span className="dgb-group-count">
-                                  {entry.group.items.length}
+                                <span className="hv-cgroup-count">
+                                  {entry.group.rows.length}
                                 </span>
                               </button>
                             );
@@ -5032,8 +4868,8 @@ export default function HousesView({
                             return (
                               <button
                                 key={`m-${entry.key}`}
-                                className="dgb-more-btn"
-                                onClick={() => jobGrouping.showMore(entry.key)}
+                                className="hv-cgroup-more"
+                                onClick={() => showMoreCards(entry.key)}
                               >
                                 Mostrar más — viendo {entry.shown} de {entry.total}
                               </button>
@@ -5208,20 +5044,7 @@ export default function HousesView({
                           );
                         })
                       )}
-                      {!isJobsGrouped && remainingJobs > 0 && (
-                        <div className="hv-loadmore-wrap">
-                          <button
-                            className="hv-btn-loadmore"
-                            onClick={() =>
-                              setVisibleJobs((n) => n + JOBS_PAGE_SIZE)
-                            }
-                          >
-                            Load more ({remainingJobs})
-                          </button>
-                        </div>
-                      )}
                     </div>
-                  </div>
                 </div>
               </div>
             </>
