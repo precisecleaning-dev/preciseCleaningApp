@@ -23,6 +23,11 @@ type RoleExt = Omit<Role, 'permissions'> & { permissions: PermissionExt[]; descr
 
 // ⭐ TODOS los módulos del sistema (deben coincidir EXACTAMENTE con los nombres usados en cada View)
 const DEFAULT_MODULES = [
+  // --- Inicio ---
+  // ⭐ Páginas de inicio del dueño y del gerente. "Manager" además marca quién
+  //    es gerente: a esos usuarios el Owner les puede asignar tareas.
+  'Owner',
+  'Manager',
   // --- Operacion diaria ---
   'Houses',
   'Pipeline',

@@ -44,6 +44,8 @@ const QCReportsTableView = lazy(() => import('./views/QCReportsTableView'));
 //    inspecciones con score/resultado/áreas con fallas y scorecard por equipo.
 //    No reemplaza a Quality Check ni a Quality Check Reports.
 const QualityDashboardView = lazy(() => import('./views/QualityDashboardView'));
+const OwnerView = lazy(() => import('./views/OwnerView'));
+const ManagerView = lazy(() => import('./views/ManagerView'));
 // ⭐ Vista de historial de status por casa
 const StatusHistoryView = lazy(() => import('./views/StatusHistoryView'));
 // ⭐ Modulo de empresa (logo, nombre, correo, direccion)
@@ -65,12 +67,12 @@ import { auth, db } from './config/firebase';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -306,6 +308,7 @@ export default function App() {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
       qc_report: ['Quality Check'], qc_reports_table: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
+      owner: ['Owner'], manager: ['Manager'],
       status_history: ['Status History'], payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
       data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
@@ -352,6 +355,13 @@ export default function App() {
     setActiveTab('settings');
     setCurrentSettingView('menu');
   }; 
+
+  // ⭐ Vistas Owner / Manager que este rol puede abrir (selector del encabezado).
+  const canViewHome = (m: 'Owner' | 'Manager') =>
+    isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === m && p.canView);
+  const homeTabs = ([['owner', 'Owner'], ['manager', 'Manager']] as const)
+    .filter(([, m]) => canViewHome(m))
+    .map(([t]) => t);
 
   const handleCheckHouse = (house: Property) => {
     setHouseToInspect(house);
@@ -585,6 +595,51 @@ export default function App() {
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
           />
+        )}
+
+        {/* ⭐ OWNER y MANAGER — páginas de inicio del dueño y del gerente. Quien
+            puede ver las dos cambia entre ellas con el selector del encabezado.
+            El detalle / edición de una casa se abre aquí mismo. */}
+        {(activeTab === 'owner' || activeTab === 'manager') && (
+          <>
+            {activeTab === 'owner' ? (
+              <OwnerView
+                onOpenMenu={toggleMenu}
+                properties={visibleProperties}
+                currentUser={effectiveUser}
+                available={homeTabs}
+                onSwitch={setActiveTab}
+                onNavigate={setActiveTab}
+                onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
+              />
+            ) : (
+              <ManagerView
+                onOpenMenu={toggleMenu}
+                properties={propertiesForModule('Manager')}
+                currentUser={effectiveUser}
+                activeRole={activeRole}
+                isSuperAdmin={isSuperAdmin}
+                available={homeTabs}
+                onSwitch={setActiveTab}
+                onInspect={handleCheckHouse}
+                onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
+                onOpenHouseEdit={(house) => setHouseToOpenEdit(house)}
+              />
+            )}
+            <HousesView
+              renderMode="modals-only"
+              properties={visibleProperties}
+              setProperties={setProperties}
+              onOpenMenu={toggleMenu}
+              currentUser={effectiveUser}
+              activeRole={activeRole}
+              isSuperAdmin={isSuperAdmin}
+              houseToOpenDetail={houseToOpenDetail}
+              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+              houseToOpenEdit={houseToOpenEdit}
+              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
+            />
+          </>
         )}
 
         {/* ⭐ QC DASHBOARD — vista nueva del lienzo. "Inspect" abre la inspección

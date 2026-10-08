@@ -199,6 +199,22 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Vistas Owner y Manager (2026-10-08)
+- **Vistas nuevas** `owner` y `manager` (módulos de permiso "Owner" y "Manager" en Roles). Quien
+  puede ver las dos cambia con el selector Owner/Manager del encabezado.
+- **"Manager" también define quién es gerente:** usuarios activos cuyo rol tiene Manager (View)
+  aparecen en Manager tasks, en "Assign to" y en "On the clock now".
+- **Colecciones nuevas** (revisar reglas de Firestore en la consola, el repo no las tiene):
+  `manager_tasks` (services/managerTasksService.ts) y `time_clock` (services/timeClockService.ts).
+- **Reglas** en `utils/homeData.ts`: trabajos de hoy y su estado (Done / In progress / Not started
+  si pasaron 15 min de la hora / Scheduled / sin equipo), casas que esperan QC, Recall y su
+  re-clean, facturas sin cobrar. "Your day in 30 seconds" = reglas, no IA (misma decisión del Overview).
+- **Pass rápido** (Manager → Quality check): guarda un reporte `quality_checks` aprobado sin
+  checklist (`quickPass: true`, passRate null) y NO cambia el status. "Did not pass" abre la
+  inspección completa de Quality Check (ahí está el flujo a Recall).
+- **Finance (Owner):** solo datos de la app (decisión del usuario): ingresos, impuesto, payroll,
+  utilidad bruta y facturas más viejas. Sin banco ni gastos.
+
 ## Pulido: Team uniforme, notas tipo WhatsApp y QC Dashboard con el aspecto del Overview (2026-10-08, ronda 4)
 - **Team / Billing / Status en la tabla:** pastillas de alto fijo 28px; Team y Billing además con
   ancho fijo (128px) y "…" si el nombre es largo, para que ninguna fila se deforme.

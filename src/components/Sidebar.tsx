@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye, Gauge
+  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye, Gauge, Briefcase, UserCog
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { auth } from '../config/firebase';
@@ -110,6 +110,10 @@ export default function Sidebar({
   };
 
   const mainNavItems: NavItemConfig[] = [
+    // ⭐ OWNER / MANAGER — páginas de inicio del dueño y del gerente. Permisos
+    //    propios "Owner" y "Manager" en Roles & Permissions.
+    { tab: 'owner', label: 'Owner', icon: Briefcase, visible: canView('Owner') },
+    { tab: 'manager', label: 'Manager', icon: UserCog, visible: canView('Manager') },
     // ⭐ HOUSES — check propio
     { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
     { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canViewOrLegacy('Pipeline', canView('Houses')) },

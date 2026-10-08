@@ -41,6 +41,8 @@ const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   qc_report: () => import('../views/QualityCheckHub'),
   qc_reports_table: () => import('../views/QCReportsTableView'),
   qc_dashboard: () => import('../views/QualityDashboardView'),
+  owner: () => import('../views/OwnerView'),
+  manager: () => import('../views/ManagerView'),
   qc_route: () => import('../views/QCRouteView'),
   recalls: () => import('../views/RecallsView'),
   status_history: () => import('../views/StatusHistoryView'),
