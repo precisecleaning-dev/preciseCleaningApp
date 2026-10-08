@@ -9,15 +9,16 @@
   border: 1px solid #e3e7ef;
   border-radius: 14px;
   padding: 10px 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .pb-nav,
-.pb-right,
-.pb-custom {
+.pb-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .pb-right {
@@ -27,8 +28,23 @@
 .pb-title {
   display: flex;
   flex-direction: column;
-  min-width: 210px;
+  justify-content: center;
+  align-items: center;
+  /* Ancho FIJO: cabe la etiqueta más larga ("Sep 28 – Oct 4, 2026") y las
+     dos fechas de Custom; así nada en la barra cambia de lugar. */
+  width: 300px;
+  height: 44px;
+  flex-shrink: 0;
   text-align: center;
+}
+.pb-custom {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.pb-custom .pb-field {
+  flex: 1;
+  min-width: 0;
 }
 
 .pb-name {
@@ -43,6 +59,7 @@
   font-size: 15px;
   font-weight: 800;
   color: #0f172a;
+  white-space: nowrap;
 }
 
 .pb-iconbtn {
@@ -121,11 +138,14 @@
 .pb-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  text-align: left;
 }
 
 .pb-date {
-  height: 36px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 30px;
   border: 1px solid #e3e7ef;
   border-radius: 10px;
   padding: 0 10px;
@@ -140,11 +160,24 @@
     width: 100%;
     justify-content: space-between;
   }
+  /* En móvil el título puede bajar a 2 líneas: nunca se corta */
   .pb-title {
+    width: auto;
+    height: auto;
+    min-height: 44px;
     min-width: 0;
     flex: 1;
   }
+  .pb-label {
+    font-size: 14px;
+    white-space: normal;
+  }
+  /* Selector de periodo a todo el ancho; Filters en su propia fila */
   .pb-right {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .pb-right > * {
     width: 100%;
   }
   .pb-right > .pb-name {

@@ -1576,7 +1576,7 @@
 /* =====================================================================
    ⭐ Invoices con el lenguaje visual del Overview unificado (diseño
    "Precise Cleaning – Unified Jobs View"): misma letra, fondo, barra de
-   periodo, tiles, chips y pastillas. PeriodBar.css y KpiBand.css traen
+   periodo, tiles, chips y pastillas. PeriodBar.css y KpiGrid.css traen
    los componentes compartidos.
    ===================================================================== */
 /* App.css fija `* { font-family: system-ui }`: se aplica a cada elemento. */
@@ -1771,4 +1771,42 @@
   .inv-page .inv-search-input { width: 100%; }
   .inv-page .inv-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .inv-page .inv-chip { flex-shrink: 0; }
+}
+
+/* =====================================================================
+   ⭐ Invoices — pantalla de ALTURA FIJA en escritorio (misma idea que el
+   Overview): encabezado, periodo, indicadores y filtros quietos; la tabla
+   ocupa el resto con su propio scroll y su barra horizontal SIEMPRE visible.
+   ===================================================================== */
+@media (min-width: 901px) and (min-height: 600px) {
+  .inv-page.inv-unified {
+    height: 100%;
+    overflow: hidden;
+  }
+  .inv-page.inv-unified > .inv-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+}
+.inv-page.inv-unified .inv-table-wrap {
+  overflow: scroll;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  /* App.css (.fade-in *) pone una barra fina y casi transparente con
+     scrollbar-color, que en Chrome anula ::-webkit-scrollbar: se devuelve a
+     auto para que la barra de abajo se vea siempre. */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.inv-page.inv-unified .inv-table-wrap::-webkit-scrollbar { width: 12px; height: 12px; }
+.inv-page.inv-unified .inv-table-wrap::-webkit-scrollbar-track { background: #eef1f6; }
+.inv-page.inv-unified .inv-table-wrap::-webkit-scrollbar-thumb {
+  background: #b8c1d1;
+  border-radius: 8px;
+  border: 3px solid #eef1f6;
+}
+.inv-page.inv-unified .inv-table-wrap::-webkit-scrollbar-thumb:hover { background: #94a0b8; }
+.inv-page.inv-unified .inv-table-wrap::-webkit-scrollbar-corner { background: #eef1f6; }
+@supports not selector(::-webkit-scrollbar) {
+  .inv-page.inv-unified .inv-table-wrap { scrollbar-color: #b8c1d1 #eef1f6; }
 }

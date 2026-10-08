@@ -1,14 +1,51 @@
 /* ===== Tabla unificada — diseño "Precise Cleaning – Unified Jobs View" ===== */
 .ujt-card {
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border: 1px solid #e3e7ef;
   border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+/* Scroll propio de la tabla. La barra horizontal se ve SIEMPRE:
+   · `overflow: scroll` la reserva aunque no se esté desplazando.
+   · App.css da a todo lo que está dentro de `.fade-in` una barra fina y casi
+     transparente con `scrollbar-color`, que en Chrome ANULA los estilos
+     ::-webkit-scrollbar. Aquí se devuelve a `auto` (más específico) para que
+     valga la barra gruesa y visible de abajo (también en Mac). */
 .ujt-scroll {
-  overflow: auto;
+  overflow: scroll;
   max-height: 78vh;
+}
+.fade-in .ujt-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.fade-in .ujt-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.fade-in .ujt-scroll::-webkit-scrollbar-track {
+  background: #eef1f6;
+}
+.fade-in .ujt-scroll::-webkit-scrollbar-thumb {
+  background: #b8c1d1;
+  border-radius: 8px;
+  border: 3px solid #eef1f6;
+}
+.fade-in .ujt-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a0b8;
+}
+.fade-in .ujt-scroll::-webkit-scrollbar-corner {
+  background: #eef1f6;
+}
+/* Firefox (no tiene ::-webkit-scrollbar) */
+@supports not selector(::-webkit-scrollbar) {
+  .fade-in .ujt-scroll {
+    scrollbar-color: #b8c1d1 #eef1f6;
+  }
 }
 
 .ujt-table {
@@ -266,4 +303,34 @@
 }
 .ujt-more-btn:hover {
   background: #eef2ff;
+}
+
+/* ---- Columnas fijas: Date/time y Client & address quedan a la vista al
+   desplazar la tabla hacia la derecha (contexto de cada fila). ---- */
+.ujt-table th:nth-child(1),
+.ujt-row > td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+}
+.ujt-table th:nth-child(2),
+.ujt-row > td:nth-child(2) {
+  position: sticky;
+  left: 112px;
+  box-shadow: inset -1px 0 0 #e3e7ef;
+}
+.ujt-row > td:nth-child(1),
+.ujt-row > td:nth-child(2) {
+  z-index: 1;
+}
+.ujt-table th:nth-child(1),
+.ujt-table th:nth-child(2) {
+  z-index: 3;
+}
+/* El nombre del grupo acompaña al desplazamiento horizontal */
+.ujt-group-title {
+  position: sticky;
+  left: 12px;
 }

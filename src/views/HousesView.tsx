@@ -79,7 +79,7 @@ import { trashService } from "../services/trashService";
 import { mapCustomerDoc, displayClientName, resolveCustomerName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import PeriodBar from "../components/PeriodBar";
-import KpiBand from "../components/KpiBand";
+import KpiGrid from "../components/KpiGrid";
 import UnifiedJobsTable from "../components/UnifiedJobsTable";
 import {
   inPeriod,
@@ -2305,23 +2305,6 @@ export default function HousesView({
     [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex, statuses.length],
   );
 
-  // ⭐ Cuantas casas del alcance del usuario quedan fuera de Overview por no
-  //    tener status. Alimenta el aviso de arriba de la lista.
-  const hiddenNoStatusCount = useMemo(() => {
-    if (statuses.length === 0) return 0;
-    return properties.filter((prop) => {
-      if (userScope !== "All") {
-        if (!currentUser) return false;
-        const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
-        const isSameTeam =
-          currentUser.teamId && prop.teamId === currentUser.teamId;
-        if (!isAssigned && !isSameTeam) return false;
-      }
-      return !findStatusOf(prop);
-    }).length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, userScope, currentUser, statusIndex, statuses.length]);
-
   const uniqueHouses = useMemo(
     () =>
       Array.from(
@@ -4503,7 +4486,7 @@ export default function HousesView({
                 <Search size={16} color="#9ca3af" />
                 <input
                   type="text"
-                  placeholder="Buscar por dirección, cliente o notas..."
+                  placeholder="Buscar cliente o dirección"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="hv-search-input"
@@ -4665,43 +4648,49 @@ export default function HousesView({
                         </div>
                 }
               />
-              <div className="kb-row">
-                {isElementVisible("card_kpis") && (
-                  <KpiBand
-                    title="Operations"
-                    color="#1d3fcf"
-                    tiles={(dashboardTabs.length > 0
-                      ? dashboardTabs
-                      : statuses.filter((st) => isStatusVisibleForRole(st.id)).slice(0, 4)
-                    ).map((status) => {
-                      const isActive = activeFilter === status.name;
-                      return {
-                        key: status.id,
-                        label: status.name,
-                        value: isLoading
-                          ? "…"
-                          : propertiesWithScope
-                              .filter((p) => p.statusId === status.id || p.statusId === status.name)
-                              .length.toLocaleString("en-US"),
-                        active: isActive,
-                        onClick: () => setActiveFilter(isActive ? "All" : status.name),
-                        title: isActive ? "Click para limpiar filtro" : `Filtrar por ${status.name}`,
-                      };
-                    })}
-                  />
-                )}
-                <KpiBand
-                  title="Quality check"
-                  color="#047857"
-                  grow="narrow"
-                  minTile={110}
-                  tiles={[
-                    { key: "passed", label: "Passed", value: String(periodQc.passed), tone: "good", sub: "this period" },
-                    { key: "failed", label: "Re-clean", value: String(periodQc.failed), tone: "bad", sub: "this period" },
-                    { key: "pending", label: "QC pending", value: String(periodQc.pending), tone: "warn", sub: "this period" },
-                  ]}
-                />
-              </div>
+              <KpiGrid
+                label="Indicadores"
+                groups={[
+                  ...(isElementVisible("card_kpis")
+                    ? [
+                        {
+                          key: "ops",
+                          title: "Operations",
+                          color: "#1d3fcf",
+                          tiles: (dashboardTabs.length > 0
+                            ? dashboardTabs
+                            : statuses.filter((st) => isStatusVisibleForRole(st.id)).slice(0, 4)
+                          ).map((status) => {
+                            const isActive = activeFilter === status.name;
+                            return {
+                              key: status.id,
+                              label: status.name,
+                              value: isLoading
+                                ? "…"
+                                : propertiesWithScope
+                                    .filter((p) => p.statusId === status.id || p.statusId === status.name)
+                                    .length.toLocaleString("en-US"),
+                              sub: isActive ? "Filtering ✓" : "jobs now",
+                              active: isActive,
+                              onClick: () => setActiveFilter(isActive ? "All" : status.name),
+                              title: isActive ? "Click para limpiar filtro" : `Filtrar por ${status.name}`,
+                            };
+                          }),
+                        },
+                      ]
+                    : []),
+                  {
+                    key: "qc",
+                    title: "Quality check",
+                    color: "#047857",
+                    tiles: [
+                      { key: "passed", label: "Passed", value: String(periodQc.passed), tone: "good" as const, sub: "this period" },
+                      { key: "failed", label: "Re-clean", value: String(periodQc.failed), tone: "bad" as const, sub: "this period" },
+                      { key: "pending", label: "QC pending", value: String(periodQc.pending), tone: "warn" as const, sub: "this period" },
+                    ],
+                  },
+                ]}
+              />
             </>
           )}
 
@@ -4778,16 +4767,6 @@ export default function HousesView({
             />
           ) : (
             <>
-              {/* ⭐ AVISO: casas fuera de la lista por no tener status. */}
-              {!isLoading && statuses.length > 0 && hiddenNoStatusCount > 0 && (
-                <div className="hv-nostatus-banner">
-                  <AlertTriangle size={16} className="hv-nostatus-banner-icon" />
-                  <span>
-                    {hiddenNoStatusCount} job(s) are not shown here because they
-                    have no status assigned. They are in the "No Status" module.
-                  </span>
-                </div>
-              )}
 
               {/* ⭐ Tabla unificada (escritorio) y tarjetas (móvil) */}
               <div className="hv-unified">

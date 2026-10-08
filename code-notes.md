@@ -199,6 +199,22 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   así que no causa errores, pero ensucia el calendario. Opción: callable que borre el evento
   al eliminar la casa.
 
+## Overview e Invoices: presentación profesional (2026-10-08, ronda 2)
+- **Indicadores en `KpiGrid`** (reemplaza `KpiBand`, eliminado): UNA rejilla de columnas iguales para
+  todos los grupos → todos los cuadros miden lo mismo. Etiqueta hasta 2 líneas (reserva 2 siempre),
+  sin "…". Acomodo por container queries: ≥980px todos en una fila; 560–980 cada grupo en su fila;
+  angosto 2 columnas.
+- **Alerta amarilla "N job(s) are not shown…" eliminada** (y su contador `hiddenNoStatusCount`).
+- **Pantalla de altura fija** (escritorio/tablet, alto ≥600px): encabezado, barra de periodo e
+  indicadores no se mueven; la tabla ocupa el resto con scroll propio. En móvil, scroll normal.
+- **Barra de periodo sin saltos:** espacio de título de ancho fijo (300px); en Custom las fechas van
+  dentro de ese mismo espacio.
+- **Barra horizontal siempre visible:** `overflow: scroll` + `::-webkit-scrollbar` propio. OJO:
+  `App.css` pone `scrollbar-color` fino y casi transparente en `.fade-in *`, que en Chrome ANULA
+  `::-webkit-scrollbar`; las tablas lo devuelven a `auto` con un selector más específico.
+- Tabla unificada: Date/time y Client & address fijas al desplazar a la derecha.
+- Encabezado del Overview en una línea (acciones sin wrap; el buscador cede ancho hasta 260px).
+
 ## Overview unificado según el lienzo "Precise Cleaning – Unified Jobs View" (2026-10-08)
 - **Overview** = diseño del tablero "Unified Overview (ops + billing + QC)": barra de periodo
   (Day/Week/Month/Year/Custom con ←/→/Today), bandas KPI "Operations" (tiles de status, clic = filtro)

@@ -4770,7 +4770,7 @@
 /* =====================================================================
    ⭐ Overview unificado — diseño "Precise Cleaning – Unified Jobs View"
    (tabla en src/components/UnifiedJobsTable.css, barra de periodo en
-   PeriodBar.css, bandas de KPIs en KpiBand.css)
+   PeriodBar.css, rejilla de KPIs en KpiGrid.css)
    ===================================================================== */
 /* App.css fija `* { font-family: system-ui }`: hay que aplicar la letra del
    diseño a cada elemento de la página, no solo heredarla. */
@@ -4888,4 +4888,59 @@
   padding: 4px 10px;
   min-height: 0;
   gap: 6px;
+}
+
+/* =====================================================================
+   ⭐ Overview — pantalla de ALTURA FIJA en escritorio y tablet:
+   encabezado, barra de periodo e indicadores quedan quietos (la barra de
+   filtros NUNCA se mueve) y la tabla ocupa el resto con su propio scroll,
+   así su barra horizontal SIEMPRE está a la vista.
+   (App.css pone `height:auto !important` en ≤1024px; aquí se impone.)
+   En móvil (≤768px) se mantiene el scroll normal con tarjetas.
+   ===================================================================== */
+@media (min-width: 769px) and (min-height: 600px) {
+  .houses-view.hv-unified-page {
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  .houses-view.hv-unified-page > .hv-unified {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .houses-view.hv-unified-page .hv-unified-table {
+    height: 100%;
+  }
+  .houses-view.hv-unified-page .ujt-card {
+    height: 100%;
+  }
+  .houses-view.hv-unified-page .ujt-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+}
+
+/* Encabezado en UNA línea: las acciones ocupan el espacio libre y no se
+   parten; el buscador cede ancho primero, pero nunca por debajo de lo que
+   necesita su texto de ayuda para leerse completo. */
+@media (min-width: 769px) {
+  .houses-view.hv-unified-page .hv-header-actions {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .houses-view.hv-unified-page .hv-header-actions > *:not(.hv-search-box) {
+    flex-shrink: 0;
+  }
+}
+.houses-view.hv-unified-page .hv-search-box.search-box-container {
+  flex: 0 1 340px;
+  min-width: 260px;
+}
+@media (max-width: 768px) {
+  .houses-view.hv-unified-page .hv-search-box.search-box-container {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }

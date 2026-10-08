@@ -1,0 +1,130 @@
+/* ===== Rejilla de indicadores (Overview e Invoices) =====
+   Una sola rejilla de columnas IGUALES para todos los grupos: todos los
+   cuadros miden lo mismo. El acomodo depende del ancho real del bloque
+   (container queries), no del de la pantalla. */
+.kg-wrap {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.kg-grid {
+  display: grid;
+  gap: 12px;
+  /* Móvil / angosto: 2 columnas, cada grupo en su fila */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.kg-head {
+  grid-column: 1 / -1;
+  order: calc(var(--kg-group) * 2);
+  margin: 4px 0 -4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kg-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Línea fina que acompaña al título del grupo */
+.kg-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e3e7ef;
+}
+
+.kg-tile {
+  order: calc(var(--kg-group) * 2 + 1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.kg-tile.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.kg-tile.clickable:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 4px 14px rgba(29, 63, 207, 0.08);
+}
+.kg-tile.active {
+  border-color: #1d3fcf;
+  box-shadow: 0 0 0 1px #1d3fcf inset, 0 4px 14px rgba(29, 63, 207, 0.1);
+}
+.kg-tile.hl-good { background: #f0fdf6; border-color: #a7f3d0; }
+.kg-tile.hl-bad { background: #fef2f2; border-color: #fecaca; }
+
+/* Etiqueta: hasta 2 líneas, NUNCA con "…". Siempre reserva 2 líneas para
+   que todos los cuadros tengan la misma altura. */
+.kg-label {
+  font-size: 11px;
+  line-height: 1.35;
+  min-height: calc(11px * 1.35 * 2);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5b6475;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.kg-value {
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.kg-value.good { color: #047857; }
+.kg-value.warn { color: #b45309; }
+.kg-value.bad { color: #b91c1c; }
+
+.kg-sub {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #5b6475;
+  white-space: nowrap;
+}
+
+/* Mediano: cada grupo en su fila, columnas iguales */
+@container (min-width: 560px) {
+  .kg-grid {
+    grid-template-columns: repeat(var(--kg-mid-cols), minmax(0, 1fr));
+  }
+  .kg-value { font-size: 24px; }
+}
+
+/* Ancho: todos los grupos en una sola fila de columnas iguales, cada título
+   sobre sus propios cuadros. */
+@container (min-width: 980px) {
+  .kg-grid {
+    grid-template-columns: repeat(var(--kg-cols), minmax(0, 1fr));
+    row-gap: 10px;
+  }
+  .kg-head {
+    grid-row: 1;
+    grid-column: span var(--kg-span);
+    order: 0;
+    margin: 0;
+  }
+  .kg-tile {
+    grid-row: 2;
+    order: 0;
+  }
+}

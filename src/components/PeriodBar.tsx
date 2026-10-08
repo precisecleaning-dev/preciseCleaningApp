@@ -36,9 +36,36 @@ export default function PeriodBar({ period, onChange, extra }: PeriodBarProps) {
         >
           <ChevronLeft size={16} />
         </button>
+        {/* Espacio de ANCHO FIJO: el título (o las fechas de Custom) nunca
+            empuja ni mueve los demás controles de la barra. */}
         <div className="pb-title">
-          <span className="pb-name">{range.name}</span>
-          <span className="pb-label">{range.label}</span>
+          {isCustom ? (
+            <div className="pb-custom">
+              <label className="pb-field">
+                <span className="pb-name">Start</span>
+                <input
+                  type="date"
+                  className="pb-date"
+                  value={period.customStart}
+                  onChange={(e) => onChange({ ...period, customStart: e.target.value })}
+                />
+              </label>
+              <label className="pb-field">
+                <span className="pb-name">End</span>
+                <input
+                  type="date"
+                  className="pb-date"
+                  value={period.customEnd}
+                  onChange={(e) => onChange({ ...period, customEnd: e.target.value })}
+                />
+              </label>
+            </div>
+          ) : (
+            <>
+              <span className="pb-name">{range.name}</span>
+              <span className="pb-label">{range.label}</span>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -57,29 +84,6 @@ export default function PeriodBar({ period, onChange, extra }: PeriodBarProps) {
           Today
         </button>
       </div>
-
-      {isCustom && (
-        <div className="pb-custom">
-          <label className="pb-field">
-            <span className="pb-name">Start</span>
-            <input
-              type="date"
-              className="pb-date"
-              value={period.customStart}
-              onChange={(e) => onChange({ ...period, customStart: e.target.value })}
-            />
-          </label>
-          <label className="pb-field">
-            <span className="pb-name">End</span>
-            <input
-              type="date"
-              className="pb-date"
-              value={period.customEnd}
-              onChange={(e) => onChange({ ...period, customEnd: e.target.value })}
-            />
-          </label>
-        </div>
-      )}
 
       <div className="pb-right">
         <span className="pb-name">Show</span>
