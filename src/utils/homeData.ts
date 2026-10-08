@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Customer, Property, Role, Status, SystemUser, Team } from '../types/index';
-import { mapCustomerDoc } from './customerDocs';
+import { displayClientName, mapCustomerDoc } from './customerDocs';
 import { getRelationName } from './relations';
 import { toDate } from './dateGrouping';
 import { isRecallText } from './recallStatus';
@@ -140,7 +140,7 @@ export function useHomeData(properties: Property[]) {
 
   // ---- Resolución de catálogos ----
   const statusOf = (p: Property) => statuses.find((s) => String(s.id) === String(p.statusId) || s.name === p.statusId);
-  const clientName = (p: Property) => getRelationName(customers, p.client, String(p.client || 'Unknown'));
+  const clientName = (p: Property) => displayClientName(customers, p.client);
   const teamOf = (p: Property) => (p.teamId ? teams.find((t) => t.id === p.teamId || t.name === p.teamId) : undefined);
   const typeName = (p: Property) => getRelationName(services, p.serviceId, 'Regular');
 

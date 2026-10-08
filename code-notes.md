@@ -200,6 +200,10 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   al eliminar la casa.
 
 ## Vistas Owner y Manager (2026-10-08)
+- **Tamaño (ronda 2):** escala de letra como el Overview y acomodo por *container queries* sobre
+  `.hm-page` (ancho real de la vista, con o sin menú): 4 tarjetas del resumen y 6 indicadores
+  desde ~1000px de contenido, 2–3 columnas en tablet, 1–2 en celular. Cliente borrado se muestra
+  con `displayClientName` ("Cliente eliminado · id"), no con el id crudo.
 - **Vistas nuevas** `owner` y `manager` (módulos de permiso "Owner" y "Manager" en Roles). Quien
   puede ver las dos cambia con el selector Owner/Manager del encabezado.
 - **"Manager" también define quién es gerente:** usuarios activos cuyo rol tiene Manager (View)

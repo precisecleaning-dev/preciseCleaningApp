@@ -190,7 +190,7 @@ export default function OwnerView({
   const tiles: { key: string; label: string; value: string; sub: string; tone: string }[] = [
     {
       key: 'rev', label: 'Revenue this month', value: moneyShort(k.month.servicePrice),
-      sub: k.change === null ? 'month to date' : `${k.change >= 0 ? '+' : ''}${Math.round(k.change)}% vs. ${prevMonthStart.toLocaleDateString('en-US', { month: 'short' })}, same day`,
+      sub: k.change === null ? 'month to date' : `${k.change >= 0 ? '+' : ''}${Math.round(k.change)}% vs. ${prevMonthStart.toLocaleDateString('en-US', { month: 'short' })}`,
       tone: k.change === null ? 'muted' : k.change >= 0 ? 'good' : 'bad',
     },
     {

@@ -269,7 +269,8 @@ export default function ManagerView({
                 <li key={j.prop.id} className={`hm-slot${j.state === 'nocrew' ? ' alert' : ''}`}>
                   <span className="hm-slot-time">{j.time || '—'}</span>
                   <button type="button" className="hm-slot-main" onClick={() => onOpenHouseDetail(j.prop)}>
-                    <span className="hm-slot-title">{j.client} · {j.prop.address}</span>
+                    <span className="hm-slot-title">{j.client}</span>
+                    <span className="hm-slot-sub">{j.prop.address}</span>
                     <span className={`hm-slot-sub${j.state === 'nocrew' ? ' warn' : ''}`}>
                       {j.state === 'nocrew' ? 'No crew assigned' : [j.type, j.teamName].filter(Boolean).join(' · ')}
                     </span>
