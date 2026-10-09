@@ -15,13 +15,6 @@
 
 /* ---------- Encabezado ---------- */
 .ns-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
-.ns-hamburger-btn {
-  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; color: #334155;
-  width: 44px; height: 44px; padding: 0; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  align-self: flex-start; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-.ns-hamburger-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
 .ns-title { margin: 0; font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; }
 .ns-subtitle { margin: 5px 0 0 0; font-size: 0.875rem; color: #64748b; font-weight: 500; }
 

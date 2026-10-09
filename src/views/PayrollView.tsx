@@ -2,7 +2,7 @@ import { useState, useMemo, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
-  X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, Menu,
+  X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
   Search, Wallet, ClipboardList, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
@@ -21,6 +21,7 @@ import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTo
 import { todayIso } from '../utils/dateFormat';
 import DateInput from '../shared/components/DateInput';
 import './PayrollView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -698,9 +699,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
       {/* HEADER */}
       <header className="main-header dashboard-header-container pv-header">
         <div className="view-header-title-group">
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <Menu size={24} />
-          </button>
+<MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="pv-title">Payroll & Payments</h1>
             <p className="pv-subtitle">Manage employee payments and debts</p>

@@ -219,7 +219,6 @@
 /* ===================== Header / tabs principales ===================== */
 .qcv-header {
   margin-bottom: 18px;
-  padding-right: 56px;
 }
 .qcv-header-title-wrap {
   min-width: 0;
@@ -232,21 +231,6 @@
 .qcv-header-subtitle {
   margin-top: 4px;
   color: #6b7280;
-}
-.qcv-hamburger-btn {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 60;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 10px 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
 }
 
 .qcv-clear-search-btn {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { 
-  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle, Menu
+  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle
 } from 'lucide-react';
 import { db } from '../../config/firebase';
 import { setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -9,6 +9,7 @@ import { createUserWithResetEmail, resendPasswordReset } from '../../services/us
 import { commitInChunks, commitOps } from '../../shared/data/batchWrites';
 import { useLiveCollection } from '../../shared/data/liveCollections';
 import './UsersView.css';
+import MenuButton from '../../shared/components/MenuButton';
 
 interface UsersViewProps {
   onOpenMenu: () => void;
@@ -364,9 +365,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
       {/* HEADER */}
       <header className="main-header dashboard-header-container uv-header">
         <div className="view-header-title-group">
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <Menu size={24} />
-          </button>
+<MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="uv-title">System Users</h1>
             <p className="uv-subtitle">Whitelist of authorized users</p>

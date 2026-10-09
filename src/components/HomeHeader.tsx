@@ -1,6 +1,6 @@
 // ⭐ Encabezado de las vistas Owner y Manager: marca, saludo, fecha y el
 //    selector Owner / Manager (solo si el rol puede ver las dos vistas).
-import { Menu } from 'lucide-react';
+import MenuButton from '../shared/components/MenuButton';
 
 export type HomeTab = 'owner' | 'manager';
 
@@ -19,10 +19,8 @@ const LABEL: Record<HomeTab, string> = { owner: 'Owner', manager: 'Manager' };
 export default function HomeHeader({ title, subtitle, active, available, onSwitch, onOpenMenu }: HomeHeaderProps) {
   return (
     <header className="hm-header">
-      <div className="hm-header-left">
-        <button type="button" className="hamburger-btn hm-menu" aria-label="Open menu" onClick={onOpenMenu}>
-          <Menu size={24} />
-        </button>
+      <div className="hm-header-left view-header-title-group">
+        <MenuButton onClick={onOpenMenu} />
         <div className="hm-header-text">
           <p className="hm-eyebrow">Precise Cleaning</p>
           <h1 className="hm-title">{title}</h1>

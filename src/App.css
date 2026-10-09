@@ -140,20 +140,6 @@ button, [role='button'], .nav-item {
 .header-titles p { color: var(--text-secondary); font-size: 0.9rem; margin: 0; }
 .header-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
 
-/* Botón de Menú Móvil */
-.mobile-menu-btn {
-  display: none; 
-  background: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: 8px 12px;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background-color 0.2s;
-  height: 42px;
-}
-.mobile-menu-btn:hover { background-color: var(--bg-gray); }
-
 @media (min-width: 1025px) {
   .header-actions { width: auto; }
 }
@@ -311,9 +297,6 @@ button, [role='button'], .nav-item {
 
 /* ---------- TABLETS Y MÓVILES (≤ 1024px) ---------- */
 @media (max-width: 1024px) {
-  /* Botón de menú visible desde iPad vertical */
-  .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
-
   /* Sidebar fijo para que no empuje el contenido */
   .sidebar { position: fixed; height: 100vh; left: 0; top: 0; transform: translateX(-100%); z-index: 1000; }
   .sidebar.open { transform: translateX(0); width: 320px; box-shadow: 4px 0 25px rgba(0,0,0,0.15); }
@@ -333,7 +316,6 @@ button, [role='button'], .nav-item {
   .dash-grid { grid-template-columns: repeat(2, 1fr); }
 
   /* Menú lateral más cómodo de tocar con el dedo */
-  .mobile-menu-btn,
   .sidebar-toggle-btn { min-height: 48px; }
   .nav-item { padding: 14px 12px; }   /* ~48px de alto */
 
@@ -353,7 +335,7 @@ button, [role='button'], .nav-item {
 
   /* Cabecera general */
   .main-header { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 20px; }
-  .header-titles { flex-direction: row; justify-content: space-between; width: 100%; align-items: center; }
+  .header-titles { width: 100%; } /* título + menú en una fila, subtítulo debajo */
 
   /* Anti-zoom de iOS: subir SOLO la fuente del campo a 16px */
   .search-box-container input,

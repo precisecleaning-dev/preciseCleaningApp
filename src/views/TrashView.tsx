@@ -10,7 +10,6 @@ import { useEffect, useState } from 'react';
 import {
   Trash2,
   RotateCcw,
-  Menu,
   RefreshCw,
   Search,
 } from 'lucide-react';
@@ -20,6 +19,7 @@ import { logActivity } from '../services/activityLogService';
 import type { SystemUser } from '../types/index';
 import { formatDateTime } from '../utils/dateFormat';
 import './TrashView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 interface TrashViewProps {
   onOpenMenu: () => void;
@@ -125,10 +125,8 @@ export default function TrashView({ onOpenMenu, currentUser }: TrashViewProps) {
   return (
     <div className="tv-page fade-in">
       <header className="tv-header">
-        <div className="tv-header-left">
-          <button className="tv-menu-btn" onClick={onOpenMenu} aria-label="Menu">
-            <Menu size={22} />
-          </button>
+        <div className="tv-header-left view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
           <div>
             <h2 className="tv-title">
               <Trash2 size={22} /> Recycle Bin

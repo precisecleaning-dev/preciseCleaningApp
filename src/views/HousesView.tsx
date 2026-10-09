@@ -49,7 +49,6 @@ import {
   CalendarClock,
   CloudOff,
   Camera,
-  Menu,
   Lock,
   Eye,
   EyeOff,
@@ -150,6 +149,7 @@ import PropertyDateFixTool from "../features/houses/components/PropertyDateFixTo
 import HistoryWindowNotice from "../components/HistoryWindowNotice";
 import DateInput from "../shared/components/DateInput";
 import "./HousesView.css";
+import MenuButton from '../shared/components/MenuButton';
 
 
 // Productos (settings_products): el tipo canónico Product + el color opcional.
@@ -3882,13 +3882,7 @@ export default function HousesView({
           {/* DASHBOARD HEADER */}
           <header className="main-header dashboard-header-container hv-header">
             <div className="view-header-title-group">
-              <button
-                className="hamburger-btn"
-                onClick={onOpenMenu}
-                aria-label="Open menu"
-              >
-                <Menu size={24} />
-              </button>
+              <MenuButton onClick={onOpenMenu} />
               <div>
                 <h1 className="hv-title">Overview</h1>
                 <p className="hv-subtitle">

@@ -12,8 +12,6 @@
 .qcrt-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 22px; }
 .qcrt-header-title { font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; margin: 0; }
 .qcrt-header-subtitle { font-size: 0.875rem; color: #64748b; font-weight: 500; margin-top: 5px; }
-.qcrt-hamburger-btn { color: #334155; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; width: 44px; height: 44px; padding: 0; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.qcrt-hamburger-btn:hover { background-color: #f8fafc; border-color: #cbd5e1; }
 
 /* ---------- Filtros ---------- */
 

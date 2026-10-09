@@ -42,7 +42,6 @@
 
 /* ===================== Header: menú principal ===================== */
 .stv-menu-header-row { display: flex; align-items: center; gap: 12px; }
-.stv-hamburger-btn { background: none; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #111827; }
 .stv-menu-title { margin: 0; font-size: 1.8rem; }
 .stv-menu-subtitle { margin-top: 4px; color: #6b7280; }
 .stv-menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; margin-top: 24px; }
@@ -54,7 +53,6 @@
 /* ===================== Header: vista de tabla ===================== */
 .stv-table-view-header { border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; }
 .stv-table-view-title-group { display: flex; flex-direction: column; gap: 12px; }
-.stv-hamburger-btn.compact { padding: 4px 8px; }
 .stv-back-btn { background: none; border: none; color: #6b7280; font-size: 0.9rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; padding: 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }
 .stv-title-icon-row { display: flex; align-items: center; gap: 12px; }
 .stv-table-title { font-size: 1.8rem; margin: 0; color: #111827; font-weight: 700; }

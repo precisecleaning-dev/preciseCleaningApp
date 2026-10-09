@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Menu, Search, MapPin, CalendarDays, Users, HelpCircle, Tag } from 'lucide-react';
+import { Search, MapPin, CalendarDays, Users, HelpCircle, Tag } from 'lucide-react';
 import type { Property, SystemUser, Role } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
 import { useLiveCollection } from '../shared/data/liveCollections';
@@ -11,6 +11,7 @@ import { logActivity } from '../services/activityLogService';
 import HousesView from './HousesView';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './NoStatusView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 /* ------------------------------------------------------------------
    NoStatusView.tsx — Modulo "No Status"
@@ -153,12 +154,12 @@ export default function NoStatusView({
     <div className="fade-in ns-page">
 
       <header className="ns-header">
-        <button onClick={onOpenMenu} className="ns-hamburger-btn" aria-label="Open menu">
-          <Menu size={24} />
-        </button>
-        <div>
-          <h1 className="ns-title">No Status</h1>
-          <p className="ns-subtitle">Jobs without an assigned status</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div>
+            <h1 className="ns-title">No Status</h1>
+            <p className="ns-subtitle">Jobs without an assigned status</p>
+          </div>
         </div>
       </header>
       <HistoryWindowNotice />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Building2, Upload, Trash2, Save, Loader2, Image as ImageIcon, Check, AlertCircle, Menu
+  Building2, Upload, Trash2, Save, Loader2, Image as ImageIcon, Check, AlertCircle
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompression';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../services/companyService';
 import { getBranding, brandingHeaderHTML, type Branding } from '../utils/companyBranding';
 import './CompanySettingsView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 interface CompanySettingsViewProps {
   onOpenMenu?: () => void;
@@ -90,17 +91,15 @@ export default function CompanySettingsView({ onOpenMenu, onSaved }: CompanySett
   return (
     <div className="fade-in company-view">
       <header className="cs-header">
-        <div className="cs-title-wrap">
-          <h1 className="cs-title">
-            <Building2 size={26} color="#4338ca" /> Empresa
-          </h1>
-          <p className="cs-subtitle">Logo, nombre, correo y dirección que se usan en todos los documentos generados</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div className="cs-title-wrap">
+            <h1 className="cs-title">
+              <Building2 size={26} color="#4338ca" /> Empresa
+            </h1>
+            <p className="cs-subtitle">Logo, nombre, correo y dirección que se usan en todos los documentos generados</p>
+          </div>
         </div>
-        {onOpenMenu && (
-          <button className="cs-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <Menu size={24} />
-          </button>
-        )}
       </header>
 
       {loading ? (

@@ -1,8 +1,6 @@
 .di-page { padding: 24px; max-width: 1180px; margin: 0 auto; }
 .spin-import { animation: spin-import 1s linear infinite; }
 @keyframes spin-import { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.hamburger-btn-compact { background: white; border: 1px solid #e5e7eb; border-radius: 7px; padding: 7px 10px; cursor: pointer; color: #475569; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
-.hamburger-btn-compact:hover { background-color: #f8fafc; border-color: #cbd5e1; }
 
 .di-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
 .di-title { margin: 0; font-size: 1.35rem; color: #0f172a; font-weight: 600; letter-spacing: -0.02em; }

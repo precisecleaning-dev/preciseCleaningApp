@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction, CSSProperties } from 'react';
 import {
   Tags, Users, UserCheck, Flag, Activity, Percent,
   MapPin, Wrench, CreditCard, ClipboardList, Package, Building, Plus,
-  Edit2, Trash2, X, Contact, Menu
+  Edit2, Trash2, X, Contact
 } from 'lucide-react';
 import type { SettingOption, Tax } from '../types/index';
 
@@ -13,6 +13,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import CustomSelect from '../components/CustomSelect';
 import './SettingsView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 const settingsOptions: SettingOption[] = [
   { id: 'category', label: 'Category Expenses', icon: Tags },
@@ -325,10 +326,8 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
         <>
           <header className="settings-header">
             <div className="header-titles">
-              <div className="stv-menu-header-row">
-                <button className="mobile-menu-btn stv-hamburger-btn" onClick={onOpenMenu} aria-label="Abrir menú">
-                  <Menu size={24} />
-                </button>
+              <div className="stv-menu-header-row view-header-title-group">
+                <MenuButton onClick={onOpenMenu} />
                 <h2 className="stv-menu-title">Settings</h2>
               </div>
               <p className="stv-menu-subtitle">Manage your system parameters and lists</p>
@@ -359,10 +358,8 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
         <div className="table-view-container fade-in">
           <header className="table-view-header stv-table-view-header">
             <div className="table-view-title-group stv-table-view-title-group">
-              <div className="stv-menu-header-row">
-                <button className="mobile-menu-btn stv-hamburger-btn compact" onClick={onOpenMenu} aria-label="Abrir menú">
-                  <Menu size={20} />
-                </button>
+              <div className="stv-menu-header-row view-header-title-group">
+                <MenuButton onClick={onOpenMenu} />
                 <button className="stv-back-btn" onClick={() => setCurrentSettingView('menu')}>&lt; Back to Settings</button>
               </div>
               <div className="stv-title-icon-row">

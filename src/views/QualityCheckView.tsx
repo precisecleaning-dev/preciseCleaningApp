@@ -5,7 +5,7 @@ import {
   ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
   Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, Send,
   Clock, WifiOff, StickyNote,
-  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy
+  Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Route, Copy
 } from 'lucide-react';
 import type { Property, SystemUser, Place } from '../types/index';
 import { getRelationName } from '../utils/relations';
@@ -43,6 +43,7 @@ import {
   type QcAnswer, type QcExtras, type QcSection,
 } from '../features/quality-check/qcForm';
 import './QualityCheckView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 export interface QCRecord {
   id?: string;
@@ -1813,17 +1814,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   return (
     <div className="fade-in qc-view qcv-page">
       <header className="main-header qcv-header">
-        <div className="qcv-header-title-wrap">
-          <h1 className="qcv-header-title">Quality Check Reports</h1>
-          <p className="qcv-header-subtitle">History and status of house inspections</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div className="qcv-header-title-wrap">
+            <h1 className="qcv-header-title">Quality Check Reports</h1>
+            <p className="qcv-header-subtitle">History and status of house inspections</p>
+          </div>
         </div>
       </header>
       <HistoryWindowNotice />
-
-      {/* ⭐ Botón de menú: SIEMPRE fijo en la parte superior derecha */}
-      <button className="hamburger-btn qcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <Menu size={24} />
-      </button>
 
       {/* ⭐ Buscador global + pestañas de estado (juntos, ARRIBA del todo) */}
       <div className="qc-toolbar">

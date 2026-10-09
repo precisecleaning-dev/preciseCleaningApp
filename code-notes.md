@@ -7,6 +7,23 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Botón de menú único (2026-10-09)
+
+- Cada vista tenía su propio botón de menú (13 clases distintas: `ns-`, `inv-`, `al-`, `cs-`, `ps-`,
+  `qcv-`, `qcrt-`, `shv-`, `stv-`, `tv-menu-btn`, `hamburger-btn-compact`, `mobile-menu-btn`…). En
+  Quality Check, Quality Check Reports y Rutas iba `position: fixed` arriba a la derecha y en la
+  computadora quedaba encima de los íconos de `TopRightActions` (campana, ver como, salir); en Roles,
+  Settings y Trash no aparecía en la computadora (sin forma de plegar el menú lateral desde ahí).
+- Ahora todas usan `shared/components/MenuButton` (clase global `.hamburger-btn`) como primer hijo de
+  `.view-header-title-group`: a la izquierda del título en computadora y a la derecha en el teléfono
+  (regla que ya existía en index.css). Se quitó el CSS de los 13 botones viejos y el espacio que
+  reservaban (`padding-right: 56px`). De paso: el aviso de la ventana de 12 meses de Invoices
+  estaba dentro del encabezado (al lado del título) y pasó debajo; el subtítulo de Settings en el
+  teléfono vuelve a ir debajo del título.
+- Probado en el arnés (16 vistas, computadora y teléfono): un solo botón por vista, nunca fijo,
+  izquierda/derecha según el ancho. Vistas fuera del arnés (Company, Photo Settings, Data Import,
+  Trash, Rutas) solo verificadas por código.
+
 ## Detalle de la casa y nuevo panel de Quality Check (2026-10-09)
 
 - **Detalle de la casa:** "Notes & Photos" es la primera pestaña y abre por defecto (pedido del

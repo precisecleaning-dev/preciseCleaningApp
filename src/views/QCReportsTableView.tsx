@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
+  Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
   Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
@@ -25,6 +25,7 @@ import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import DateInput from '../shared/components/DateInput';
 import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
 import './QCReportsTableView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 // ============================================================================
 // ⭐ QUALITY CHECK REPORTS — vista propia del menú lateral.
@@ -449,16 +450,15 @@ export default function QCReportsTableView({
   return (
     <div className="fade-in qcrt-page">
       <header className="main-header qcrt-header">
-        <div>
-          <h1 className="qcrt-header-title">Quality Check Reports</h1>
-          <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v6</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div>
+            <h1 className="qcrt-header-title">Quality Check Reports</h1>
+            <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v6</p>
+          </div>
         </div>
       </header>
       <HistoryWindowNotice />
-
-      <button className="hamburger-btn qcrt-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <Menu size={24} />
-      </button>
 
       {/* ===== FILTROS ===== */}
       <div className="qcrt-filters-card">

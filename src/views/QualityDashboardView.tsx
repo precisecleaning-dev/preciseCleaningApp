@@ -13,7 +13,7 @@
 //    Las reglas viven en src/utils/qcDashboard.ts.
 // ============================================================================
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { ChevronRight, Filter, Menu, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
+import { ChevronRight, Filter, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { Property, Role } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { getCompanySettings } from '../services/companyService';
@@ -37,6 +37,7 @@ import ShareReportSheet from '../components/ShareReportSheet';
 import WhatsAppIcon from '../components/WhatsAppIcon';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './QualityDashboardView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 type Tab = 'todo' | 'reclean' | 'passed' | 'all';
 const TABS: { id: Tab; label: string }[] = [
@@ -333,10 +334,8 @@ export default function QualityDashboardView({
     <div className="fade-in qd-page">
       {/* Encabezado igual al del Overview */}
       <header className="qd-header">
-        <div className="qd-title-group">
-          <button type="button" className="hamburger-btn" aria-label="Open menu" onClick={onOpenMenu}>
-            <Menu size={24} />
-          </button>
+        <div className="qd-title-group view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="qd-title">QC Dashboard</h1>
             <p className="qd-subtitle">Inspections, re-cleans &amp; team scores</p>

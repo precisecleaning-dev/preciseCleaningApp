@@ -163,7 +163,10 @@ textarea {
   }
 }
 
-/* --- Cabeceras de vista --- */
+/* --- Cabeceras de vista ---
+   Título de cada vista con el botón de menú compartido
+   (shared/components/MenuButton): a la izquierda en computadora, a la
+   derecha en el teléfono. --- */
 
 .view-header-title-group {
   display: flex;
@@ -184,6 +187,8 @@ textarea {
   color: #111827;
   box-shadow: var(--shadow-xs);
   transition: background-color 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 .hamburger-btn:hover { background-color: #f8fafc; }
 .hamburger-btn:active { background-color: #f1f5f9; }

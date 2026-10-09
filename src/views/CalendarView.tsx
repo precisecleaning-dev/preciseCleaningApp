@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, X, Edit2, Trash2,
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Menu
+  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin
 } from 'lucide-react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
 import type { Property, Customer } from '../types/index';
@@ -15,6 +15,7 @@ import './CalendarView.css';
 // --- FIREBASE SERVICES ---
 import { propertiesService } from '../services/propertiesService';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
+import MenuButton from '../shared/components/MenuButton';
 
 // Settings Collections Map
 
@@ -374,9 +375,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
       {/* HEADER */}
       <header className="cv-header">
         <div className="view-header-title-group">
-          <button onClick={onOpenMenu} className="hamburger-btn" aria-label="Open menu">
-            <Menu size={24} />
-          </button>
+<MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="cv-title">Calendar</h1>
             <p className="cv-subtitle">Schedule & Planning</p>

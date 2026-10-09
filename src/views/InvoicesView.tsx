@@ -3,7 +3,7 @@ import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, ChevronRight, Users, Edit2, Trash2,
-  X, StickyNote, Menu, FileImage, PauseCircle
+  X, StickyNote, FileImage, PauseCircle
 } from 'lucide-react';
 import PeriodBar from '../components/PeriodBar';
 import KpiGrid from '../components/KpiGrid';
@@ -20,6 +20,7 @@ import { stampInvoiceEntry, invoiceEntryMs } from '../utils/invoiceEntry';
 import HousesView from './HousesView';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './InvoicesView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 const INVOICE_STATUSES = [
   { id: 'Pre-Paid', name: 'Pre-Paid', color: '#8b5cf6' },
@@ -688,15 +689,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
       {/* HEADER — mismo estilo que el Overview unificado */}
       <header className="inv-header">
-        <button onClick={onOpenMenu} className="inv-hamburger-btn" aria-label="Open menu">
-          <Menu size={24} />
-        </button>
-        <div>
-          <h1 className="inv-title">Invoices</h1>
-          <p className="inv-subtitle">Billing, taxes &amp; profit per job</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div>
+            <h1 className="inv-title">Invoices</h1>
+            <p className="inv-subtitle">Billing, taxes &amp; profit per job</p>
+          </div>
         </div>
-      <HistoryWindowNotice />
       </header>
+      <HistoryWindowNotice />
 
       {/* ⭐ Periodo — misma barra que el Overview */}
       <PeriodBar period={period} onChange={setPeriod} />

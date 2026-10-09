@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Square, Activity, Menu } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Square, Activity } from 'lucide-react';
 import type { Role, Permission } from '../../types/index';
 import { useLiveCollection } from '../../shared/data/liveCollections';
 import { db } from '../../config/firebase';
 import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import './RolesView.css';
+import MenuButton from '../../shared/components/MenuButton';
 
 interface RolesViewProps {
   onOpenMenu: () => void;
@@ -325,10 +326,8 @@ export default function RolesView({ onOpenMenu, roles }: RolesViewProps) {
   return (
     <div className="fade-in rv-page">
       <header className="rv-header">
-        <div className="header-title-group">
-          <button onClick={onOpenMenu} className="mobile-menu-btn" aria-label="Open menu">
-            <Menu size={24} />
-          </button>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="rv-title">Roles & Permissions</h1>
             <p className="rv-subtitle">Configure the access simulation</p>

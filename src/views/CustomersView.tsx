@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Search, Plus, X, Edit2, Trash2, Menu, Mail, Phone, MapPin, StickyNote, Building2
+  Search, Plus, X, Edit2, Trash2, Mail, Phone, MapPin, StickyNote, Building2
 } from 'lucide-react';
 import { customersService } from '../services/customersService';
 import type { Customer } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import './CustomersView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 interface CustomersViewProps {
   onOpenMenu: () => void;
@@ -148,9 +149,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       {/* HEADER DINÁMICO */}
       <header className="main-header dashboard-header-container cx-header">
         <div className="view-header-title-group">
-          <button className="hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-            <Menu size={24} />
-          </button>
+<MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="cx-title">Customers</h1>
             <p className="cx-subtitle">{customers.length} registered customers</p>

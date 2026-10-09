@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
   History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter,
-  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp, Menu
+  Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp
 } from 'lucide-react';
 import type { Property } from '../types/index';
 import { useLiveData } from '../shared/data/liveCollections';
@@ -15,6 +15,7 @@ import { isRecallText } from '../utils/recallStatus';
 import { formatDate, formatDateTime } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './StatusHistoryView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 interface StatusHistoryViewProps {
   onOpenMenu: () => void;
@@ -281,16 +282,16 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
 
       {/* Cabecera */}
       <header className="shv-header">
-        <button className="hamburger-btn shv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-          <Menu size={24} />
-        </button>
-        <div className="shv-header-title-group">
-          <div className="shv-header-icon-box">
-            <History size={22} color="#fff" />
-          </div>
-          <div>
-            <h1 className="shv-title">Status History</h1>
-            <p className="shv-subtitle">Toca una fila para ver el recorrido completo de la casa por todos sus estados.</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div className="shv-header-title-group">
+            <div className="shv-header-icon-box">
+              <History size={22} color="#fff" />
+            </div>
+            <div>
+              <h1 className="shv-title">Status History</h1>
+              <p className="shv-subtitle">Toca una fila para ver el recorrido completo de la casa por todos sus estados.</p>
+            </div>
           </div>
         </div>
       </header>

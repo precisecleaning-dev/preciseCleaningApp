@@ -11,7 +11,6 @@
 .cs-title-wrap { min-width: 0; }
 .cs-title { margin: 0; color: #111827; font-size: 2rem; display: flex; align-items: center; gap: 10px; }
 .cs-subtitle { margin-top: 4px; color: #6b7280; }
-.cs-hamburger-btn { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 
 .cs-loading { padding: 60px; text-align: center; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 10px; }
 

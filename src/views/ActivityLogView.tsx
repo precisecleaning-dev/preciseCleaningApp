@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Menu, Search, ScrollText, RefreshCw, ArrowRight } from 'lucide-react';
+import { Search, ScrollText, RefreshCw, ArrowRight } from 'lucide-react';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { useLiveData } from '../shared/data/liveCollections';
 import type { SystemUser, Role } from '../types/index';
 import { fetchLogs, type ActivityLogEntry, type LogAction } from '../services/activityLogService';
 import { formatDateTime } from '../utils/dateFormat';
 import './ActivityLogView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 /* ------------------------------------------------------------------
    ActivityLogView.tsx — Bitacora de actividad
@@ -109,14 +110,14 @@ export default function ActivityLogView({ onOpenMenu }: ActivityLogViewProps) {
     <div className="fade-in al-page">
 
       <header className="al-header">
-        <button onClick={onOpenMenu} className="al-hamburger-btn" aria-label="Open menu">
-          <Menu size={24} />
-        </button>
-        <div className="al-header-title-group">
-          <div className="al-header-icon-box"><ScrollText size={22} color="#ffffff" /></div>
-          <div>
-            <h1 className="al-title">Activity Log</h1>
-            <p className="al-subtitle">Quién hizo qué, cuándo y sobre qué registro</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div className="al-header-title-group">
+            <div className="al-header-icon-box"><ScrollText size={22} color="#ffffff" /></div>
+            <div>
+              <h1 className="al-title">Activity Log</h1>
+              <p className="al-subtitle">Quién hizo qué, cuándo y sobre qué registro</p>
+            </div>
           </div>
         </div>
         <button className="al-btn-refresh" onClick={load} disabled={isLoading}>

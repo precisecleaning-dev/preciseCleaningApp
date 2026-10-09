@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Upload, ArrowRight, AlertCircle, CheckCircle,
-  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download, Menu
+  Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download
 } from 'lucide-react';
 // ⭐ PERF: `xlsx` (~276 kB) y `papaparse` se cargan con import() dinámico al
 //    descargar una plantilla o elegir un CSV, no al abrir la vista.
@@ -10,6 +10,7 @@ import { db } from '../config/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { clearMemoryCache } from '../shared/utils/memoryCache';
 import './DataImportView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
 
@@ -658,12 +659,12 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     <div className="fade-in di-page">
       {/* HEADER */}
       <header className="di-header">
-        <button className="hamburger-btn-compact" onClick={onOpenMenu} aria-label="Open menu">
-          <Menu size={18} />
-        </button>
-        <div>
-          <h1 className="di-title">Data Import</h1>
-          <p className="di-subtitle">Import CSV files from Google Sheets into Firestore</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div>
+            <h1 className="di-title">Data Import</h1>
+            <p className="di-subtitle">Import CSV files from Google Sheets into Firestore</p>
+          </div>
         </div>
       </header>
 

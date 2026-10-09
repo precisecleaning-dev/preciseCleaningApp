@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Route, Menu, Share2, Eye, X, CheckCircle2, Radio, MapPin,
+  Route, Share2, Eye, X, CheckCircle2, Radio, MapPin,
   Loader2, Clock, Search, LocateFixed, Edit2, Trash2, Save, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { db } from '../config/firebase';
@@ -11,6 +11,7 @@ import { type LatLng, type Leaflet, ensureLeaflet, fetchOSRMRoute } from '../uti
 import { escapeHtml } from '../utils/escapeHtml';
 import { formatDate, formatTime } from '../utils/dateFormat';
 import './QCRoutesTableView.css';
+import MenuButton from '../shared/components/MenuButton';
 
 // ============================================================================
 //  QCRoutesTableView — pestaña "Rutas" del hub de Quality Check.
@@ -297,15 +298,14 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
   return (
     <div className="fade-in qcrt-page">
       <header className="main-header qcrt-header">
-        <div>
-          <h1 className="qcrt-title"><Route size={24} color="#4338ca" /> Rutas de inspección</h1>
-          <p className="qcrt-subtitle">Rutas guardadas, en curso en este momento y el recorrido que tomó cada una</p>
+        <div className="view-header-title-group">
+          <MenuButton onClick={onOpenMenu} />
+          <div>
+            <h1 className="qcrt-title"><Route size={24} color="#4338ca" /> Rutas de inspección</h1>
+            <p className="qcrt-subtitle">Rutas guardadas, en curso en este momento y el recorrido que tomó cada una</p>
+          </div>
         </div>
       </header>
-
-      <button className="hamburger-btn qcrt-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
-        <Menu size={24} />
-      </button>
 
       {/* Buscador */}
       <div className="qcrt-toolbar">
