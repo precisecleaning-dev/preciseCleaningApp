@@ -18,7 +18,7 @@
 // Cada foto reporta su avance individual; el agregado (porcentaje global,
 // hechas/total) se calcula aquí y se entrega listo para pintar.
 // ============================================================================
-import { storage } from '../config/firebase';
+import { storage } from '../config/storage';
 import {
   ref,
   uploadBytesResumable,
@@ -59,6 +59,9 @@ const uploadOneWithRetry = async (
       const url = await new Promise<string>((resolve, reject) => {
         const up = uploadBytesResumable(storageRef, task.file, {
           contentType: task.file.type || 'image/jpeg',
+          // Cada foto se sube con un nombre único (storageService.uniqueFileName)
+          // y nunca se sobrescribe: el navegador puede guardarla un año.
+          cacheControl: 'public, max-age=31536000',
         });
 
         // Vigilante: si no avanza en STALL_TIMEOUT_MS, se cancela (→ reintento).

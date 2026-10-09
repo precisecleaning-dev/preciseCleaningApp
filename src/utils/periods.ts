@@ -9,6 +9,7 @@
 //    · Semanas ISO (lunes a domingo), igual que "Week Number" de la hoja.
 
 import { isoWeek, toDate, type DateGroupMode } from './dateGrouping';
+import { formatDate, formatDateRange, todayIso } from './dateFormat';
 
 export type PeriodKind = 'day' | 'week' | 'month' | 'year' | 'custom';
 
@@ -29,7 +30,7 @@ export interface PeriodState {
   customEnd: string;
 }
 
-export interface PeriodRange {
+interface PeriodRange {
   /** Inicio (00:00 local) y fin EXCLUSIVO, en ms. null = sin límite. */
   start: number | null;
   end: number | null;
@@ -41,14 +42,13 @@ export interface PeriodRange {
   groupBy: DateGroupMode;
 }
 
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_MS = 86400000;
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export const toIso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-export const todayIso = () => toIso(new Date());
+const toIso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export { todayIso };
 
 const parseIso = (iso: string): Date => {
   const [y, m, d] = iso.split('-').map(Number);
@@ -61,9 +61,8 @@ const mondayOf = (d: Date) => {
   return m;
 };
 
-const shortDate = (d: Date) => `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
 
-export function defaultPeriod(kind: PeriodKind): PeriodState {
+function defaultPeriod(kind: PeriodKind): PeriodState {
   return { kind, anchor: todayIso(), customStart: '', customEnd: '' };
 }
 
@@ -78,7 +77,7 @@ export function periodRange(p: PeriodState): PeriodRange {
         start: s.getTime(),
         end: s.getTime() + DAY_MS,
         name: isToday ? 'Today' : WEEKDAYS[s.getDay()],
-        label: `${WEEKDAYS[s.getDay()]}, ${shortDate(s)}, ${s.getFullYear()}`,
+        label: `${WEEKDAYS[s.getDay()]}, ${formatDate(s)}`,
         groupBy: 'day',
       };
     }
@@ -90,7 +89,7 @@ export function periodRange(p: PeriodState): PeriodRange {
         start: s.getTime(),
         end: e.getTime(),
         name: `Semana ${isoWeek(s).week}`,
-        label: `${shortDate(s)} – ${shortDate(last)}, ${last.getFullYear()}`,
+        label: formatDateRange(s, last),
         groupBy: 'day',
       };
     }
@@ -109,7 +108,7 @@ export function periodRange(p: PeriodState): PeriodRange {
       const eInc = p.customEnd ? parseIso(p.customEnd) : null;
       const span = s && eInc ? (eInc.getTime() - s.getTime()) / DAY_MS : Infinity;
       const groupBy: DateGroupMode = span <= 14 ? 'day' : span <= 92 ? 'week' : span <= 730 ? 'month' : 'year';
-      const fmt = (d: Date | null, ph: string) => (d ? `${shortDate(d)}, ${d.getFullYear()}` : ph);
+      const fmt = (d: Date | null, ph: string) => (d ? formatDate(d) : ph);
       return {
         start: s ? s.getTime() : null,
         end: eInc ? eInc.getTime() + DAY_MS : null,

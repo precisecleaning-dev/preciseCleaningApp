@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
@@ -9,14 +9,25 @@ import { payrollService } from '../services/payrollService';
 import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
 import { db, auth } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { mapCustomerDoc } from '../utils/customerDocs';
-import { collection, onSnapshot, doc, updateDoc, deleteField } from 'firebase/firestore';
-import type { PayrollRecord, Property, SystemUser, Status, Team, Priority, Service, Customer, Role } from '../types/index';
+import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore';
+import type { PayrollRecord, Property, SystemUser, Role } from '../types/index';
+import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
+import { commitOps, type BatchOp } from '../shared/data/batchWrites';
+import { getPayrollTotal } from '../utils/jobFinancials';
 import { getRelationName, getRelationColor } from '../utils/relations';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
+import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
+import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTool';
+import { todayIso } from '../utils/dateFormat';
+import DateInput from '../shared/components/DateInput';
 import './PayrollView.css';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
+  // ⭐ Casas del listener global de App.tsx (antes esta vista abría un SEGUNDO
+  //    listener sobre toda la colección `properties`).
+  properties: Property[];
+  setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
   // ⭐ Contexto de usuario para el formulario de edición de casa (HousesView modals-only):
   //    sin esto, canEdit de HousesView sería false y el formulario quedaría de solo lectura.
   currentUser?: SystemUser | null;
@@ -24,12 +35,6 @@ interface PayrollViewProps {
   isSuperAdmin?: boolean;
 }
 
-const collectionMap: Record<string, string> = {
-  team: 'settings_teams',
-  priority: 'settings_priorities',
-  status: 'settings_statuses',
-  service: 'settings_services',
-};
 
 // paidAt/paidBy no están en el PayrollRecord de types/index.ts, pero handleMarkAsPaid los
 // escribe en el documento y el resto del archivo los lee — de ahí salían los `as any`.
@@ -75,44 +80,6 @@ const toTime = (val: unknown): number => {
   return isNaN(t) ? NaN : t;
 };
 
-// ══════════════════════════════════════════════════════════════════════════
-// ⭐ ANÁLISIS DE FECHAS GUARDADAS (herramienta "Revisar fechas").
-//    El problema: en Firestore conviven fechas escritas como MM/DD/YYYY y como
-//    DD/MM/YYYY. Cuando ambas partes son <= 12 (p. ej. "08/12/2026") NO hay forma
-//    de saber cuál es cuál leyendo el texto: puede ser 12 de agosto o 8 de
-//    diciembre. Por eso la corrección necesita una decisión humana.
-//    La solución definitiva es guardar todo en ISO (YYYY-MM-DD), que no es
-//    ambiguo nunca. Este analizador clasifica cada fecha para la herramienta.
-type DateKind = 'iso' | 'ambiguous' | 'mmdd' | 'ddmm' | 'invalid' | 'empty';
-type DateAnalysis = {
-  kind: DateKind;
-  raw: string;
-  a?: number; // primer número tal como está guardado
-  b?: number; // segundo número
-  y?: number;
-  asMMDD?: string; // ISO si se lee MM/DD
-  asDDMM?: string; // ISO si se lee DD/MM
-};
-
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const isoOf = (y: number, mon: number, day: number) => `${y}-${pad2(mon)}-${pad2(day)}`;
-
-const analyzeDate = (val: unknown): DateAnalysis => {
-  const raw = val === null || val === undefined ? '' : String(val).trim();
-  if (!raw) return { kind: 'empty', raw };
-  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(raw)) return { kind: 'iso', raw };
-  const m = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-  if (!m) return { kind: 'invalid', raw };
-  const a = +m[1], b = +m[2], y = +m[3];
-  const mmddOk = a >= 1 && a <= 12 && b >= 1 && b <= 31;
-  const ddmmOk = b >= 1 && b <= 12 && a >= 1 && a <= 31;
-  const asMMDD = mmddOk ? isoOf(y, a, b) : undefined;
-  const asDDMM = ddmmOk ? isoOf(y, b, a) : undefined;
-  if (mmddOk && ddmmOk && a !== b) return { kind: 'ambiguous', raw, a, b, y, asMMDD, asDDMM };
-  if (mmddOk) return { kind: 'mmdd', raw, a, b, y, asMMDD, asDDMM };
-  if (ddmmOk) return { kind: 'ddmm', raw, a, b, y, asMMDD, asDDMM };
-  return { kind: 'invalid', raw, a, b, y };
-};
 
 // Nombre del empleado sin "undefined" cuando falta el apellido.
 const empName = (e?: SystemUser | null) => e ? [e.firstName, e.lastName].filter(Boolean).join(' ').trim() : '';
@@ -160,7 +127,7 @@ const weekLabel = (mondayT: number): string => {
   return `${MESES[a.getMonth()]} ${a.getDate()} - ${MESES[b.getMonth()]} ${b.getDate()}`;
 };
 
-export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
+export default function PayrollView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
   // ══════════════════════════════════════════════════════════════════════════
   // ⭐ ALCANCE POR ROL (scope del módulo Payroll en Roles & Permissions):
   //    · 'All'  → ve la nómina de TODOS los empleados y el filtro de empleado.
@@ -176,26 +143,46 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     : ((payrollPermission?.scope as 'Own' | 'All') || 'Own');
   const canSeeAllPayroll = payrollScope === 'All';
 
-  // ⭐ Herramienta de corrección de fechas (solo alcance 'All' / Super Admin)
-  const [isDateFixOpen, setIsDateFixOpen] = useState(false);
-  const [dateFixTab, setDateFixTab] = useState<'ambiguous' | 'ddmm' | 'all'>('ambiguous');
-  const [savingDateId, setSavingDateId] = useState<string | null>(null);
-  const [bulkSaving, setBulkSaving] = useState(false);
-  const [dateFixSearch, setDateFixSearch] = useState('');
 
-  const [records, setRecords] = useState<PayrollRecordExt[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [employees, setEmployees] = useState<SystemUser[]>([]);
+  // ⭐ Datos del store compartido (un listener por colección para toda la app).
+  //    `payroll` se trae COMPLETA a propósito (ver la nota de abajo sobre
+  //    limit/orderBy) y se ordena aquí, más reciente primero.
+  const payrollLive = useLiveCollection('payroll');
+  // ⭐ Ventana de 12 meses: los registros viejos cuya casa no se cargó (y los
+  //    ajustes viejos, que no tienen casa) son historial oculto hasta tocar
+  //    "Ver todo el historial"; si no, saldrían sin dirección ni equipo.
+  const fullHistory = useFullHistory();
+  const loadedHouseIds = useMemo(() => new Set(properties.map(p => p.id)), [properties]);
+  const records = useMemo(() => {
+    // paidAt/paidBy: campos locales de PayrollRecordExt (ver arriba).
+    const newest = (r: PayrollRecordExt) =>
+      Math.max(...[r.date, r.paymentDate, r.paidAt].map(toTime).filter(t => !isNaN(t)), 0);
+    const data = (payrollLive.data as PayrollRecordExt[]).filter(r =>
+      !isHiddenByWindow(fullHistory, !!r.propertyId && loadedHouseIds.has(String(r.propertyId)), newest(r)));
+    // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
+    data.sort((a, b) => {
+      const ta = toTime(a.date), tb = toTime(b.date);
+      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+    });
+    return data;
+  }, [payrollLive.data, fullHistory, loadedHouseIds]);
+  const usersLive = useLiveCollection('users');
+  const employees = usersLive.data;
 
   // Catálogos para el detalle de la casa
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  // ⭐ FIX: cargar customers para resolver el nombre del cliente desde el ID
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const statusesLive = useLiveCollection('statuses');
+  const statuses = useMemo(
+    () => [...statusesLive.data].sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+    [statusesLive.data],
+  );
+  const teams = useLiveData('teams');
+  const priorities = useLiveData('priorities');
+  const services = useLiveData('services');
+  // ⭐ FIX: customers para resolver el nombre del cliente desde el ID
+  const customersLive = useLiveCollection('customers');
+  const customers = customersLive.data;
 
-  const [isLoading, setIsLoading] = useState(true);
+  const isLoading = !payrollLive.loaded || !usersLive.loaded || !statusesLive.loaded || !customersLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
 
   // Estados de Modales
@@ -232,10 +219,10 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
   const [tab, setTab] = useState<'asignar' | 'nominas'>('asignar');
 
   // ⭐ Pestaña Nóminas: semana seleccionada (key = timestamp del lunes), búsqueda y orden
-  const [selectedWeekKey, setSelectedWeekKey] = useState('');
+  const [pickedWeekKey, setSelectedWeekKey] = useState('');
   const [weekSearch, setWeekSearch] = useState('');
   const [weekSort, setWeekSort] = useState<'name' | 'amount'>('name');
-  const [weekDetail, setWeekDetail] = useState<{ employee: SystemUser; records: PayrollRecordExt[] } | null>(null);
+  const [weekDetailPick, setWeekDetail] = useState<{ employee: SystemUser; records: PayrollRecordExt[] } | null>(null);
 
   // ⭐ Pago consolidado (pestaña Asignar nómina): casas seleccionadas + formulario
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
@@ -249,96 +236,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
-  // ⭐ FIX (amount): el documento en Firestore NO guarda `totalAmount`, solo
-  //    baseAmount / extraAmount / discountAmount. Calculamos el total al vuelo:
-  //    base + extra - discount. Si existiera totalAmount guardado y distinto de 0,
-  //    se respeta ese valor.
-  const getTotal = (r?: Partial<PayrollRecord> | null) => {
-    if (!r) return 0;
-    if (r.totalAmount != null && Number(r.totalAmount) !== 0) return Number(r.totalAmount);
-    return Number(r.baseAmount || 0) + Number(r.extraAmount || 0) - Number(r.discountAmount || 0);
-  };
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ⭐ HERRAMIENTA "REVISAR FECHAS": lista las casas cuyo scheduleDate NO está
-  //    en ISO y permite convertirlo con un clic eligiendo la lectura correcta.
-  //    Al guardar en ISO (YYYY-MM-DD) la ambigüedad desaparece para siempre y
-  //    todas las vistas (Payroll, Invoices, Houses) leen la misma fecha.
-  // ══════════════════════════════════════════════════════════════════════════
-  const dateFixRows = useMemo(() => {
-    const q = dateFixSearch.toLowerCase().trim();
-    return properties
-      .map(prop => ({ prop, an: analyzeDate(prop.scheduleDate) }))
-      .filter(({ an }) => an.kind !== 'iso' && an.kind !== 'empty')
-      .filter(({ an }) =>
-        dateFixTab === 'all' ? true
-          : dateFixTab === 'ambiguous' ? an.kind === 'ambiguous'
-            : an.kind === 'ddmm' || an.kind === 'invalid')
-      .filter(({ prop }) => !q
-        || String(prop.address || '').toLowerCase().includes(q)
-        || getClientName(prop.client).toLowerCase().includes(q))
-      .sort((x, y) => String(x.prop.address || '').localeCompare(String(y.prop.address || '')));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, dateFixTab, dateFixSearch, customers]);
-
-  const dateFixCounts = useMemo(() => {
-    let ambiguous = 0, ddmm = 0, total = 0;
-    properties.forEach(prop => {
-      const an = analyzeDate(prop.scheduleDate);
-      if (an.kind === 'iso' || an.kind === 'empty') return;
-      total++;
-      if (an.kind === 'ambiguous') ambiguous++;
-      if (an.kind === 'ddmm' || an.kind === 'invalid') ddmm++;
-    });
-    return { ambiguous, ddmm, total };
-  }, [properties]);
-
-  // Guarda UNA fecha ya normalizada a ISO
-  const applyDateFix = async (propertyId: string, iso?: string) => {
-    if (!iso) return;
-    setSavingDateId(propertyId);
-    try {
-      await updateDoc(doc(db, 'properties', propertyId), { scheduleDate: iso });
-      setProperties(prev => prev.map(pr => (pr.id === propertyId ? { ...pr, scheduleDate: iso } : pr)));
-    } catch (err) {
-      console.error('Error corrigiendo la fecha:', err);
-      const e = err as { code?: string; message?: string };
-      alert(`No se pudo guardar la fecha.\n\nCódigo: ${e.code || 'desconocido'}\nDetalle: ${e.message || String(err)}`);
-    } finally {
-      setSavingDateId(null);
-    }
-  };
-
-  // Aplica la MISMA lectura a todas las filas visibles (en lotes)
-  const applyBulkDateFix = async (reading: 'mmdd' | 'ddmm') => {
-    const rows = dateFixRows
-      .map(({ prop, an }) => ({ id: prop.id, iso: reading === 'mmdd' ? an.asMMDD : an.asDDMM }))
-      .filter(r => !!r.iso) as { id: string; iso: string }[];
-    if (rows.length === 0) {
-      alert('No hay filas visibles que se puedan convertir con esa lectura.');
-      return;
-    }
-    if (!window.confirm(
-      `Se convertirán ${rows.length} fecha(s) leyéndolas como ${reading === 'mmdd' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'} y se guardarán en formato ISO (YYYY-MM-DD).\n\n¿Continuar?`,
-    )) return;
-    setBulkSaving(true);
-    let ok = 0, fail = 0;
-    for (const r of rows) {
-      try {
-        await updateDoc(doc(db, 'properties', r.id), { scheduleDate: r.iso });
-        ok++;
-      } catch (err) {
-        console.error('Error en fila', r.id, err);
-        fail++;
-      }
-    }
-    setProperties(prev => prev.map(pr => {
-      const hit = rows.find(r => r.id === pr.id);
-      return hit ? { ...pr, scheduleDate: hit.iso } : pr;
-    }));
-    setBulkSaving(false);
-    alert(`Listo.\n\nCorregidas: ${ok}${fail ? `\nFallidas: ${fail} (revisa la consola)` : ''}`);
-  };
 
   // ⭐ Fecha efectiva de un registro para filtros y semanas: el SCHEDULE DATE de la casa
   //    vinculada (pedido explícito del negocio: la nómina se agrupa por semana trabajada).
@@ -388,10 +286,13 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, properties]);
 
-  // Semana seleccionada por defecto: la más reciente disponible
-  useEffect(() => {
-    if (weeks.length > 0 && !weeks.some(w => w.key === selectedWeekKey)) setSelectedWeekKey(weeks[0].key);
-  }, [weeks, selectedWeekKey]);
+  // Semana seleccionada: la elegida si sigue existiendo; si no (o si todavía no
+  // hay ninguna), la más reciente QUEDA fijada — llegar una semana más nueva no
+  // mueve la vista. Se ajusta durante el render (patrón de React para estado que
+  // depende de datos) en vez de un efecto que corregía el estado un render tarde.
+  const pickedExists = weeks.some(w => w.key === pickedWeekKey);
+  if (weeks.length > 0 && !pickedExists) setSelectedWeekKey(weeks[0].key);
+  const selectedWeekKey = pickedExists ? pickedWeekKey : (weeks[0]?.key ?? pickedWeekKey);
 
   const selectedWeek = weeks.find(w => w.key === selectedWeekKey) || null;
 
@@ -411,7 +312,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       .filter(e => weekRecs.some(r => r.employeeId === e.id))
       .map(emp => {
         const recs = weekRecs.filter(r => r.employeeId === emp.id);
-        const total = recs.reduce((s, r) => s + getTotal(r), 0);
+        const total = recs.reduce((s, r) => s + getPayrollTotal(r), 0);
         const allPaid = recs.length > 0 && recs.every(r => r.status === 'Paid');
         return { emp, recs, total, allPaid };
       });
@@ -423,103 +324,30 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, employees, properties, selectedWeekKey, weekSearch, weekSort]);
 
-  // Mantiene el modal de detalle semanal sincronizado con los cambios en vivo
-  useEffect(() => {
-    setWeekDetail(prev => {
-      if (!prev) return prev;
-      const ids = new Set(prev.records.map(r => r.id));
-      return { ...prev, records: records.filter(r => ids.has(r.id)) };
-    });
-  }, [records]);
+  // El modal de detalle semanal muestra siempre los registros en vivo: se
+  // guardan los elegidos y se vuelven a buscar en `records` en cada render.
+  const weekDetail = useMemo(() => {
+    if (!weekDetailPick) return null;
+    const ids = new Set(weekDetailPick.records.map(r => r.id));
+    return { ...weekDetailPick, records: records.filter(r => ids.has(r.id)) };
+  }, [weekDetailPick, records]);
 
-  // ⭐ FIX: usar onSnapshot para carga viva. Esto también significa que los cambios
-  //         hechos desde otras vistas (Houses, Invoices) se reflejan en tiempo real.
-  useEffect(() => {
-    setIsLoading(true);
-    const unsubscribes: (() => void)[] = [];
-    let loaded = 0;
-    const TOTAL = 8;
-    const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
-
-    // ⭐ FIX (registros nuevos invisibles): NO usar limit() ni orderBy() en el servidor
-    //    para esta colección.
-    //    - limit(100) sin orderBy devolvía los primeros 100 por ID de documento (orden
-    //      lexicográfico), NO los más recientes: al pasar de 100 docs, los pagos nuevos
-    //      del botón Pay de Houses quedaban fuera del corte y no aparecían jamás.
-    //    - orderBy('date') tampoco sirve: el campo `date` existe en formatos mixtos
-    //      ("YYYY-MM-DD", "MM/DD/YYYY", Timestamps — ver toTime()), y el orden
-    //      lexicográfico del servidor con formatos mezclados es basura (mostraba
-    //      hasta abril y excluía los pagos recientes). Además excluye docs sin `date`.
-    //    Por eso: se trae la colección COMPLETA y el orden (más reciente primero) se
-    //    resuelve en el cliente con toTime(), tolerante a todos los formatos.
-    //    Costo: lecturas = tamaño de la colección por sesión. Esta vista es de admin
-    //    (pocos usuarios); si la colección crece a miles, migrar a paginación con
-    //    cursor como en ServiciosCompletados, o agregar un campo `createdAt` uniforme.
-    unsubscribes.push(onSnapshot(
-      collection(db, 'payroll'),
-      (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PayrollRecordExt));
-        // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
-        data.sort((a, b) => {
-          const ta = toTime(a.date), tb = toTime(b.date);
-          return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
-        });
-        console.log(`[PayrollView] Loaded ${data.length} payroll records (colección completa)`);
-        setRecords(data);
-        tick();
-      },
-      (err) => { console.error("[PayrollView] Error payroll:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'properties'),
-      (snap) => { setProperties(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Property[]); tick(); },
-      (err) => { console.error("Error properties:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'system_users'),
-      (snap) => { setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })) as SystemUser[]); tick(); },
-      (err) => { console.error("Error users:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, collectionMap.status),
-      (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-        setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
-        tick();
-      },
-      (err) => { console.error("Error statuses:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, collectionMap.team),
-      (snap) => { setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]); tick(); },
-      (err) => { console.error("Error teams:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, collectionMap.priority),
-      (snap) => { setPriorities(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Priority[]); tick(); },
-      (err) => { console.error("Error priorities:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, collectionMap.service),
-      (snap) => { setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Service[]); tick(); },
-      (err) => { console.error("Error services:", err); tick(); }
-    ));
-
-    // ⭐ NUEVO: customers
-    unsubscribes.push(onSnapshot(
-      collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
-      (err) => { console.error("Error customers:", err); tick(); }
-    ));
-
-    return () => unsubscribes.forEach(u => u());
-  }, []);
+  // ⭐ Los datos llegan del store compartido y de App.tsx (ver arriba); los
+  //    cambios hechos desde otras vistas (Houses, Invoices) se ven en vivo.
+  // ⭐ FIX (registros nuevos invisibles): NO usar limit() ni orderBy() en el servidor
+  //    para esta colección.
+  //    - limit(100) sin orderBy devolvía los primeros 100 por ID de documento (orden
+  //      lexicográfico), NO los más recientes: al pasar de 100 docs, los pagos nuevos
+  //      del botón Pay de Houses quedaban fuera del corte y no aparecían jamás.
+  //    - orderBy('date') tampoco sirve: el campo `date` existe en formatos mixtos
+  //      ("YYYY-MM-DD", "MM/DD/YYYY", Timestamps — ver toTime()), y el orden
+  //      lexicográfico del servidor con formatos mezclados es basura (mostraba
+  //      hasta abril y excluía los pagos recientes). Además excluye docs sin `date`.
+  //    Por eso: se trae la colección COMPLETA y el orden (más reciente primero) se
+  //    resuelve en el cliente con toTime(), tolerante a todos los formatos.
+  //    Costo: lecturas = tamaño de la colección por sesión. Esta vista es de admin
+  //    (pocos usuarios); si la colección crece a miles, migrar a paginación con
+  //    cursor como en ServiciosCompletados, o agregar un campo `createdAt` uniforme.
 
   // Lógica de Filtros
   // ⭐ Clasificación de cada casa respecto a la nómina (sub-pestañas):
@@ -558,7 +386,6 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, properties, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
 
   const viewCounts = {
@@ -596,7 +423,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       }
       const g = groups.get(key)!;
       g.records.push(record);
-      g.subtotal += getTotal(record);
+      g.subtotal += getPayrollTotal(record);
     });
 
     // Equipos por nombre; "Sin equipo" siempre al final.
@@ -605,7 +432,6 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       if (b.teamId === '__sin_equipo__') return -1;
       return a.teamName.localeCompare(b.teamName);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredRecords, properties, teams]);
 
   const toggleTeamCollapsed = (teamId: string) =>
@@ -623,7 +449,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     );
   };
   const selectedRecords = records.filter(r => r.id && selectedRecordIds.includes(r.id as string));
-  const selectedSubtotal = selectedRecords.reduce((s, r) => s + getTotal(r), 0);
+  const selectedSubtotal = selectedRecords.reduce((s, r) => s + getPayrollTotal(r), 0);
   const allPendingSelected = selectableRecords.length > 0 && selectableRecords.every(r => selectedRecordIds.includes(r.id as string));
 
   const toggleRecordSelected = (r: PayrollRecordExt) => {
@@ -635,8 +461,12 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     setSelectedRecordIds(allPendingSelected ? [] : selectableRecords.map(r => r.id as string));
   };
 
-  // La selección se limpia al cambiar de empleado en el filtro
-  useEffect(() => { setSelectedRecordIds([]); }, [selectedEmployee, assignView]);
+  // La selección se limpia al cambiar de empleado o de sub-pestaña (en el
+  // handler que hace el cambio, no en un efecto).
+  const changeAssignView = (view: typeof assignView) => {
+    if (view !== assignView) setSelectedRecordIds([]);
+    setAssignView(view);
+  };
 
   // ⭐ Guarda el pago consolidado: (1) marca cada casa con el batchId, la fecha y el
   //    status elegido; (2) si hay bonus/descuento, crea UN registro de ajuste para el
@@ -649,13 +479,15 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     const totalPay = selectedSubtotal + bonus - discount;
     const isPaid = payForm.status === 'Paid';
     const paidBy = isPaid ? (auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown') : '';
-    const paidAt = isPaid ? new Date().toISOString().split('T')[0] : '';
+    const paidAt = isPaid ? todayIso() : '';
     const batchId = `batch_${Date.now()}`;
     setIsSaving(true);
     try {
-      await Promise.all(selectedRecords.map(r => updateDoc(doc(db, 'payroll', r.id as string), {
+      // ⭐ Casas + ajuste en UN batch: o queda todo el pago o nada (antes, si
+      //    fallaba el ajuste, las casas quedaban en nómina sin el bonus).
+      const ops: BatchOp[] = selectedRecords.map(r => (b) => payrollService.batchUpdate(b, r.id as string, {
         batchId, paymentDate: payForm.date, status: payForm.status, paidAt, paidBy,
-      })));
+      }));
       if (bonus > 0 || discount > 0) {
         const ajuste: PayrollRecordExt = {
           propertyId: '', employeeId: selectedEmployee, date: payForm.date,
@@ -665,8 +497,9 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
           totalAmount: bonus - discount, status: payForm.status,
           paidAt, paidBy, batchId, paymentDate: payForm.date,
         };
-        await payrollService.create(ajuste);
+        ops.push((b) => payrollService.batchCreate(b, ajuste));
       }
+      await commitOps(ops);
       setPayForm(null);
       setSelectedRecordIds([]);
       alert(`Pago registrado: ${selectedRecords.length} casa(s) · Total $${totalPay.toFixed(2)}.`);
@@ -682,19 +515,20 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
   // Totales sobre TODO lo filtrado por fecha/empleado (independiente de la sub-pestaña):
   // pagado = casas en nómina pagadas; en nómina = asignadas sin pagar;
   // pendiente = casas aún sin asignar a ninguna nómina.
-  const totalPaid = baseFiltered.filter(r => classifyRecord(r) === 'paid').reduce((sum, r) => sum + getTotal(r), 0);
-  const totalEnNomina = baseFiltered.filter(r => classifyRecord(r) === 'ennomina').reduce((sum, r) => sum + getTotal(r), 0);
-  const totalPending = baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getTotal(r), 0);
+  const totalPaid = baseFiltered.filter(r => classifyRecord(r) === 'paid').reduce((sum, r) => sum + getPayrollTotal(r), 0);
+  const totalEnNomina = baseFiltered.filter(r => classifyRecord(r) === 'ennomina').reduce((sum, r) => sum + getPayrollTotal(r), 0);
+  const totalPending = baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getPayrollTotal(r), 0);
 
   const handleMarkAsPaid = async (record: PayrollRecordExt) => {
     if (!record.id) return;
     if (!window.confirm("Mark this record as Paid?")) return;
     const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
-    const paidAt = new Date().toISOString().split('T')[0]; // fecha en que se pagó (YYYY-MM-DD)
+    const paidAt = todayIso(); // fecha en que se pagó (YYYY-MM-DD)
     try {
       // ⭐ Update directo a Firestore (merge parcial garantizado, sin depender del service)
       await updateDoc(doc(db, 'payroll', record.id), { status: 'Paid', paidAt, paidBy });
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Error updating status", error);
       alert(`No se pudo marcar como pagado: ${error?.message || error?.code || 'error desconocido'}`);
     }
@@ -707,10 +541,10 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     if (pending.length === 0) return;
     if (!window.confirm(`¿Marcar como pagada toda la nómina de ${who} (${pending.length} registro(s))?`)) return;
     const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
-    const paidAt = new Date().toISOString().split('T')[0];
+    const paidAt = todayIso();
     setIsSaving(true);
     try {
-      await Promise.all(pending.map(r => updateDoc(doc(db, 'payroll', r.id as string), { status: 'Paid', paidAt, paidBy })));
+      await commitOps(pending.map(r => (b) => payrollService.batchUpdate(b, r.id as string, { status: 'Paid', paidAt, paidBy })));
     } catch (error) {
       console.error('Error marcando la semana como pagada:', error);
       alert('No se pudieron marcar todos los registros como pagados.');
@@ -726,7 +560,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     setBatchEdit({
       employee: emp,
       records: recs,
-      date: (recs.find(r => r.paymentDate)?.paymentDate as string) || new Date().toISOString().split('T')[0],
+      date: (recs.find(r => r.paymentDate)?.paymentDate as string) || todayIso(),
       bonus: adjustments.reduce((s, r) => s + Number(r.extraAmount || 0), 0),
       bonusNote: adjustments.map(r => r.extraNote).filter(Boolean).join(' · '),
       discount: adjustments.reduce((s, r) => s + Number(r.discountAmount || 0), 0),
@@ -745,14 +579,17 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     const discount = Number(batchEdit.discount || 0);
     const isPaid = batchEdit.status === 'Paid';
     const paidBy = isPaid ? (auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown') : '';
-    const paidAt = isPaid ? new Date().toISOString().split('T')[0] : '';
+    const paidAt = isPaid ? todayIso() : '';
     const batchId = (batchEdit.records.find(r => r.batchId)?.batchId as string) || `batch_${Date.now()}`;
     setIsSaving(true);
     try {
-      await Promise.all(houses.map(r => updateDoc(doc(db, 'payroll', r.id as string), {
-        paymentDate: batchEdit.date, status: batchEdit.status, paidAt, paidBy,
-      })));
-      await Promise.all(adjustments.map(r => payrollService.delete(r.id as string)));
+      // ⭐ Todo en UN batch: casas, borrado de los ajustes viejos y el nuevo.
+      const ops: BatchOp[] = [
+        ...houses.map(r => (b: WriteBatch) => payrollService.batchUpdate(b, r.id as string, {
+          paymentDate: batchEdit.date, status: batchEdit.status, paidAt, paidBy,
+        })),
+        ...adjustments.map(r => (b: WriteBatch) => payrollService.batchDelete(b, r.id as string)),
+      ];
       if (bonus > 0 || discount > 0) {
         const ajuste: PayrollRecordExt = {
           propertyId: '', employeeId: (batchEdit.employee.id as string), date: batchEdit.date,
@@ -762,8 +599,9 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
           totalAmount: bonus - discount, status: batchEdit.status,
           paidAt, paidBy, batchId, paymentDate: batchEdit.date,
         };
-        await payrollService.create(ajuste);
+        ops.push((b) => payrollService.batchCreate(b, ajuste));
       }
+      await commitOps(ops);
       setBatchEdit(null);
       setWeekDetail(null);
     } catch (error) {
@@ -782,10 +620,12 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     const adjustments = recs.filter(r => !r.propertyId && r.id);
     setIsSaving(true);
     try {
-      await Promise.all(houses.map(r => updateDoc(doc(db, 'payroll', r.id as string), {
-        batchId: deleteField(), paymentDate: deleteField(), status: 'Pending', paidAt: '', paidBy: '',
-      })));
-      await Promise.all(adjustments.map(r => payrollService.delete(r.id as string)));
+      await commitOps([
+        ...houses.map(r => (b: WriteBatch) => payrollService.batchUpdate(b, r.id as string, {
+          batchId: deleteField(), paymentDate: deleteField(), status: 'Pending', paidAt: '', paidBy: '',
+        })),
+        ...adjustments.map(r => (b: WriteBatch) => payrollService.batchDelete(b, r.id as string)),
+      ]);
       setWeekDetail(null);
     } catch (error) {
       console.error('Error eliminando la nómina:', error);
@@ -800,7 +640,8 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     if (!window.confirm("Change status back to Pending?")) return;
     try {
       await updateDoc(doc(db, 'payroll', record.id), { status: 'Pending', paidAt: '', paidBy: '' });
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Error updating status", error);
       alert(`No se pudo cambiar a Pending: ${error?.message || error?.code || 'error desconocido'}`);
     }
@@ -844,15 +685,11 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
     }
   };
 
-  // Efecto para actualizar el total automáticamente mientras se edita
-  useEffect(() => {
-    if (editForm) {
-      const total = Number(editForm.baseAmount || 0) + Number(editForm.extraAmount || 0) - Number(editForm.discountAmount || 0);
-      if (editForm.totalAmount !== total) {
-        setEditForm({ ...editForm, totalAmount: total });
-      }
-    }
-  }, [editForm?.baseAmount, editForm?.extraAmount, editForm?.discountAmount]);
+  // Total del formulario de edición, calculado en el render (handleSaveEdit
+  // lo vuelve a calcular igual al guardar).
+  const editFormTotal = editForm
+    ? Number(editForm.baseAmount || 0) + Number(editForm.extraAmount || 0) - Number(editForm.discountAmount || 0)
+    : 0;
 
 
   return (
@@ -871,18 +708,11 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
         </div>
         {/* ⭐ Corrección de fechas mal capturadas (solo alcance 'All') */}
         {canSeeAllPayroll && (
-          <button
-            className={`pv-btn-datefix${dateFixCounts.total > 0 ? ' warn' : ''}`}
-            onClick={() => setIsDateFixOpen(true)}
-            title="Revisar y corregir las fechas guardadas en formato ambiguo"
-          >
-            <CalendarDays size={16} /> Revisar fechas
-            {dateFixCounts.total > 0 && (
-              <span className="pv-datefix-count">{dateFixCounts.total}</span>
-            )}
-          </button>
+          <PropertyDateFixTool properties={properties} setProperties={setProperties} getClientName={getClientName} />
         )}
       </header>
+
+      <HistoryWindowNotice />
 
       {/* PESTAÑAS: Asignar nómina (registros de Pay) | Nóminas (semanal por empleado) */}
       <div className="pv-tabbar">
@@ -903,14 +733,14 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
           <label className="pv-label">Schedule Date (inicio)</label>
           <div className="pv-input-wrap">
             <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
-            <input type="date" className="pv-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <DateInput className="pv-input" value={startDate} onChange={setStartDate} />
           </div>
         </div>
         <div className="pv-filter-item">
           <label className="pv-label">Schedule Date (fin)</label>
           <div className="pv-input-wrap">
             <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
-            <input type="date" className="pv-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            <DateInput className="pv-input" value={endDate} onChange={setEndDate} />
           </div>
         </div>
         {/* ⭐ El filtro de empleado SOLO existe con alcance 'All'. Con 'Own' se
@@ -930,7 +760,9 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                 const v = e.target.value;
                 setEmployeeQuery(v);
                 const match = employees.find(emp => empName(emp).toLowerCase() === v.toLowerCase().trim());
-                setSelectedEmployee(match ? match.id : '');
+                const next = match ? match.id : '';
+                if (next !== selectedEmployee) setSelectedRecordIds([]);
+                setSelectedEmployee(next);
               }}
             />
             <datalist id="pv-employee-list">
@@ -944,13 +776,13 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       {/* ⭐ SUB-PESTAÑAS (sustituyen al filtro de Status): estado de cada casa
           respecto a la nómina */}
       <div className="pva-subtabs">
-        <button className={`pva-subtab${assignView === 'pending' ? ' active' : ''}`} onClick={() => setAssignView('pending')}>
+        <button className={`pva-subtab${assignView === 'pending' ? ' active' : ''}`} onClick={() => changeAssignView('pending')}>
           Pending ({viewCounts.pending})
         </button>
-        <button className={`pva-subtab ennomina${assignView === 'ennomina' ? ' active' : ''}`} onClick={() => setAssignView('ennomina')}>
+        <button className={`pva-subtab ennomina${assignView === 'ennomina' ? ' active' : ''}`} onClick={() => changeAssignView('ennomina')}>
           En nómina ({viewCounts.ennomina})
         </button>
-        <button className={`pva-subtab paid${assignView === 'paid' ? ' active' : ''}`} onClick={() => setAssignView('paid')}>
+        <button className={`pva-subtab paid${assignView === 'paid' ? ' active' : ''}`} onClick={() => changeAssignView('paid')}>
           Paid ({viewCounts.paid})
         </button>
       </div>
@@ -988,7 +820,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
           </span>
           <button
             className="pv-paybar-btn"
-            onClick={() => setPayForm({ date: new Date().toISOString().split('T')[0], bonus: 0, bonusNote: '', discount: 0, discountNote: '', status: 'Pending' })}
+            onClick={() => setPayForm({ date: todayIso(), bonus: 0, bonusNote: '', discount: 0, discountNote: '', status: 'Pending' })}
           >
             <Wallet size={16} /> Pagar seleccionadas
           </button>
@@ -1119,7 +951,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
 
                     <td className="pv-td strong">{empName(emp) || 'Unknown'}</td>
 
-                    <td className="pv-td amount">${getTotal(record).toFixed(2)}</td>
+                    <td className="pv-td amount">${getPayrollTotal(record).toFixed(2)}</td>
 
                     {/* ⭐ Acciones al final de la fila (el status ahora se gestiona al pagar
                         y desde la pestaña Nóminas, ya no con Mark Paid aquí) */}
@@ -1257,7 +1089,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                   <div className="pv-edit-row">
                     <div className="pv-edit-field">
                       <label className="pv-label">Fecha</label>
-                      <input type="date" className="pv-input pvp-input-plain" value={payForm.date} onChange={e => setPayForm({ ...payForm, date: e.target.value })} />
+                      <DateInput className="pv-input pvp-input-plain" value={payForm.date} onChange={iso => setPayForm({ ...payForm, date: iso })} />
                     </div>
                     <div className="pv-edit-field">
                       <label className="pv-label">Empleado</label>
@@ -1310,7 +1142,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                               <div className="pv-client-name">{prop ? getClientName(prop.client) : 'Unknown Property'}</div>
                               <div className="pv-client-address"><MapPin size={12} /> {prop?.address || '—'} · {fmtDate(prop?.scheduleDate || rec.date)}</div>
                             </div>
-                            <div className="pvp-house-amount">${getTotal(rec).toFixed(2)}</div>
+                            <div className="pvp-house-amount">${getPayrollTotal(rec).toFixed(2)}</div>
                           </li>
                         );
                       })}
@@ -1332,7 +1164,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       {/* --- MODAL: EDITAR NÓMINA ASIGNADA (fecha, bonus, descuento, status) --- */}
       {batchEdit && (() => {
         const housesInBatch = batchEdit.records.filter(r => r.propertyId);
-        const subtotal = housesInBatch.reduce((s, r) => s + getTotal(r), 0);
+        const subtotal = housesInBatch.reduce((s, r) => s + getPayrollTotal(r), 0);
         const bonus = Number(batchEdit.bonus || 0);
         const discount = Number(batchEdit.discount || 0);
         const totalPay = subtotal + bonus - discount;
@@ -1348,7 +1180,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                   <div className="pv-edit-row">
                     <div className="pv-edit-field">
                       <label className="pv-label">Fecha del pago</label>
-                      <input type="date" className="pv-input pvp-input-plain" value={batchEdit.date} onChange={e => setBatchEdit({ ...batchEdit, date: e.target.value })} />
+                      <DateInput className="pv-input pvp-input-plain" value={batchEdit.date} onChange={iso => setBatchEdit({ ...batchEdit, date: iso })} />
                     </div>
                     <div className="pv-edit-field">
                       <label className="pv-label">Status</label>
@@ -1397,7 +1229,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                               <div className="pv-client-name">{prop ? getClientName(prop.client) : 'Unknown Property'}</div>
                               <div className="pv-client-address"><MapPin size={12} /> {prop?.address || '—'} · {fmtDate(prop?.scheduleDate || rec.date)}</div>
                             </div>
-                            <div className="pvp-house-amount">${getTotal(rec).toFixed(2)}</div>
+                            <div className="pvp-house-amount">${getPayrollTotal(rec).toFixed(2)}</div>
                           </li>
                         );
                       })}
@@ -1428,7 +1260,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
               {(() => {
                 const houses = weekDetail.records.filter(r => r.propertyId);
                 const adjustments = weekDetail.records.filter(r => !r.propertyId);
-                const subtotal = houses.reduce((s, r) => s + getTotal(r), 0);
+                const subtotal = houses.reduce((s, r) => s + getPayrollTotal(r), 0);
                 const bonus = adjustments.reduce((s, r) => s + Number(r.extraAmount || 0), 0);
                 const discount = adjustments.reduce((s, r) => s + Number(r.discountAmount || 0), 0);
                 const totalPay = subtotal + bonus - discount;
@@ -1481,7 +1313,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                                 <td className="client">{prop ? getClientName(prop.client) : 'Unknown Property'}</td>
                                 <td className="addr">{prop?.address || '—'}</td>
                                 <td>{fmtDate(prop?.scheduleDate || rec.date)}</td>
-                                <td className="right amount">${getTotal(rec).toFixed(2)}</td>
+                                <td className="right amount">${getPayrollTotal(rec).toFixed(2)}</td>
                               </tr>
                             );
                           })}
@@ -1571,7 +1403,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
                       </div>
                       <div className="pv-amount-box total">
                         <span className="pv-amount-label total">TOTAL PAYOUT</span>
-                        <span className="pv-amount-value total">${getTotal(selectedPayroll).toFixed(2)}</span>
+                        <span className="pv-amount-value total">${getPayrollTotal(selectedPayroll).toFixed(2)}</span>
                       </div>
                     </div>
                   </>
@@ -1633,7 +1465,7 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
 
                 <div className="pv-total-row">
                   <span className="pv-total-label">TOTAL TO PAY:</span>
-                  <span className="pv-total-value">${(editForm.totalAmount || 0).toFixed(2)}</span>
+                  <span className="pv-total-value">${editFormTotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -1686,11 +1518,11 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
 
                 <div className="pv-detail-item">
                   <span className="pv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</span>
-                  <span className="pv-detail-value">{selectedHouse.receiveDate || '-'}</span>
+                  <span className="pv-detail-value">{fmtDate(selectedHouse.receiveDate) || '-'}</span>
                 </div>
                 <div className="pv-detail-item">
                   <span className="pv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</span>
-                  <span className="pv-detail-value">{selectedHouse.scheduleDate || '-'}</span>
+                  <span className="pv-detail-value">{fmtDate(selectedHouse.scheduleDate) || '-'}</span>
                 </div>
                 <div className="pv-detail-item">
                   <span className="pv-detail-label"><Wrench size={14} /> SERVICE</span>
@@ -1765,124 +1597,6 @@ export default function PayrollView({ onOpenMenu, currentUser, activeRole, isSup
       )}
 
       {/* ══════════ MODAL: REVISAR Y CORREGIR FECHAS ══════════ */}
-      {isDateFixOpen && (
-        <div className="modal-overlay-centered" onClick={() => !bulkSaving && setIsDateFixOpen(false)}>
-          <div className="pv-datefix-modal" onClick={e => e.stopPropagation()}>
-            <header className="pv-datefix-header">
-              <div>
-                <h3 className="pv-datefix-title">
-                  <CalendarDays size={18} /> Revisar y corregir fechas
-                </h3>
-                <p className="pv-datefix-sub">
-                  Estas casas tienen el Schedule Date guardado con barras (MM/DD o DD/MM).
-                  Al corregirlas se guardan en formato ISO (YYYY-MM-DD), que ya no es ambiguo
-                  y se lee igual en Payroll, Invoices y Houses.
-                </p>
-              </div>
-              <button className="pv-datefix-close" onClick={() => setIsDateFixOpen(false)} disabled={bulkSaving}>
-                <X size={22} />
-              </button>
-            </header>
-
-            <div className="pv-datefix-toolbar">
-              <div className="pv-datefix-tabs">
-                <button className={`pv-datefix-tab${dateFixTab === 'ambiguous' ? ' active' : ''}`} onClick={() => setDateFixTab('ambiguous')}>
-                  Ambiguas ({dateFixCounts.ambiguous})
-                </button>
-                <button className={`pv-datefix-tab${dateFixTab === 'ddmm' ? ' active' : ''}`} onClick={() => setDateFixTab('ddmm')}>
-                  Solo DD/MM ({dateFixCounts.ddmm})
-                </button>
-                <button className={`pv-datefix-tab${dateFixTab === 'all' ? ' active' : ''}`} onClick={() => setDateFixTab('all')}>
-                  Todas ({dateFixCounts.total})
-                </button>
-              </div>
-              <div className="pv-datefix-search">
-                <Search size={15} color="#94a3b8" />
-                <input
-                  type="text"
-                  value={dateFixSearch}
-                  onChange={e => setDateFixSearch(e.target.value)}
-                  placeholder="Buscar por cliente o dirección..."
-                />
-              </div>
-            </div>
-
-            <div className="pv-datefix-bulk">
-              <span className="pv-datefix-bulk-label">
-                Aplicar a las {dateFixRows.length} fila(s) visibles:
-              </span>
-              <button className="pv-datefix-bulk-btn mmdd" disabled={bulkSaving || dateFixRows.length === 0} onClick={() => applyBulkDateFix('mmdd')}>
-                {bulkSaving ? 'Guardando…' : 'Leer todas como MM/DD'}
-              </button>
-              <button className="pv-datefix-bulk-btn ddmm" disabled={bulkSaving || dateFixRows.length === 0} onClick={() => applyBulkDateFix('ddmm')}>
-                {bulkSaving ? 'Guardando…' : 'Leer todas como DD/MM'}
-              </button>
-            </div>
-
-            <div className="pv-datefix-body">
-              {dateFixRows.length === 0 ? (
-                <div className="pv-datefix-empty">
-                  {dateFixCounts.total === 0
-                    ? '✅ Todas las fechas ya están en formato ISO. No hay nada que corregir.'
-                    : 'No hay filas en esta pestaña con el filtro actual.'}
-                </div>
-              ) : (
-                <table className="pv-datefix-table">
-                  <thead>
-                    <tr>
-                      <th className="pv-datefix-th">Cliente / Dirección</th>
-                      <th className="pv-datefix-th">Guardado</th>
-                      <th className="pv-datefix-th">Si es MM/DD</th>
-                      <th className="pv-datefix-th">Si es DD/MM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dateFixRows.map(({ prop, an }) => (
-                      <tr key={prop.id}>
-                        <td className="pv-datefix-td">
-                          <div className="pv-datefix-client">{getClientName(prop.client)}</div>
-                          <div className="pv-datefix-address">{prop.address || '—'}</div>
-                        </td>
-                        <td className="pv-datefix-td">
-                          <span className={`pv-datefix-raw ${an.kind}`}>{an.raw}</span>
-                        </td>
-                        <td className="pv-datefix-td">
-                          {an.asMMDD ? (
-                            <button
-                              className="pv-datefix-opt"
-                              disabled={savingDateId === prop.id || bulkSaving}
-                              onClick={() => applyDateFix(prop.id, an.asMMDD)}
-                              title="Guardar con esta lectura"
-                            >
-                              {an.asMMDD}
-                            </button>
-                          ) : (
-                            <span className="pv-datefix-na">no válido</span>
-                          )}
-                        </td>
-                        <td className="pv-datefix-td">
-                          {an.asDDMM ? (
-                            <button
-                              className="pv-datefix-opt"
-                              disabled={savingDateId === prop.id || bulkSaving}
-                              onClick={() => applyDateFix(prop.id, an.asDDMM)}
-                              title="Guardar con esta lectura"
-                            >
-                              {an.asDDMM}
-                            </button>
-                          ) : (
-                            <span className="pv-datefix-na">no válido</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ⭐ EDICIÓN DE LA CASA sin salir de Payroll: HousesView en modo 'modals-only'
           dibuja únicamente su formulario de edición encima de esta vista.

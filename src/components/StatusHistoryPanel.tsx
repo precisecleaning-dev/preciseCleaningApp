@@ -4,6 +4,7 @@ import { History, ArrowRight, Loader2 } from 'lucide-react';
 import { statusHistoryService, type StatusHistoryEntry } from '../services/statusHistoryService';
 import type { Status } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
+import { formatDateTime } from '../utils/dateFormat';
 import './StatusHistoryPanel.css';
 
 interface StatusHistoryPanelProps {
@@ -14,17 +15,20 @@ interface StatusHistoryPanelProps {
 }
 
 export default function StatusHistoryPanel({ propertyId, statuses, refreshKey = 0 }: StatusHistoryPanelProps) {
-  const [entries, setEntries] = useState<StatusHistoryEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  // El resultado recuerda para qué casa/recarga se pidió: "cargando" se deriva
+  // de ahí en vez de ponerlo en true dentro del efecto.
+  const requestKey = `${propertyId}#${refreshKey}`;
+  const [result, setResult] = useState<{ key: string; entries: StatusHistoryEntry[] } | null>(null);
+  const loading = result?.key !== requestKey;
+  const entries = result?.entries ?? [];
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     statusHistoryService.getByProperty(propertyId).then(rows => {
-      if (active) { setEntries(rows); setLoading(false); }
+      if (active) setResult({ key: requestKey, entries: rows });
     });
     return () => { active = false; };
-  }, [propertyId, refreshKey]);
+  }, [propertyId, requestKey]);
 
   const colorFor = (idOrName?: string | null) => getRelationColor(statuses, idOrName) || '#64748b';
   // A diferencia de getRelationName, si el status ya no existe en el catálogo (fue borrado)
@@ -32,12 +36,7 @@ export default function StatusHistoryPanel({ propertyId, statuses, refreshKey = 
   // historial sigue siendo legible aunque el status ya no exista.
   const nameFor = (idOrName?: string | null) => idOrName ? getRelationName(statuses, idOrName, String(idOrName)) : '—';
 
-  const fmt = (iso?: string) => {
-    if (!iso) return '';
-    try {
-      return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    } catch { return iso; }
-  };
+  const fmt = (iso?: string) => formatDateTime(iso);
 
   // Conteos por status (por nombre resuelto)
   const counts: Record<string, number> = {};

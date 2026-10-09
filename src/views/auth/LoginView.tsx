@@ -82,7 +82,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           outUrl = canvas.toDataURL('image/png');
         }
         if (!cancelled) setProcessedLogo(outUrl);
-      } catch (e) {
+      } catch {
         // Si el canvas queda "tainted" (imagen remota sin CORS) no se puede leer: usamos el original
         if (!cancelled) setProcessedLogo(null);
       }
@@ -113,7 +113,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
       await sendPasswordResetEmail(auth, target);
       setResetSent(true);
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Password reset error:", error?.code);
       if (error?.code === 'auth/invalid-email') {
         alert("The email address is not valid.");
@@ -160,7 +161,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       }
 
       onLoginSuccess();
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       const code = error?.code || '';
       console.error("Auth error:", code, error?.message);
 

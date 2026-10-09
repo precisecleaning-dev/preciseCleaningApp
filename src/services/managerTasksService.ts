@@ -4,6 +4,7 @@
 //    Una tarea está VENCIDA si no está hecha y su `dueAt` ya pasó.
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { formatDate } from '../utils/dateFormat';
 
 const COL = 'manager_tasks';
 
@@ -23,7 +24,7 @@ export interface ManagerTask {
   doneById?: string | null;
 }
 
-export type NewManagerTask = Omit<ManagerTask, 'id' | 'done' | 'doneAt' | 'doneById' | 'createdAt'>;
+type NewManagerTask = Omit<ManagerTask, 'id' | 'done' | 'doneAt' | 'doneById' | 'createdAt'>;
 
 export const managerTasksService = {
   subscribe(cb: (tasks: ManagerTask[]) => void): () => void {
@@ -61,6 +62,9 @@ export const managerTasksService = {
 export const isTaskOverdue = (t: ManagerTask, now = new Date()): boolean =>
   !t.done && !!t.dueAt && new Date(t.dueAt).getTime() < now.getTime();
 
+/** Una tarea creada sin hora vence a las 23:59 de ese día: esa hora no se muestra. */
+export const dueHasTime = (due: Date): boolean => due.getHours() !== 23 || due.getMinutes() !== 59;
+
 /** Etiqueta corta de la fecha límite: "Done", "Overdue", "Today 11 AM", "Fri", "Oct 14". */
 export function taskDueLabel(t: ManagerTask, now = new Date()): { text: string; tone: 'done' | 'overdue' | 'today' | 'later' } {
   if (t.done) return { text: 'Done', tone: 'done' };
@@ -69,10 +73,10 @@ export function taskDueLabel(t: ManagerTask, now = new Date()): { text: string; 
   if (isNaN(due.getTime())) return { text: '—', tone: 'later' };
   if (due.getTime() < now.getTime()) return { text: 'Overdue', tone: 'overdue' };
   const sameDay = due.toDateString() === now.toDateString();
-  const hasTime = due.getHours() !== 23 || due.getMinutes() !== 59;
+  const hasTime = dueHasTime(due);
   const time = due.toLocaleTimeString('en-US', { hour: 'numeric', minute: due.getMinutes() ? '2-digit' : undefined });
   if (sameDay) return { text: hasTime ? `Today ${time}` : 'Today', tone: 'today' };
   const days = (due.getTime() - now.getTime()) / 86400000;
   if (days < 6) return { text: due.toLocaleDateString('en-US', { weekday: 'short' }), tone: 'later' };
-  return { text: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), tone: 'later' };
+  return { text: formatDate(due), tone: 'later' };
 }

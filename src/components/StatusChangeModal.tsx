@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Activity, X, CheckCircle } from 'lucide-react';
 import type { Status } from '../types/index';
@@ -34,11 +34,14 @@ export default function StatusChangeModal({ config, statuses, onClose, note }: S
     const match = statuses.find(st => String(st.id).toLowerCase().trim() === cur || String(st.name).toLowerCase().trim() === cur);
     return match ? match.id : (config.currentId || '');
   };
-  const [selectedId, setSelectedId] = useState<string>(resolveCurrentId());
-
-  // Reinicia la selección al estado actual cada vez que se abre para otro elemento.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setSelectedId(resolveCurrentId()); }, [config]);
+  // La selección vale para el `config` con que se hizo: si el modal se abre
+  // para otro elemento (otro `config`), vuelve al estado actual de ese elemento.
+  // Derivado en el render (antes un efecto lo reiniciaba un render después).
+  const [selection, setSelection] = useState<{ config: StatusModalConfig; id: string }>(
+    () => ({ config, id: resolveCurrentId() }),
+  );
+  const selectedId = selection.config === config ? selection.id : resolveCurrentId();
+  const setSelectedId = (id: string) => setSelection({ config, id });
 
   const selectedIsCurrent = (() => {
     const sel = statuses.find(st => st.id === selectedId);

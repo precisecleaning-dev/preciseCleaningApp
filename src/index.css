@@ -58,6 +58,13 @@ body {
   overflow-x: hidden;
 }
 
+/* Móvil: sin desplazamiento lateral de la página. Esta regla vivía en
+   RecallsView.css (borrada en 10/2026) y, como todo el CSS va en un solo
+   archivo (cssCodeSplit: false), aplicaba a toda la app: se conserva aquí. */
+@media (max-width: 820px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+}
+
 #root {
   min-height: 100%;
   min-height: 100dvh;

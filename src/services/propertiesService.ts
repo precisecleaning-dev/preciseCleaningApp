@@ -1,5 +1,5 @@
 // src/services/propertiesService.ts
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase'; // Conexión a la base de datos
 import type { Property } from '../types/index';
 
@@ -7,14 +7,7 @@ const COLLECTION_NAME = 'properties';
 
 // IMPORTANTE: Aquí se exporta explícitamente 'propertiesService' que HousesView está buscando
 export const propertiesService = {
-  // 1. Obtener todos los trabajos desde Firebase
-  async getAll(): Promise<Property[]> {
-    const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Property));
-  },
+  // La lista de casas la mantiene el listener global de App.tsx.
 
   // 2. Crear un nuevo trabajo
   async create(property: Omit<Property, 'id'>): Promise<string> {

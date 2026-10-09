@@ -27,7 +27,7 @@
 import { collection, addDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
-export type MailResult =
+type MailResult =
   /** La extensión confirmó la entrega. */
   | { status: 'sent' }
   /** La extensión lo tomó y sigue procesando (SMTP lento). Va a llegar. */

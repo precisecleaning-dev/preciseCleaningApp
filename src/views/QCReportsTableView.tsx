@@ -4,12 +4,11 @@ import {
   Menu, Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
   Printer, Loader2, ChevronDown, ClipboardCheck, StickyNote, FileText, Mail,
 } from 'lucide-react';
-import { db } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { mapCustomerDoc } from '../utils/customerDocs';
-import { collection, onSnapshot, query, limit, doc, getDoc } from 'firebase/firestore';
+import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
+import { getCompanySettings } from '../services/companyService';
 import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
-import type { Customer, Property, Status, Team, Role, SystemUser } from '../types/index';
+import type { Customer, Property, Role, SystemUser } from '../types/index';
 import type { QCRecord } from './QualityCheckView';
 import { propertiesService } from '../services/propertiesService';
 import { statusHistoryService } from '../services/statusHistoryService';
@@ -22,6 +21,9 @@ import WhatsAppIcon from '../components/WhatsAppIcon';
 import { qcReportsAllowedStatuses, isQualityCheckName, isRecallName, isInvoiceName } from '../utils/statusFilters';
 import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
+import DateInput from '../shared/components/DateInput';
+import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
 import './QCReportsTableView.css';
 
 // ============================================================================
@@ -98,14 +100,19 @@ interface Props {
 export default function QCReportsTableView({
   onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin = false,
 }: Props) {
-  const [reports, setReports] = useState<QCReportRow[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [places, setPlaces] = useState<QCPdfPlace[]>([]);
-  const [tasks, setTasks] = useState<QCPdfTask[]>([]);
+  // ⭐ Datos del store compartido (un listener por colección para toda la app).
+  //    Antes: listener propio de quality_checks con limit(2000) SIN orden (los
+  //    primeros 2000 por id, no los más recientes) + 5 catálogos propios.
+  const { data: qcData, loaded: qcLoaded } = useLiveCollection('qualityChecks');
+  // QCReportRow es el tipo local de esta vista (QCRecord + campos de la tabla).
+  const reports = qcData as unknown as QCReportRow[];
+  const customers = useLiveData('customers');
+  const statuses = useLiveData('statuses');
+  const teams = useLiveData('teams');
+  const places: QCPdfPlace[] = useLiveData('places');
+  const tasks: QCPdfTask[] = useLiveData('tasks');
   const [branding, setBranding] = useState<QCPdfBranding>({ name: 'Precise Cleaning' });
-  const [isLoading, setIsLoading] = useState(true);
+  const isLoading = !qcLoaded;
 
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -122,37 +129,13 @@ export default function QCReportsTableView({
     || !!activeRole?.permissions?.find(p => p.module === 'Quality Check')?.canEdit;
 
   useEffect(() => {
-    const unsubQC = onSnapshot(
-      query(collection(db, 'quality_checks'), limit(2000)),
-      snap => {
-        setReports(snap.docs.map(d => ({ id: d.id, ...d.data() } as QCReportRow)));
-        setIsLoading(false);
-      },
-      err => { console.error('Error cargando reportes QC:', err); setIsLoading(false); },
-    );
-    const unsubCust = onSnapshot(collection(db, 'customers'),
-      snap => setCustomers(snap.docs.map(mapCustomerDoc)),
-      err => console.error('Error cargando clientes:', err));
-    const unsubStatuses = onSnapshot(collection(db, 'settings_statuses'),
-      snap => setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Status))),
-      err => console.error('Error cargando estados:', err));
-    const unsubTeams = onSnapshot(collection(db, 'settings_teams'),
-      snap => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team))),
-      err => console.error('Error cargando equipos:', err));
-    const unsubPlaces = onSnapshot(collection(db, 'settings_places'),
-      snap => setPlaces(snap.docs.map(d => ({ id: d.id, ...d.data() } as QCPdfPlace))),
-      err => console.error('Error cargando áreas:', err));
-    const unsubTasks = onSnapshot(collection(db, 'settings_tasks'),
-      snap => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() } as QCPdfTask))),
-      err => console.error('Error cargando tareas:', err));
-    getDoc(doc(db, 'settings_company', 'main'))
-      .then(s => {
-        if (!s.exists()) return;
-        const d = s.data();
-        setBranding({ name: d.name || 'Precise Cleaning', address: d.address || '', logo: d.logo || '', email: d.email || '' });
+    let alive = true;
+    getCompanySettings()
+      .then(c => {
+        if (alive) setBranding({ name: c.name || 'Precise Cleaning', address: c.address || '', logo: c.logo || '', email: c.email || '' });
       })
       .catch(() => { /* branding por defecto */ });
-    return () => { unsubQC(); unsubCust(); unsubStatuses(); unsubTeams(); unsubPlaces(); unsubTasks(); };
+    return () => { alive = false; };
   }, []);
 
   const getClientName = (idOrName?: string): string => {
@@ -397,11 +380,16 @@ export default function QCReportsTableView({
     return 0;
   };
 
+  // Con la ventana de 12 meses, un reporte viejo cuya casa no se cargó es
+  // historial oculto ("Ver todo el historial"), no una casa borrada.
+  const fullHistory = useFullHistory();
+  const loadedHouseIds = useMemo(() => new Set(properties.map(p => p.id)), [properties]);
   const finishedReports = useMemo(() => {
     return reports
       .filter(r => r.status === 'Finished')
+      .filter(r => !isHiddenByWindow(fullHistory, loadedHouseIds.has(r.houseId), reportTimeMs(r)))
       .sort((a, b) => reportTimeMs(b) - reportTimeMs(a));
-  }, [reports]);
+  }, [reports, fullHistory, loadedHouseIds]);
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -466,6 +454,7 @@ export default function QCReportsTableView({
           <p className="qcrt-header-subtitle">Inspecciones finalizadas · WhatsApp, email y PDF · v6</p>
         </div>
       </header>
+      <HistoryWindowNotice />
 
       <button className="hamburger-btn qcrt-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
         <Menu size={24} />
@@ -498,14 +487,14 @@ export default function QCReportsTableView({
             <label className="qcrt-label">Start Date</label>
             <div className="qcrt-input-wrap">
               <CalendarDays className="qcrt-input-icon" size={16} />
-              <input type="date" className="qcrt-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <DateInput className="qcrt-input" value={startDate} onChange={setStartDate} />
             </div>
           </div>
           <div>
             <label className="qcrt-label">End Date</label>
             <div className="qcrt-input-wrap">
               <CalendarDays className="qcrt-input-icon" size={16} />
-              <input type="date" className="qcrt-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <DateInput className="qcrt-input" value={endDate} onChange={setEndDate} />
             </div>
           </div>
           <div className="qcrt-search-cell">

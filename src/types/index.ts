@@ -99,7 +99,7 @@ export interface Property {
   };
 
   // Work Log (tiempos de inicio y fin de trabajo) — usado por HousesView.tsx,
-  // PropertyDetailModal.tsx y PipelineBoardView.tsx, antes redeclarado por separado en
+  // PipelineBoardView.tsx y otras vistas, antes redeclarado por separado en
   // cada uno como extensión local del tipo.
   employeeStartedBy?: string | null;
   employeeStartedAt?: string | null;
@@ -118,6 +118,18 @@ export interface Property {
   //      trabajos van con Taxes $0.00). Sin el campo = sí paga impuesto.
   issues?: string;
   taxExempt?: boolean;
+
+  // ⭐ Campos que guarda el formulario de casas (HousesView), antes declarados
+  //    solo ahí como extensión local del tipo:
+  //    · fotos marcadas para NO ir al PDF / WhatsApp (URLs);
+  //    · fechas de emisión y vencimiento de la factura.
+  beforePhotosExcluded?: string[];
+  afterPhotosExcluded?: string[];
+  dateOfIssue?: string;
+  dueDate?: string;
+  //    · áreas del Quality Check marcadas para esta casa (ids de settings_places;
+  //      sin marcar = todas).
+  qcPlaces?: string[];
 }
 
 // ==========================================
@@ -147,7 +159,7 @@ export interface Customer {
   id: string; 
   /**
    * ⭐ Id LEGACY de AppSheet, presente solo en documentos migrados. NO se
-   *    escribe a Firestore: lo agrega customersService.getAll() en memoria
+   *    escribe a Firestore: lo agrega mapCustomerDoc() en memoria
    *    porque muchas casas guardan ese valor en su campo `client` y es la
    *    unica forma de resolver el nombre del cliente en esos registros.
    */

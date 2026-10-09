@@ -1,5 +1,5 @@
 // src/services/customersService.ts
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Customer } from '../types/index';
 
@@ -20,29 +20,9 @@ const stripId = <T extends { id?: string }>(data: T): Omit<T, 'id'> => {
 };
 
 export const customersService = {
-  async getAll(): Promise<Customer[]> {
-    const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-    // ⭐ FIX: `id: doc.id` va DESPUÉS del spread para que el ID real del
-    //    documento SIEMPRE gane sobre cualquier campo `id` contaminado
-    //    que exista dentro del documento.
-    //
-    // ⭐ Pero ese `id` contaminado es el id LEGACY de AppSheet, y muchas casas
-    //    lo guardan en su campo `client`. Al pisarlo se perdia la unica clave
-    //    que permitia resolver el cliente, y las vistas mostraban el hex crudo
-    //    ("4ea3f7ae") en vez del nombre. Ahora se conserva aparte como
-    //    `legacyId`: el id real sigue mandando y ademas se puede resolver por
-    //    el viejo. No se escribe nunca a Firestore (stripId lo elimina).
-    return querySnapshot.docs.map(d => {
-      const data = d.data() as Record<string, unknown>;
-      const legacyId = typeof data.id === 'string' ? data.id : undefined;
-      return {
-        ...data,
-        id: d.id,
-        ...(legacyId && legacyId !== d.id ? { legacyId } : {}),
-      } as Customer;
-    });
-  },
-
+  // ⭐ La lista de clientes se lee del store compartido
+  //    (src/shared/data/liveCollections.ts, con mapCustomerDoc). Aquí solo
+  //    quedan las escrituras.
   async create(customer: Omit<Customer, 'id'>): Promise<string> {
     // Defensa extra por si llega un objeto con `id` a pesar del tipo
     const docRef = await addDoc(collection(db, COLLECTION_NAME), stripId(customer as Customer));

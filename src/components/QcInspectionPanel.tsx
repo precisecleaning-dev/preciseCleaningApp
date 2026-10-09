@@ -10,6 +10,7 @@ import type { Property } from '../types/index';
 import WhatsAppIcon from './WhatsAppIcon';
 import type { QcDashRow, QcPlace, QcTask } from '../utils/qcDashboard';
 import { RESULT_LABEL } from '../utils/qcDashboard';
+import { formatDate, formatDateTime } from '../utils/dateFormat';
 import './QcInspectionPanel.css';
 
 interface CleanerNote { key: string; author: string; at: string; text: string }
@@ -33,8 +34,7 @@ interface QcInspectionPanelProps {
   onPrint: () => void;
 }
 
-const fmtWhen = (iso: string) =>
-  iso ? new Date(iso).toLocaleString('en-US', { month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true }) : '';
+const fmtWhen = (iso: string) => formatDateTime(iso);
 
 export default function QcInspectionPanel({
   row, client, type, team, places, tasks, officeNote, cleanerNotes, busy,
@@ -129,7 +129,7 @@ export default function QcInspectionPanel({
 
           <dl className="qip-facts">
             <div><dt>Inspector</dt><dd>{row.inspector || '—'}</dd></div>
-            <div><dt>Inspection date</dt><dd>{row.rec?.date || '—'}</dd></div>
+            <div><dt>Inspection date</dt><dd>{formatDate(row.rec?.date) || '—'}</dd></div>
           </dl>
 
           <section className="qip-section">

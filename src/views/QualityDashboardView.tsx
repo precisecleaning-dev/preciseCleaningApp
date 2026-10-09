@@ -13,11 +13,10 @@
 //    Las reglas viven en src/utils/qcDashboard.ts.
 // ============================================================================
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { ChevronRight, Filter, Menu, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
-import { db } from '../config/firebase';
-import type { Customer, Property, Role, Status, SystemUser, Team } from '../types/index';
-import { mapCustomerDoc } from '../utils/customerDocs';
+import type { Property, Role } from '../types/index';
+import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
+import { getCompanySettings } from '../services/companyService';
 import { getRelationName } from '../utils/relations';
 import { formatDate } from '../utils/dateFormat';
 import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
@@ -26,7 +25,7 @@ import { groupByDate } from '../utils/dateGrouping';
 import { useRecallHouses } from '../utils/jobRecall';
 import {
   dashboardSummary, failedAreas, followUp, latestByHouse, recordScore, resultOf, RESULT_LABEL,
-  type QcDashRow, type QcPlace, type QcRecordLite, type QcResult, type QcTask,
+  type QcDashRow, type QcPlace, type QcResult, type QcTask,
 } from '../utils/qcDashboard';
 import { exportQCReportPDF, type QCPdfBranding } from '../utils/qcReportPdf';
 import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
@@ -36,6 +35,7 @@ import KpiGrid from '../components/KpiGrid';
 import QcInspectionPanel from '../components/QcInspectionPanel';
 import ShareReportSheet from '../components/ShareReportSheet';
 import WhatsAppIcon from '../components/WhatsAppIcon';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './QualityDashboardView.css';
 
 type Tab = 'todo' | 'reclean' | 'passed' | 'all';
@@ -47,7 +47,6 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 const RESULT_TONE: Record<QcResult, string> = { passed: 'good', reclean: 'bad', todo: 'warn' };
 
-interface CatalogItem { id: string; name: string }
 
 interface Props {
   onOpenMenu: () => void;
@@ -65,20 +64,21 @@ const norm = (s: unknown) => String(s || '').toLowerCase().trim();
 export default function QualityDashboardView({
   onOpenMenu, properties, activeRole, isSuperAdmin = false, onInspect, onOpenHouseDetail,
 }: Props) {
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [places, setPlaces] = useState<QcPlace[]>([]);
-  const [tasks, setTasks] = useState<QcTask[]>([]);
+  // ⭐ Datos del store compartido (un listener por colección para toda la app).
+  const statuses = useLiveData('statuses');
+  const teams = useLiveData('teams');
+  const customers = useLiveData('customers');
+  const places = useLiveData('places') as QcPlace[];
+  const tasks = useLiveData('tasks') as QcTask[];
   // Tipo de servicio: catálogo de productos con respaldo en settings_services
   //    (misma resolución que el Overview).
-  const [products, setProducts] = useState<CatalogItem[]>([]);
-  const [svcCatalog, setSvcCatalog] = useState<CatalogItem[]>([]);
+  const products = useLiveData('products');
+  const svcCatalog = useLiveData('services');
   const services = useMemo(() => [...products, ...svcCatalog], [products, svcCatalog]);
-  const [employees, setEmployees] = useState<SystemUser[]>([]);
-  const [records, setRecords] = useState<QcRecordLite[]>([]);
+  const employees = useLiveData('users');
+  const { data: records, loaded: recordsLoaded } = useLiveCollection('qualityChecks');
+  const loading = !recordsLoaded;
   const [branding, setBranding] = useState<QCPdfBranding>({ name: 'Precise Cleaning' });
-  const [loading, setLoading] = useState(true);
 
   const PERIOD_KEY = 'pc.qcdash.period';
   const [period, setPeriodState] = useState<PeriodState>(() => loadPeriod(PERIOD_KEY, 'week'));
@@ -108,28 +108,13 @@ export default function QualityDashboardView({
     || !!activeRole?.permissions?.find((p) => p.module === 'Quality Check')?.canEdit;
 
   useEffect(() => {
-    const subs = [
-      onSnapshot(collection(db, 'quality_checks'), (snap) => {
-        setRecords(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as QcRecordLite));
-        setLoading(false);
-      }, (err) => { console.error('Error quality_checks:', err); setLoading(false); }),
-      onSnapshot(collection(db, 'settings_statuses'), (snap) => setStatuses(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Status))),
-      onSnapshot(collection(db, 'settings_teams'), (snap) => setTeams(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Team))),
-      onSnapshot(collection(db, 'customers'), (snap) => setCustomers(snap.docs.map(mapCustomerDoc))),
-      onSnapshot(collection(db, 'settings_places'), (snap) => setPlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as QcPlace))),
-      onSnapshot(collection(db, 'settings_tasks'), (snap) => setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as QcTask))),
-      onSnapshot(collection(db, 'settings_products'), (snap) => setProducts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CatalogItem))),
-      onSnapshot(collection(db, 'settings_services'), (snap) => setSvcCatalog(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CatalogItem))),
-      onSnapshot(collection(db, 'system_users'), (snap) => setEmployees(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SystemUser))),
-    ];
-    getDoc(doc(db, 'settings_company', 'main'))
-      .then((s) => {
-        if (!s.exists()) return;
-        const d = s.data();
-        setBranding({ name: d.name || 'Precise Cleaning', address: d.address || '', logo: d.logo || '', email: d.email || '' });
+    let alive = true;
+    getCompanySettings()
+      .then((c) => {
+        if (alive) setBranding({ name: c.name || 'Precise Cleaning', address: c.address || '', logo: c.logo || '', email: c.email || '' });
       })
       .catch(() => { /* branding por defecto */ });
-    return () => subs.forEach((u) => u());
+    return () => { alive = false; };
   }, []);
 
   const recallHouses = useRecallHouses(statuses);
@@ -369,6 +354,7 @@ export default function QualityDashboardView({
           />
         </label>
       </header>
+      <HistoryWindowNotice />
 
       <PeriodBar
         period={period}

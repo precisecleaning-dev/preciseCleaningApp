@@ -14,9 +14,9 @@
 // La fórmula NO cambió: Yes / (Yes + No) sobre las tareas de las áreas que
 // tienen datos. Las tareas sin responder no cuentan ni a favor ni en contra.
 
-export interface QCScoreTask { id: string; placeId: string }
+interface QCScoreTask { id: string; placeId: string }
 
-export interface QCScoreResult {
+interface QCScoreResult {
   /** Tareas marcadas "Yes". */
   yesCount: number;
   /** Tareas marcadas "No". */

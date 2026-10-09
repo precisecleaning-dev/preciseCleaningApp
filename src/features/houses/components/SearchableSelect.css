@@ -1,0 +1,104 @@
+/* Extraído de HousesView.css */
+/* --- SearchableSelect (dropdown con búsqueda por texto) --- */
+.hv-searchsel-wrap {
+  position: relative;
+  width: 100%;
+  outline: none;
+}
+.hv-searchsel-trigger {
+  background-color: #ffffff;
+  padding: 0 14px 0 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  height: 42px;
+  position: relative;
+}
+.hv-searchsel-icon {
+  position: absolute;
+  left: 14px;
+  color: #6b7280;
+}
+.hv-searchsel-input {
+  border: none;
+  outline: none;
+  width: 100%;
+  height: 100%;
+  font-size: 0.95rem;
+  color: #111827;
+  background-color: transparent;
+}
+.hv-select-chevron {
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.hv-select-chevron.open {
+  transform: rotate(180deg);
+}
+.hv-select-chevron.clickable {
+  cursor: pointer;
+}
+.hv-searchsel-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.hv-searchsel-empty {
+  padding: 12px 14px;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+.hv-searchsel-option {
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f9fafb;
+  font-size: 0.95rem;
+  color: #111827;
+  font-weight: 500;
+}
+.hv-searchsel-option:hover {
+  background-color: #f1f5f9;
+}
+/* ⭐ Opcion y boton para DEJAR EL CAMPO VACIO (allowClear). La regla :hover va
+   despues para que gane al pasar el mouse sobre la opcion de limpiar. */
+.hv-searchsel-option.clear {
+  color: #64748b;
+  font-style: italic;
+  font-weight: 600;
+}
+.hv-searchsel-option.clear:hover {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+.hv-searchsel-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.hv-searchsel-clear:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}

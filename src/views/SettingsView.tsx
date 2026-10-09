@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { Dispatch, SetStateAction, CSSProperties } from 'react';
 import {
   Tags, Users, UserCheck, Flag, Activity, Percent,
   MapPin, Wrench, CreditCard, ClipboardList, Package, Building, Plus,
   Edit2, Trash2, X, Contact, Menu
 } from 'lucide-react';
-import type { SettingOption, CategoryExpense, Team, Responsable, Priority, Status, Tax, Place, Service, PaymentMethod, Task, Product, Business, SystemUser } from '../types/index';
+import type { SettingOption, Tax } from '../types/index';
 
 import { settingsService } from '../services/settingsService';
 import { db } from '../config/firebase';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import CustomSelect from '../components/CustomSelect';
 import './SettingsView.css';
 
@@ -44,6 +45,29 @@ const collectionMap: Record<string, string> = {
   business: 'settings_businesses'
 };
 
+// Sin documento de impuesto todavía: el primer guardado lo crea.
+const NO_TAX: Tax = { id: 'tax-1', percentage: 0 };
+
+// ⭐ Ítem de CUALQUIER catálogo de Settings (o un usuario en "Team Catalog"):
+//    la vista es un editor genérico y cada catálogo trae solo algunos de
+//    estos campos. Los números pueden venir como texto desde Firestore.
+interface SettingItem {
+  id: string;
+  name?: string;
+  order?: number | string;
+  business?: string;
+  color?: string;
+  percentage?: number;
+  estimatedTime?: number | string;
+  placeId?: string;
+  price?: number | string;
+  teamId?: string;
+  showInDashboard?: boolean;
+  dashboardOrder?: number | string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
 
 interface SettingsViewProps {
   currentSettingView: string;
@@ -53,38 +77,62 @@ interface SettingsViewProps {
 
 export default function SettingsView({ currentSettingView, setCurrentSettingView, onOpenMenu }: SettingsViewProps) {
   
-  const [categories, setCategories] = useState<CategoryExpense[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [responsables, setResponsables] = useState<Responsable[]>([]);
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [taxValue, setTaxValue] = useState<Tax>({ id: 'tax-1', percentage: 0 });
-  const [products, setProducts] = useState<Product[]>([]);
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [places, setPlaces] = useState<Place[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  
-  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
+  // ⭐ Catálogos del store compartido (un listener por colección para toda la
+  //    app). Antes: 12 `getAll` + `system_users` completos en cada visita, y
+  //    cada lista local se parchaba a mano después de guardar o borrar. Ahora
+  //    el listener refleja la escritura al instante (y la revierte si el
+  //    servidor la rechaza).
+  const live = {
+    categories: useLiveCollection('categories'),
+    teams: useLiveCollection('teams'),
+    responsables: useLiveCollection('responsables'),
+    priorities: useLiveCollection('priorities'),
+    statuses: useLiveCollection('statuses'),
+    services: useLiveCollection('services'),
+    paymentMethods: useLiveCollection('paymentMethods'),
+    taxes: useLiveCollection('taxes'),
+    products: useLiveCollection('products'),
+    businesses: useLiveCollection('businesses'),
+    places: useLiveCollection('places'),
+    tasks: useLiveCollection('tasks'),
+    users: useLiveCollection('users'),
+  };
+  const categories = live.categories.data;
+  const teams = live.teams.data;
+  const responsables = live.responsables.data;
+  const priorities = live.priorities.data;
+  const statusesData = live.statuses.data;
+  const statuses = useMemo(
+    () => [...statusesData].sort((a, b) => Number(a.order) - Number(b.order)),
+    [statusesData],
+  );
+  const services = live.services.data;
+  const paymentMethods = live.paymentMethods.data;
+  const taxValue = live.taxes.data[0] || NO_TAX;
+  const products = live.products.data;
+  const businesses = live.businesses.data;
+  const places = live.places.data;
+  const tasks = live.tasks.data;
+  const systemUsers = live.users.data;
+  const isLoading = !Object.values(live).every((c) => c.loaded);
+
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('All');
-  
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<SettingItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({ 
-    order: '', name: '', business: '', color: '#3b82f6', percentage: '' as string, estimatedTime: '', placeId: '', price: '',
+    order: '' as number | string, name: '', business: '', color: '#3b82f6', percentage: '' as string,
+    estimatedTime: '' as number | string, placeId: '', price: '' as number | string,
     placeTasks: [] as {id: string, name: string}[],
     teamId: '',
     showInDashboard: false, 
-    dashboardOrder: '' 
+    dashboardOrder: '' as number | string
   });
   
   const [newTaskInput, setNewTaskInput] = useState(''); 
@@ -92,57 +140,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
 
   const activeSettingOption = settingsOptions.find(opt => opt.id === currentSettingView);
 
-  useEffect(() => {
-    const fetchAllSettings = async () => {
-      setIsLoading(true);
-      try {
-        const [
-          catData, teamData, respData, prioData, statData, servData, 
-          payData, prodData, busData, placeData, taskData, taxData
-        ] = await Promise.all([
-          settingsService.getAll(collectionMap.category),
-          settingsService.getAll(collectionMap.team),
-          settingsService.getAll(collectionMap.responsable),
-          settingsService.getAll(collectionMap.priority),
-          settingsService.getAll(collectionMap.status),
-          settingsService.getAll(collectionMap.service),
-          settingsService.getAll(collectionMap.payment),
-          settingsService.getAll(collectionMap.product),
-          settingsService.getAll(collectionMap.business),
-          settingsService.getAll(collectionMap.place),
-          settingsService.getAll(collectionMap.task),
-          settingsService.getAll(collectionMap.tax)
-        ]);
-
-        if (catData.length) setCategories(catData as CategoryExpense[]);
-        if (teamData.length) setTeams(teamData as Team[]);
-        if (respData.length) setResponsables(respData as Responsable[]);
-        if (prioData.length) setPriorities(prioData as Priority[]);
-        if (statData.length) setStatuses((statData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
-        if (servData.length) setServices(servData as Service[]);
-        if (payData.length) setPaymentMethods(payData as PaymentMethod[]);
-        if (prodData.length) setProducts(prodData as Product[]);
-        if (busData.length) setBusinesses(busData as Business[]);
-        if (placeData.length) setPlaces(placeData as Place[]);
-        if (taskData.length) setTasks(taskData as Task[]);
-        if (taxData.length) setTaxValue(taxData[0] as Tax);
-
-        const usersReq = await getDocs(collection(db, 'system_users')).catch(() => null);
-        if (usersReq) {
-          setSystemUsers(usersReq.docs.map(d => ({ id: d.id, ...d.data() } as SystemUser)));
-        }
-
-      } catch (error) {
-        console.error("Error fetching settings:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchAllSettings();
-  }, []);
-
-  const handleOpenForm = (item?: any) => {
+  const handleOpenForm = (item?: SettingItem) => {
     if (item) {
       setSelectedItem(item);
       setFormData({ 
@@ -183,12 +181,11 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
   };
 
   const handleQuickAddTask = async () => {
-    if (newTaskInput.trim() === '') return;
+    if (!selectedItem || newTaskInput.trim() === '') return;
     setIsSaving(true);
     try {
       const data = { placeId: selectedItem.id, name: newTaskInput };
-      const newId = await settingsService.create(collectionMap.task, data);
-      setTasks([...tasks, { id: newId, ...data }]);
+      await settingsService.create(collectionMap.task, data);
       setNewTaskInput('');
       setShowQuickAdd(false);
     } catch(err) {
@@ -200,10 +197,10 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
 
   const handleSave = async () => {
     if (currentSettingView === 'team_catalog') {
+      if (!selectedItem) return;
       setIsSaving(true);
       try {
         await updateDoc(doc(db, 'system_users', selectedItem.id), { teamId: formData.teamId });
-        setSystemUsers(systemUsers.map(u => u.id === selectedItem.id ? { ...u, teamId: formData.teamId } : u));
         handleCloseForm();
       } catch(err) {
         console.error(err);
@@ -223,7 +220,6 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
         } else {
           await settingsService.update(collectionMap.tax, taxValue.id, data);
         }
-        setTaxValue({ ...taxValue, percentage: data.percentage });
         handleCloseForm();
       } catch(err) { console.error(err); }
       finally { setIsSaving(false); }
@@ -237,7 +233,8 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     const colName = collectionMap[currentSettingView];
     
     try {
-      let dataToSave: any = { name: formData.name };
+      // Campos según el catálogo que se edita (estructura dinámica a propósito).
+      const dataToSave: Record<string, unknown> = { name: formData.name };
       if (['team','priority','status','service'].includes(currentSettingView)) dataToSave.business = formData.business;
       if (['team','responsable','priority','status'].includes(currentSettingView)) dataToSave.color = formData.color;
       if (currentSettingView === 'status') {
@@ -249,42 +246,21 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       if (currentSettingView === 'product') dataToSave.price = formData.price;
       if (currentSettingView === 'service') dataToSave.estimatedTime = formData.estimatedTime;
 
-      let finalId = selectedItem?.id;
+      let finalId: string;
       if (selectedItem) {
+        finalId = selectedItem.id;
         await settingsService.update(colName, finalId, dataToSave);
       } else {
         finalId = await settingsService.create(colName, dataToSave);
       }
 
       if (currentSettingView === 'place') {
-        for (const pt of formData.placeTasks) {
-          if (pt.id.startsWith('temp-')) {
-            const newTaskId = await settingsService.create(collectionMap.task, { placeId: finalId, name: pt.name });
-            setTasks(prev => [...prev, { id: newTaskId, placeId: finalId, name: pt.name }]);
-          }
-        }
+        // ⭐ Las tareas nuevas del lugar se crean juntas en un solo batch.
+        const newTasks = formData.placeTasks
+          .filter(pt => pt.id.startsWith('temp-'))
+          .map(pt => ({ placeId: finalId, name: pt.name }));
+        await settingsService.createMany(collectionMap.task, newTasks);
       }
-
-      const updatedItem = { id: finalId, ...dataToSave };
-      const updateList = (list: any[], setList: any) => {
-        if (selectedItem) setList(list.map(i => i.id === finalId ? { ...i, ...dataToSave } : i));
-        else setList([...list, updatedItem]);
-      };
-
-      if (currentSettingView === 'category') updateList(categories, setCategories);
-      if (currentSettingView === 'place') updateList(places, setPlaces);
-      if (currentSettingView === 'task') updateList(tasks, setTasks);
-      if (currentSettingView === 'team') updateList(teams, setTeams);
-      if (currentSettingView === 'status') {
-         const newStatuses = selectedItem ? statuses.map(s => s.id === finalId ? { ...s, ...dataToSave } : s) : [...statuses, updatedItem];
-         setStatuses(newStatuses.sort((a:any, b:any) => Number(a.order) - Number(b.order)));
-      }
-      if (currentSettingView === 'product') updateList(products, setProducts);
-      if (currentSettingView === 'business') updateList(businesses, setBusinesses);
-      if (currentSettingView === 'responsable') updateList(responsables, setResponsables);
-      if (currentSettingView === 'priority') updateList(priorities, setPriorities);
-      if (currentSettingView === 'service') updateList(services, setServices);
-      if (currentSettingView === 'payment') updateList(paymentMethods, setPaymentMethods);
 
       handleCloseForm();
     } catch (error) {
@@ -295,7 +271,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     }
   };
 
-  const handleOpenDetail = (item: any) => {
+  const handleOpenDetail = (item: SettingItem) => {
     setSelectedItem(item);
     setNewTaskInput('');
     setShowQuickAdd(false);
@@ -312,7 +288,6 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       setIsSaving(true);
       try {
         await settingsService.delete(collectionMap.task, taskId);
-        setTasks(tasks.filter(t => t.id !== taskId));
       } catch(err) { console.error(err); }
       finally { setIsSaving(false); }
     }
@@ -325,21 +300,6 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
 
     try {
       await settingsService.delete(colName, itemToDelete);
-
-      if (currentSettingView === 'category') setCategories(categories.filter(c => c.id !== itemToDelete));
-      else if (currentSettingView === 'place') {
-        setPlaces(places.filter(p => p.id !== itemToDelete));
-        setTasks(tasks.filter(t => t.placeId !== itemToDelete)); 
-      }
-      else if (currentSettingView === 'task') setTasks(tasks.filter(t => t.id !== itemToDelete));
-      else if (currentSettingView === 'team') setTeams(teams.filter(t => t.id !== itemToDelete));
-      else if (currentSettingView === 'status') setStatuses(statuses.filter(s => s.id !== itemToDelete));
-      else if (currentSettingView === 'product') setProducts(products.filter(p => p.id !== itemToDelete));
-      else if (currentSettingView === 'business') setBusinesses(businesses.filter(b => b.id !== itemToDelete));
-      else if (currentSettingView === 'responsable') setResponsables(responsables.filter(r => r.id !== itemToDelete));
-      else if (currentSettingView === 'priority') setPriorities(priorities.filter(p => p.id !== itemToDelete));
-      else if (currentSettingView === 'service') setServices(services.filter(s => s.id !== itemToDelete));
-      else if (currentSettingView === 'payment') setPaymentMethods(paymentMethods.filter(p => p.id !== itemToDelete));
       
       setItemToDelete(null);
       setIsDeleteModalOpen(false);
@@ -545,7 +505,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                       </tr>
                     ))}
 
-                    {currentSettingView === 'status' && statuses.map((status: any) => (
+                    {currentSettingView === 'status' && statuses.map((status) => (
                       <tr key={status.id} onClick={() => handleOpenDetail(status)} className="stv-row">
                         <td data-label="Order" className="stv-td">{status.order}</td>
                         <td data-label="Name" className="stv-td strong">{status.name}</td>
@@ -883,7 +843,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                       <dt className="stv-detail-label">Color</dt>
                       <dd className="stv-detail-value-row">
                         <span className="stv-color-dot sz-24" style={{ '--dot-color': selectedItem.color } as CSSProperties}></span>
-                        <span className="stv-detail-value mono">{selectedItem.color.toUpperCase()}</span>
+                        <span className="stv-detail-value mono">{selectedItem.color?.toUpperCase()}</span>
                       </dd>
                     </div>
                   )}

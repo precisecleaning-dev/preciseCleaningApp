@@ -1,0 +1,81 @@
+/* Extraído de HousesView.css */
+/* --- StatusPillSelector --- */
+.hv-statuspill-outer {
+  display: inline-block;
+}
+.hv-statuspill-outer.block {
+  display: block;
+  width: 100%;
+}
+.hv-statuspill {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  transition: all 0.2s;
+  cursor: pointer;
+  background-color: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  color: var(--pill-text, #1e293b);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  display: inline-flex;
+  padding: 7px 14px;
+  border-radius: 999px;
+  width: auto;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.hv-statuspill:hover:not(.disabled) {
+  filter: brightness(0.97);
+}
+.hv-statuspill.disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.hv-statuspill.full {
+  display: flex;
+  padding: 13px 16px;
+  border-radius: 12px;
+  width: 100%;
+}
+.hv-statuspill.large {
+  display: flex;
+  padding: 18px 20px;
+  border-radius: 14px;
+  width: 100%;
+  font-size: 1.1rem;
+  font-weight: 800;
+  gap: 10px;
+  border-width: 2px;
+  box-shadow: 0 2px 10px var(--pill-shadow);
+}
+.hv-statuspill-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hv-statuspill-label-wrap.large {
+  gap: 12px;
+}
+.hv-statuspill-dot {
+  background-color: var(--dot-color);
+  border-radius: 50%;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  box-shadow: none;
+}
+.hv-statuspill-dot.large {
+  width: 14px;
+  height: 14px;
+  box-shadow: 0 0 0 4px var(--dot-ring);
+}
+.hv-statuspill-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hv-statuspill-chevron {
+  flex-shrink: 0;
+}

@@ -59,7 +59,7 @@ export function resolveCustomerName(
  *  cuando el cliente fue borrado y no hay nombre que resolver). Un nombre
  *  como "Linnemann" o "CMA" NO se marca; un hex tipo "5b836a0c" o un id de
  *  Firestore de 20 caracteres, sí. */
-export function looksLikeOrphanId(value: string): boolean {
+function looksLikeOrphanId(value: string): boolean {
   const v = String(value || '').trim();
   if (!v || v.includes(' ')) return false;
   if (!/^[0-9a-zA-Z_-]+$/.test(v)) return false;

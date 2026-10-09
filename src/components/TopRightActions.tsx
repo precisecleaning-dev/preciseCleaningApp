@@ -8,9 +8,8 @@
 // ============================================================================
 import { useState } from 'react';
 import { Bell, Eye, LogOut } from 'lucide-react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
 import NotificationsPanel from './NotificationsPanel';
+import { logout } from '../services/sessionService';
 import './TopRightActions.css';
 
 interface TopRightActionsProps {
@@ -31,8 +30,7 @@ export default function TopRightActions({
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
-      await signOut(auth);
-      window.location.reload();
+      await logout(); // cierra sesión, borra la caché local y recarga
     }
   };
 

@@ -1,5 +1,7 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { invalidate } from '../shared/utils/memoryCache';
+import { RECALL_HISTORY_CACHE } from '../utils/jobRecall';
 
 export interface StatusHistoryEntry {
   id?: string;
@@ -7,9 +9,13 @@ export interface StatusHistoryEntry {
   fromStatusId?: string | null;
   fromStatusName?: string | null;
   toStatusId: string;
-  toStatusName: string;
+  toStatusName: string | null;
   changedBy?: string;
   changedAt: string; // ISO
+  /** Desde dónde se hizo el cambio (p. ej. 'quality_check'). */
+  source?: string;
+  /** Motivo del cambio, si lo hay (p. ej. 'No pasó Quality Check'). */
+  reason?: string;
 }
 
 const COL = 'status_history';
@@ -22,7 +28,8 @@ export const statusHistoryService = {
       return null;
     }
     try {
-      const ref = await addDoc(collection(db, COL), data as any);
+      const ref = await addDoc(collection(db, COL), { ...data });
+      invalidate(RECALL_HISTORY_CACHE); // la marca "Recall" se recalcula en la próxima visita
       return ref.id;
     } catch (e) {
       console.error('Error logging status history:', e);

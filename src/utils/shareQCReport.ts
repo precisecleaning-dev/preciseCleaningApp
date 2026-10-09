@@ -28,8 +28,9 @@
 // ============================================================================
 
 import { generatePDFBlob } from './pdfGenerator';
+import { formatDate, formatDateForFile } from './dateFormat';
 
-export interface QCShareSummary {
+interface QCShareSummary {
   clientName: string;
   address?: string;
   date?: string;
@@ -46,7 +47,7 @@ export interface QCShareSummary {
 const safeFileName = (summary: QCShareSummary): string => {
   const base = [
     'QC',
-    summary.date || new Date().toISOString().slice(0, 10),
+    formatDateForFile(summary.date || new Date()),
     summary.clientName,
   ]
     .filter(Boolean)
@@ -64,11 +65,11 @@ const safeFileName = (summary: QCShareSummary): string => {
  * quien lo recibe ve de qué se trata sin tener que abrir el archivo, que en
  * WhatsApp es un toque extra y una descarga.
  */
-export const buildQCMessage = (summary: QCShareSummary): string => {
+const buildQCMessage = (summary: QCShareSummary): string => {
   const lines: string[] = ['*Quality Check*'];
   if (summary.clientName) lines.push(`Cliente: ${summary.clientName}`);
   if (summary.address) lines.push(`Dirección: ${summary.address}`);
-  if (summary.date) lines.push(`Fecha: ${summary.date}`);
+  if (summary.date) lines.push(`Fecha: ${formatDate(summary.date)}`);
   if (summary.teamName) lines.push(`Equipo: ${summary.teamName}`);
   if (summary.inspectorName) lines.push(`Inspector: ${summary.inspectorName}`);
 
@@ -83,7 +84,7 @@ export const buildQCMessage = (summary: QCShareSummary): string => {
 /** Deja solo dígitos: WhatsApp exige el número con código de país y sin +,
  *  espacios ni guiones. Un número con formato hace que el enlace falle sin
  *  ningún mensaje de error, así que se limpia siempre. */
-export const normalizePhone = (phone?: string | null): string =>
+const normalizePhone = (phone?: string | null): string =>
   String(phone || '').replace(/\D/g, '');
 
 /** ¿El dispositivo puede compartir archivos de forma nativa? */
@@ -97,67 +98,11 @@ export const canShareFiles = (): boolean => {
   }
 };
 
-export type ShareResult =
+type ShareResult =
   | { status: 'shared' }        // se abrió la hoja del sistema con el PDF
   | { status: 'fallback' }      // se descargó el PDF y se abrió WhatsApp con texto
   | { status: 'cancelled' };    // el usuario cerró la hoja de compartir
 
-/**
- * Envía el reporte por WhatsApp por el mejor camino disponible.
- *
- * @param html      HTML completo del reporte (el que ya produce exportQCReportPDF
- *                  con `returnHtml: true`). No se duplica la maquetación.
- * @param summary   Datos para el mensaje y el nombre del archivo.
- * @param phone     Opcional. Con número, WhatsApp abre ese chat directamente;
- *                  sin número, abre el selector de contactos.
- */
-export const shareQCViaWhatsApp = async (
-  html: string,
-  summary: QCShareSummary,
-  phone?: string | null,
-): Promise<ShareResult> => {
-  const fileName = safeFileName(summary);
-  const message = buildQCMessage(summary);
-
-  // --- Camino 1: compartir nativo con el PDF adjunto ---
-  if (canShareFiles()) {
-    const blob = await generatePDFBlob(html, { filename: fileName, format: 'a4' });
-    const file = new File([blob], fileName, { type: 'application/pdf' });
-    try {
-      await navigator.share({ files: [file], text: message, title: 'Quality Check' });
-      return { status: 'shared' };
-    } catch (err) {
-      // AbortError = el usuario cerró la hoja a propósito. NO es un fallo y no
-      // debe disparar el respaldo: abrirle WhatsApp a alguien que acaba de
-      // cancelar es exactamente lo contrario de lo que pidió.
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        return { status: 'cancelled' };
-      }
-      // Cualquier otro error (permiso, tipo no soportado) sí cae al respaldo.
-      console.warn('Compartir nativo falló, usando respaldo:', err);
-    }
-  }
-
-  // --- Camino 2: descargar el PDF + abrir WhatsApp con el texto ---
-  const blob = await generatePDFBlob(html, { filename: fileName, format: 'a4' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-
-  const digits = normalizePhone(phone);
-  const waUrl = digits
-    ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/?text=${encodeURIComponent(message)}`;
-
-  // Se abre en pestaña nueva para no perder la inspección que está en pantalla.
-  window.open(waUrl, '_blank', 'noopener,noreferrer');
-  return { status: 'fallback' };
-};
 
 // ============================================================================
 // ⭐ FLUJO EN DOS PASOS — el arreglo del "no me deja enviar" en iPhone

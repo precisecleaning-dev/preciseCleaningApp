@@ -1,0 +1,40 @@
+/* Aviso de la ventana de 12 meses (HistoryWindowNotice.tsx) */
+.hwn-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background-color: #f5f9ff;
+  color: #334155;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.hwn-icon {
+  flex-shrink: 0;
+  color: #2563eb;
+}
+.hwn-text {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.hwn-btn {
+  min-height: 0;
+  padding: 6px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.hwn-btn:hover {
+  background-color: #eff6ff;
+  border-color: #93c5fd;
+}

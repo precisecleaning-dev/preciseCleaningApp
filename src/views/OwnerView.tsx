@@ -19,11 +19,13 @@ import TaskChecklist from '../components/TaskChecklist';
 import {
   fullName, greeting, headerDate, moneyShort, useHomeData,
 } from '../utils/homeData';
-import { isTaskOverdue, managerTasksService, type ManagerTask } from '../services/managerTasksService';
+import { dueHasTime, isTaskOverdue, managerTasksService, type ManagerTask } from '../services/managerTasksService';
 import { fmtClock, openEntryOf, weekHours, weekStart } from '../services/timeClockService';
 import { logActivity } from '../services/activityLogService';
 import { toDate } from '../utils/dateGrouping';
 import { pct } from '../utils/jobFinancials';
+import { todayIso } from '../utils/dateFormat';
+import DateInput from '../shared/components/DateInput';
 import './HomeViews.css';
 
 interface Props {
@@ -55,7 +57,10 @@ export default function OwnerView({
   const [taskFilter, setTaskFilter] = useState('all');
   const [newTitle, setNewTitle] = useState('');
   const [newAssignee, setNewAssignee] = useState('');
-  const [newDue, setNewDue] = useState('');
+  // Vencimiento: fecha (MM/DD/AAAA en pantalla) + hora opcional. Sin hora se
+  // guarda a las 11:59 p. m., que la lista muestra como "sin hora".
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newDueTime, setNewDueTime] = useState('');
   const [saving, setSaving] = useState(false);
 
   const me = currentUser;
@@ -127,6 +132,8 @@ export default function OwnerView({
     const title = newTitle.trim();
     const target = d.managers.find((u) => u.id === assignee);
     if (!title || !target || !me) return;
+    // Solo hora, sin fecha → vence hoy a esa hora. Sin hora → al final del día.
+    const dueDay = newDueDate || (newDueTime ? todayIso() : '');
     setSaving(true);
     try {
       await managerTasksService.create({
@@ -135,11 +142,12 @@ export default function OwnerView({
         assigneeName: firstName(target),
         createdById: me.id,
         createdByName: me.firstName || fullName(me),
-        dueAt: newDue ? new Date(newDue).toISOString() : '',
+        dueAt: dueDay ? new Date(`${dueDay}T${newDueTime || '23:59'}`).toISOString() : '',
       });
       void logActivity({ action: 'create', module: 'Manager Tasks', user: me, targetLabel: title, detail: `Asignada a ${fullName(target)}` });
       setNewTitle('');
-      setNewDue('');
+      setNewDueDate('');
+      setNewDueTime('');
     } catch (err) {
       console.error('Error creando la tarea:', err);
       alert('No se pudo crear la tarea.');
@@ -234,7 +242,7 @@ export default function OwnerView({
       if (due.toDateString() !== now.toDateString()) return;
       items.push({
         key: `t-${t.id}`, minutes: due.getHours() * 60 + due.getMinutes(),
-        time: due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/i, ''),
+        time: dueHasTime(due) ? due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/i, '') : '',
         title: t.title, sub: `${t.assigneeName} · task due`, tone: 'task',
       });
     });
@@ -330,7 +338,10 @@ export default function OwnerView({
               </label>
               <label className="hm-field">
                 <span className="hm-field-lbl">Due</span>
-                <input className="hm-input" type="datetime-local" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+                <span className="hm-due-row">
+                  <DateInput className="hm-input" value={newDueDate} onChange={setNewDueDate} aria-label="Due date" />
+                  <input className="hm-input hm-due-time" type="time" value={newDueTime} onChange={(e) => setNewDueTime(e.target.value)} aria-label="Due time" />
+                </span>
               </label>
               <button type="submit" className="hm-btn primary big" disabled={saving || !newTitle.trim()}>Assign</button>
             </form>

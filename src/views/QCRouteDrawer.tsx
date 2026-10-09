@@ -8,8 +8,9 @@ import type { SystemUser } from '../types/index';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { escapeHtml } from '../utils/escapeHtml';
-import { type LatLng, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { type LatLng, type Leaflet, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { geocodeAddressForced } from '../utils/geocodeForce';
+import { formatDate } from '../utils/dateFormat';
 import { useLiveRoute, liveDivIcon, shareRouteLink, type LiveUserPosition } from '../utils/liveRoute';
 import './QCRouteDrawer.css';
 
@@ -24,16 +25,15 @@ import './QCRouteDrawer.css';
 //  pantalla ancha con el botón del encabezado.
 //
 //  NO duplica el motor de ruteo: geocoding (Nominatim cacheado), GPS,
-//  Leaflet y OSRM vienen de src/utils/routing.ts — el mismo motor que usa
-//  QCRouteView.tsx. "Guardar en QC Route" escribe en la colección
-//  `qc_routes` con la misma forma de documento que usa QCRouteView (y
-//  actualiza el mismo documento en guardados posteriores), así la ruta
-//  armada aquí queda disponible también en esa vista.
+//  Leaflet y OSRM vienen de src/utils/routing.ts. "Guardar en QC Route"
+//  escribe en la colección `qc_routes` (y actualiza el mismo documento en
+//  guardados posteriores), así la ruta queda en la pestaña Rutas del hub
+//  (QCRoutesTableView). La vista vieja QCRouteView se borró en 10/2026.
 //
-//  Seguimiento GPS en vivo: vía utils/liveRoute.ts (compartido con
-//  QCRouteView). Al activar "Seguir con GPS" tu posición se publica en el
-//  documento de la ruta guardada y cualquier usuario que tenga esa ruta
-//  abierta (aquí o en QC Route) ve tu marcador moverse, y tú ves los suyos.
+//  Seguimiento GPS en vivo: vía utils/liveRoute.ts. Al activar "Seguir con
+//  GPS" tu posición se publica en el documento de la ruta guardada y
+//  cualquier usuario que tenga esa ruta abierta ve tu marcador moverse, y tú
+//  ves los suyos.
 // ============================================================================
 
 export interface RouteDrawerHouse {
@@ -64,10 +64,9 @@ interface Props {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// ⭐ Helpers locales espejo de los de QCRouteView.tsx (fmtMin / orden "más cercana
-//    primero"). utils/routing.ts podría ya exportar equivalentes (fmtMinutes /
-//    nearestNeighborOrder según code-notes.md) — si las firmas coinciden, unificar
-//    en una ronda posterior; se dejan locales para no adivinar firmas sin ver el archivo.
+// ⭐ Helpers locales: orden "más cercana primero" que además respeta paradas sin
+//    coordenadas y un origen opcional (la versión simple de utils/routing.ts no
+//    se usaba y se eliminó en la limpieza de 10/2026).
 const fmtMin = (m: number): string => {
   if (!m || m <= 0) return '0 min';
   const h = Math.floor(m / 60);
@@ -126,13 +125,13 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
   const [realDurationMin, setRealDurationMin] = useState<number | null>(null);
 
   const mapElRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<any>(null);   // instancia Leaflet (lib externa sin tipos en el proyecto)
-  const mapLayerRef = useRef<any>(null);      // capa de la ruta (marcadores numerados + polyline)
-  const liveLayerRef = useRef<any>(null);     // capa de posiciones en vivo (separada, no re-encuadra el mapa)
+  const mapInstanceRef = useRef<Leaflet>(null);   // instancia Leaflet (lib externa sin tipos en el proyecto)
+  const mapLayerRef = useRef<Leaflet>(null);      // capa de la ruta (marcadores numerados + polyline)
+  const liveLayerRef = useRef<Leaflet>(null);     // capa de posiciones en vivo (separada, no re-encuadra el mapa)
   const stopsRef = useRef<Stop[]>([]);
   const triedGeoRef = useRef(false);
 
-  // ⭐ Seguimiento GPS en vivo (compartido con QCRouteView vía utils/liveRoute.ts)
+  // ⭐ Seguimiento GPS en vivo (utils/liveRoute.ts)
   const { tracking, startTracking, stopTracking, myPos, others } = useLiveRoute(savedRouteId, currentUser);
   const othersCount = Object.keys(others).length;
 
@@ -286,7 +285,7 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
   // para NO comerse el número de la casa ("2500 Westcliff" queda intacto).
   const normAddr = (s: string): string =>
     s.toLowerCase()
-      .replace(/^\s*\d{1,3}[\).\-:]\s*/, '')
+      .replace(/^\s*\d{1,3}[).\-:]\s*/, '')
       .replace(/[.,#]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -319,13 +318,13 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
     setStops(prev => recomputeLegs(origin, orderNearestFirst(origin, prev), avgSpeed));
   };
 
-  // ---------- guardar en qc_routes (misma colección/forma que QCRouteView) ----------
+  // ---------- guardar en qc_routes ----------
   const saveToQcRoutes = async () => {
     if (stops.length === 0) { alert('No hay paradas para guardar.'); return; }
     setSavingRoute(true);
     try {
       const payload = {
-        name: routeName.trim() || `Ruta ${new Date().toLocaleDateString('es-MX')}`,
+        name: routeName.trim() || `Ruta ${formatDate(new Date())}`,
         origin: origin || null,
         avgSpeed,
         stops: stops.map(s => ({ ...s, arrived: false, arrivedAt: null })),
@@ -349,7 +348,7 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
   };
 
   // ---------- mapa (Leaflet) con marcadores numerados + ruta OSRM ----------
-  const renderMap = async (orig: LatLng | null, orderedStops: Stop[], geometry: any) => {
+  const renderMap = async (orig: LatLng | null, orderedStops: Stop[], geometry: unknown) => {
     try {
       const L = await ensureLeaflet();
       if (!mapElRef.current) return;
@@ -676,7 +675,7 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
           <input
             value={routeName}
             onChange={e => setRouteName(e.target.value)}
-            placeholder={`Ruta ${new Date().toLocaleDateString('es-MX')}`}
+            placeholder={`Ruta ${formatDate(new Date())}`}
             className="qcrd-input qcrd-footer-name"
           />
           <button

@@ -415,5 +415,5 @@ function finishedLabel(iso: string, today: Date): string {
   const days = Math.round((today.getTime() - startOfDay(f).getTime()) / 86400000);
   if (days <= 0) return f.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   if (days === 1) return 'yesterday';
-  return f.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return formatDate(f);
 }

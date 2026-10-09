@@ -1,0 +1,54 @@
+/* Campo de fecha MM/DD/AAAA (DateInput.tsx). El campo de texto conserva la
+   clase de cada vista; aquí solo se reserva lugar para el botón de calendario.
+   Se apilan con grid (sin `position`) para que el ícono absoluto que muchas
+   vistas ponen a la izquierda del campo siga pintándose ENCIMA del input. */
+.dti {
+  display: grid;
+  align-items: center;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+.dti > * {
+  grid-area: 1 / 1;
+}
+.dti .dti-text {
+  width: 100%;
+  padding-right: 38px;
+}
+/* Ícono visible del botón; el clic lo recibe el input nativo transparente que va encima. */
+.dti-pick {
+  z-index: 1;
+  justify-self: end;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #64748b;
+  pointer-events: none;
+  transition: color 0.15s ease;
+}
+.dti-native {
+  z-index: 2;
+  justify-self: end;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin: 0 6px 0 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.dti:hover .dti-pick {
+  color: #1d4ed8;
+}
+.dti.disabled .dti-native {
+  cursor: not-allowed;
+}
+.dti.disabled .dti-pick {
+  color: #cbd5e1;
+}

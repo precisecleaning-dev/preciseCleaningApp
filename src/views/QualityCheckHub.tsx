@@ -13,9 +13,10 @@ import './QualityCheckHub.css';
 //   - Rutas: tabla en tiempo real de las rutas guardadas, con vista "En vivo".
 //   - Reportes: por ahora vacía (placeholder); aquí se integrarán los reportes.
 //
-//  ⭐ Decisión de producto: la pestaña "Dashboard" (QCDashboardView) se retiró
-//     del hub a pedido del usuario. El componente QCDashboardView.tsx queda
-//     intacto en el proyecto por si se reincorpora dentro de "Reportes".
+//  ⭐ Decisión de producto: la pestaña "Dashboard" se retiró del hub a pedido
+//     del usuario; su reemplazo es la vista QC Dashboard del menú. El archivo
+//     viejo (QCDashboardView.tsx) se eliminó en la limpieza de 10/2026 — está
+//     en el historial de git si hiciera falta.
 //
 //  Deep-link: si la URL trae ?qcRoute=<id> (link de "Compartir ruta"), el hub
 //  abre directamente la pestaña Rutas, y QCRoutesTableView abre la vista en
@@ -71,7 +72,7 @@ export default function QualityCheckHub(props: Props) {
               su propia entrada en el menu lateral (Quality Check Reports), con
               tabla, filtros y envio por WhatsApp/email. Tener dos listados del
               mismo dato invitaba a editar en uno y consultar en el otro.
-              QCReportsView.tsx queda en el proyecto por si se reincorpora. */}
+              QCReportsView.tsx se eliminó en la limpieza de 10/2026 (historial de git). */}
         </div>
       </div>
 

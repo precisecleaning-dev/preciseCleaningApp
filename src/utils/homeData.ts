@@ -7,27 +7,25 @@
 //    El "Your day in 30 seconds" se arma con REGLAS sobre estos datos (igual
 //    que el resumen del Overview), no con un modelo de IA.
 import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import type { Customer, Property, Role, Status, SystemUser, Team } from '../types/index';
-import { displayClientName, mapCustomerDoc } from './customerDocs';
+import type { Property, SystemUser } from '../types/index';
+import { displayClientName } from './customerDocs';
+import { useLiveData } from '../shared/data/liveCollections';
 import { getRelationName } from './relations';
 import { toDate } from './dateGrouping';
 import { isRecallText } from './recallStatus';
 import { isQualityCheckStatus } from './qcStatus';
 import { useJobFinancials } from './jobFinancials';
-import { failedAreas, latestByHouse, type QcPlace, type QcRecordLite } from './qcDashboard';
+import { failedAreas, latestByHouse } from './qcDashboard';
 import { managerTasksService, type ManagerTask } from '../services/managerTasksService';
 import { timeClockService, type ClockEntry } from '../services/timeClockService';
 import { subscribeCompanySettings, getCachedCompanySettings } from '../services/companyService';
-
-interface CatalogItem { id: string; name: string }
+import { formatDate, formatTime } from './dateFormat';
 
 const norm = (s: unknown) => String(s || '').toLowerCase().trim();
 const DAY = 86400000;
 
 export const startOfDay = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-export const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 export const fullName = (u?: Pick<SystemUser, 'firstName' | 'lastName' | 'email'> | null) =>
   (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || String(u.email || '').split('@')[0] : '') || 'Unknown';
 
@@ -36,7 +34,7 @@ export const greeting = (d = new Date()) =>
   d.getHours() < 12 ? 'Good morning' : d.getHours() < 18 ? 'Good afternoon' : 'Good evening';
 
 /** "8:00" a partir de timeIn ("08:00", "8:00 AM", "14:30"). */
-export function timeLabel(timeIn: string): string {
+function timeLabel(timeIn: string): string {
   const m = String(timeIn || '').trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
   if (!m) return String(timeIn || '').trim();
   let h = Number(m[1]);
@@ -47,7 +45,7 @@ export function timeLabel(timeIn: string): string {
   return `${h12}:${m[2]}`;
 }
 /** Minutos desde medianoche (para ordenar). Sin hora → al final. */
-export function timeMinutes(timeIn: string): number {
+function timeMinutes(timeIn: string): number {
   const m = String(timeIn || '').trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
   if (!m) return 24 * 60;
   let h = Number(m[1]);
@@ -80,7 +78,7 @@ export interface HomeJob {
   state: TodayState;
 }
 
-export interface RecallJob {
+interface RecallJob {
   prop: Property;
   client: string;
   teamName: string;
@@ -92,7 +90,7 @@ export interface RecallJob {
   daysOpen: number;
 }
 
-export interface UnpaidJob {
+interface UnpaidJob {
   prop: Property;
   client: string;
   days: number;
@@ -100,15 +98,16 @@ export interface UnpaidJob {
 }
 
 export function useHomeData(properties: Property[]) {
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<CatalogItem[]>([]);
-  const [svcCatalog, setSvcCatalog] = useState<CatalogItem[]>([]);
-  const [places, setPlaces] = useState<QcPlace[]>([]);
-  const [users, setUsers] = useState<SystemUser[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [qcRecords, setQcRecords] = useState<QcRecordLite[]>([]);
+  // ⭐ Catálogos y QC desde el store compartido (un listener por colección).
+  const statuses = useLiveData('statuses');
+  const teams = useLiveData('teams');
+  const customers = useLiveData('customers');
+  const products = useLiveData('products');
+  const svcCatalog = useLiveData('services');
+  const places = useLiveData('places');
+  const users = useLiveData('users');
+  const roles = useLiveData('roles');
+  const qcRecords = useLiveData('qualityChecks');
   const [tasks, setTasks] = useState<ManagerTask[]>([]);
   const [clock, setClock] = useState<ClockEntry[]>([]);
   const [companyAddress, setCompanyAddress] = useState(getCachedCompanySettings().address || '');
@@ -117,15 +116,6 @@ export function useHomeData(properties: Property[]) {
 
   useEffect(() => {
     const subs = [
-      onSnapshot(collection(db, 'settings_statuses'), (s) => setStatuses(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Status))),
-      onSnapshot(collection(db, 'settings_teams'), (s) => setTeams(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Team))),
-      onSnapshot(collection(db, 'customers'), (s) => setCustomers(s.docs.map(mapCustomerDoc))),
-      onSnapshot(collection(db, 'settings_products'), (s) => setProducts(s.docs.map((d) => ({ id: d.id, ...d.data() }) as CatalogItem))),
-      onSnapshot(collection(db, 'settings_services'), (s) => setSvcCatalog(s.docs.map((d) => ({ id: d.id, ...d.data() }) as CatalogItem))),
-      onSnapshot(collection(db, 'settings_places'), (s) => setPlaces(s.docs.map((d) => ({ id: d.id, ...d.data() }) as QcPlace))),
-      onSnapshot(collection(db, 'system_users'), (s) => setUsers(s.docs.map((d) => ({ id: d.id, ...d.data() }) as SystemUser))),
-      onSnapshot(collection(db, 'settings_roles'), (s) => setRoles(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Role))),
-      onSnapshot(collection(db, 'quality_checks'), (s) => setQcRecords(s.docs.map((d) => ({ id: d.id, ...d.data() }) as QcRecordLite))),
       managerTasksService.subscribe(setTasks),
       timeClockService.subscribeWeek(setClock),
       subscribeCompanySettings((c) => setCompanyAddress(c.address || '')),
@@ -233,7 +223,7 @@ export function useHomeData(properties: Property[]) {
         detail = `Re-clean in progress · started ${new Date(started).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
       } else if (sched && sched.getTime() >= today.getTime() && sched.getTime() >= startOfDay(new Date(failedAt)).getTime()) {
         reclean = 'scheduled';
-        const when = sameDay(sched, today) ? 'today' : sched.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const when = sameDay(sched, today) ? 'today' : `${sched.toLocaleDateString('en-US', { weekday: 'short' })} ${formatDate(sched)}`;
         detail = `Re-clean scheduled · ${when}${p.timeIn ? ` ${timeLabel(p.timeIn)}` : ''}`;
       }
       out.push({
@@ -280,10 +270,8 @@ export function useHomeData(properties: Property[]) {
   };
 }
 
-export type HomeData = ReturnType<typeof useHomeData>;
-
-/** Fecha larga del encabezado: "Thursday, October 8 · 7:30 AM". */
+/** Fecha del encabezado: "Thursday 10/08/2026 · 7:30 AM" (fechas siempre MM/DD/AAAA). */
 export const headerDate = (d: Date) =>
-  `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  `${d.toLocaleDateString('en-US', { weekday: 'long' })} ${formatDate(d)} · ${formatTime(d)}`;
 
 export const moneyShort = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;

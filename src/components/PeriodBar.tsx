@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   PERIOD_KINDS, periodRange, shiftPeriod, todayIso, type PeriodKind, type PeriodState,
 } from '../utils/periods';
+import DateInput from '../shared/components/DateInput';
 import './PeriodBar.css';
 
 interface PeriodBarProps {
@@ -43,20 +44,18 @@ export default function PeriodBar({ period, onChange, extra }: PeriodBarProps) {
             <div className="pb-custom">
               <label className="pb-field">
                 <span className="pb-name">Start</span>
-                <input
-                  type="date"
+                <DateInput
                   className="pb-date"
                   value={period.customStart}
-                  onChange={(e) => onChange({ ...period, customStart: e.target.value })}
+                  onChange={(iso) => onChange({ ...period, customStart: iso })}
                 />
               </label>
               <label className="pb-field">
                 <span className="pb-name">End</span>
-                <input
-                  type="date"
+                <DateInput
                   className="pb-date"
                   value={period.customEnd}
-                  onChange={(e) => onChange({ ...period, customEnd: e.target.value })}
+                  onChange={(iso) => onChange({ ...period, customEnd: iso })}
                 />
               </label>
             </div>

@@ -5,7 +5,6 @@ import {
   persistentMultipleTabManager,
   CACHE_SIZE_UNLIMITED
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { initializeAuth, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 
 // Firebase configuration
@@ -34,7 +33,8 @@ export const db = initializeFirestore(app, {
   })
 });
 
-export const storage = getStorage(app);
+// ⭐ PERF: Storage ya no se inicializa aquí (sumaba ~31 kB al arranque y solo
+//    lo usan la subida y el borrado de fotos). Ver src/config/storage.ts.
 
 // ⭐ AUTH CON PERSISTENCIA LOCAL EXPLÍCITA
 //    Antes se usaba getAuth(app), que en algunos navegadores/contextos NO

@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 //    durante la animación de RouteTransition.
 import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
-import type { LucideIcon } from "lucide-react";
 import {
   Search,
   MapPin,
@@ -27,7 +26,6 @@ import {
   Users,
   StickyNote,
   PenTool,
-  ChevronDown,
   Briefcase,
   ShieldCheck,
   AlertTriangle,
@@ -59,24 +57,23 @@ import {
 } from "lucide-react";
 
 import type {
-  Property as BaseProperty,
+  Property,
   Status,
-  Team,
-  Priority,
-  Service,
   Customer,
   SystemUser,
   Role,
   PayrollRecord,
-  Tax,
+  Product,
 } from "../types/index";
+import { useLiveCollection, useLiveData } from "../shared/data/liveCollections";
+import { commitOps, type BatchOp } from "../shared/data/batchWrites";
 
 import { propertiesService } from "../services/propertiesService";
 import { storageService } from "../services/storageService";
 // ⭐ Papelera: el borrado ya no destruye, mueve a `trash` con motivo obligatorio.
 import { trashService } from "../services/trashService";
 // ⭐ Clientes: mapeo correcto (legacy id aparte) y resolución por ambos ids.
-import { mapCustomerDoc, displayClientName, resolveCustomerName } from "../utils/customerDocs";
+import { displayClientName, resolveCustomerName } from "../utils/customerDocs";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import PeriodBar from "../components/PeriodBar";
 import KpiGrid from "../components/KpiGrid";
@@ -112,12 +109,12 @@ import {
   setDoc,
   getDoc,
 } from "firebase/firestore";
-import { formatDate, dateSortValue } from "../utils/dateFormat";
+import { formatDate, formatDateTime, formatTime, dateSortValue, todayIso } from "../utils/dateFormat";
 import { escapeHtml } from "../utils/escapeHtml";
 import { getRelationName, getRelationColor } from "../utils/relations";
 import { stampInvoiceEntry } from "../utils/invoiceEntry";
 // ⭐ Pestaña "History" del detalle: reutiliza el panel de historial de status
-//    que ya usan Status History y PropertyDetailModal.
+//    que ya usa Status History.
 import StatusHistoryPanel from "../components/StatusHistoryPanel";
 import StatusChangeModal, {
   type StatusModalConfig,
@@ -139,177 +136,24 @@ import {
   makePendingId,
   type PendingPhoto,
 } from "../utils/offlinePhotoQueue";
+import { type ServiceRecord, recordFingerprint, computeServiceTotals } from "../features/houses/serviceRecords";
+import { type HouseDraft, DRAFTS_MAX, loadDrafts, persistDrafts } from "../features/houses/houseDrafts";
+import {
+  CONFIGURABLE_FIELDS,
+  CONFIGURABLE_BUTTONS,
+  DEFAULT_FORM_CONFIG,
+  type FormVisibilityConfig,
+} from "../features/houses/houseFieldConfig";
+import SearchableSelect from "../features/houses/components/SearchableSelect";
+import StatusPillSelector from "../features/houses/components/StatusPillSelector";
+import PropertyDateFixTool from "../features/houses/components/PropertyDateFixTool";
+import HistoryWindowNotice from "../components/HistoryWindowNotice";
+import DateInput from "../shared/components/DateInput";
 import "./HousesView.css";
 
-type Property = BaseProperty & {
-  beforePhotosExcluded?: string[]; // URLs que NO van al PDF
-  afterPhotosExcluded?: string[];
-  dateOfIssue?: string; // ⭐ Fecha de emisión
-  dueDate?: string; // ⭐ Fecha de vencimiento
-};
 
-interface ServiceRecord {
-  id?: string;
-  propertyId: string;
-  serviceId: string;
-  quantity: number;
-  price: number;
-  subtotal: number;
-  applyTax: "Yes" | "No";
-  minusTax: "Yes" | "No";
-  taxPercentage: number;
-  taxAmount: number;
-  total: number;
-  totalMinusTax: number; // ⭐ AppSheet "Total Minus Tax"
-  notes: string;
-  createdAt?: string;
-}
-
-// settings_products no tiene un tipo compartido en types/index.ts todavía.
-interface ProductRecord {
-  id: string;
-  name: string;
-  price?: number;
-  color?: string;
-}
-
-// ============================================================================
-// ⭐ BORRADORES del formulario de casas (localStorage, por dispositivo).
-//    Guardan formData + servicios + pagos capturados para retomar la orden
-//    tal cual iba si el usuario sale del formulario (a propósito o por error).
-// ============================================================================
-interface HouseDraft {
-  id: string;
-  savedAt: string;
-  label: string;
-  formData: Property;
-  formServices: ServiceRecord[];
-  housePayrollRecords: PayrollRecord[];
-}
-
-const DRAFTS_KEY = "pc_house_form_drafts_v1";
-const DRAFTS_MAX = 10;
-
-const loadDrafts = (): HouseDraft[] => {
-  try {
-    const raw = localStorage.getItem(DRAFTS_KEY);
-    const list = raw ? (JSON.parse(raw) as HouseDraft[]) : [];
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
-};
-
-const persistDrafts = (list: HouseDraft[]): void => {
-  try {
-    localStorage.setItem(DRAFTS_KEY, JSON.stringify(list.slice(0, DRAFTS_MAX)));
-  } catch {
-    /* almacenamiento lleno: el borrador más viejo se pierde, nada más */
-  }
-};
-
-const collectionMap: Record<string, string> = {
-  team: "settings_teams",
-  priority: "settings_priorities",
-  status: "settings_statuses",
-  service: "settings_services",
-  tax: "settings_tax",
-};
-
-type ConfigurableElement = { id: string; label: string; section: string };
-
-const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
-  { id: "client", label: "Client", section: "General Info" },
-  { id: "address", label: "Address", section: "General Info" },
-  { id: "unit", label: "Unit / Apto", section: "General Info" },
-  { id: "receiveDate", label: "Receive Date", section: "Schedule" },
-  { id: "scheduleDate", label: "Schedule Date", section: "Schedule" },
-  { id: "dateOfIssue", label: "Date of Issue", section: "Schedule" },
-  { id: "dueDate", label: "Due Date", section: "Schedule" },
-  { id: "timeIn", label: "Time In", section: "Schedule" },
-  { id: "timeOut", label: "Time Out", section: "Schedule" },
-  { id: "serviceId", label: "Service", section: "Job Specs" },
-  { id: "priorityId", label: "Priority", section: "Job Specs" },
-  { id: "rooms", label: "Rooms", section: "Job Specs" },
-  { id: "bathrooms", label: "Bathrooms", section: "Job Specs" },
-  { id: "statusId", label: "Status", section: "Status & Assignment" },
-  {
-    id: "invoiceStatus",
-    label: "Invoice Status",
-    section: "Status & Assignment",
-  },
-  { id: "teamId", label: "Team", section: "Status & Assignment" },
-  {
-    id: "assignedWorkers",
-    label: "Assigned Workers",
-    section: "Status & Assignment",
-  },
-  { id: "note", label: "General Note", section: "Notes" },
-  { id: "employeeNote", label: "Employee's Note", section: "Notes" },
-  // ⭐ Notas de OFICINA: internas, no las ve el personal de campo.
-  { id: "officeNote", label: "Office Notes", section: "Notes" },
-  {
-    id: "card_billedServices",
-    label: "Billed Services (entire section)",
-    section: "Sections",
-  },
-  {
-    id: "card_payroll",
-    label: "Payroll / Registered Payments (entire section)",
-    section: "Sections",
-  },
-  { id: "card_photos", label: "Photos (entire section)", section: "Sections" },
-  { id: "card_workLog", label: "Work Log (detail view)", section: "Sections" },
-  {
-    id: "card_damages",
-    label: "Damages (botón y modal)",
-    section: "Sections",
-  },
-  {
-    id: "card_kpis",
-    label: "Tarjetas del Dashboard (KPIs del Overview)",
-    section: "Dashboard",
-  },
-];
-
-const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
-  { id: "btn_sync", label: "Sync (Google Calendar)", section: "Workflow" },
-  { id: "btn_startJob", label: "Start Job", section: "Workflow" },
-  { id: "btn_markFinished", label: "Mark Finished", section: "Workflow" },
-  { id: "btn_pay", label: "Pay", section: "Financial" },
-  { id: "btn_duplicate", label: "Duplicate", section: "Admin" },
-  { id: "btn_editDetails", label: "Edit Details", section: "Admin" },
-  { id: "btn_deleteProperty", label: "Delete Property", section: "Admin" },
-  { id: "btn_exportPdf", label: "Export PDF", section: "Media" },
-  { id: "btn_uploadPhoto", label: "Upload Photo (Cargar)", section: "Media" },
-  { id: "btn_takePhoto", label: "Take Photo (Cámara)", section: "Media" },
-  {
-    id: "btn_tabFinancials",
-    label: "Financials & Billing Tab",
-    section: "Tabs",
-  },
-  { id: "btn_tabMedia", label: "Notes & Photos Tab", section: "Tabs" },
-  {
-    id: "btn_myHistory",
-    label: "Mi historial (casas asignadas)",
-    section: "Header",
-  },
-  {
-    id: "board_beforePhotos",
-    label: "Before Photos (tarjeta del Pipeline)",
-    section: "Pipeline",
-  },
-  {
-    id: "board_afterPhotos",
-    label: "After Photos (tarjeta del Pipeline)",
-    section: "Pipeline",
-  },
-  {
-    id: "card_checklist",
-    label: "Checklist (botón y visor en el detalle)",
-    section: "Sections",
-  },
-];
+// Productos (settings_products): el tipo canónico Product + el color opcional.
+type ProductRecord = Product & { color?: string };
 
 // ⭐ Registro de la colección 'damages': daños reportados por casa.
 //    Campos pedidos: ID (doc id), Description, Notes, Photos (varias).
@@ -320,11 +164,7 @@ type PropertyU = Property & { unit?: string; qcPlaces?: string[] };
 
 // ⭐ Hora corta (p. ej. "11:46 p.m.") para la cabecera del checklist,
 //    igual que la "Entrada" del modal de Quality Check.
-const fmtClockTime = (iso: string): string =>
-  new Date(iso).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+const fmtClockTime = (iso: string): string => formatTime(iso);
 
 type DamageRecord = {
   id: string;
@@ -343,238 +183,6 @@ const NO_STATUS_FILTER = "__NO_STATUS__";
 //    filas de golpe era lo que hacia sentir la vista lenta al abrir.
 const JOBS_PAGE_SIZE = 50;
 
-type FormVisibilityConfig = {
-  visibility: Record<string, string[]>;
-  // ⭐ Roles para los que el CAMPO es de SOLO LECTURA (lo ven pero no lo editan).
-  //    Solo aplica a los campos del formulario, no a botones/tabs.
-  readOnly?: Record<string, string[]>;
-};
-
-const DEFAULT_FORM_CONFIG: FormVisibilityConfig = {
-  visibility: {},
-  readOnly: {},
-};
-
-interface SelectOption {
-  id: string;
-  name: string;
-  color?: string;
-}
-
-function SearchableSelect<T extends SelectOption>({
-  options,
-  value,
-  onChange,
-  placeholder,
-  icon: Icon,
-  returnKey = "id" as keyof T,
-  disabled = false,
-  allowClear = false,
-  clearLabel = "— None —",
-}: {
-  options: T[];
-  value?: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  icon: LucideIcon;
-  returnKey?: keyof T;
-  disabled?: boolean;
-  // ⭐ Permite DEJAR EL CAMPO VACIO despues de haber elegido algo. Sin esto el
-  //    control no tiene forma de volver a "", que era el bug al duplicar una casa:
-  //    el Team se heredaba de la casa original y no se podia quitar.
-  allowClear?: boolean;
-  clearLabel?: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const selected = options.find((o) => String(o[returnKey]) === String(value));
-  const displayValue = isOpen ? search : selected ? selected.name : value || "";
-
-  const filteredOptions = options.filter((o) =>
-    o.name.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  return (
-    <div
-      tabIndex={0}
-      onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-      className={`hv-searchsel-wrap${disabled ? " disabled" : ""}`}
-    >
-      <div className="hv-searchsel-trigger">
-        <Icon size={16} className="hv-searchsel-icon" />
-        <input
-          className="hv-searchsel-input"
-          placeholder={placeholder}
-          value={displayValue}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            if (!isOpen) setIsOpen(true);
-          }}
-          onClick={() => {
-            if (disabled) return;
-            setIsOpen(true);
-            setSearch("");
-          }}
-          disabled={disabled}
-        />
-        {allowClear && !disabled && String(value || "") !== "" && (
-          <button
-            type="button"
-            className="hv-searchsel-clear"
-            title={clearLabel}
-            aria-label={clearLabel}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onChange("");
-              setSearch("");
-              setIsOpen(false);
-            }}
-          >
-            <X size={14} />
-          </button>
-        )}
-        <ChevronDown
-          size={16}
-          color="#9ca3af"
-          className={`hv-select-chevron clickable${isOpen ? " open" : ""}`}
-          onClick={() => {
-            if (!disabled) setIsOpen(!isOpen);
-          }}
-        />
-      </div>
-      {isOpen && (
-        <div className="hv-searchsel-dropdown">
-          {allowClear && (
-            <div
-              className="hv-searchsel-option clear"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onChange("");
-                setIsOpen(false);
-                setSearch("");
-              }}
-            >
-              {clearLabel}
-            </div>
-          )}
-          {filteredOptions.length === 0 ? (
-            <div className="hv-searchsel-empty">No results found</div>
-          ) : null}
-          {filteredOptions.map((o) => (
-            <div
-              key={o.id}
-              className="hv-searchsel-option"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onChange(String(o[returnKey] ?? o.id));
-                setIsOpen(false);
-                setSearch("");
-              }}
-            >
-              {o.name}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// StatusPillSelector: muestra el estado actual como "badge" con el color del estado.
-// Al tocarlo YA NO abre una lista desplegable: solicita abrir el modal central de
-// selección de estado (StatusChangeModal), que se ve igual de claro en móvil y escritorio.
-// Variantes: normal (tabla), `fullWidth` (tarjeta móvil) y `large` (detalle de la casa).
-const StatusPillSelector = ({
-  currentStatusId,
-  statuses,
-  onChange,
-  disabled,
-  fullWidth = false,
-  large = false,
-  onRequestOpen,
-  modalTitle,
-  modalSubtitle,
-}: {
-  currentStatusId: string;
-  statuses: Status[];
-  onChange: (id: string) => void;
-  disabled: boolean;
-  fullWidth?: boolean;
-  large?: boolean;
-  onRequestOpen?: (cfg: StatusModalConfig) => void;
-  modalTitle?: string;
-  modalSubtitle?: string;
-}) => {
-  const safeValue = String(currentStatusId || "")
-    .toLowerCase()
-    .trim();
-  const status = statuses.find(
-    (s) =>
-      String(s.id).toLowerCase().trim() === safeValue ||
-      String(s.name).toLowerCase().trim() === safeValue,
-  );
-
-  const pointColor = status ? status.color : "#64748b";
-  const text = status ? status.name : "Unassigned";
-  const block = fullWidth || large;
-
-  const handleOpen = (e: React.MouseEvent | React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (disabled || !onRequestOpen) return;
-    onRequestOpen({
-      currentId: currentStatusId,
-      onSelect: onChange,
-      title: modalTitle,
-      subtitle: modalSubtitle,
-    });
-  };
-
-  const pillVars = {
-    "--pill-bg": large ? `${pointColor}12` : `${pointColor}14`,
-    "--pill-border": large ? pointColor : `${pointColor}40`,
-    "--pill-text": large ? pointColor : "#1e293b",
-    "--pill-shadow": `${pointColor}26`,
-    "--dot-color": pointColor,
-    "--dot-ring": `${pointColor}22`,
-  } as CSSProperties;
-
-  return (
-    <div className={`hv-statuspill-outer${block ? " block" : ""}`}>
-      <div
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        onClick={handleOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") handleOpen(e);
-        }}
-        className={`hv-statuspill${large ? " large" : fullWidth ? " full" : ""}${disabled ? " disabled" : ""}`}
-        style={pillVars}
-        title={disabled ? undefined : "Cambiar estado"}
-      >
-        <span className={`hv-statuspill-label-wrap${large ? " large" : ""}`}>
-          <span className={`hv-statuspill-dot${large ? " large" : ""}`}></span>
-          <span className="hv-statuspill-text">{text}</span>
-        </span>
-        <ChevronDown
-          size={large ? 22 : fullWidth ? 16 : 14}
-          color={large ? pointColor : "#94a3b8"}
-          className="hv-shrink-0"
-        />
-      </div>
-    </div>
-  );
-};
-
-const formatDateTime = (isoString?: string | null) => {
-  if (!isoString) return "";
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  // ⭐ Unificado a MM/DD/YYYY, h:mm AM/PM
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
-};
 
 interface HousesViewProps {
   onOpenMenu: () => void;
@@ -637,19 +245,30 @@ export default function HousesView({
     null,
   );
 
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<ProductRecord[]>([]); // ⭐ settings_products (fuente de serviceId)
-  const [taxes, setTaxes] = useState<Tax[]>([]);
-  const [customersList, setCustomersList] = useState<Customer[]>([]);
-  const [employees, setEmployees] = useState<SystemUser[]>([]);
-
-  const [rolesList, setRolesList] = useState<Role[]>(roles);
+  // ⭐ Catálogos desde el store compartido (src/shared/data/liveCollections.ts):
+  //    un solo listener por colección para toda la app. Antes esta vista abría
+  //    11 listeners propios — también en modo 'modals-only' encima de Quality
+  //    Check, QC Dashboard y Owner/Manager — y se reabrían en cada navegación.
+  const { data: statusData, loaded: statusesLoaded } = useLiveCollection("statuses");
+  const statuses = useMemo(
+    () => [...statusData].sort((a, b) => Number(a.order) - Number(b.order)),
+    [statusData],
+  );
+  const teams = useLiveData("teams");
+  const priorities = useLiveData("priorities");
+  const services = useLiveData("services");
+  const products: ProductRecord[] = useLiveData("products"); // ⭐ settings_products (fuente de serviceId)
+  const taxes = useLiveData("taxes");
+  // ⭐ mapCustomerDoc ya lo aplica el store (id real + legacyId aparte).
+  const customersList = useLiveData("customers");
+  const employees = useLiveData("users");
+  const liveRoles = useLiveData("roles");
+  const rolesList = liveRoles.length ? liveRoles : roles;
 
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // La tabla se pinta en cuanto llegan los statuses; el resto de los catálogos
+  // sigue cargando en segundo plano (igual que antes).
+  const isLoading = !statusesLoaded;
   const [isAssigningWorker, setIsAssigningWorker] = useState(false);
   const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
   const [workerSearch, setWorkerSearch] = useState(""); // ⭐ buscador de empleados
@@ -670,7 +289,7 @@ export default function HousesView({
   >([]);
   const [payrollForm, setPayrollForm] = useState<PayrollRecord>({
     propertyId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayIso(),
     employeeId: "",
     baseAmount: 0,
     extraAmount: 0,
@@ -695,6 +314,10 @@ export default function HousesView({
   //    Y salga como salga, el trabajo NO se pierde: queda como borrador
   //    recuperable desde el botón "Borradores" junto a New Job.
   const formSnapshotRef = useRef<string>("");
+  // ⭐ Servicios tal como llegaron de Firestore al abrir el formulario (id →
+  //    huella). Al guardar solo se reescriben los que cambiaron; antes se
+  //    actualizaban TODOS, uno por uno, aunque nadie los hubiera tocado.
+  const loadedServicesRef = useRef<Map<string, string>>(new Map());
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [drafts, setDrafts] = useState<HouseDraft[]>(() => loadDrafts());
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
@@ -863,8 +486,7 @@ export default function HousesView({
   const [isNotesHistoryOpen, setIsNotesHistoryOpen] = useState(false);
   // Campo cuya nota se está enviando (deshabilita su botón mientras guarda)
   const [sendingNote, setSendingNote] = useState<NoteField | null>(null);
-  const fmtNoteWhen = (iso: string) =>
-    new Date(iso).toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  const fmtNoteWhen = (iso: string) => formatDateTime(iso);
 
   const [beforeExcluded, setBeforeExcluded] = useState<string[]>([]);
   const [afterExcluded, setAfterExcluded] = useState<string[]>([]);
@@ -922,7 +544,6 @@ export default function HousesView({
         streamRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraOpen]);
 
   const openBurstCamera = (
@@ -1026,7 +647,6 @@ export default function HousesView({
 
   // ⭐ PERF: cache de nombres de cliente. getRelationName recorria toda la
   //    lista de clientes por cada fila; ahora cada id se resuelve una sola vez.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const clientNameCache = useMemo(
     () => new Map<string, string>(),
     [customersList],
@@ -1252,166 +872,10 @@ export default function HousesView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ⭐ Configuración de fotos y del formulario (2 documentos de app_settings).
+  //    Los catálogos ya no se escuchan aquí: vienen del store compartido.
   useEffect(() => {
-    setIsLoading(true);
-
-    const loadedCollections = new Set<string>();
-    // ⭐ PERF: 'properties' YA NO se carga aqui — llega por props desde App.tsx,
-    //    que mantiene el unico listener global de la coleccion. Antes esta vista
-    //    descargaba los ~3,600 documentos una segunda vez.
-    //    La tabla se pinta en cuanto llegan los statuses; el resto de los
-    //    catalogos sigue cargando en segundo plano.
-    const markLoaded = (name: string) => {
-      loadedCollections.add(name);
-      if (loadedCollections.has("statuses")) {
-        setIsLoading(false);
-      }
-    };
-
     const unsubscribes: (() => void)[] = [];
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, collectionMap.status),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Status[];
-          setStatuses(data.sort((a, b) => Number(a.order) - Number(b.order)));
-          markLoaded("statuses");
-        },
-        (err) => {
-          console.error("Error Statuses:", err);
-          markLoaded("statuses");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, collectionMap.team),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Team[];
-          setTeams(data);
-          markLoaded("teams");
-        },
-        (err) => {
-          console.error("Error Teams:", err);
-          markLoaded("teams");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, collectionMap.priority),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Priority[];
-          setPriorities(data);
-          markLoaded("priorities");
-        },
-        (err) => {
-          console.error("Error Priorities:", err);
-          markLoaded("priorities");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, collectionMap.service),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Service[];
-          setServices(data);
-          markLoaded("services");
-        },
-        (err) => {
-          console.error("Error Services:", err);
-          markLoaded("services");
-        },
-      ),
-    );
-
-    // ⭐ Catálogo de productos (settings_products): fuente de serviceId en Billed Services
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, "settings_products"),
-        (snap) => {
-          const data = snap.docs.map(
-            (d) => ({ id: d.id, ...d.data() }) as ProductRecord,
-          );
-          setProducts(data);
-          markLoaded("products");
-        },
-        (err) => {
-          console.error("Error Products:", err);
-          markLoaded("products");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, collectionMap.tax),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Tax[];
-          setTaxes(data);
-          markLoaded("taxes");
-        },
-        (err) => {
-          console.error("Error Taxes:", err);
-          markLoaded("taxes");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, "customers"),
-        (snap) => {
-          // ⭐ mapCustomerDoc: los clientes migrados traen DENTRO un campo `id`
-          //    legacy que con el spread viejo PISABA al id real → las casas que
-          //    guardan el id de Firestore no resolvían y mostraban el ID crudo.
-          const data = snap.docs.map(mapCustomerDoc);
-          setCustomersList(data);
-          markLoaded("customers");
-        },
-        (err) => {
-          console.error("Error Customers:", err);
-          markLoaded("customers");
-        },
-      ),
-    );
-
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, "system_users"),
-        (snap) => {
-          const data = snap.docs.map(
-            (d) => ({ id: d.id, ...d.data() }) as SystemUser,
-          );
-          setEmployees(data);
-          markLoaded("users");
-        },
-        (err) => {
-          console.error("Error Users:", err);
-          markLoaded("users");
-        },
-      ),
-    );
 
     unsubscribes.push(
       onSnapshot(
@@ -1422,12 +886,10 @@ export default function HousesView({
           } else {
             setPhotoConfig(DEFAULT_PHOTO_CONFIG);
           }
-          markLoaded("photoConfig");
         },
         (err) => {
           console.error("Error PhotoConfig:", err);
           setPhotoConfig(DEFAULT_PHOTO_CONFIG);
-          markLoaded("photoConfig");
         },
       ),
     );
@@ -1449,81 +911,14 @@ export default function HousesView({
       ),
     );
 
-    unsubscribes.push(
-      onSnapshot(
-        collection(db, "settings_roles"),
-        (snap) => {
-          const data = snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Role[];
-          setRolesList(data);
-        },
-        (err) => {
-          console.error("Error Roles:", err);
-        },
-      ),
-    );
-
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [setProperties]);
+  }, []);
 
-  useEffect(() => {
-    if (!isServiceModalOpen) return;
-
-    const qty = Number(serviceForm.quantity) || 0;
-    const price = Number(serviceForm.price) || 0;
-    const subtotal = qty * price;
-    const taxPct = Number(serviceForm.taxPercentage) || 0;
-    const taxAmount = (subtotal * taxPct) / 100;
-
-    let total = subtotal;
-    if (serviceForm.applyTax === "Yes") {
-      total = subtotal + taxAmount;
-    } else if (
-      serviceForm.applyTax === "No" &&
-      serviceForm.minusTax === "Yes"
-    ) {
-      total = subtotal - taxAmount;
-    }
-
-    // ⭐ Total Minus Tax (AppSheet):
-    // IF(minusTax=TRUE & applyTax=FALSE, Total - Tax$,
-    //    IF(applyTax=TRUE & minusTax=FALSE, Total + Tax$, Total))
-    let totalMinusTax = subtotal;
-    if (serviceForm.minusTax === "Yes" && serviceForm.applyTax === "No") {
-      totalMinusTax = subtotal - taxAmount;
-    } else if (
-      serviceForm.applyTax === "Yes" &&
-      serviceForm.minusTax === "No"
-    ) {
-      totalMinusTax = subtotal + taxAmount;
-    }
-
-    if (
-      subtotal !== serviceForm.subtotal ||
-      taxAmount !== serviceForm.taxAmount ||
-      total !== serviceForm.total ||
-      totalMinusTax !== serviceForm.totalMinusTax
-    ) {
-      setServiceForm((prev) => ({
-        ...prev,
-        subtotal,
-        taxAmount,
-        total,
-        totalMinusTax,
-      }));
-    }
-  }, [
-    serviceForm.quantity,
-    serviceForm.price,
-    serviceForm.taxPercentage,
-    serviceForm.applyTax,
-    serviceForm.minusTax,
-    isServiceModalOpen,
-  ]);
+  // ⭐ Totales del servicio: se CALCULAN en el render y al guardar (antes un
+  //    efecto los copiaba a `serviceForm` en cada cambio — estado duplicado).
+  const serviceTotals = computeServiceTotals(serviceForm);
 
   type PermissionExt = {
     module: string;
@@ -1731,7 +1126,7 @@ export default function HousesView({
   const cfLog = (line: string) =>
     setCfTestLog((prev) => [
       ...prev,
-      `[${new Date().toLocaleTimeString()}] ${line}`,
+      `[${formatTime(new Date())}] ${line}`,
     ]);
 
   const cfErrorText = (err: unknown): string => {
@@ -1839,7 +1234,7 @@ export default function HousesView({
         inspector: currentUser
           ? `${currentUser.firstName} ${currentUser.lastName}`
           : "Prueba",
-        date: new Date().toISOString().slice(0, 10),
+        date: todayIso(),
         status: "Finished",
         result: "passed",
         durationMinutes: 1,
@@ -1888,10 +1283,15 @@ export default function HousesView({
   //    Usa los mismos places/tasks del Quality Check (settings_places/_tasks).
   // ============================================================================
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
-  const [clPlaces, setClPlaces] = useState<{ id: string; name: string }[]>([]);
-  const [clTasks, setClTasks] = useState<
-    { id: string; name: string; placeId: string }[]
-  >([]);
+  // ⭐ Places/tasks del store compartido, solo cuando hay un detalle abierto
+  //    (antes: dos getDocs completos en cada montaje de la vista, también en
+  //    modo 'modals-only').
+  const clPlacesData = useLiveData("places", isDetailModalOpen || isChecklistOpen);
+  const clTasks = useLiveData("tasks", isDetailModalOpen || isChecklistOpen);
+  const clPlaces = useMemo(
+    () => [...clPlacesData].sort((a, b) => a.name.localeCompare(b.name)),
+    [clPlacesData],
+  );
   const [clRecord, setClRecord] = useState<{
     id?: string;
     checked: Record<string, boolean>;
@@ -1910,42 +1310,6 @@ export default function HousesView({
 
   const isChecklistReadOnly = isFieldRO("card_checklist");
 
-  // Carga places/tasks una vez (al montar)
-  useEffect(() => {
-    const loadCfg = async () => {
-      try {
-        const [pl, tk] = await Promise.all([
-          getDocs(collection(db, "settings_places")).catch(() => ({
-            docs: [] as never[],
-          })),
-          getDocs(collection(db, "settings_tasks")).catch(() => ({
-            docs: [] as never[],
-          })),
-        ]);
-        setClPlaces(
-          (pl.docs || [])
-            .map((d) => ({ id: d.id, ...(d.data() as object) }) as {
-              id: string;
-              name: string;
-            })
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        );
-        setClTasks(
-          (tk.docs || []).map(
-            (d) =>
-              ({ id: d.id, ...(d.data() as object) }) as {
-                id: string;
-                name: string;
-                placeId: string;
-              },
-          ),
-        );
-      } catch (e) {
-        console.error("Error cargando places/tasks del checklist:", e);
-      }
-    };
-    loadCfg();
-  }, []);
 
   // Carga el último checklist de la casa al abrir el detalle
   useEffect(() => {
@@ -1988,7 +1352,6 @@ export default function HousesView({
       (err) => console.error("Error cargando checklist:", err),
     );
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHouse?.id]);
 
   const clActivePlaces = clPlaces.filter((pl) =>
@@ -2069,7 +1432,7 @@ export default function HousesView({
           houseId: selectedHouse.id,
           address: selectedHouse.address || "",
           client: selectedHouse.client || "",
-          date: new Date().toISOString().slice(0, 10),
+          date: todayIso(),
           inspector: currentUser
             ? `${currentUser.firstName} ${currentUser.lastName}`
             : "Unknown",
@@ -2119,7 +1482,6 @@ export default function HousesView({
       },
     );
     return () => unsub();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHouse?.id]);
 
   // ⭐ Sube fotos de daños a la carpeta cliente+dirección / "Damages".
@@ -2855,7 +2217,7 @@ export default function HousesView({
       {
         label: "Schedule Date",
         ok: !!selectedHouse.scheduleDate,
-        value: selectedHouse.scheduleDate || "",
+        value: formatDate(selectedHouse.scheduleDate),
       },
       {
         label: "Time In",
@@ -2881,7 +2243,7 @@ export default function HousesView({
       teamColor: team?.color || "",
       teamName,
       warnings,
-      date: selectedHouse.scheduleDate,
+      date: formatDate(selectedHouse.scheduleDate),
       timeIn: selectedHouse.timeIn,
       timeOut: selectedHouse.timeOut || "(+2 horas)",
       location: selectedHouse.address || "",
@@ -2945,7 +2307,7 @@ export default function HousesView({
           user: currentUser,
           targetId: selectedHouse.id,
           targetLabel: logLabel(selectedHouse),
-          detail: `Evento sincronizado (${selectedHouse.scheduleDate} ${selectedHouse.timeIn})`,
+          detail: `Evento sincronizado (${formatDate(selectedHouse.scheduleDate)} ${selectedHouse.timeIn})`,
         });
         if (res.data.verified) {
           // ⭐ Modal de verificación con lo que Google confirmó guardado.
@@ -3044,7 +2406,7 @@ export default function HousesView({
     try {
       const currentWorkers = selectedHouse.assignedWorkers || [];
       const isAssigned = currentWorkers.includes(workerId);
-      let newWorkersList = isAssigned
+      const newWorkersList = isAssigned
         ? currentWorkers.filter((id) => id !== workerId)
         : [...currentWorkers, workerId];
       await propertiesService.update(selectedHouse.id, {
@@ -3084,7 +2446,7 @@ export default function HousesView({
     setEditingPayrollId(null);
     setPayrollForm({
       propertyId: houseId,
-      date: new Date().toISOString().split("T")[0],
+      date: todayIso(),
       employeeId: "",
       baseAmount: 0,
       extraAmount: 0,
@@ -3103,7 +2465,7 @@ export default function HousesView({
     setEditingPayrollId(String(record.id));
     setPayrollForm({
       propertyId: String(record.propertyId || ""),
-      date: record.date || new Date().toISOString().split("T")[0],
+      date: record.date || todayIso(),
       employeeId: String(record.employeeId || ""),
       baseAmount: Number(record.baseAmount || 0),
       extraAmount: Number(record.extraAmount || 0),
@@ -3281,6 +2643,7 @@ export default function HousesView({
 
     const dataToSave = {
       ...serviceForm,
+      ...computeServiceTotals(serviceForm),
       createdAt: serviceForm.createdAt || new Date().toISOString(),
     };
 
@@ -3348,6 +2711,7 @@ export default function HousesView({
     setServicesToDelete([]);
     setPayrollsToDelete([]);
     setWorkersTouched(false);
+    loadedServicesRef.current = new Map();
 
     if (house) {
       setFormData(house);
@@ -3364,11 +2728,16 @@ export default function HousesView({
           where("propertyId", "==", house.id),
         );
         const srvSnap = await getDocs(q);
-        setFormServices(
-          srvSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as ServiceRecord),
+        const loaded = srvSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as ServiceRecord,
         );
+        loadedServicesRef.current = new Map(
+          loaded.map((s) => [s.id as string, recordFingerprint(s)]),
+        );
+        setFormServices(loaded);
       } catch (error) {
         console.error("Error fetching form services:", error);
+        loadedServicesRef.current = new Map();
         setFormServices([]);
       }
       // ⭐ El formulario ahora tambien muestra y registra PAGOS (card Payroll),
@@ -3391,7 +2760,7 @@ export default function HousesView({
         id: "",
         statusId: defaultStatus,
         invoiceStatus: "Pending",
-        receiveDate: new Date().toISOString().split("T")[0],
+        receiveDate: todayIso(),
         scheduleDate: "",
         client: "",
         note: "",
@@ -3455,6 +2824,7 @@ export default function HousesView({
       })),
     );
     setServicesToDelete([]);
+    loadedServicesRef.current = new Map();
     setWorkersTouched(false);
     // ⭐ La copia es una casa NUEVA: los pagos pertenecen a la casa original y
     //    NO se heredan. Se pueden capturar de cero en la card Payroll.
@@ -3517,6 +2887,8 @@ export default function HousesView({
     setHousePayrollRecords(draft.housePayrollRecords || []);
     setServicesToDelete([]);
     setPayrollsToDelete([]);
+    // Sin referencia de lo cargado: al guardar se reescriben todos (como antes).
+    loadedServicesRef.current = new Map();
     // El borrador restaurado sale de la lista (si vuelve a salir, se re-crea).
     const next = drafts.filter((d) => d.id !== draft.id);
     setDrafts(next);
@@ -3668,7 +3040,6 @@ export default function HousesView({
         const docRef = await propertiesService.create(dataToCreate);
         workingId = docRef;
         isNew = true;
-        console.log("✅ New property created with ID:", workingId);
         // ⭐ Bitacora: alta de casa.
         logActivity({
           action: "create",
@@ -3722,10 +3093,7 @@ export default function HousesView({
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
-      // as any: beforePhotosExcluded/afterPhotosExcluded son campos propios de este
-      // archivo (URLs que no van al PDF), no forman parte de Property en types/index.ts.
-      await propertiesService.update(workingId, dataForFirestore as any);
-      console.log("✅ Property updated in Firestore with photo URLs");
+      await propertiesService.update(workingId, dataForFirestore);
 
       // ⭐ Bitacora: en una edicion se guarda SOLO lo que cambio, campo por
       //    campo (antes -> despues). En un alta el diff no aporta: ya se
@@ -3757,33 +3125,31 @@ export default function HousesView({
         });
       }
 
+      // ⭐ SERVICIOS y PAGOS del formulario en UN solo batch (todo o nada):
+      //    los marcados para borrar se eliminan, los `temp-` se crean ya con el
+      //    propertyId real (por eso funciona en una casa nueva) y de los
+      //    existentes solo se reescriben los que cambiaron. Antes eran N
+      //    escrituras sueltas y un fallo solo quedaba en la consola; editar un
+      //    pago (borrar + recrear) podía perderlo si fallaba la segunda mitad.
+      const relatedOps: BatchOp[] = [];
       for (const srvId of servicesToDelete) {
-        await deleteDoc(doc(db, "billing_services", srvId)).catch((e) =>
-          console.error(e),
-        );
+        relatedOps.push((b) => b.delete(doc(db, "billing_services", srvId)));
       }
-
       for (const srv of formServices) {
         const srvData = { ...srv, propertyId: workingId };
-        if (srv.id && !srv.id.startsWith("temp-")) {
-          const { id, ...updateData } = srvData;
-          await updateDoc(
-            doc(db, "billing_services", id as string),
-            updateData,
-          ).catch((e) => console.error(e));
+        const { id, ...data } = srvData;
+        if (id && !id.startsWith("temp-")) {
+          if (loadedServicesRef.current.get(id) === recordFingerprint(srvData))
+            continue;
+          relatedOps.push((b) => b.update(doc(db, "billing_services", id), data));
         } else {
-          const { id, ...createData } = srvData;
-          await addDoc(collection(db, "billing_services"), createData).catch(
-            (e) => console.error(e),
+          relatedOps.push((b) =>
+            b.set(doc(collection(db, "billing_services")), data),
           );
         }
       }
-
-      // ⭐ PAGOS capturados en la card Payroll del formulario. Mismo ciclo que los
-      //    servicios: los marcados para borrar se eliminan, y los `temp-` se crean
-      //    ya con el propertyId real (por eso funciona en una casa nueva).
       for (const payId of payrollsToDelete) {
-        await payrollService.delete(payId).catch((e) => console.error(e));
+        relatedOps.push((b) => payrollService.batchDelete(b, payId));
       }
       for (const pay of housePayrollRecords) {
         if (pay.id && !String(pay.id).startsWith("temp-")) continue;
@@ -3792,9 +3158,17 @@ export default function HousesView({
           propertyId: workingId,
         };
         delete (createData as Partial<PayrollRecord>).id;
-        await payrollService
-          .create(createData)
-          .catch((e) => console.error(e));
+        relatedOps.push((b) => payrollService.batchCreate(b, createData));
+      }
+      try {
+        await commitOps(relatedOps);
+      } catch (error) {
+        // La casa ya quedó guardada; lo que falló fue el batch de servicios y
+        // pagos, que no se aplicó en absoluto.
+        const fbErr = error as { code?: string; message?: string };
+        alert(
+          `La casa se guardó, pero sus servicios y pagos NO se pudieron guardar.\nÁbrela de nuevo y vuelve a capturarlos.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+        );
       }
       setPayrollsToDelete([]);
 
@@ -3972,8 +3346,7 @@ export default function HousesView({
         afterPhotos: finalAfterPhotos,
         beforePhotosExcluded: beforeExcluded,
         afterPhotosExcluded: afterExcluded,
-      } as any);
-      console.log("✅ Property updated in Firestore with photo URLs");
+      });
 
       const updatedHouse = {
         ...selectedHouse,
@@ -4274,7 +3647,6 @@ export default function HousesView({
     setIsSaving(true);
 
     try {
-      console.log(`📥 Preparing ${urls.length} images for PDF...`);
       const base64Images = await Promise.all(
         urls.map(async (url, idx) => {
           try {
@@ -4292,7 +3664,6 @@ export default function HousesView({
           }
         }),
       );
-      console.log(`✅ All images ready for PDF`);
 
       const title = type === "before" ? "Before Photos" : "After Photos";
       const accentColor = type === "before" ? "#1e3a8a" : "#047857";
@@ -4458,17 +3829,12 @@ export default function HousesView({
     }
   };
 
-  useEffect(() => {
-    const total =
-      Number(payrollForm.baseAmount || 0) +
-      Number(payrollForm.extraAmount || 0) -
-      Number(payrollForm.discountAmount || 0);
-    setPayrollForm((prev) => ({ ...prev, totalAmount: total }));
-  }, [
-    payrollForm.baseAmount,
-    payrollForm.extraAmount,
-    payrollForm.discountAmount,
-  ]);
+  // Total del pago en el modal: calculado en el render (al guardar se vuelve a
+  // calcular igual en handleSavePayroll).
+  const payrollFormTotal =
+    Number(payrollForm.baseAmount || 0) +
+    Number(payrollForm.extraAmount || 0) -
+    Number(payrollForm.discountAmount || 0);
 
   const invoiceOptions = [
     { id: "Pre-Paid", name: "Pre-Paid" },
@@ -4587,10 +3953,21 @@ export default function HousesView({
                         <Wrench size={16} /> Reparar clientes ({orphanClientGroups.length})
                       </button>
                     )}
+                    {/* ⭐ Fechas guardadas en un formato viejo (solo aparece si hay alguna) */}
+                    {canEdit && (
+                      <PropertyDateFixTool
+                        properties={properties}
+                        setProperties={setProperties}
+                        getClientName={getClientName}
+                        hideWhenClean
+                      />
+                    )}
                   </>
                 )}
             </div>
           </header>
+
+          <HistoryWindowNotice />
 
           {/* ⭐ Overview unificado: barra de periodo + bandas Operations y
               Quality check (diseño "Unified Jobs View"). El tablero Pipeline
@@ -4666,9 +4043,9 @@ export default function HousesView({
                                   onChange={(e) => setHouseFilter(e.target.value)}
                                 >
                                   <option value="All">All Properties</option>
-                                  {uniqueHouses.map((h, idx) => (
+                                  {uniqueHouses.map((h) => (
                                     <option
-                                      key={idx}
+                                      key={`${h.client}|${h.address}`}
                                       value={`${h.client}|${h.address}`}
                                     >
                                       {getClientName(h.client)} - {h.address}
@@ -5372,14 +4749,13 @@ export default function HousesView({
                         <label className="hv-label">Receive Date</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input
-                            type="date"
+                          <DateInput
                             className="hv-input"
                             value={formData.receiveDate}
-                            onChange={(e) =>
+                            onChange={(iso) =>
                               setFormData({
                                 ...formData,
-                                receiveDate: e.target.value,
+                                receiveDate: iso,
                               })
                             }
                             disabled={isFieldRO("receiveDate")}
@@ -5392,14 +4768,13 @@ export default function HousesView({
                         <label className="hv-label">Schedule Date</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input
-                            type="date"
+                          <DateInput
                             className="hv-input"
                             value={formData.scheduleDate}
-                            onChange={(e) =>
+                            onChange={(iso) =>
                               setFormData({
                                 ...formData,
-                                scheduleDate: e.target.value,
+                                scheduleDate: iso,
                               })
                             }
                             disabled={isFieldRO("scheduleDate")}
@@ -5412,14 +4787,13 @@ export default function HousesView({
                         <label className="hv-label">Date of Issue</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input
-                            type="date"
+                          <DateInput
                             className="hv-input"
                             value={formData.dateOfIssue || ""}
-                            onChange={(e) =>
+                            onChange={(iso) =>
                               setFormData({
                                 ...formData,
-                                dateOfIssue: e.target.value,
+                                dateOfIssue: iso,
                               })
                             }
                             disabled={isFieldRO("dateOfIssue")}
@@ -5432,14 +4806,13 @@ export default function HousesView({
                         <label className="hv-label">Due Date</label>
                         <div className="hv-input-wrap">
                           <CalendarDays className="hv-input-icon" size={16} />
-                          <input
-                            type="date"
+                          <DateInput
                             className="hv-input"
                             value={formData.dueDate || ""}
-                            onChange={(e) =>
+                            onChange={(iso) =>
                               setFormData({
                                 ...formData,
-                                dueDate: e.target.value,
+                                dueDate: iso,
                               })
                             }
                             disabled={isFieldRO("dueDate")}
@@ -7479,13 +6852,7 @@ export default function HousesView({
                       <div className="hv-draft-info">
                         <span className="hv-draft-label">{d.label}</span>
                         <span className="hv-draft-when">
-                          {new Date(d.savedAt).toLocaleString("en-US", {
-                            month: "short",
-                            day: "2-digit",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
+                          {formatDateTime(d.savedAt)}
                         </span>
                       </div>
                       <div className="hv-draft-actions">
@@ -7539,7 +6906,7 @@ export default function HousesView({
                       <h4 className="hv-notehist-title">{t} ({entries.length})</h4>
                       <ul className="hv-drafts-list">
                         {[...entries].reverse().map((e, i) => (
-                          <li key={i} className="hv-draft-item">
+                          <li key={`${e.at}|${e.user}|${i}`} className="hv-draft-item">
                             <div className="hv-draft-info">
                               <span className="hv-draft-label">
                                 {e.action === "created" ? "Creada" : "Editada"} por {e.user}
@@ -8130,7 +7497,7 @@ export default function HousesView({
                 <div className="hv-summary-row">
                   <span>Subtotal</span>
                   <span className="hv-summary-row-value">
-                    ${serviceForm.subtotal.toFixed(2)}
+                    ${serviceTotals.subtotal.toFixed(2)}
                   </span>
                 </div>
                 <div className="hv-summary-row">
@@ -8143,14 +7510,14 @@ export default function HousesView({
                       : serviceForm.minusTax === "Yes"
                         ? "-"
                         : ""}
-                    ${serviceForm.taxAmount.toFixed(2)}
+                    ${serviceTotals.taxAmount.toFixed(2)}
                   </span>
                 </div>
                 <div className="hv-summary-divider"></div>
                 <div className="hv-summary-total-row">
                   <span className="hv-summary-total-label">Total</span>
                   <span className="hv-summary-total-value">
-                    ${serviceForm.total.toFixed(2)}
+                    ${serviceTotals.total.toFixed(2)}
                   </span>
                 </div>
                 <div className="hv-summary-minustax-row">
@@ -8158,7 +7525,7 @@ export default function HousesView({
                     Total Minus Tax
                   </span>
                   <span className="hv-summary-minustax-value">
-                    ${Number(serviceForm.totalMinusTax || 0).toFixed(2)}
+                    ${serviceTotals.totalMinusTax.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -8222,12 +7589,11 @@ export default function HousesView({
                   <label className="hv-label">Date</label>
                   <div className="hv-input-wrap">
                     <CalendarDays className="hv-input-icon" size={16} />
-                    <input
-                      type="date"
+                    <DateInput
                       className="hv-input"
                       value={payrollForm.date}
-                      onChange={(e) =>
-                        setPayrollForm({ ...payrollForm, date: e.target.value })
+                      onChange={(iso) =>
+                        setPayrollForm({ ...payrollForm, date: iso })
                       }
                     />
                   </div>
@@ -8326,7 +7692,7 @@ export default function HousesView({
               <div className="hv-payroll-summary-box">
                 <span className="hv-payroll-summary-label">Total Payment</span>
                 <span className="hv-payroll-summary-value">
-                  ${Number(payrollForm.totalAmount).toFixed(2)}
+                  ${payrollFormTotal.toFixed(2)}
                 </span>
               </div>
             </div>

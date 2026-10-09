@@ -1,5 +1,5 @@
 // src/services/storageService.ts
-import { storage } from '../config/firebase';
+import { storage } from '../config/storage';
 import { ref, deleteObject } from 'firebase/storage';
 // ⭐ Motor de subida: progreso real, 3 reintentos con espera creciente,
 //    vigilante de estancamiento (45s sin avanzar → cancela y reintenta) y
@@ -7,7 +7,6 @@ import { ref, deleteObject } from 'firebase/storage';
 import { uploadBatchWithProgress } from '../utils/photoUploader';
 import type { UploadProgress } from '../utils/photoUploader';
 
-export type { UploadProgress };
 
 /**
  * Limpia un string para usarlo como parte de un path en Firebase Storage.

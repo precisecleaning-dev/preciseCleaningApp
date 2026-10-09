@@ -20,6 +20,13 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { cached, invalidate } from '../shared/utils/memoryCache';
+
+// ⭐ PERF: la papelera guarda el documento completo de cada borrado; leerla
+//    entera en cada visita sale caro. Se reutiliza en memoria TRASH_TTL_MS y
+//    cada escritura de este service (mover, restaurar, purgar) la invalida.
+const TRASH_TTL_MS = 5 * 60 * 1000;
+const TRASH_CACHE = 'trash:';
 
 /** Un documento relacionado que se borra junto con el principal
  *  (ej. payrolls y servicios facturados de una casa). */
@@ -109,17 +116,22 @@ export const trashService = {
       batch.delete(doc(db, r.collectionName, r.originalId));
     }
     await batch.commit();
+    invalidate(TRASH_CACHE);
     return trashRef.id;
   },
 
   /** Todos los registros de la papelera, del más reciente al más antiguo. */
-  async getAll(): Promise<TrashEntry[]> {
-    const snap = await getDocs(
-      query(collection(db, TRASH_COLLECTION), orderBy('deletedAt', 'desc')),
-    );
-    return snap.docs.map((d) => {
-      const raw = d.data() as Omit<TrashEntry, 'id'>;
-      return { id: d.id, ...raw, related: raw.related || [] };
+  getAll(opts: { fresh?: boolean } = {}): Promise<TrashEntry[]> {
+    // `fresh`: el botón "Refrescar" de la papelera siempre vuelve al servidor.
+    if (opts.fresh) invalidate(TRASH_CACHE);
+    return cached(`${TRASH_CACHE}all`, TRASH_TTL_MS, async () => {
+      const snap = await getDocs(
+        query(collection(db, TRASH_COLLECTION), orderBy('deletedAt', 'desc')),
+      );
+      return snap.docs.map((d) => {
+        const raw = d.data() as Omit<TrashEntry, 'id'>;
+        return { id: d.id, ...raw, related: raw.related || [] };
+      });
     });
   },
 
@@ -133,6 +145,7 @@ export const trashService = {
     }
     batch.delete(doc(db, TRASH_COLLECTION, entry.id));
     await batch.commit();
+    invalidate(TRASH_CACHE);
   },
 
   /** Borrado DEFINITIVO: elimina el registro de la papelera para siempre. */
@@ -140,5 +153,6 @@ export const trashService = {
     const batch = writeBatch(db);
     batch.delete(doc(db, TRASH_COLLECTION, trashId));
     await batch.commit();
+    invalidate(TRASH_CACHE);
   },
 };

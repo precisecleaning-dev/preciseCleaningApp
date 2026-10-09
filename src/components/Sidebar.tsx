@@ -3,11 +3,10 @@ import {
   ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye, Gauge, Briefcase, UserCog
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { auth } from '../config/firebase';
-import { signOut } from 'firebase/auth';
 import type { Role, Permission } from '../types/index';
 import type { TabOptions } from '../App';
 import { prefetchHandlers } from '../utils/viewPrefetch';
+import { logout } from '../services/sessionService';
 import './Sidebar.css';
 
 interface NavItemConfig {
@@ -90,8 +89,7 @@ export default function Sidebar({
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to log out?')) {
-      await signOut(auth);
-      window.location.reload();
+      await logout(); // cierra sesión, borra la caché local y recarga
     }
   };
 

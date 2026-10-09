@@ -50,7 +50,7 @@ function generateTempPassword(): string {
   return pwd;
 }
 
-export interface CreateUserResult {
+interface CreateUserResult {
   uid: string;
   email: string;
   alreadyExisted: boolean;
@@ -88,18 +88,16 @@ export async function createUserWithResetEmail(email: string): Promise<CreateUse
     // 3) Enviar email de reset password al usuario (usa la app principal)
     await sendPasswordResetEmail(primaryAuth, cleanEmail);
 
-    console.log(`✅ Usuario creado en Auth: ${cleanEmail} (UID: ${uid})`);
-    console.log(`📧 Email de configuración de contraseña enviado a: ${cleanEmail}`);
 
     return { uid, email: cleanEmail, alreadyExisted: false };
-  } catch (error: any) {
+  } catch (caught) {
+    const error = caught as { code?: string; message?: string };
     console.error('Error en createUserWithResetEmail:', error);
 
     // Si el usuario ya existe en Auth, solo reenviar el email de reset
     if (error?.code === 'auth/email-already-in-use') {
       try {
         await sendPasswordResetEmail(primaryAuth, cleanEmail);
-        console.log(`📧 Email de reset reenviado a: ${cleanEmail} (ya existía en Auth)`);
         // Devolvemos un UID vacío porque no podemos obtenerlo desde el cliente.
         // El llamador debe manejar este caso (revisar alreadyExisted).
         return { uid: '', email: cleanEmail, alreadyExisted: true };
@@ -130,5 +128,4 @@ export async function createUserWithResetEmail(email: string): Promise<CreateUse
 export async function resendPasswordReset(email: string): Promise<void> {
   const cleanEmail = email.toLowerCase().trim();
   await sendPasswordResetEmail(primaryAuth, cleanEmail);
-  console.log(`📧 Email de reset reenviado a: ${cleanEmail}`);
 }

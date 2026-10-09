@@ -35,7 +35,7 @@ export interface UnifiedGroup {
   ai: string;
 }
 
-export interface UnifiedDeps {
+interface UnifiedDeps {
   getClientName: (prop: Property) => string;
   /** null = sin equipo asignado. */
   getTeam: (prop: Property) => { name: string; color: string } | null;

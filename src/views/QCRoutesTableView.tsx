@@ -7,15 +7,16 @@ import {
 import { db } from '../config/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { shareRouteLink, liveDivIcon, type LiveUserPosition } from '../utils/liveRoute';
-import { type LatLng, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
+import { type LatLng, type Leaflet, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { escapeHtml } from '../utils/escapeHtml';
+import { formatDate, formatTime } from '../utils/dateFormat';
 import './QCRoutesTableView.css';
 
 // ============================================================================
 //  QCRoutesTableView — pestaña "Rutas" del hub de Quality Check.
 //
 //  Tabla en tiempo real (onSnapshot) de la colección `qc_routes`: las rutas
-//  guardadas desde el drawer de QualityCheckView o desde QCRouteView. Muestra
+//  guardadas desde el drawer de QualityCheckView. Muestra
 //  el avance (paradas visitadas), quién está transmitiendo GPS en este
 //  momento y el estado (En curso / Completada / Pendiente). Al terminar una
 //  ruta, el botón "Ver" abre el detalle con la hora de llegada a cada parada
@@ -55,10 +56,8 @@ const LIVE_STALE_MS = 5 * 60 * 1000;
 
 type RouteState = 'live' | 'done' | 'pending';
 
-const fmtDate = (iso?: string): string =>
-  iso ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const fmtTime = (iso?: string | null): string =>
-  iso ? new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtDate = (iso?: string): string => formatDate(iso) || '—';
+const fmtTime = (iso?: string | null): string => formatTime(iso) || '—';
 const fmtDuration = (ms: number): string => {
   const totalMin = Math.round(ms / 60000);
   const h = Math.floor(totalMin / 60);
@@ -80,8 +79,8 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
   const [, setTick] = useState(0);
 
   const liveMapElRef = useRef<HTMLDivElement | null>(null);
-  const liveMapRef = useRef<any>(null);          // instancia Leaflet (lib sin tipos)
-  const liveLayerRef = useRef<any>(null);        // capa redibujada en cada snapshot
+  const liveMapRef = useRef<Leaflet>(null);          // instancia Leaflet (lib sin tipos)
+  const liveLayerRef = useRef<Leaflet>(null);        // capa redibujada en cada snapshot
   const fitDoneRef = useRef(false);              // encuadrar solo la primera vez
   const osrmCacheRef = useRef<{ id: string; geometry: unknown } | null>(null);
   const openedFromLinkRef = useRef(false);
@@ -195,7 +194,6 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
     })();
     return () => { cancelled = true; };
     // liveUsers es estable a efectos prácticos (función del componente que lee Date.now()).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveView]);
 
   // ⭐ Punto 5: eliminar una ruta guardada

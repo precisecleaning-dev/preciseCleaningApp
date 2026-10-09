@@ -36,7 +36,7 @@ import { isRecallName, isQualityCheckName, isInvoiceName } from './statusFilters
 
 /** Resultado que debe tener el reporte según el estado al que pasó la casa.
  *  `null` = el estado no dice nada sobre el resultado; no se toca el reporte. */
-export const resultForStatus = (
+const resultForStatus = (
   statuses: Status[],
   statusIdOrName?: string | null,
 ): 'passed' | 'failed' | null => {

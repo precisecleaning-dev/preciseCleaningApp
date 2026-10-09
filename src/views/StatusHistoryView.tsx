@@ -4,14 +4,16 @@ import {
   History, Search, X, MapPin, ChevronRight, SlidersHorizontal, ArrowUpDown, Filter,
   Repeat, LogIn, LogOut, Users, DollarSign, Receipt, Clock, ArrowRight, Route, Calendar, StickyNote, User, TrendingUp, Menu
 } from 'lucide-react';
-import type { Property, Status, Customer, Team } from '../types/index';
-import { db } from '../config/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import type { Property } from '../types/index';
+import { useLiveData } from '../shared/data/liveCollections';
+import { resolveCustomerName } from '../utils/customerDocs';
 import StatusHistoryPanel from '../components/StatusHistoryPanel';
 import { statusHistoryService } from '../services/statusHistoryService';
 import type { StatusHistoryEntry } from '../services/statusHistoryService';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import { isRecallText } from '../utils/recallStatus';
+import { formatDate, formatDateTime } from '../utils/dateFormat';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './StatusHistoryView.css';
 
 interface StatusHistoryViewProps {
@@ -21,12 +23,6 @@ interface StatusHistoryViewProps {
 
 const PAGE_SIZE = 40;
 
-// Colecciones para los totales de la tabla.
-// billing_services es seguro (mismo nombre que en HousesView).
-// Si tu colección de nómina se llama distinto (p.ej. 'payrolls' o 'payroll_records'),
-// solo cambia el valor de PAYROLL_COLLECTION en esta línea.
-const BILLING_COLLECTION = 'billing_services';
-const PAYROLL_COLLECTION = 'payroll';
 
 interface RecallEpisode {
   enteredAt: string;
@@ -46,11 +42,43 @@ interface JourneyNode {
 }
 
 export default function StatusHistoryView({ onOpenMenu, properties }: StatusHistoryViewProps) {
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [billingByProp, setBillingByProp] = useState<Record<string, { total: number; taxes: number }>>({});
-  const [payrollByProp, setPayrollByProp] = useState<Record<string, number>>({});
+  // ⭐ Datos del store compartido (un listener por colección para toda la app).
+  const statusData = useLiveData('statuses');
+  const statuses = useMemo(
+    () => [...statusData].sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+    [statusData],
+  );
+  const customers = useLiveData('customers');
+  const teams = useLiveData('teams');
+  const billingDocs = useLiveData('billingServices');
+  const payrollDocs = useLiveData('payroll');
+
+  // Suma de facturación por propiedad (Total + Taxes)
+  const billingByProp = useMemo(() => {
+    const map: Record<string, { total: number; taxes: number }> = {};
+    billingDocs.forEach((r) => {
+      const pid = String(r.propertyId || '');
+      if (!pid) return;
+      if (!map[pid]) map[pid] = { total: 0, taxes: 0 };
+      map[pid].total += Number(r.total) || 0;
+      map[pid].taxes += Number(r.taxAmount) || 0;
+    });
+    return map;
+  }, [billingDocs]);
+
+  // Suma de nómina por propiedad (Payroll). Nota (auditoría 10/2026): suma
+  // `totalAmount`, que los documentos nuevos de payroll no guardan (ver
+  // getPayrollTotal en utils/jobFinancials.ts). Se deja igual: corregirlo cambia
+  // la cifra que se ve — pendiente de decisión en code-notes.md.
+  const payrollByProp = useMemo(() => {
+    const map: Record<string, number> = {};
+    payrollDocs.forEach((r) => {
+      const pid = String(r.propertyId || '');
+      if (!pid) return;
+      map[pid] = (map[pid] || 0) + (Number(r.totalAmount) || 0);
+    });
+    return map;
+  }, [payrollDocs]);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -63,54 +91,11 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
   const [historyAsc, setHistoryAsc] = useState<StatusHistoryEntry[]>([]);
   const [episodesLoading, setEpisodesLoading] = useState(false);
 
-  useEffect(() => {
-    const unsubs: (() => void)[] = [];
-
-    unsubs.push(onSnapshot(collection(db, 'settings_statuses'), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-      setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
-    }, (e) => console.error('Error statuses:', e)));
-
-    unsubs.push(onSnapshot(collection(db, 'customers'), (snap) => {
-      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Customer[]);
-    }, (e) => console.error('Error customers:', e)));
-
-    unsubs.push(onSnapshot(collection(db, 'settings_teams'), (snap) => {
-      setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
-    }, (e) => console.error('Error teams:', e)));
-
-    // Suma de facturación por propiedad (Total + Taxes)
-    unsubs.push(onSnapshot(collection(db, BILLING_COLLECTION), (snap) => {
-      const map: Record<string, { total: number; taxes: number }> = {};
-      snap.docs.forEach(d => {
-        const r: any = d.data();
-        const pid = String(r.propertyId || '');
-        if (!pid) return;
-        if (!map[pid]) map[pid] = { total: 0, taxes: 0 };
-        map[pid].total += Number(r.total) || 0;
-        map[pid].taxes += Number(r.taxAmount) || 0;
-      });
-      setBillingByProp(map);
-    }, (e) => console.error('Error billing:', e)));
-
-    // Suma de nómina por propiedad (Payroll)
-    unsubs.push(onSnapshot(collection(db, PAYROLL_COLLECTION), (snap) => {
-      const map: Record<string, number> = {};
-      snap.docs.forEach(d => {
-        const r: any = d.data();
-        const pid = String(r.propertyId || '');
-        if (!pid) return;
-        map[pid] = (map[pid] || 0) + (Number(r.totalAmount) || 0);
-      });
-      setPayrollByProp(map);
-    }, (e) => console.error('Error payroll (revisa PAYROLL_COLLECTION):', e)));
-
-    return () => unsubs.forEach(u => u());
-  }, []);
 
   // ---------- Helpers ----------
+  // resolveCustomerName prueba id real, id legacy (AppSheet) y nombre.
   const getClientName = (idOrName?: string | null) =>
-    getRelationName(customers, idOrName, idOrName ? String(idOrName) : 'Unknown');
+    resolveCustomerName(customers, idOrName, idOrName ? String(idOrName) : 'Unknown');
   const statusName = (idOrName?: string | null) =>
     getRelationName(statuses, idOrName, String(idOrName || '—'));
   const statusColor = (idOrName?: string | null) => {
@@ -150,13 +135,6 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
     return { label: status ? String(status) : 'No status', bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
   };
 
-  const formatDateTime = (d?: string | null) => {
-    if (!d) return '—';
-    const str = String(d);
-    const dt = new Date(str);
-    if (isNaN(dt.getTime())) return str;
-    return dt.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
-  };
 
   const formatDuration = (from?: string | null, to?: string | null) => {
     if (!from) return '';
@@ -192,7 +170,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
           if (sid !== statusFilter.toLowerCase() && sName !== statusFilter.toLowerCase()) return false;
         }
         if (!q) return true;
-        return [getClientName(p.client), p.address, (p as any).note].filter(Boolean).join(' ').toLowerCase().includes(q);
+        return [getClientName(p.client), p.address, p.note].filter(Boolean).join(' ').toLowerCase().includes(q);
       })
       .sort((a, b) => {
         if (sortBy === 'address') return String(a.address || '').localeCompare(String(b.address || ''));
@@ -225,7 +203,6 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
       }
     })();
     return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, statuses]);
 
   // Recorrido completo: cada estado por el que pasó, en orden cronológico
@@ -319,6 +296,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
       </header>
 
       {/* Barra de filtros */}
+      <HistoryWindowNotice />
       <div className="sh-card shv-filters-card">
         <div className="shv-filters-title-row">
           <SlidersHorizontal size={15} color="#2563eb" /> Filtros
@@ -341,7 +319,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
           </div>
           <div className="shv-select-wrap">
             <ArrowUpDown size={15} color="#9ca3af" className="shv-select-icon" />
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="shv-input-base shv-select">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="shv-input-base shv-select">
               <option value="client">Ordenar: Cliente</option>
               <option value="address">Ordenar: Dirección</option>
               <option value="schedule">Ordenar: Schedule</option>
@@ -439,7 +417,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 const pay = payrollByProp[p.id] || 0;
                 const profit = bill.total - pay;
                 const team = teamInfo(p.teamId);
-                const inv = invoicePill((p as any).invoiceStatus);
+                const inv = invoicePill(p.invoiceStatus);
                 return (
                   <tr key={p.id} onClick={() => setSelectedId(p.id)}>
                     <td>
@@ -449,8 +427,8 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                       </div>
                     </td>
                     <td className="sh-ellip">{getClientName(p.client)}</td>
-                    <td className="sh-ellip shv-note-cell">{(p as any).note || '—'}</td>
-                    <td className="shv-nowrap-muted">{p.scheduleDate || '—'}</td>
+                    <td className="sh-ellip shv-note-cell">{p.note || '—'}</td>
+                    <td className="shv-nowrap-muted">{formatDate(p.scheduleDate) || '—'}</td>
                     <td>
                       {team ? (
                         <span className="shv-team-chip">
@@ -533,18 +511,18 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                 <div className="shv-fin-box">
                   <div className="shv-fin-label">Status Paid</div>
                   <div className="shv-fin-status-wrap">
-                    {(() => { const inv = invoicePill((selected as any).invoiceStatus); return (
+                    {(() => { const inv = invoicePill(selected.invoiceStatus); return (
                       <span className="shv-invoice-pill small" style={{ '--pill-bg': inv.bg, '--pill-color': inv.color, '--pill-border': inv.border } as CSSProperties}>{inv.label}</span>
                     ); })()}
                   </div>
                 </div>
               </div>
 
-              {(selected.scheduleDate || (selected as any).note || selected.teamId) && (
+              {(selected.scheduleDate || selected.note || selected.teamId) && (
                 <div className="shv-meta-row">
-                  {selected.scheduleDate && <span className="shv-meta-item"><Calendar size={14} color="#94a3b8" /> {selected.scheduleDate}</span>}
+                  {selected.scheduleDate && <span className="shv-meta-item"><Calendar size={14} color="#94a3b8" /> {formatDate(selected.scheduleDate)}</span>}
                   {selected.teamId && (() => { const t = teamInfo(selected.teamId); return t ? <span className="shv-meta-item"><Users size={14} color={t.color} /> {t.name}</span> : null; })()}
-                  {(selected as any).note && <span className="shv-meta-item note"><StickyNote size={14} color="#94a3b8" className="shv-meta-note-icon" /> {(selected as any).note}</span>}
+                  {selected.note && <span className="shv-meta-item note"><StickyNote size={14} color="#94a3b8" className="shv-meta-note-icon" /> {selected.note}</span>}
                 </div>
               )}
 
@@ -573,7 +551,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                           {n.isLast && <span className="shv-journey-badge current">Estado actual</span>}
                         </div>
                         <div className="shv-journey-meta-row">
-                          {n.at && <span className="shv-journey-meta-item"><Clock size={12} /> {formatDateTime(n.at)}</span>}
+                          {n.at && <span className="shv-journey-meta-item"><Clock size={12} /> {(formatDateTime(n.at) || '—')}</span>}
                           {n.by && <span className="shv-journey-meta-item"><User size={12} /> {n.by}</span>}
                           {n.duration && <span className={`shv-journey-duration${n.isLast ? ' last' : ''}`}>
                             {n.isLast ? 'aquí desde hace' : 'estuvo'} {n.duration}
@@ -603,7 +581,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                     {recallEpisodes.map((ep, i) => {
                       const stillIn = !ep.exitedAt;
                       return (
-                        <div key={i} className="shv-recall-card">
+                        <div key={ep.enteredAt} className="shv-recall-card">
                           <div className={`shv-recall-card-head${stillIn ? ' still-in' : ''}`}>
                             <span className="shv-recall-card-label">Recall #{recallEpisodes.length - i}</span>
                             {stillIn
@@ -615,7 +593,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                               <div className="shv-recall-col-label">
                                 <LogIn size={13} color="#dc2626" /> Entró
                               </div>
-                              <div className="shv-recall-col-value">{formatDateTime(ep.enteredAt)}</div>
+                              <div className="shv-recall-col-value">{(formatDateTime(ep.enteredAt) || '—')}</div>
                               {ep.enteredBy && <div className="shv-recall-col-sub">por {ep.enteredBy}</div>}
                             </div>
                             <div className="shv-recall-col">
@@ -626,7 +604,7 @@ export default function StatusHistoryView({ onOpenMenu, properties }: StatusHist
                                 <div className="shv-recall-col-value still">Todavía en Recall</div>
                               ) : (
                                 <>
-                                  <div className="shv-recall-col-value">{formatDateTime(ep.exitedAt)}</div>
+                                  <div className="shv-recall-col-value">{(formatDateTime(ep.exitedAt) || '—')}</div>
                                   {ep.exitedTo && <div className="shv-recall-col-sub arrow-row"><ArrowRight size={11} /> pasó a {ep.exitedTo}</div>}
                                 </>
                               )}

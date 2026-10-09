@@ -19,5 +19,10 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // `const { id, ...resto } = doc` es la forma idiomática de quitar un campo
+      // antes de escribir en Firestore: la variable descartada no es un error.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+    },
   },
 ])

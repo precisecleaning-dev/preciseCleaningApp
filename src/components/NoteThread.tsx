@@ -4,6 +4,7 @@
 //    (tab Notes & Photos) para Office Notes, General Note y Employee's Note.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Send, StickyNote } from 'lucide-react';
+import { formatDate, formatTime } from '../utils/dateFormat';
 import './NoteThread.css';
 
 export interface NoteMessage {
@@ -31,10 +32,8 @@ interface NoteThreadProps {
   onSend: (text: string) => Promise<boolean>;
 }
 
-const fmtTime = (iso: string) =>
-  iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-const fmtDay = (iso: string) =>
-  iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '';
+const fmtTime = formatTime;
+const fmtDay = formatDate;
 
 /** Inicial del autor para el círculo (como en WhatsApp). */
 const initialOf = (name: string) => (name.trim().match(/[A-Za-zÀ-ÿ0-9]/)?.[0] || '?').toUpperCase();

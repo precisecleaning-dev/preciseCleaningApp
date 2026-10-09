@@ -7,13 +7,12 @@ import {
   Save, Clock, WifiOff, Plus, StickyNote,
   Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Menu, Route, Copy, LayoutGrid
 } from 'lucide-react';
-import type { Property, SystemUser, Place, Task, Status, Team, Customer } from '../types/index';
+import type { Property, SystemUser, Place } from '../types/index';
 import { getRelationName } from '../utils/relations';
 // ⭐ Velocidad: pinta con el caché local de Firestore y refresca en 2º plano.
-import { getDocsCacheFirst } from '../utils/cacheFirstFetch';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { mapCustomerDoc } from '../utils/customerDocs';
-import { settingsService } from '../services/settingsService';
+import { useLiveCollection } from '../shared/data/liveCollections';
+import { getCompanySettings } from '../services/companyService';
 import { storageService } from '../services/storageService';
 import { propertiesService } from '../services/propertiesService';
 import { compressImage } from '../utils/imageCompression';
@@ -29,7 +28,10 @@ import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
-import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil } from '../utils/qcReportPdf';
+import { formatDate as formatDateMDY, formatTime, todayIso, dateSortValue } from '../utils/dateFormat';
+import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
+import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil, type QcFormData } from '../utils/qcReportPdf';
 import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
 import QCRouteDrawer, { type RouteDrawerHouse } from './QCRouteDrawer';
@@ -50,7 +52,7 @@ export interface QCRecord {
   checkOutAt?: string | null;     // hora de salida (ISO) — se sella al guardar / mandar a recall
   durationMinutes?: number | null; // minutos totales (salida - entrada)
   selectedPlaces?: string[];
-  qcData?: any;
+  qcData?: QcFormData;
 }
 
 // ⭐ Nombre de la base de datos local (IndexedDB) para la cola de fotos offline
@@ -59,6 +61,17 @@ const OFFLINE_STORE = 'photos';
 
 // ⭐ Helpers de IndexedDB (cola de fotos sin conexión). Autocontenidos: no dependen
 //    de ningún servicio externo. Cada entrada guarda el blob comprimido + contexto.
+interface OfflinePhotoEntry {
+  id: string;
+  houseId: string;
+  placeId: string;
+  placeName: string;
+  address: string;
+  blob: Blob;
+  qcDocId: string | null;
+  createdAt: number;
+}
+
 function openOfflineDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     try {
@@ -74,7 +87,7 @@ function openOfflineDB(): Promise<IDBDatabase> {
     } catch (e) { reject(e); }
   });
 }
-async function offlinePut(entry: any): Promise<void> {
+async function offlinePut(entry: OfflinePhotoEntry): Promise<void> {
   const database = await openOfflineDB();
   await new Promise<void>((resolve, reject) => {
     const tx = database.transaction(OFFLINE_STORE, 'readwrite');
@@ -84,9 +97,9 @@ async function offlinePut(entry: any): Promise<void> {
   });
   database.close();
 }
-async function offlineGetAll(): Promise<any[]> {
+async function offlineGetAll(): Promise<OfflinePhotoEntry[]> {
   const database = await openOfflineDB();
-  const out = await new Promise<any[]>((resolve, reject) => {
+  const out = await new Promise<OfflinePhotoEntry[]>((resolve, reject) => {
     const tx = database.transaction(OFFLINE_STORE, 'readonly');
     const req = tx.objectStore(OFFLINE_STORE).getAll();
     req.onsuccess = () => resolve(req.result || []);
@@ -132,42 +145,48 @@ interface QualityCheckViewProps {
 }
 
 // Genera un id único para previews locales (con fallback si crypto.randomUUID no existe)
-const uid = () =>
-  (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
-    ? (crypto as any).randomUUID()
+const uid = (): string =>
+  (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 // ─────────────────────────────────────────────────────────────
 // ⭐ EDITOR DE FOTO (estilo WhatsApp): dibujar lápiz / círculo / flecha
 //    sobre una foto ya tomada, elegir color, deshacer y guardar.
 // ─────────────────────────────────────────────────────────────
+interface Pt { x: number; y: number }
+type Stroke =
+  | { tool: 'pen'; color: string; size: number; points: Pt[] }
+  | { tool: 'circle' | 'arrow'; color: string; size: number; start: Pt; end: Pt };
+type DrawEvent = React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>;
+
 function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
   imageUrl: string; saving: boolean; onCancel: () => void; onSave: (blob: Blob) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  const drawingRef = useRef<any>(null);
+  const drawingRef = useRef<Stroke | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [tool, setTool] = useState<'pen' | 'circle' | 'arrow'>('pen');
   const [color, setColor] = useState('#ef4444');
-  const [strokes, setStrokes] = useState<any[]>([]);
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
 
   const colors = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#000000', '#ffffff'];
   const LINE = 6;
 
-  const redraw = (all: any[]) => {
+  const redraw = (all: Stroke[]) => {
     const c = canvasRef.current, img = imgRef.current;
     if (!c || !img) return;
     const ctx = c.getContext('2d'); if (!ctx) return;
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.drawImage(img, 0, 0, c.width, c.height);
-    const drawOne = (st: any) => {
+    const drawOne = (st: Stroke) => {
       ctx.strokeStyle = st.color; ctx.fillStyle = st.color; ctx.lineWidth = st.size || LINE;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       if (st.tool === 'pen') {
         ctx.beginPath();
-        (st.points || []).forEach((p: any, i: number) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+        (st.points || []).forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
         ctx.stroke();
       } else if (st.tool === 'circle') {
         const cx = (st.start.x + st.end.x) / 2, cy = (st.start.y + st.end.y) / 2;
@@ -188,14 +207,15 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
     if (drawingRef.current) drawOne(drawingRef.current);
   };
 
-  const ptFromEvent = (e: any) => {
+  const ptFromEvent = (e: DrawEvent): Pt => {
     const c = canvasRef.current!; const rect = c.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const src = 'touches' in e ? e.touches[0] : e;
+    const clientX = src.clientX;
+    const clientY = src.clientY;
     return { x: (clientX - rect.left) * (c.width / rect.width), y: (clientY - rect.top) * (c.height / rect.height) };
   };
 
-  const startDraw = (e: any) => {
+  const startDraw = (e: DrawEvent) => {
     if (!ready) return;
     e.preventDefault();
     const p = ptFromEvent(e);
@@ -203,12 +223,13 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
     else drawingRef.current = { tool, color, size: LINE, start: p, end: p };
     redraw(strokes);
   };
-  const moveDraw = (e: any) => {
-    if (!drawingRef.current) return;
+  const moveDraw = (e: DrawEvent) => {
+    const cur = drawingRef.current;
+    if (!cur) return;
     e.preventDefault();
     const p = ptFromEvent(e);
-    if (tool === 'pen') drawingRef.current.points.push(p);
-    else drawingRef.current.end = p;
+    if (cur.tool === 'pen') cur.points.push(p);
+    else cur.end = p;
     redraw(strokes);
   };
   const endDraw = () => {
@@ -229,7 +250,7 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
         try {
           const r = await fetch(imageUrl, { mode: 'cors' });
           if (r.ok) { const b = await r.blob(); src = URL.createObjectURL(b); }
-        } catch { }
+        } catch { /* sin CORS: se usa la URL original */ }
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -249,7 +270,6 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
       } catch { setLoadError('No se pudo cargar la imagen para editar.'); }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl]);
 
   return (
@@ -300,7 +320,17 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
 
 
 export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit, reportToEdit, clearReportToEdit }: QualityCheckViewProps) {
-  const [qcList, setQcList] = useState<QCRecord[]>([]);
+  // ⭐ Reportes de QC y catálogos del store compartido (un listener por
+  //    colección para toda la app). Antes: getDocsCacheFirst de quality_checks
+  //    y customers, que pintaba del caché pero SIEMPRE repetía la lectura
+  //    completa en el servidor al abrir la vista, más 4 getDocs de catálogos.
+  //    Guardar/borrar ya no toca la lista a mano: el listener la actualiza.
+  const qcLive = useLiveCollection('qualityChecks');
+  const qcList = useMemo(() => {
+    // QCRecord es el tipo completo de esta vista; el store guarda el documento tal cual.
+    const list = [...qcLive.data] as unknown as QCRecord[];
+    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [qcLive.data]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
@@ -317,13 +347,19 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [annotate, setAnnotate] = useState<null | { placeId: string; index: number; url: string }>(null);
   const [savingAnnotation, setSavingAnnotation] = useState(false);
 
-  const [places, setPlaces] = useState<Place[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const placesLive = useLiveCollection('places');
+  const tasksLive = useLiveCollection('tasks');
+  const teamsLive = useLiveCollection('teams');
+  const customersLive = useLiveCollection('customers');
   // ⭐ Catálogo de estados para detectar las casas en "Quality Check"
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(true);
+  const statusesLive = useLiveCollection('statuses');
+  const places = useMemo(() => [...placesLive.data].sort((a, b) => a.name.localeCompare(b.name)), [placesLive.data]);
+  const tasks = useMemo(() => [...tasksLive.data].sort((a, b) => a.name.localeCompare(b.name)), [tasksLive.data]);
+  const teams = teamsLive.data;
+  const customersList = customersLive.data;
+  const statuses = statusesLive.data;
+  const isLoadingCatalogs = !placesLive.loaded || !tasksLive.loaded || !teamsLive.loaded
+    || !customersLive.loaded || !statusesLive.loaded || !qcLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
 
   // ⭐ Cambio de status de una casa DESDE esta vista (modal)
@@ -375,16 +411,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    momento en que el usuario necesita el listado.
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
-  // ⭐ Abrir el panel solo cuando NO hay ninguna area elegida: es el momento en que
-  //    el usuario necesita el listado. Si ya eligio areas, el formulario manda y el
-  //    panel se abre a peticion con el boton "Areas".
-  useEffect(() => {
-    if (!isFormModalOpen) { setIsPickerOpen(false); return; }
-    setIsPickerOpen(selectedPlaceIds.length === 0);
-    // Solo al abrir/cerrar el modal: si dependiera de selectedPlaceIds el panel
-    // volveria a abrirse cada vez que se quita la ultima area a mano.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFormModalOpen]);
+  // ⭐ Al ABRIR el formulario el panel se abre solo si NO hay ninguna area
+  //    elegida: es el momento en que el usuario necesita el listado. Si ya eligio
+  //    areas, el formulario manda y el panel se abre a peticion con el boton
+  //    "Areas". Se decide en los handlers que abren y cierran el formulario (no
+  //    en un efecto), así quitar la ultima area a mano no lo vuelve a abrir.
 
   // ⭐ Area recien seleccionada: se desplaza a ella para que quede a la vista.
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
@@ -409,74 +440,25 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    vista, porque con muchas areas la barra se desplaza horizontalmente.
   const areaTabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  const [qcData, setQcData] = useState<Record<string, any>>({});
+  const [qcData, setQcData] = useState<QcFormData>({});
+  const fullHistory = useFullHistory();
 
+  // ⭐ Configuración de empresa (logo, correo, envío automático).
   useEffect(() => {
-    const fetchAllData = async () => {
-      setIsLoadingCatalogs(true);
-      try {
-        const [placesData, tasksData, teamsData, statusesData, customersSnap, qcSnap, companySnap] = await Promise.all([
-          settingsService.getAll('settings_places').catch(() => []),
-          settingsService.getAll('settings_tasks').catch(() => []),
-          settingsService.getAll('settings_teams').catch(() => []),
-          settingsService.getAll('settings_statuses').catch(() => []),
-          // ⭐ cache-first: pinta al momento con lo local; el servidor llega
-          //    después (onFresh) solo para actualizar, sin bloquear la vista.
-          getDocsCacheFirst(collection(db, 'customers'), {
-            onFresh: (fresh) =>
-              setCustomersList(fresh.docs.map(mapCustomerDoc)),
-          }).catch(() => ({ docs: [] })),
-          getDocsCacheFirst(collection(db, 'quality_checks'), {
-            onFresh: (fresh) => {
-              const freshQCs: QCRecord[] = fresh.docs.map((d) => ({
-                id: d.id,
-                ...d.data(),
-              } as QCRecord));
-              freshQCs.sort(
-                (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-              );
-              setQcList(freshQCs);
-            },
-          }).catch(() => ({ docs: [] })),
-          getDoc(doc(db, 'settings_company', 'main')).catch(() => null),
-        ]);
-
-        // ⭐ Cargar configuración de empresa (si existe)
-        const cData = (companySnap && (companySnap as any).exists && (companySnap as any).exists()) ? (companySnap as any).data() : null;
-        if (cData) {
-          setCompanySettings({
-            name: cData.name || '',
-            address: cData.address || '',
-            logo: cData.logo || '',
-            email: cData.email || '',
-            autoSend: cData.autoSend !== false,
-          });
-        }
-
-        const sortedPlaces = (placesData as Place[]).sort((a, b) => a.name.localeCompare(b.name));
-        const sortedTasks = (tasksData as Task[]).sort((a, b) => a.name.localeCompare(b.name));
-
-        setPlaces(sortedPlaces);
-        setTasks(sortedTasks);
-        setTeams(teamsData as Team[]);
-        setStatuses(statusesData as Status[]);
-        setCustomersList(((customersSnap as any).docs || []).map(mapCustomerDoc));
-
-        const docsArray = (qcSnap as any).docs || [];
-        const loadedQCs: QCRecord[] = docsArray.map((document: any) => ({
-          id: document.id,
-          ...document.data()
-        } as QCRecord));
-
-        loadedQCs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setQcList(loadedQCs);
-      } catch (error) {
-        console.error("Error loading QC data:", error);
-      } finally {
-        setIsLoadingCatalogs(false);
-      }
-    };
-    fetchAllData();
+    let alive = true;
+    getCompanySettings()
+      .then((c) => {
+        if (!alive) return;
+        setCompanySettings({
+          name: c.name || '',
+          address: c.address || '',
+          logo: c.logo || '',
+          email: c.email || '',
+          autoSend: c.autoSend !== false,
+        });
+      })
+      .catch(() => { /* valores por defecto */ });
+    return () => { alive = false; };
   }, []);
 
   useEffect(() => {
@@ -518,7 +500,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const ref = doc(db, 'quality_checks', qcDocId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
-    const data: any = snap.data() || {};
+    const data = (snap.data() || {}) as { qcData?: QcFormData };
     const qc = { ...(data.qcData || {}) };
     const place = { ...(qc[placeId] || {}) };
     const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
@@ -620,7 +602,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Coordenadas pre-guardadas si la casa las trae (campos aún no declarados en Property).
-  //    Espejo de `preCoords` en QCRouteView.tsx — candidato a unificar en utils/routing.ts.
   type PropertyGeo = Property & {
     lat?: number; lng?: number; latitude?: number; longitude?: number;
     coords?: { lat?: number; lng?: number }; location?: { lat?: number; lng?: number };
@@ -662,7 +643,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Id del estado "Quality Check" (para regresar una casa cuando NO pasó)
   const getQualityCheckStatusId = (): string | null => {
-    const st = statuses.find((s: any) => {
+    const st = statuses.find((s) => {
       const n = String(s.name || '').toLowerCase().trim();
       return n === 'qc' || n.includes('quality check') || n.includes('quality-check');
     });
@@ -671,14 +652,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Id del estado "Recall" (cuando un QC NO pasa, la casa pasa a Recall)
   const getRecallStatusId = (): string | null => {
-    const st = statuses.find((s: any) => isRecallText(s.name));
+    const st = statuses.find((s) => isRecallText(s.name));
     return st ? st.id : null;
   };
 
   // ⭐ Determina si una casa tiene estado "Recall" (resuelve id o nombre del status)
   const isRecallStatus = (house: Property): boolean => {
-    const sid = (house as any).statusId;
-    const st = statuses.find((s: any) => String(s.id) === String(sid) || String(s.name) === String(sid));
+    const sid = house.statusId;
+    const st = statuses.find((s) => String(s.id) === String(sid) || String(s.name) === String(sid));
     return isRecallText(st?.name || sid);
   };
 
@@ -690,8 +671,8 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Info del status actual de una casa (para el chip): nombre + color
   const houseStatusInfo = (house: Property) => {
-    const sid = (house as any).statusId;
-    const st = statuses.find((x: any) => String(x.id) === String(sid) || String(x.name) === String(sid));
+    const sid = house.statusId;
+    const st = statuses.find((x) => String(x.id) === String(sid) || String(x.name) === String(sid));
     return { id: st?.id ?? sid ?? '', name: st?.name || (sid ? String(sid) : 'Sin estado'), color: st?.color || '#94a3b8' };
   };
 
@@ -711,7 +692,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const applyHouseStatusChange = async (newStatusId: string) => {
     if (!statusModalHouse || !newStatusId) return;
     const house = statusModalHouse;
-    const prevStatusId = (house as any).statusId;
+    const prevStatusId = house.statusId;
     if (String(newStatusId) === String(prevStatusId)) { setStatusModalHouse(null); return; }
     setSavingStatus(true);
     try {
@@ -734,7 +715,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           toStatusName: resolveStatusName(newStatusId) || null,
           changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
           source: 'quality_check',
-        } as any);
+        });
       } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
 
       // ⭐ Misma sincronizacion que en Quality Check Reports, en sentido inverso:
@@ -776,7 +757,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           const ref = doc(db, 'quality_checks', savedDocId);
           const snap = await getDoc(ref);
           if (snap.exists()) {
-            const data: any = snap.data() || {};
+            const data = (snap.data() || {}) as { qcData?: QcFormData };
             const qc = { ...(data.qcData || {}) };
             const place = { ...(qc[annotate.placeId] || {}) };
             const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
@@ -836,7 +817,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Reúne las notas y daños capturados por área (para mostrarlos en la tarjeta del QC)
   const collectNotesForCard = (qc: QCRecord): { area: string; notes: string; damage: string }[] => {
-    const data = (qc.qcData as Record<string, any>) || {};
+    const data = (qc.qcData as QcFormData) || {};
     const out: { area: string; notes: string; damage: string }[] = [];
     places.forEach(p => {
       const d = data[p.id];
@@ -848,20 +829,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return out;
   };
 
-  // ⭐ Fecha en formato mm/dd/YYYY
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    const [year, month, day] = dateString.split('-');
-    if (!year || !month || !day) return dateString;
-    return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
-  };
+  // ⭐ Fecha en formato MM/DD/YYYY (utils/dateFormat; '-' si no hay fecha)
+  const formatDate = (dateString: string) => formatDateMDY(dateString) || '-';
 
   // ⭐ Hora legible (hh:mm am/pm) a partir de un ISO
   const fmtTime = (iso?: string | null): string => {
     if (!iso) return '—';
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return formatTime(d);
   };
 
   // ⭐ Duración legible a partir de minutos
@@ -915,9 +891,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    su lugar es Reports. Antes se quedaba aquí para siempre y el equipo
   //    veía "casas que nunca desaparecen" aunque ya estuvieran facturadas.
   //    Si la casa fue borrada, el registro se conserva como histórico visible.
+  //    Con la ventana de 12 meses, un registro viejo cuya casa no se cargó es
+  //    historial oculto, no una casa borrada (ver isHiddenByWindow).
   const qcListInFlow = qcList.filter(qc => {
     const house = properties.find(p => p.id === qc.houseId);
-    if (!house) return true;
+    if (!house) return !isHiddenByWindow(fullHistory, false, dateSortValue(qc.date));
     return isQualityCheckStatus(house.statusId, statuses) || isRecallStatus(house);
   });
 
@@ -982,7 +960,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
   const activePlacesFor = (house: Property | null): Place[] => {
-    const ids = (house as any)?.qcPlaces as string[] | undefined;
+    const ids = house?.qcPlaces;
     if (Array.isArray(ids) && ids.length > 0) return places.filter(p => ids.includes(p.id));
     return places;
   };
@@ -995,7 +973,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setSelectedPlaceIds([]);
     setCheckInAt(new Date().toISOString()); // ⭐ hora de entrada
 
-    const initialData: any = {};
+    const initialData: QcFormData = {};
     places.forEach(p => {
       initialData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
     });
@@ -1005,6 +983,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setHasUnsavedChanges(false);
     setLastSavedAt(null);
     setFocusPlaceId(null);
+    setIsPickerOpen(true); // formulario nuevo: ninguna area elegida todavia
     setIsFormModalOpen(true);
   };
 
@@ -1028,7 +1007,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setPlaceSearch('');
     setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
 
-    const loadedData: any = qc.qcData || {};
+    const loadedData: QcFormData = qc.qcData || {};
     places.forEach(p => {
       if (!loadedData[p.id]) {
         loadedData[p.id] = { tasks: {}, corrections: '', score: null, notes: '', damage: '', photos: [] };
@@ -1053,7 +1032,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           || (d.corrections || '').trim().length > 0;
       })
       .map(p => p.id);
-    setSelectedPlaceIds(qc.selectedPlaces && qc.selectedPlaces.length ? qc.selectedPlaces : derived);
+    const initialPlaceIds = qc.selectedPlaces && qc.selectedPlaces.length ? qc.selectedPlaces : derived;
+    setSelectedPlaceIds(initialPlaceIds);
+    setIsPickerOpen(initialPlaceIds.length === 0);
 
     // ⭐ Estado limpio de guardado: la barra inferior no debe heredar el aviso
     //    de "cambios sin guardar" ni la hora de guardado de la inspeccion anterior.
@@ -1107,6 +1088,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setCameraPlace(null);
     setCameraShots([]);
     setCheckInAt(null);
+    setIsPickerOpen(false);
     setIsFormModalOpen(false);
     setSelectedHouse(null);
     setEditingQcId(null);
@@ -1200,7 +1182,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const at = new Date().toISOString();
     try {
       await updateDoc(doc(db, 'quality_checks', qc.id as string), { correctionsDoneAt: at, correctionsDoneBy: by });
-      setQcList(prev => prev.map(x => x.id === qc.id ? ({ ...x, correctionsDoneAt: at, correctionsDoneBy: by } as QCRecord) : x));
     } catch (e) {
       console.error('Error marcando correcciones:', e);
       alert('No se pudieron marcar las correcciones.');
@@ -1258,7 +1239,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     //    Se regenera con un marcador propio (⚠ Marcado "No":) para no duplicarse al
     //    re-guardar: se elimina la línea automática previa y se escribe la vigente.
     const NO_MARKER = '\u26a0 Marcado "No": ';
-    const qcDataWithNoNotes: Record<string, any> = { ...qcData };
+    const qcDataWithNoNotes: QcFormData = { ...qcData };
     activePlaces.forEach(p => {
       const entry = qcDataWithNoNotes[p.id];
       if (!entry) return;
@@ -1278,9 +1259,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     //    coincida exactamente con el % impreso en el PDF.
     const qcScore = computeQCScore(qcDataWithNoNotes, tasks);
 
-    const recordData: any = {
+    const recordData = {
       houseId: selectedHouse.id,
-      date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
+      date: editingQcId ? (qcList.find(q => q.id === editingQcId)?.date || todayIso()) : todayIso(),
       address: selectedHouse.address,
       client: selectedHouse.client,
       team: (editingQcId && qcList.find(q => q.id === editingQcId)?.team) || getTeamNameForHouse(selectedHouse),
@@ -1307,11 +1288,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       let savedId = editingQcId || '';
       if (editingQcId) {
         await updateDoc(doc(db, 'quality_checks', editingQcId), recordData);
-        setQcList(prev => prev.map(qc => qc.id === editingQcId ? { id: editingQcId, ...recordData } as QCRecord : qc));
       } else {
         const docRef = await addDoc(collection(db, 'quality_checks'), recordData);
         savedId = docRef.id;
-        setQcList(prev => [{ id: docRef.id, ...recordData } as QCRecord, ...prev]);
       }
 
       // ⭐ Vincular este reporte a las fotos que quedaron en cola offline para esta
@@ -1329,7 +1308,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       //    estado con el que debe aparecer en Quality Check Reports. (Con
       //    "RECALL" manda el bloque de abajo, que la lleva a Recall.)
       if (!forceFail && opts.closeAfter === true) {
-        const prevStatusId = (selectedHouse as any).statusId;
+        const prevStatusId = selectedHouse.statusId;
         const qcStatusId = getQualityCheckStatusId();
         if (qcStatusId && String(prevStatusId) !== String(qcStatusId)) {
           try {
@@ -1341,13 +1320,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               toStatusId: qcStatusId,
               toStatusName: resolveStatusName(qcStatusId) || 'Quality Check',
               changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
-            } as any);
+            });
           } catch (e) { console.error('No se pudo mover la casa a Quality Check:', e); }
         }
       }
 
       if (forceFail) {
-        const prevStatusId = (selectedHouse as any).statusId;
+        const prevStatusId = selectedHouse.statusId;
         const recallStatusId = getRecallStatusId();
         const targetStatusId = recallStatusId || getQualityCheckStatusId();
         if (targetStatusId) {
@@ -1367,7 +1346,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
               changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
               source: 'quality_check',
               reason: 'No pasó Quality Check',
-            } as any);
+            });
           } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
         }
       }
@@ -1429,7 +1408,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
     try {
       await deleteDoc(doc(db, 'quality_checks', id));
-      setQcList(prev => prev.filter(qc => qc.id !== id));
     } catch (error) {
       console.error("Error deleting Quality Check:", error);
       alert("Error trying to delete the record.");
@@ -1446,9 +1424,9 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const preview = URL.createObjectURL(file);
     setPendingPhotos(prev => ({ ...prev, [placeId]: [...(prev[placeId] || []), { id, preview }] }));
     try {
-      const asFile = file instanceof File ? file : new File([file], `qc_${id}.jpg`, { type: (file as any).type || 'image/jpeg' });
+      const asFile = file instanceof File ? file : new File([file], `qc_${id}.jpg`, { type: file.type || 'image/jpeg' });
       // Optimizador: 1600px máx, calidad 0.8, objetivo ~0.6MB (buen balance peso/calidad)
-      let compressed: any = asFile;
+      let compressed: File = asFile;
       try { compressed = await compressImage(asFile, { quality: 0.8, maxWidth: 1600, maxSizeMB: 0.6 }); }
       catch { compressed = asFile; }
 
@@ -1492,7 +1470,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const closeBurstCamera = () => {
     const st = streamRef.current;
     if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    cameraShots.forEach(sh => { try { URL.revokeObjectURL(sh.preview); } catch { } });
+    cameraShots.forEach(sh => { try { URL.revokeObjectURL(sh.preview); } catch { /* ya liberada */ } });
     setCameraShots([]);
     setCameraOpen(false);
     setCameraPlace(null);
@@ -1556,7 +1534,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       const st = streamRef.current;
       if (st) { st.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraOpen, cameraPlace]);
 
   // ⭐ Eliminar foto del estado (también la borra de Storage)
@@ -1592,11 +1569,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ El generador del PDF vive ahora en src/utils/qcReportPdf.ts (compartido con
   //    la pestaña Reportes). Estos wrappers solo aportan el contexto de esta vista.
-  const collectPlacesWithData = (qcDataObj: Record<string, any>) => collectPlacesWithDataUtil(places, qcDataObj);
+  const collectPlacesWithData = (qcDataObj: QcFormData) => collectPlacesWithDataUtil(places, qcDataObj);
 
   const buildAndExportQCPDF = async (
     house: Property,
-    qcDataObj: Record<string, any>,
+    qcDataObj: QcFormData,
     inspectorName: string,
     recordDate?: string,
     setLoading?: (loading: boolean) => void,
@@ -1633,7 +1610,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const handleShareWhatsApp = async (
     house: Property,
-    qcDataObj: Record<string, any>,
+    qcDataObj: QcFormData,
     inspectorName: string,
     dateStr?: string,
     teamNameOverride?: string,
@@ -1679,7 +1656,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //       quien despacha es la extension Trigger Email. Si no esta instalada, el
   //       documento se guarda igual y antes se anunciaba "enviado" sin que
   //       saliera ningun correo. Ver src/utils/sendMail.ts.
-  const sendQCByEmail = async (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string) => {
+  const sendQCByEmail = async (house: Property, qcDataObj: QcFormData, inspector: string, dateStr?: string, teamNameOverride?: string) => {
     const to = branding.email;
     if (!to) return null;
     if (collectPlacesWithData(qcDataObj).length === 0) return null;
@@ -1699,7 +1676,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     // Si la propiedad no está en el listado, reconstruimos lo necesario desde el propio reporte.
     const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     const inspector = qc.inspector || 'Unknown';
-    const recordQcData = (qc.qcData as Record<string, any>) || {};
+    const recordQcData = (qc.qcData as QcFormData) || {};
 
     setExportingForQcId(qc.id as string);
     try {
@@ -1710,7 +1687,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Resumen rápido (para el cuerpo del email)
-  const qcSummary = (qcDataObj: Record<string, any>) => {
+  const qcSummary = (qcDataObj: QcFormData) => {
     let yes = 0, no = 0;
     places.forEach(p => {
       const d = qcDataObj[p.id];
@@ -1728,10 +1705,10 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Construye asunto + cuerpo (en inglés) del correo
-  const buildEmail = (house: Property, qcDataObj: Record<string, any>, inspector: string, dateStr?: string, teamNameOverride?: string) => {
+  const buildEmail = (house: Property, qcDataObj: QcFormData, inspector: string, dateStr?: string, teamNameOverride?: string) => {
     const clientName = getClientName(house.client);
     const team = teamNameOverride || getTeamNameForHouse(house);
-    const niceDate = formatDate(dateStr || new Date().toISOString().split('T')[0]);
+    const niceDate = formatDate(dateStr || todayIso());
     const { passRate, hasData, verdict } = qcSummary(qcDataObj);
     const subject = `Quality Check Report - ${clientName} (${niceDate})`;
     const body = [
@@ -1757,7 +1734,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const openEmailForQC = (qc: QCRecord) => {
     const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     if (branding.email) setEmailTo(branding.email);
-    setEmailCtx(buildEmail(house, (qc.qcData as Record<string, any>) || {}, qc.inspector || 'Unknown', qc.date, qc.team));
+    setEmailCtx(buildEmail(house, (qc.qcData as QcFormData) || {}, qc.inspector || 'Unknown', qc.date, qc.team));
     setEmailExport(() => () => handleExportFromTable(qc));
     setEmailModalOpen(true);
   };
@@ -1766,7 +1743,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (!selectedHouse) return;
     if (branding.email) setEmailTo(branding.email);
     const inspector = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
-    const dateStr = editingQcId ? (qcList.find(q => q.id === editingQcId)?.date) : new Date().toISOString().split('T')[0];
+    const dateStr = editingQcId ? (qcList.find(q => q.id === editingQcId)?.date) : todayIso();
     setEmailCtx(buildEmail(selectedHouse, qcData, inspector, dateStr));
     setEmailExport(() => () => handleExportFromModal());
     setEmailModalOpen(true);
@@ -1862,6 +1839,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           <p className="qcv-header-subtitle">History and status of house inspections</p>
         </div>
       </header>
+      <HistoryWindowNotice />
 
       {/* ⭐ Botón de menú: SIEMPRE fijo en la parte superior derecha */}
       <button className="hamburger-btn qcv-hamburger-btn" onClick={onOpenMenu} aria-label="Open menu">
@@ -2421,7 +2399,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                       {(savedPhotos.length > 0 || pending.length > 0 || queued.length > 0) && (
                         <div className="qc-photo-grid">
                           {savedPhotos.map((url, idx) => (
-                            <div key={`s-${idx}`} className="qcv-im-photo-tile">
+                            <div key={`s-${url}`} className="qcv-im-photo-tile">
                               <img src={url} alt="" className="qcv-im-photo-img" />
                               {/* ⭐ Editar / dibujar sobre la foto (estilo WhatsApp) */}
                               <button onClick={() => setAnnotate({ placeId: p.id, index: idx, url })} title="Dibujar en la foto" className="qcv-im-photo-edit-btn">

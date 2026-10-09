@@ -1,9 +1,10 @@
 import { escapeHtml } from './escapeHtml';
 import { computeQCScore } from './qcScore';
+import { formatDate } from './dateFormat';
 
 // ============================================================================
 // ⭐ GENERADOR DEL PDF DE QUALITY CHECK — extraído de QualityCheckView.tsx para
-//    compartirlo con la pestaña Reportes (QCReportsView) sin duplicar lógica.
+//    compartirlo con Quality Check Reports y el QC Dashboard sin duplicar lógica.
 //    La vista que lo llama aporta el contexto: catálogos (places/tasks), branding
 //    de la empresa y los nombres ya resueltos de cliente y equipo.
 //    El flujo anti "PDF en blanco" (ventana síncrona + Blob URL) vive aquí.
@@ -13,9 +14,16 @@ export interface QCPdfPlace { id: string; name: string }
 export interface QCPdfTask { id: string; placeId: string; name: string }
 export interface QCPdfBranding { name: string; address?: string; logo?: string; email?: string }
 
+// ⭐ Datos del formulario de Quality Check (`qcData`): un objeto por área
+//    (placeId → { tasks, photos, notes, damage, score, corrections, … }) cuya
+//    forma depende de la configuración de áreas y tareas. Excepción documentada
+//    en CLAUDE.md: este alias es el único `any` aceptado para esos datos.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type QcFormData = Record<string, any>;
+
   // ⭐ Reúne las áreas que tienen datos (tareas, notas o fotos) para el reporte
-export const collectPlacesWithData = (places: QCPdfPlace[], qcDataObj: Record<string, any>) => {
-    const out: { place: QCPdfPlace; photos: string[]; tasksData: any; notes: string; damage: string; score: any; corrections: string }[] = [];
+export const collectPlacesWithData = (places: QCPdfPlace[], qcDataObj: QcFormData) => {
+    const out: { place: QCPdfPlace; photos: string[]; tasksData: Record<string, string>; notes: string; damage: string; score: number | undefined; corrections: string }[] = [];
     places.forEach(p => {
       const data = qcDataObj[p.id];
       if (!data) return;
@@ -42,7 +50,7 @@ export const exportQCReportPDF = async (args: {
   house: { address?: string };
   clientName: string;
   teamName: string;
-  qcData: Record<string, any>;
+  qcData: QcFormData;
   inspectorName: string;
   recordDate?: string;
   places: QCPdfPlace[];
@@ -118,9 +126,7 @@ export const exportQCReportPDF = async (args: {
       // Estos valores terminan en HTML crudo (ventana de impresión y/o email) — se
       // escapan porque incluyen texto libre (notas de inspector) y catálogos.
       const inspector = escapeHtml(inspectorName || 'Unknown');
-      const displayDate = recordDate
-        ? new Date(recordDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-        : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const displayDate = formatDate(recordDate || new Date());
       const date = displayDate;
       const clientName = escapeHtml(args.clientName);
       const teamName = escapeHtml(args.teamName);

@@ -43,8 +43,6 @@ const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   qc_dashboard: () => import('../views/QualityDashboardView'),
   owner: () => import('../views/OwnerView'),
   manager: () => import('../views/ManagerView'),
-  qc_route: () => import('../views/QCRouteView'),
-  recalls: () => import('../views/RecallsView'),
   status_history: () => import('../views/StatusHistoryView'),
   payroll: () => import('../views/PayrollView'),
   customers: () => import('../views/CustomersView'),
@@ -93,8 +91,6 @@ export const prefetchView = (tab: TabOptions): void => {
   load().catch(() => requested.delete(tab));
 };
 
-/** ¿Ya está descargado (o en curso) el chunk de esta pestaña? */
-export const isViewPrefetched = (tab: TabOptions): boolean => requested.has(tab);
 
 type IdleWindow = Window & {
   requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;

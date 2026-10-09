@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Search, Plus, X, Edit2, Trash2, Menu, Mail, Phone, MapPin, StickyNote, Building2
 } from 'lucide-react';
 import { customersService } from '../services/customersService';
 import type { Customer } from '../types/index';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import './CustomersView.css';
 
 interface CustomersViewProps {
@@ -12,8 +13,12 @@ interface CustomersViewProps {
 }
 
 export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ⭐ Clientes del store compartido (en vivo). Antes: getDocs de TODA la
+  //    colección en cada visita, aunque otras vistas ya la tuvieran. Guardar,
+  //    borrar o cambiar Apply Tax ya no tocan la lista a mano: Firestore aplica
+  //    el cambio local al instante (y lo revierte solo si el servidor lo rechaza).
+  const { data: customers, loaded } = useLiveCollection('customers');
+  const isLoading = !loaded;
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -24,21 +29,6 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
   const [formData, setFormData] = useState<Customer>({
     id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6'
   });
-
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      setIsLoading(true);
-      try {
-        const data = await customersService.getAll();
-        setCustomers(data);
-      } catch (error) {
-        console.error('Error fetching customers:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchCustomers();
-  }, []);
 
   const filteredCustomers = customers.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -99,17 +89,10 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
   //    formulario): marcar la lista completa toma un clic por cliente.
   const handleToggleApplyTax = async (c: Customer) => {
     const next: 'Yes' | 'No' = (c.applyTax || 'Yes') === 'Yes' ? 'No' : 'Yes';
-    setCustomers((prev) =>
-      prev.map((x) => (x.id === c.id ? { ...x, applyTax: next } : x)),
-    );
     try {
       await customersService.update(c.id, { applyTax: next });
     } catch (error) {
       console.error('Error saving applyTax:', error);
-      // Revertir si Firestore rechazó el cambio
-      setCustomers((prev) =>
-        prev.map((x) => (x.id === c.id ? { ...x, applyTax: c.applyTax } : x)),
-      );
       const fbErr = error as { code?: string; message?: string };
       alert(`No se pudo guardar Apply Tax.\n\nCódigo: ${fbErr.code || 'desconocido'}\nDetalle: ${fbErr.message || String(error)}`);
     }
@@ -122,15 +105,13 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       const clean = sanitizeCustomer(formData);
       if (clean.id) {
         await customersService.update(clean.id, clean);
-        setCustomers(customers.map(c => c.id === clean.id ? clean : c));
         // ⭐ Si el detalle está abierto sobre este cliente, refleja los cambios
         if (selectedCustomer && selectedCustomer.id === clean.id) {
           setSelectedCustomer(clean);
         }
       } else {
         const { id, ...dataToAdd } = clean;
-        const newId = await customersService.create(dataToAdd);
-        setCustomers([...customers, { ...clean, id: newId }]);
+        await customersService.create(dataToAdd);
       }
       setIsFormModalOpen(false);
     } catch (error) {
@@ -149,7 +130,6 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     setIsSaving(true);
     try {
       await customersService.delete(id);
-      setCustomers(customers.filter(c => c.id !== id));
       // ⭐ Si estaba abierto el detalle de este cliente, ciérralo
       if (selectedCustomer && selectedCustomer.id === id) {
         setSelectedCustomer(null);

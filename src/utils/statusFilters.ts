@@ -28,7 +28,7 @@ export const isRecallName = (name?: string | null): boolean => norm(name).includ
 export const isInvoiceName = (name?: string | null): boolean => norm(name) === 'invoice';
 
 /** ¿El nombre corresponde a "In Progress"? */
-export const isInProgressName = (name?: string | null): boolean => {
+const isInProgressName = (name?: string | null): boolean => {
   const n = norm(name);
   return n === 'in progress' || n === 'in-progress';
 };

@@ -46,7 +46,6 @@ export const photoConfigService = {
     try {
       const docRef = doc(db, 'app_settings', 'photo_config');
       await setDoc(docRef, config, { merge: true });
-      console.log('✅ Photo config updated:', config);
     } catch (error) {
       console.error('Error updating photo config:', error);
       throw error;

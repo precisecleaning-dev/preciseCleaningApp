@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, X, Eye, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import type { Role, SystemUser } from '../types/index';
 import './ViewAsUserModal.css';
 
@@ -44,19 +43,11 @@ interface ViewAsUserModalProps {
 export default function ViewAsUserModal({
   roles, currentUserId, onSelect, onClose,
 }: ViewAsUserModalProps) {
-  const [users, setUsers] = useState<SystemUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ⭐ Usuarios del store compartido: si otra vista ya los tiene (Overview,
+  //    Owner/Manager…), el modal no lee nada nuevo.
+  const { data: users, loaded } = useLiveCollection('users');
+  const isLoading = !loaded;
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    // Lectura puntual, no un listener: el modal se abre unos segundos y
-    // mantener un onSnapshot abierto sobre toda la tabla de usuarios sería
-    // gastar lecturas sin motivo.
-    getDocs(collection(db, 'system_users'))
-      .then(snap => setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() }) as SystemUser)))
-      .catch(err => console.error('Error cargando usuarios:', err))
-      .finally(() => setIsLoading(false));
-  }, []);
 
   const roleName = (roleId?: string | null): string =>
     roles.find(r => r.id === roleId)?.name || 'Sin rol';

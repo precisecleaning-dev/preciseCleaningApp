@@ -21,15 +21,87 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+// ---------------------------------------------------------------------------
+//  Caché de geocodificación en localStorage: UNA clave versionada, con tope de
+//  entradas y vencimiento. Antes era una clave suelta por dirección
+//  (`geo_v1__…`) que nunca se borraba. Las claves viejas se migran una vez a la
+//  nueva (no se vuelve a pedir a Nominatim lo que ya se sabía).
+//  · El tope (5,000) está por encima del número de casas, para que el uso
+//    normal nunca expulse direcciones: cada fallo cuesta ≥1 s en QC Route.
+//  · Vence lo que lleva un año SIN USARSE (cada uso renueva la fecha).
+//  · Las escrituras se agrupan: armar una ruta con 30 casas guarda una vez.
+// ---------------------------------------------------------------------------
+const GEO_CACHE_KEY = 'app:v2:geocode';
+const GEO_LEGACY_PREFIX = 'geo_v1__';
+const GEO_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+const GEO_MAX_ENTRIES = 5000;
+const GEO_SAVE_DELAY_MS = 1500;
+
+interface GeoEntry extends LatLng {
+  t: number; // último uso (ms)
+}
+
+let geoCache: Map<string, GeoEntry> | null = null;
+let geoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function loadGeoCache(): Map<string, GeoEntry> {
+  if (geoCache) return geoCache;
+  const map = new Map<string, GeoEntry>();
+  const now = Date.now();
+  let migrated = false;
+  try {
+    const raw = localStorage.getItem(GEO_CACHE_KEY);
+    const saved = raw ? (JSON.parse(raw) as [string, GeoEntry][]) : [];
+    saved.forEach(([k, v]) => { if (v && typeof v.lat === 'number' && now - v.t < GEO_TTL_MS) map.set(k, v); });
+    // Migración de las claves sueltas de la versión anterior.
+    const legacy: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(GEO_LEGACY_PREFIX)) legacy.push(k);
+    }
+    legacy.forEach((k) => {
+      try {
+        const v = JSON.parse(localStorage.getItem(k) || 'null') as LatLng | null;
+        const addr = k.slice(GEO_LEGACY_PREFIX.length);
+        if (v && typeof v.lat === 'number' && !map.has(addr)) map.set(addr, { lat: v.lat, lng: v.lng, t: now });
+      } catch { /* entrada corrupta: se descarta */ }
+      localStorage.removeItem(k);
+      migrated = true;
+    });
+  } catch { /* sin storage */ }
+  geoCache = map;
+  if (migrated) saveGeoCacheNow();
+  return map;
+}
+
+function saveGeoCacheNow(): void {
+  if (!geoCache) return;
+  if (geoCache.size > GEO_MAX_ENTRIES) {
+    // Fuera las que llevan más tiempo sin usarse.
+    const byAge = [...geoCache.entries()].sort((a, b) => a[1].t - b[1].t);
+    byAge.slice(0, geoCache.size - GEO_MAX_ENTRIES).forEach(([k]) => geoCache!.delete(k));
+  }
+  try {
+    localStorage.setItem(GEO_CACHE_KEY, JSON.stringify([...geoCache.entries()]));
+  } catch { /* sin storage o lleno */ }
+}
+
+function scheduleGeoSave(): void {
+  if (geoSaveTimer) clearTimeout(geoSaveTimer);
+  geoSaveTimer = setTimeout(() => { geoSaveTimer = null; saveGeoCacheNow(); }, GEO_SAVE_DELAY_MS);
+}
+
 /** Geocodifica una dirección con Nominatim (OpenStreetMap). Cachea en localStorage. */
 export async function geocodeAddress(address: string): Promise<LatLng | null> {
   const clean = (address || '').trim();
   if (!clean) return null;
-  const key = 'geo_v1__' + clean.toLowerCase();
-  try {
-    const cached = localStorage.getItem(key);
-    if (cached) { const j = JSON.parse(cached); if (j && typeof j.lat === 'number') return j; }
-  } catch { /* sin storage */ }
+  const key = clean.toLowerCase();
+  const hit = loadGeoCache().get(key);
+  if (hit) {
+    hit.t = Date.now(); // usada: no vence ni sale primero
+    scheduleGeoSave();
+    return { lat: hit.lat, lng: hit.lng };
+  }
   try {
     const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(clean);
     const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
@@ -37,7 +109,8 @@ export async function geocodeAddress(address: string): Promise<LatLng | null> {
     const arr = await res.json();
     if (Array.isArray(arr) && arr.length > 0) {
       const p = { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
-      try { localStorage.setItem(key, JSON.stringify(p)); } catch { /* sin storage */ }
+      loadGeoCache().set(key, { ...p, t: Date.now() });
+      scheduleGeoSave();
       return p;
     }
   } catch (e) { console.warn('Geocode falló:', clean, e); }
@@ -59,21 +132,6 @@ export async function fetchOSRMRoute(points: LatLng[]): Promise<{ distanceKm: nu
   } catch (e) { console.warn('OSRM falló:', e); return null; }
 }
 
-/** Ordena por "vecino más cercano" empezando desde `start` (heurística de ruta). */
-export function nearestNeighborOrder<T extends LatLng>(start: LatLng, items: T[]): T[] {
-  const remaining = items.slice();
-  const ordered: T[] = [];
-  let cur: LatLng = start;
-  while (remaining.length) {
-    let bestIdx = 0, bestD = Infinity;
-    remaining.forEach((it, i) => { const d = haversineKm(cur, it); if (d < bestD) { bestD = d; bestIdx = i; } });
-    const next = remaining.splice(bestIdx, 1)[0];
-    ordered.push(next);
-    cur = next;
-  }
-  return ordered;
-}
-
 /** Obtiene la ubicación actual del dispositivo (GPS del navegador). */
 export function getCurrentPosition(): Promise<LatLng> {
   return new Promise((resolve, reject) => {
@@ -86,10 +144,20 @@ export function getCurrentPosition(): Promise<LatLng> {
   });
 }
 
+// ⭐ Leaflet llega desde un CDN en tiempo de ejecución y el proyecto no tiene
+//    `@types/leaflet` (instalarlo sería una dependencia nueva). Todo el código
+//    del mapa (namespace `L`, el mapa, sus capas) usa ESTE alias, el único
+//    `any` documentado para Leaflet.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Leaflet = any;
+
+const windowLeaflet = (): Leaflet | undefined =>
+  typeof window !== 'undefined' ? (window as Window & { L?: Leaflet }).L : undefined;
+
 // Carga Leaflet (mapa) desde CDN una sola vez y devuelve window.L
-let leafletPromise: Promise<any> | null = null;
-export function ensureLeaflet(): Promise<any> {
-  if (typeof window !== 'undefined' && (window as any).L) return Promise.resolve((window as any).L);
+let leafletPromise: Promise<Leaflet> | null = null;
+export function ensureLeaflet(): Promise<Leaflet> {
+  if (windowLeaflet()) return Promise.resolve(windowLeaflet());
   if (leafletPromise) return leafletPromise;
   leafletPromise = new Promise((resolve, reject) => {
     try {
@@ -104,14 +172,14 @@ export function ensureLeaflet(): Promise<any> {
       const scriptId = 'leaflet-js';
       const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
       if (existing) {
-        existing.addEventListener('load', () => resolve((window as any).L));
+        existing.addEventListener('load', () => resolve(windowLeaflet()));
         return;
       }
       const s = document.createElement('script');
       s.id = scriptId;
       s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       s.async = true;
-      s.onload = () => resolve((window as any).L);
+      s.onload = () => resolve(windowLeaflet());
       s.onerror = () => reject(new Error('No se pudo cargar el mapa (Leaflet).'));
       document.body.appendChild(s);
     } catch (e) { reject(e); }

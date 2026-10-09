@@ -9,15 +9,14 @@
 //      Profit        = Final Cost − Payroll
 //      Margin        = Profit / Final Cost
 
-import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { useMemo } from 'react';
 import type { Property, PayrollRecord } from '../types/index';
+import { useLiveCollection } from '../shared/data/liveCollections';
 
 /** Impuesto de venta de Texas ($200 → $16.50 · $425 → $35.06). */
-export const TAX_RATE = 0.0825;
+const TAX_RATE = 0.0825;
 
-export const round2 = (n: number) => Math.round(n * 100) / 100;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 export const money = (n: number) =>
   `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)}%`);
@@ -32,7 +31,7 @@ export interface JobFinancials {
   margin: number | null;
 }
 
-export const marginOf = (profit: number, finalCost: number): number | null =>
+const marginOf = (profit: number, finalCost: number): number | null =>
   finalCost > 0 ? (profit / finalCost) * 100 : null;
 
 /** Tono del margen, umbrales del diseño: ≥45% verde · ≥35% ámbar · menos rojo. */
@@ -40,16 +39,9 @@ export type Tone = 'good' | 'warn' | 'bad' | 'none';
 export const marginTone = (m: number | null): Tone =>
   m === null ? 'none' : m >= 45 ? 'good' : m >= 35 ? 'warn' : 'bad';
 
-// billing_services no tiene un tipo compartido en types/index.ts todavía.
-interface BilledServiceRecord {
-  id: string;
-  propertyId: string;
-  total: number;
-}
-
 // ⭐ Los documentos de `payroll` NO guardan `totalAmount`, solo base / extra /
 //    descuento. Si existiera totalAmount guardado y distinto de 0, se respeta.
-export const getPayrollTotal = (pay: PayrollRecord): number => {
+export const getPayrollTotal = (pay?: Partial<PayrollRecord> | null): number => {
   if (!pay) return 0;
   if (pay.totalAmount != null && Number(pay.totalAmount) !== 0) return Number(pay.totalAmount);
   return Number(pay.baseAmount || 0) + Number(pay.extraAmount || 0) - Number(pay.discountAmount || 0);
@@ -61,32 +53,13 @@ export const getPayrollTotal = (pay: PayrollRecord): number => {
  * colecciones completas por cada fila congelaba la vista).
  */
 export function useJobFinancials(enabled = true) {
-  const [services, setServices] = useState<BilledServiceRecord[]>([]);
-  const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
-  const [loaded, setLoaded] = useState({ services: false, payroll: false });
-
-  useEffect(() => {
-    // Instancias que no muestran finanzas (p. ej. HousesView en modo
-    // 'modals-only') no abren listeners.
-    if (!enabled) return;
-    const unsubServices = onSnapshot(
-      collection(db, 'billing_services'),
-      (snap) => {
-        setServices(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BilledServiceRecord));
-        setLoaded((l) => ({ ...l, services: true }));
-      },
-      (err) => { console.error('Error billing_services:', err); setLoaded((l) => ({ ...l, services: true })); },
-    );
-    const unsubPayroll = onSnapshot(
-      collection(db, 'payroll'),
-      (snap) => {
-        setPayrolls(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRecord));
-        setLoaded((l) => ({ ...l, payroll: true }));
-      },
-      (err) => { console.error('Error payroll:', err); setLoaded((l) => ({ ...l, payroll: true })); },
-    );
-    return () => { unsubServices(); unsubPayroll(); };
-  }, [enabled]);
+  // ⭐ Datos del store compartido (un listener por colección para toda la app).
+  //    Instancias que no muestran finanzas (HousesView en 'modals-only') pasan
+  //    enabled = false y no abren nada.
+  const servicesLive = useLiveCollection('billingServices', enabled);
+  const payrollLive = useLiveCollection('payroll', enabled);
+  const services = servicesLive.data;
+  const payrolls = payrollLive.data;
 
   const byProp = useMemo(() => {
     const m = new Map<string, { price: number; payroll: number }>();
@@ -136,5 +109,5 @@ export function useJobFinancials(enabled = true) {
     [calc],
   );
 
-  return { loading: !loaded.services || !loaded.payroll, calc, sum, version: byProp };
+  return { loading: !servicesLive.loaded || !payrollLive.loaded, calc, sum, version: byProp };
 }

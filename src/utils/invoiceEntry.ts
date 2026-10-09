@@ -16,7 +16,7 @@ import type { Status } from '../types/index';
 
 // Id legacy de AppSheet para el status "Invoice". Se mantiene porque hay casas
 // migradas cuyo statusId es literalmente esta cadena, sin entrada en el catálogo.
-export const LEGACY_INVOICE_STATUS_ID = '748aad00';
+const LEGACY_INVOICE_STATUS_ID = '748aad00';
 
 /**
  * ¿El status indicado es "Invoice"?

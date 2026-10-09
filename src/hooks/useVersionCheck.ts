@@ -18,7 +18,7 @@ declare const __BUILD_TIME__: string;
 declare const __APP_VERSION__: string;
 
 /** Sello de versión del bundle en memoria (fecha/hora ISO del build). */
-export const BUILD_TIME: string =
+const BUILD_TIME: string =
   typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev';
 
 /** Número de versión visible (V00030, V00031...): sube uno en cada build. */

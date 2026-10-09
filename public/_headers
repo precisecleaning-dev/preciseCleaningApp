@@ -1,0 +1,8 @@
+# Cabeceras de caché para Cloudflare (Workers static assets / Pages).
+# Vite pone un hash en el nombre de todo lo que genera en /assets/: si el
+# contenido cambia, cambia el nombre. Por eso se guardan un año sin revalidar.
+# index.html, sw.js, registerSW.js, manifest y version.json conservan el valor
+# por defecto de Cloudflare (revalidar siempre) para que cada deploy llegue
+# de inmediato.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

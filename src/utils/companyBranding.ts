@@ -8,8 +8,7 @@ import { escapeHtml } from './escapeHtml';
 
    Uso típico en un generador HTML:
      const b = await getBranding();
-     const html = `... ${brandingHeaderHTML(b, 'Reporte')} ...
-                   <div class="footer">${brandingFooterHTML(b)}</div> ...`;
+     const html = `... ${brandingHeaderHTML(b, 'Reporte')} ...`;
    ========================================================================= */
 
 export interface Branding {
@@ -40,7 +39,7 @@ export const getBranding = async (): Promise<Branding> => toBranding(await getCo
 export const getCachedBranding = (): Branding => toBranding(getCachedCompanySettings());
 
 /** Etiqueta del logo: <img> si hay logo, o recuadro con iniciales si no. */
-export const brandLogoTag = (b: Branding, size = 46): string =>
+const brandLogoTag = (b: Branding, size = 46): string =>
   b.logo
     ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;" />`
     : `<div style="width:${size}px;height:${size}px;border-radius:12px;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-weight:800;font-size:${Math.round(size / 2.8)}px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;">${escapeHtml(b.initials)}</div>`;
@@ -60,7 +59,3 @@ export const brandingHeaderHTML = (b: Branding, docTag = ''): string => `
     ${docTag ? `<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px 14px;border-radius:20px;white-space:nowrap;">${escapeHtml(docTag)}</div>` : ''}
   </div>
 `;
-
-/** Texto de pie de página estándar para documentos. */
-export const brandingFooterHTML = (b: Branding, extra = ''): string =>
-  `${escapeHtml(b.name)}${b.address ? ' • ' + escapeHtml(b.address) : ''}${b.email ? ' • ' + escapeHtml(b.email) : ''}${extra ? ' • ' + escapeHtml(extra) : ''}`;

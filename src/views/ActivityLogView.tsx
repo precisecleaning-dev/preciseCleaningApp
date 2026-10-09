@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Menu, Search, ScrollText, RefreshCw, ArrowRight } from 'lucide-react';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { useLiveData } from '../shared/data/liveCollections';
 import type { SystemUser, Role } from '../types/index';
 import { fetchLogs, type ActivityLogEntry, type LogAction } from '../services/activityLogService';
+import { formatDateTime } from '../utils/dateFormat';
 import './ActivityLogView.css';
 
 /* ------------------------------------------------------------------
@@ -43,15 +43,7 @@ interface ActivityLogViewProps {
   isSuperAdmin?: boolean;
 }
 
-const fmtDate = (iso?: string): string => {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '-';
-  return d.toLocaleString('es-MX', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-};
+const fmtDate = (iso?: string): string => formatDateTime(iso) || '-';
 
 export default function ActivityLogView({ onOpenMenu }: ActivityLogViewProps) {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
@@ -61,20 +53,11 @@ export default function ActivityLogView({ onOpenMenu }: ActivityLogViewProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState('');
 
-  const [users, setUsers] = useState<SystemUser[]>([]);
+  // Catálogo de usuarios para el selector (store compartido).
+  const users = useLiveData('users');
   const [userFilter, setUserFilter] = useState('all');
   const [actionFilter, setActionFilter] = useState<LogAction | 'all'>('all');
   const [search, setSearch] = useState('');
-
-  // Catalogo de usuarios para el selector
-  useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, 'system_users'),
-      (snap) => setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })) as SystemUser[]),
-      (err) => console.error('Error system_users:', err),
-    );
-    return () => unsub();
-  }, []);
 
   const load = useCallback(async () => {
     setIsLoading(true);

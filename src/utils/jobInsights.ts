@@ -16,7 +16,7 @@ export interface JobInsight {
   text: string;
 }
 
-export interface InsightInput {
+interface InsightInput {
   statusName: string;
   teamName: string | null;
   client: string;

@@ -1,5 +1,5 @@
 import { db } from '../config/firebase';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, type WriteBatch } from 'firebase/firestore';
 import type { PayrollRecord } from '../types/index';
 
 // ⭐ UNIFICACIÓN DE COLECCIONES: antes este servicio escribía en 'payroll_records'
@@ -12,7 +12,7 @@ const COLLECTION_NAME = 'payroll';
 export const payrollService = {
   async create(data: Omit<PayrollRecord, 'id'>): Promise<string> {
     try {
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), { ...data, status: data.status || 'Pending' });
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), withDefaults(data));
       return docRef.id;
     } catch (error) {
       console.error('Error adding document: ', error);
@@ -27,16 +27,6 @@ export const payrollService = {
       return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PayrollRecord[];
     } catch (error) {
       console.error('Error getting documents: ', error);
-      throw error;
-    }
-  },
-
-  async getAll(): Promise<PayrollRecord[]> {
-    try {
-      const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PayrollRecord[];
-    } catch (error) {
-      console.error('Error getting all documents: ', error);
       throw error;
     }
   },
@@ -57,5 +47,23 @@ export const payrollService = {
       console.error('Error deleting document: ', error);
       throw error;
     }
-  }
+  },
+
+  // ⭐ Variantes para escrituras en lote (src/shared/data/batchWrites.ts):
+  //    agregan la operación al batch; quien lo armó lo confirma.
+  batchCreate(batch: WriteBatch, data: Omit<PayrollRecord, 'id'>): void {
+    batch.set(doc(collection(db, COLLECTION_NAME)), withDefaults(data));
+  },
+
+  batchUpdate(batch: WriteBatch, id: string, data: Partial<PayrollRecord> | Record<string, unknown>): void {
+    batch.update(doc(db, COLLECTION_NAME, id), data);
+  },
+
+  batchDelete(batch: WriteBatch, id: string): void {
+    batch.delete(doc(db, COLLECTION_NAME, id));
+  },
 };
+
+function withDefaults(data: Omit<PayrollRecord, 'id'>) {
+  return { ...data, status: data.status || 'Pending' };
+}

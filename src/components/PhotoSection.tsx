@@ -3,7 +3,7 @@ import { Upload, Camera, Printer, Loader2, X, Check, CloudOff } from 'lucide-rea
 import type { PhotoConfig } from '../services/photoConfigService';
 import './PhotoSection.css';
 
-export interface PhotoSectionProps {
+interface PhotoSectionProps {
   label: string;                       // "BEFORE" / "AFTER"
   type: 'before' | 'after';
   urls: string[];                      // todas las URLs visibles (guardadas + nuevas)

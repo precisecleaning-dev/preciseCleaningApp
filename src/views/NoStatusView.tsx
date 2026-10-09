@@ -1,17 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Menu, Search, MapPin, CalendarDays, Users, HelpCircle, Tag } from 'lucide-react';
-import type { Property, Status, Team, Customer, SystemUser, Role } from '../types/index';
+import type { Property, SystemUser, Role } from '../types/index';
 import { propertiesService } from '../services/propertiesService';
-import { db } from '../config/firebase';
-// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { mapCustomerDoc } from '../utils/customerDocs';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import { getRelationName } from '../utils/relations';
 import { stampInvoiceEntry } from '../utils/invoiceEntry';
 import { formatDate, dateSortValue } from '../utils/dateFormat';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 import { logActivity } from '../services/activityLogService';
 import HousesView from './HousesView';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './NoStatusView.css';
 
 /* ------------------------------------------------------------------
@@ -42,10 +40,14 @@ export default function NoStatusView({
   onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin,
 }: NoStatusViewProps) {
 
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ⭐ Catálogos desde el store compartido (un listener por colección para toda la app).
+  const statusesLive = useLiveCollection('statuses');
+  const teamsLive = useLiveCollection('teams');
+  const customersLive = useLiveCollection('customers');
+  const statuses = statusesLive.data;
+  const teams = teamsLive.data;
+  const customers = customersLive.data;
+  const isLoading = !statusesLive.loaded || !teamsLive.loaded || !customersLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -69,32 +71,6 @@ export default function NoStatusView({
 
   const canEdit = isSuperAdmin || activeRole?.permissions?.find(p => p.module === 'Houses')?.canEdit;
 
-  // Catalogos chicos. 'properties' NO se carga aqui a proposito.
-  useEffect(() => {
-    setIsLoading(true);
-    const unsubscribes: (() => void)[] = [];
-    let loaded = 0;
-    const TOTAL = 3;
-    const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_statuses'),
-      (snap) => { setStatuses(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[]); tick(); },
-      (err) => { console.error('Error statuses:', err); tick(); }
-    ));
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_teams'),
-      (snap) => { setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]); tick(); },
-      (err) => { console.error('Error teams:', err); tick(); }
-    ));
-    unsubscribes.push(onSnapshot(
-      collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
-      (err) => { console.error('Error customers:', err); tick(); }
-    ));
-
-    return () => { unsubscribes.forEach(u => u()); };
-  }, []);
 
   const getClientName = (idOrName?: string | null) =>
     idOrName ? getRelationName(customers, idOrName, String(idOrName)) : 'Unknown';
@@ -185,6 +161,7 @@ export default function NoStatusView({
           <p className="ns-subtitle">Jobs without an assigned status</p>
         </div>
       </header>
+      <HistoryWindowNotice />
 
       <div className="ns-toolbar">
         <div className="ns-kpi-card">

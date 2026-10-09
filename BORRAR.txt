@@ -1,0 +1,24 @@
+Borra estos archivos de tu proyecto (git rm):
+calendar-fixes.patch
+src/assets/react.svg
+src/components/KpiBand.css
+src/components/KpiBand.tsx
+src/components/PropertyDetailModal.css
+src/components/PropertyDetailModal.tsx
+src/components/RegisteredPaymentsPanel.css
+src/components/RegisteredPaymentsPanel.tsx
+src/types/html2pdf.d.ts
+src/utils/cacheFirstFetch.ts
+src/views/ChecklistView.css
+src/views/ChecklistView.tsx
+src/views/NoticeBoardView.css
+src/views/NoticeBoardView.tsx
+src/views/QCDashboardView.css
+src/views/QCDashboardView.tsx
+src/views/QCReportsView.css
+src/views/QCReportsView.tsx
+src/views/QCRouteView.css
+src/views/QCRouteView.tsx
+src/views/RecallsView.css
+src/views/RecallsView.tsx
+src/vite.config.ts

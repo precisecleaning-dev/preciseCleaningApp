@@ -29,13 +29,11 @@ const NoStatusView = lazy(() => import('./views/NoStatusView'));
 const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
 // ⭐ Papelera de reciclaje: restaurar o eliminar definitivamente lo borrado.
 const TrashView = lazy(() => import('./views/TrashView'));
-const NoticeBoardView = lazy(() => import('./views/NoticeBoardView'));
 const RolesView = lazy(() => import('./views/admin/RolesView'));
 const UsersView = lazy(() => import('./views/admin/UsersView'));
 // ⭐ Vista de importacion de CSV (solo SuperAdmin)
 const DataImportView = lazy(() => import('./views/DataImportView'));
 // ⭐ Vista de Recalls (ranking de equipos)
-const RecallsView = lazy(() => import('./views/RecallsView'));
 // ⭐ Reportes de Quality Check FINALIZADOS, en formato tabla tipo Invoices
 //    (sin montos). Es una vista propia del menu, distinta de la pestana
 //    "Reportes" del hub de QC, que es un listado de tarjetas con metricas.
@@ -53,26 +51,29 @@ const CompanySettingsView = lazy(() => import('./views/CompanySettingsView'));
 // ⭐ Configuracion de compresion/captura de fotos
 const PhotoSettingsView = lazy(() => import('./views/PhotoSettingsView'));
 // ⭐ Hoja de ruta para casas con QC pendiente
-const QCRouteView = lazy(() => import('./views/QCRouteView'));
 // ⭐ TEMPORAL — migracion unica payroll_records → payroll (quitar al terminar)
 //    Export nombrado: lazy() necesita un default, por eso el .then().
 const MigrarPayroll = lazy(() =>
   import('./views/MigrarPayroll').then(m => ({ default: m.MigrarPayroll }))
 );
 
-import type { Property, Role, SystemUser } from './types/index';
+import type { Property, SystemUser } from './types/index';
 import './App.css';
 
 import { auth, db } from './config/firebase';
+import { useLiveCollection, resetLiveCollections } from './shared/data/liveCollections';
+import { clearMemoryCache } from './shared/utils/memoryCache';
+import { subscribeProperties, useFullHistory } from './shared/data/propertiesWindow';
+import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'board' | 'done' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'qc_route' | 'recalls' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'board', 'done', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'qc_route', 'recalls', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -100,7 +101,6 @@ const LoadingScreen = ({ text }: { text: string }) => (
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false); // ⭐ Para evitar flash de LoginView al recargar
-  const [isBypass, setIsBypass] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   
   const [activeTab, setActiveTab] = useState<TabOptions>(getInitialTab); // ⭐ Restaura la última pestaña usada
@@ -120,14 +120,11 @@ export default function App() {
   const [houseToOpenDetail, setHouseToOpenDetail] = useState<Property | null>(null);
   const [houseToOpenEdit, setHouseToOpenEdit] = useState<Property | null>(null);
 
-  const [roles, setRoles] = useState<Role[]>([]);
-
   // ⭐ Flags de "primer dato recibido". Sirven para NO montar las vistas hasta que
   //    properties, roles y el perfil tengan al menos su primer snapshot. Con la
   //    caché local (IndexedDB) estos llegan en milisegundos al recargar, así que
   //    no hay demora perceptible; pero se evita el bug de mostrar 0 / "no existe"
   //    mientras la data aún no llega.
-  const [rolesLoaded, setRolesLoaded] = useState<boolean>(false);
   const [profileLoaded, setProfileLoaded] = useState<boolean>(false);
   const [propertiesLoaded, setPropertiesLoaded] = useState<boolean>(false);
 
@@ -148,22 +145,10 @@ export default function App() {
     });
   }, []);
 
-  // ⭐ Cargar roles con onSnapshot — aprovecha el cache de Firestore Persistence.
-  useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, 'settings_roles'),
-      (snapshot) => {
-        const loadedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Role));
-        setRoles(loadedRoles);
-        setRolesLoaded(true);
-      },
-      (error) => {
-        console.error("Error loading roles globally:", error);
-        setRolesLoaded(true); // no bloquear la app si falla
-      }
-    );
-    return () => unsub();
-  }, []);
+  // ⭐ Roles desde el store compartido (src/shared/data/liveCollections.ts): el
+  //    mismo listener lo usan HousesView, RolesView y Owner/Manager. Se abre al
+  //    haber sesión (antes no hace falta y las reglas lo rechazarían).
+  const { data: roles, loaded: rolesLoaded } = useLiveCollection('roles', isAuthenticated);
 
   // ⭐⭐ LISTENER GLOBAL DE PROPERTIES (el fix principal).
   //    Antes, la colección 'properties' SOLO se cargaba dentro de HousesView.
@@ -172,15 +157,20 @@ export default function App() {
   //    quedaba vacío → todo aparecía en 0 / "no existe". Ahora se carga aquí,
   //    a nivel App, así SIEMPRE está disponible sin importar en qué vista estés.
   //    Se inicia solo cuando hay sesión (para que Firestore tenga el token de auth).
+  // ⭐ Ventana de 12 meses (src/shared/data/propertiesWindow.ts): por defecto
+  //    solo las casas recientes, futuras, sin fecha válida o pendientes de
+  //    cobro; con "Ver todo el historial" se escucha la colección completa.
+  const fullHistory = useFullHistory();
+  // Si se cierra sesión en otra pestaña, esta se recarga (su Firestore quedó apagado).
+  useEffect(() => reloadOnLogoutInOtherTabs(), []);
   useEffect(() => {
     if (!isAuthenticated) {
       setPropertiesLoaded(false);
       return;
     }
-    const unsub = onSnapshot(
-      collection(db, 'properties'),
-      (snapshot) => {
-        const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Property[];
+    const unsub = subscribeProperties(
+      fullHistory,
+      (data) => {
         setProperties(data);
         setPropertiesLoaded(true);
       },
@@ -190,7 +180,7 @@ export default function App() {
       }
     );
     return () => unsub();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fullHistory]);
 
   useEffect(() => {
     // ⭐ Mantenemos una referencia al unsubscribe del onSnapshot del usuario
@@ -206,7 +196,6 @@ export default function App() {
 
       if (user && user.email) {
         setIsAuthenticated(true);
-        setIsBypass(false);
 
         // ⭐ CLAVE (fix recarga): en cuanto Firebase confirma que HAY sesión,
         //    ya podemos salir de la pantalla de "Verificando sesión...".
@@ -233,10 +222,14 @@ export default function App() {
         }
       } else {
         setIsAuthenticated(false);
-        setIsBypass(false);
         setCurrentUser(null);
         setProfileLoaded(false);
         setPropertiesLoaded(false);
+        // ⭐ Al cerrar sesión se cierran los listeners compartidos y se vacían
+        //    sus datos y las lecturas en memoria: el siguiente usuario no ve
+        //    nada del anterior.
+        resetLiveCollections();
+        clearMemoryCache();
         // ⭐ Marcar que ya verificamos la sesión (no hay usuario).
         setIsAuthChecked(true);
       }
@@ -250,15 +243,12 @@ export default function App() {
   // ⭐ Se ELIMINÓ el auto-logout por inactividad (15 min): la sesión ahora
   //    solo se cierra cuando el usuario presiona Log Out manualmente.
 
+  // ⭐ LoginView solo avisa DESPUÉS de un signInWithEmailAndPassword exitoso; el
+  //    resto (perfil, roles) lo carga onAuthStateChanged. El antiguo "modo bypass"
+  //    (entrar sin sesión de Firebase y con permisos de superadmin) era
+  //    inalcanzable y se eliminó en la limpieza de 10/2026.
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
-    if (!auth.currentUser) {
-      // Modo bypass (sin sesión de Firebase): no habrá perfil ni roles desde
-      // Firestore, así que marcamos esos flags como listos para no bloquear.
-      setIsBypass(true);
-      setProfileLoaded(true);
-      setRolesLoaded(true);
-    }
   };
 
   // ⭐ VER COMO OTRO USUARIO. Deliberadamente NO se persiste en localStorage:
@@ -277,7 +267,7 @@ export default function App() {
     return roles.find(r => r.id === currentUser.roleId) || null;
   }, [currentUser, roles]);
 
-  const realIsSuperAdmin = isBypass || realRole?.name === 'Administrator';
+  const realIsSuperAdmin = realRole?.name === 'Administrator';
 
   // ⭐ A partir de aqui TODA la app usa activeRole / effectiveUser. Al suplantar,
   //    estos apuntan al usuario elegido, asi que el menu, los botones por rol y
@@ -325,9 +315,9 @@ export default function App() {
     if (fallback) setActiveTab(fallback);
   }, [activeTab, activeRole, isSuperAdmin]);
   // ⭐ Data Import: SuperAdmin siempre; o cualquier rol con el permiso "Data Import" (casilla View en Roles).
-  const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Data Import')?.canView;
+  const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === 'Data Import')?.canView;
   // ⭐ TEMPORAL — permiso para la vista Migrar Payroll: misma regla que Settings en el Sidebar.
-  const canViewMigrarPayroll = isSuperAdmin || !!activeRole?.permissions?.find((p: any) => p.module === 'Settings')?.canView;
+  const canViewMigrarPayroll = isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === 'Settings')?.canView;
   // ⭐ SCOPE POR MÓDULO (Roles & Permissions → columna Scope): 'Own' significa que
   //    el rol solo ve SUS registros. Un registro es "propio" si el usuario está en
   //    assignedWorkers (ids de system_users) o comparte teamId — exactamente la
@@ -384,12 +374,9 @@ export default function App() {
   }, [isAuthenticated]);
 
   // ⭐ ¿Está toda la data base lista para pintar las vistas?
-  //    - En modo normal: properties + roles + perfil con su primer snapshot.
-  //    - En modo bypass: solo properties (no hay perfil/roles de Firestore).
-  //    Con la caché local esto se cumple en milisegundos al recargar.
-  const appDataReady = isBypass
-    ? propertiesLoaded
-    : (propertiesLoaded && rolesLoaded && profileLoaded);
+  //    properties + roles + perfil con su primer snapshot. Con la caché local
+  //    esto se cumple en milisegundos al recargar.
+  const appDataReady = propertiesLoaded && rolesLoaded && profileLoaded;
 
   // ⭐ Mientras Firebase verifica si hay sesión guardada, pantalla de carga.
   if (!isAuthChecked) {
@@ -467,15 +454,15 @@ export default function App() {
         <RouteTransition routeKey={activeTab}>
         {activeTab === 'houses' && (
           <HousesView
-            properties={visibleProperties as any}
-            setProperties={setProperties as any}
+            properties={visibleProperties}
+            setProperties={setProperties}
             onOpenMenu={toggleMenu}
             currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
-            houseToOpenDetail={houseToOpenDetail as any}
+            houseToOpenDetail={houseToOpenDetail}
             clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
-            houseToOpenEdit={houseToOpenEdit as any}
+            houseToOpenEdit={houseToOpenEdit}
             clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
           />
         )}
@@ -483,8 +470,8 @@ export default function App() {
         {activeTab === 'pipeline' && (
           <HousesView
             viewMode="board"
-            properties={visibleProperties as any}
-            setProperties={setProperties as any}
+            properties={visibleProperties}
+            setProperties={setProperties}
             onOpenMenu={toggleMenu}
             currentUser={effectiveUser}
             activeRole={activeRole}
@@ -530,13 +517,6 @@ export default function App() {
         )}
 
         {/* VISTA DEL MURO SOCIAL */}
-        {activeTab === 'board' && (
-          <NoticeBoardView 
-            onOpenMenu={toggleMenu} 
-            currentUser={effectiveUser} 
-            isSuperAdmin={isSuperAdmin}
-          />
-        )}
 
         {activeTab === 'calendar' && (
           <CalendarView
@@ -549,35 +529,35 @@ export default function App() {
         
         {/* ⭐ Payroll recibe contexto de usuario para poder abrir el formulario de
             edición de casa (HousesView modals-only) con los permisos correctos */}
-        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} currentUser={effectiveUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
+        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} properties={visibleProperties} setProperties={setProperties} currentUser={effectiveUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
 
         {activeTab === 'qc_report' && (
           <>
             {/* ⭐ Hub con pestañas: Quality Check | Rutas | Reportes */}
             <QualityCheckHub 
               onOpenMenu={toggleMenu} 
-              properties={visibleProperties as any}
+              properties={visibleProperties}
               activeRole={activeRole}
               isSuperAdmin={isSuperAdmin}
-              houseToInspect={houseToInspect as any}
+              houseToInspect={houseToInspect}
               clearHouseToInspect={() => setHouseToInspect(null)}
               currentUser={effectiveUser}
-              onOpenHouseDetail={(house) => setHouseToOpenDetail(house as any)}
-              onOpenHouseEdit={(house) => setHouseToOpenEdit(house as any)}
+              onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
+              onOpenHouseEdit={(house) => setHouseToOpenEdit(house)}
             />
             {/* ⭐ Modales de HousesView montados ENCIMA de QC: el detalle y el
                 formulario se abren aquí mismo, sin sacar al usuario de la vista. */}
             <HousesView
               renderMode="modals-only"
-              properties={visibleProperties as any}
-              setProperties={setProperties as any}
+              properties={visibleProperties}
+              setProperties={setProperties}
               onOpenMenu={toggleMenu}
               currentUser={effectiveUser}
               activeRole={activeRole}
               isSuperAdmin={isSuperAdmin}
-              houseToOpenDetail={houseToOpenDetail as any}
+              houseToOpenDetail={houseToOpenDetail}
               clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
-              houseToOpenEdit={houseToOpenEdit as any}
+              houseToOpenEdit={houseToOpenEdit}
               clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
             />
           </>
@@ -669,13 +649,6 @@ export default function App() {
         )}
 
         {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}
-        {activeTab === 'recalls' && (
-          <RecallsView 
-            onOpenMenu={toggleMenu} 
-            properties={visibleProperties}
-            currentUser={effectiveUser}
-          />
-        )}
 
         {/* ⭐ STATUS HISTORY — historial de status por casa */}
         {activeTab === 'status_history' && (
@@ -701,7 +674,7 @@ export default function App() {
         {/* ⭐ FOTOS — compresión y opciones de captura de fotos */}
         {activeTab === 'photo_settings' && <PhotoSettingsView onOpenMenu={toggleMenu} />}
 
-        {activeTab === 'roles' && <RolesView onOpenMenu={toggleMenu} roles={roles} setRoles={setRoles} />}
+        {activeTab === 'roles' && <RolesView onOpenMenu={toggleMenu} roles={roles} />}
         
         {activeTab === 'users' && <UsersView onOpenMenu={toggleMenu} roles={roles} />}
 
@@ -714,20 +687,7 @@ export default function App() {
         {activeTab === 'migrar_payroll' && canViewMigrarPayroll && <MigrarPayroll />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
-        {activeTab === 'qc_route' && (
-          <QCRouteView
-            onOpenMenu={toggleMenu}
-            properties={visibleProperties}
-            currentUser={effectiveUser}
-          />
-        )}
 
-        {activeTab === 'done' && (
-          <div className="fade-in app-under-construction">
-            <h2 className="app-under-construction-title">Under Construction</h2>
-            <p className="app-under-construction-text">The {activeTab.replace('_', ' ')} view is currently being developed.</p>
-          </div>
-        )}
         </RouteTransition>
         </Suspense>
       </main>

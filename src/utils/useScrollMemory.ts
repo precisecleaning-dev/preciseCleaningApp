@@ -73,9 +73,3 @@ export function useScrollMemory<T extends HTMLElement>(key: string) {
   return ref;
 }
 
-/** Olvida la posición de una pestaña. Útil tras una acción que cambia la lista
- *  por completo (por ejemplo un filtro nuevo), donde volver a la posición
- *  anterior no tendría sentido. */
-export const resetScrollMemory = (key: string): void => {
-  positions.delete(key);
-};

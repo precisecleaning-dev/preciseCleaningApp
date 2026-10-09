@@ -1,5 +1,6 @@
 import { db } from '../config/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { cached, invalidate } from '../shared/utils/memoryCache';
 
 /* =========================================================================
    MÓDULO DE EMPRESA — fuente única de configuración (logo, nombre, correo,
@@ -21,7 +22,7 @@ const COMPANY_COL = 'settings_company';
 const COMPANY_DOC_ID = 'main';
 const CACHE_KEY = 'pc_company_settings';
 
-export const DEFAULT_COMPANY: CompanyConfig = {
+const DEFAULT_COMPANY: CompanyConfig = {
   name: 'Precise Cleaning',
   address: '',
   email: '',
@@ -55,15 +56,24 @@ const writeCache = (cfg: CompanyConfig) => {
 /** Lectura SÍNCRONA e instantánea (desde caché o valores por defecto). */
 export const getCachedCompanySettings = (): CompanyConfig => readCache() || DEFAULT_COMPANY;
 
+// ⭐ PERF: el documento trae el logo (puede pesar cientos de kB) y lo pedían
+//    QC, QC Reports y QC Dashboard en cada visita. Ahora se reutiliza en
+//    memoria COMPANY_TTL_MS; guardar la configuración invalida la copia.
+const COMPANY_TTL_MS = 10 * 60 * 1000;
+const COMPANY_CACHE = 'company:';
+
+const fetchCompanySettings = async (): Promise<CompanyConfig> => {
+  const snap = await getDoc(doc(db, COMPANY_COL, COMPANY_DOC_ID));
+  if (!snap.exists()) return readCache() || DEFAULT_COMPANY;
+  const cfg = normalize(snap.data() as Partial<CompanyConfig>);
+  writeCache(cfg);
+  return cfg;
+};
+
 /** Lectura desde Firestore, con respaldo a caché y valores por defecto. */
 export const getCompanySettings = async (): Promise<CompanyConfig> => {
   try {
-    const snap = await getDoc(doc(db, COMPANY_COL, COMPANY_DOC_ID));
-    if (snap.exists()) {
-      const cfg = normalize(snap.data() as Partial<CompanyConfig>);
-      writeCache(cfg);
-      return cfg;
-    }
+    return await cached(`${COMPANY_CACHE}main`, COMPANY_TTL_MS, fetchCompanySettings);
   } catch (e) {
     console.error('Error cargando la configuración de empresa:', e);
   }
@@ -81,6 +91,7 @@ export const saveCompanySettings = async (cfg: CompanyConfig): Promise<CompanyCo
     autoSend: cfg.autoSend !== false,
   };
   await setDoc(doc(db, COMPANY_COL, COMPANY_DOC_ID), clean, { merge: true });
+  invalidate(COMPANY_CACHE);
   writeCache(clean);
   return clean;
 };

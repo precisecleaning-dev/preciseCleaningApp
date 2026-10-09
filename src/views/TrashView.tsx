@@ -17,7 +17,8 @@ import {
 import { trashService } from '../services/trashService';
 import type { TrashEntry } from '../services/trashService';
 import { logActivity } from '../services/activityLogService';
-import type { SystemUser } from '../types';
+import type { SystemUser } from '../types/index';
+import { formatDateTime } from '../utils/dateFormat';
 import './TrashView.css';
 
 interface TrashViewProps {
@@ -25,19 +26,7 @@ interface TrashViewProps {
   currentUser: SystemUser;
 }
 
-const formatWhen = (iso: string): string => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString('en-US', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-};
+const formatWhen = (iso: string): string => (iso ? formatDateTime(iso) || iso : '—');
 
 export default function TrashView({ onOpenMenu, currentUser }: TrashViewProps) {
   const [entries, setEntries] = useState<TrashEntry[]>([]);
@@ -45,10 +34,10 @@ export default function TrashView({ onOpenMenu, currentUser }: TrashViewProps) {
   const [isWorking, setIsWorking] = useState(false);
   const [search, setSearch] = useState('');
 
-  const load = async () => {
+  const load = async (fresh = false) => {
     setIsLoading(true);
     try {
-      setEntries(await trashService.getAll());
+      setEntries(await trashService.getAll({ fresh }));
     } catch (error) {
       console.error('Error loading trash:', error);
     } finally {
@@ -151,7 +140,7 @@ export default function TrashView({ onOpenMenu, currentUser }: TrashViewProps) {
             </p>
           </div>
         </div>
-        <button className="tv-refresh-btn" onClick={load} disabled={isLoading}>
+        <button className="tv-refresh-btn" onClick={() => load(true)} disabled={isLoading}>
           <RefreshCw size={15} className={isLoading ? 'tv-spin' : ''} /> Refrescar
         </button>
       </header>

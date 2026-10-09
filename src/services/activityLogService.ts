@@ -138,7 +138,7 @@ export const logActivity = async (input: LogInput): Promise<void> => {
   }
 };
 
-export interface LogPage {
+interface LogPage {
   entries: ActivityLogEntry[];
   cursor: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;

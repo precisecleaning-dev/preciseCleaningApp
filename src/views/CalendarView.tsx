@@ -4,23 +4,19 @@ import {
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin, Menu
 } from 'lucide-react';
 import type { CSSProperties, Dispatch, SetStateAction } from 'react';
-import type { Property, Status, Team, Priority, Service, Customer } from '../types/index';
+import type { Property, Customer } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import CustomSelect from '../components/CustomSelect';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
+import { formatDate, formatDateRange, todayIso } from '../utils/dateFormat';
+import DateInput from '../shared/components/DateInput';
 import './CalendarView.css';
 
 // --- FIREBASE SERVICES ---
 import { propertiesService } from '../services/propertiesService';
-import { settingsService } from '../services/settingsService';
-import { customersService } from '../services/customersService';
+import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 
 // Settings Collections Map
-const collectionMap: Record<string, string> = {
-  team: 'settings_teams',
-  priority: 'settings_priorities',
-  status: 'settings_statuses',
-  service: 'settings_services',
-};
 
 
 // --- TIME CALCULATION HELPERS ---
@@ -46,14 +42,22 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   // --- FIREBASE STATES ---
   // `properties` viene de App.tsx (lista en tiempo real vía onSnapshot, compartida con
   // el resto de las vistas) — antes este componente hacía su propio fetch desconectado.
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  // ⭐ Catálogos del store compartido (antes: 4 getAll de settings + customers
+  //    completos en cada visita). El store ya aplica mapCustomerDoc (id real +
+  //    legacyId).
+  const statusesLive = useLiveCollection('statuses');
+  const statuses = useMemo(
+    () => [...statusesLive.data].sort((a, b) => Number(a.order) - Number(b.order)),
+    [statusesLive.data],
+  );
+  const teams = useLiveData('teams');
+  const priorities = useLiveData('priorities');
+  const services = useLiveData('services');
+  const customersLive = useLiveCollection('customers');
+  const customersList = customersLive.data;
 
   // --- UI STATES ---
-  const [isLoading, setIsLoading] = useState(true);
+  const isLoading = !statusesLive.loaded || !customersLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month'); // Selector de vistas, default Month para ver el arreglo
@@ -68,35 +72,6 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
     id: '', statusId: '', invoiceStatus: 'Pending', receiveDate: '', scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: ''
   });
 
-  // --- FETCH DATA ---
-  useEffect(() => {
-    const fetchAllData = async () => {
-      setIsLoading(true);
-      try {
-        const [ statusData, teamData, prioData, servData, custData ] = await Promise.all([
-          settingsService.getAll(collectionMap.status),
-          settingsService.getAll(collectionMap.team),
-          settingsService.getAll(collectionMap.priority),
-          settingsService.getAll(collectionMap.service),
-          customersService.getAll()
-        ]);
-
-        if (statusData) setStatuses((statusData as Status[]).sort((a, b) => Number(a.order) - Number(b.order)));
-        if (teamData) setTeams(teamData as Team[]);
-        if (prioData) setPriorities(prioData as Priority[]);
-        if (servData) setServices(servData as Service[]);
-        // ⭐ Se conserva el id LEGACY de AppSheet (el campo `id` interno del
-        //    documento) antes de que customersService lo pise con el id real
-        //    del documento. Muchas casas guardan ese legacy en `client`.
-        if (custData) setCustomersList(custData as Customer[]);
-      } catch (error) {
-        console.error("Error loading data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAllData();
-  }, []);
 
   // --- CALENDAR LOGIC ---
   const prevTime = () => {
@@ -146,12 +121,9 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   // Dynamic Header Title
   const getHeaderTitle = () => {
     if (viewMode === 'month') return currentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
-    if (viewMode === 'day') return currentDate.toLocaleString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-    if (viewMode === 'week') {
-      const start = weekDaysDates[0];
-      const end = weekDaysDates[6];
-      return `${start.getDate()} ${start.toLocaleString('es-ES', {month: 'short'})} - ${end.getDate()} ${end.toLocaleString('es-ES', {month: 'short', year: 'numeric'})}`;
-    }
+    // Fechas siempre MM/DD/AAAA (regla del negocio); el mes se nombra solo en la vista de mes.
+    if (viewMode === 'day') return `${currentDate.toLocaleDateString('es-ES', { weekday: 'long' })} ${formatDate(currentDate)}`;
+    if (viewMode === 'week') return formatDateRange(weekDaysDates[0], weekDaysDates[6]);
     return '';
   };
   const headerTitleRaw = getHeaderTitle();
@@ -165,7 +137,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
     } else {
       const defaultStatus = statuses.length > 0 ? statuses[0].id : '';
       setFormData({ 
-        id: '', statusId: defaultStatus, invoiceStatus: 'Pending', receiveDate: new Date().toISOString().split('T')[0], 
+        id: '', statusId: defaultStatus, invoiceStatus: 'Pending', receiveDate: todayIso(), 
         scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', 
         rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: '' 
       });
@@ -258,11 +230,9 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   //    Aqui se veian IDs crudos ("4ea3f7ae") en vez del nombre. La causa:
   //    `properties.client` guarda el id LEGACY de AppSheet, que en los
   //    documentos de `customers` quedo como un campo interno `id`. Pero
-  //    customersService.getAll() hace `{ ...d.data(), id: d.id }`, o sea que
-  //    el id real del documento PISA al legacy y este se pierde: por eso
-  //    getRelationName no encontraba nada y caia al fallback (el id).
-  //    (InvoicesView si resolvia porque arma el objeto al reves y conserva
-  //    el legacy; el mismo dato se comportaba distinto en cada vista.)
+  //    un mapeo ingenuo `{ ...d.data(), id: d.id }` hace que el id real del
+  //    documento PISE al legacy y este se pierda (hoy mapCustomerDoc lo
+  //    conserva aparte como `legacyId`).
   //
   //    El indice registra el id de documento, el legacy y el nombre, asi
   //    resuelve sin importar cual de los tres tenga guardado la casa.
@@ -431,6 +401,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
       </header>
 
       {/* CALENDAR RENDER */}
+      <HistoryWindowNotice />
       {isLoading ? (
         <div className="cv-loading">Loading calendar data...</div>
       ) : (
@@ -580,7 +551,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
       {/* --- DAY DETAIL MODAL (todos los trabajos del día) --- */}
       {dayDetailDate && (() => {
         const dayJobs = getJobsForDate(dayDetailDate);
-        const dayTitleRaw = dayDetailDate.toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const dayTitleRaw = `${dayDetailDate.toLocaleDateString('es-ES', { weekday: 'long' })} ${formatDate(dayDetailDate)}`;
         const dayTitle = dayTitleRaw.charAt(0).toUpperCase() + dayTitleRaw.slice(1);
         return (
           <div className="cv-modal-overlay" onClick={() => setDayDetailDate(null)}>
@@ -685,14 +656,14 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
                   <label className="cv-label">Receive Date</label>
                   <div className="cv-input-wrap">
                     <CalendarDays className="cv-input-icon" size={16} />
-                    <input type="date" className="cv-input" value={formData.receiveDate} onChange={e => setFormData({ ...formData, receiveDate: e.target.value })} />
+                    <DateInput className="cv-input" value={formData.receiveDate} onChange={iso => setFormData({ ...formData, receiveDate: iso })} />
                   </div>
                 </div>
                 <div>
                   <label className="cv-label">Schedule Date</label>
                   <div className="cv-input-wrap">
                     <CalendarDays className="cv-input-icon" size={16} />
-                    <input type="date" className="cv-input" value={formData.scheduleDate} onChange={e => setFormData({ ...formData, scheduleDate: e.target.value })} />
+                    <DateInput className="cv-input" value={formData.scheduleDate} onChange={iso => setFormData({ ...formData, scheduleDate: iso })} />
                   </div>
                 </div>
                 <div>
@@ -790,11 +761,11 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
 
                 <div className="cv-detail-item">
                   <dt className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</dt>
-                  <dd className="cv-detail-value">{selectedHouse.receiveDate || '-'}</dd>
+                  <dd className="cv-detail-value">{formatDate(selectedHouse.receiveDate) || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
                   <dt className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</dt>
-                  <dd className="cv-detail-value">{selectedHouse.scheduleDate || '-'}</dd>
+                  <dd className="cv-detail-value">{formatDate(selectedHouse.scheduleDate) || '-'}</dd>
                 </div>
                 <div className="cv-detail-item">
                   <dt className="cv-detail-label"><Wrench size={14} /> SERVICE</dt>
@@ -858,7 +829,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
                 <button className="cv-btn-outline" onClick={() => setIsDetailModalOpen(false)}>Close</button>
 
                 <button
-                  onClick={() => { setIsDetailModalOpen(false); onCheckHouse && onCheckHouse(selectedHouse); }}
+                  onClick={() => { setIsDetailModalOpen(false); onCheckHouse?.(selectedHouse); }}
                   className="cv-btn-qc"
                 >
                   <ClipboardCheck size={16} /> Quality Check

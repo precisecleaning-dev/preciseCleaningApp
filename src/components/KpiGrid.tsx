@@ -8,7 +8,7 @@
 import type { CSSProperties } from 'react';
 import './KpiGrid.css';
 
-export interface KpiTile {
+interface KpiTile {
   key: string;
   label: string;
   value: string;
@@ -22,7 +22,7 @@ export interface KpiTile {
   title?: string;
 }
 
-export interface KpiGroup {
+interface KpiGroup {
   key: string;
   title: string;
   /** Color del título del grupo. */

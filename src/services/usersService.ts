@@ -46,14 +46,13 @@ export const usersService = {
       // 4. Cerrar sesión en la app secundaria (limpieza)
       await signOut(secondaryAuth);
       
-      console.log("Usuario creado en Auth y correo enviado exitosamente.");
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Error en el proceso de Auth:", error);
       
       // Si el usuario ya existía en Auth, simplemente le enviamos el correo de recuperación
       if (error.code === 'auth/email-already-in-use') {
          await sendPasswordResetEmail(getAuth(app), targetEmail);
-         console.log("El usuario ya existía, se reenvió el correo de recuperación.");
       }
     }
 

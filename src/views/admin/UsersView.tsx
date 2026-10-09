@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle, Menu
 } from 'lucide-react';
 import { db } from '../../config/firebase';
-import { collection, getDocs, setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import type { SystemUser, Role } from '../../types/index';
 import { createUserWithResetEmail, resendPasswordReset } from '../../services/userAuthService';
+import { commitInChunks, commitOps } from '../../shared/data/batchWrites';
+import { useLiveCollection } from '../../shared/data/liveCollections';
 import './UsersView.css';
 
 interface UsersViewProps {
@@ -22,9 +24,31 @@ type SystemUserExt = SystemUser & { inviteSent?: boolean; inviteSentAt?: string 
 const emailToPendingId = (email: string) => 
   `pending_${email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_')}`;
 
+// Solo los campos que cambiaron respecto al documento cargado: `updateDoc` no
+// reescribe (ni pisa) lo que otro administrador haya cambiado mientras tanto.
+const changedFields = <T extends object>(prev: object | undefined, next: T): Partial<T> => {
+  const before = (prev || {}) as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(next).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k])),
+  ) as Partial<T>;
+};
+
+// Mueve el documento de un usuario a otro id (set + delete) en un solo batch:
+// si algo falla no quedan dos copias del usuario ni ninguna.
+const moveUserDoc = (fromId: string, toId: string, data: object) =>
+  commitOps([
+    (b) => b.set(doc(db, 'system_users', toId), data),
+    (b) => b.delete(doc(db, 'system_users', fromId)),
+  ]);
+
 export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
-  const [users, setUsers] = useState<SystemUserExt[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ⭐ Usuarios del store compartido (un listener para toda la app). Antes se
+  //    descargaba `system_users` completa en cada visita y la lista local se
+  //    parchaba a mano tras cada escritura; ahora el listener refleja al
+  //    instante lo que se guarda aquí (y lo que cambie otro administrador).
+  const { data: liveUsers, loaded: usersLoaded } = useLiveCollection('users');
+  const users = liveUsers as SystemUserExt[];
+  const isLoading = !usersLoaded;
   const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [resendingForUserId, setResendingForUserId] = useState<string | null>(null);
@@ -37,23 +61,6 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
   const [formData, setFormData] = useState<Partial<SystemUser>>({
     id: '', firstName: '', lastName: '', email: '', roleId: '', status: 'Pending Invite'
   });
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    try {
-      const snap = await getDocs(collection(db, 'system_users'));
-      const loadedUsers = snap.docs.map(d => ({ id: d.id, ...d.data() } as SystemUserExt));
-      setUsers(loadedUsers);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleOpenForm = (user?: SystemUser) => {
     if (user) {
@@ -121,11 +128,7 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
             const newId = emailToPendingId(cleanEmail);
             const newData = { ...(original as SystemUserExt), ...payload };
             delete (newData as Partial<SystemUserExt>).id;
-            await setDoc(doc(db, 'system_users', newId), newData);
-            await deleteDoc(doc(db, 'system_users', id));
-            setUsers(users.map(u =>
-              u.id === id ? ({ ...u, ...payload, id: newId } as SystemUserExt) : u
-            ));
+            await moveUserDoc(id, newId, newData);
             alert('✅ User updated.\n\n📧 El email fue cambiado. Cuando estés listo, usa el botón ✈️ para enviar la invitación al NUEVO correo.');
             handleCloseForm();
             setIsSaving(false);
@@ -137,16 +140,17 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
           // la app (requiere Admin SDK). El flujo es: ✈️ crea la cuenta del
           // nuevo email y migra este doc a su UID; la cuenta vieja se borra a
           // mano en Firebase Console → Authentication.
-          await updateDoc(doc(db, 'system_users', id), payload);
-          setUsers(users.map(u => u.id === id ? ({ ...u, ...payload } as SystemUserExt) : u));
+          await updateDoc(doc(db, 'system_users', id), changedFields(original, payload));
           alert('✅ User updated.\n\n⚠️ Este usuario ya tenía cuenta de acceso con el email anterior.\n\n1) Usa el botón ✈️ para crear su acceso con el NUEVO email y enviarle el enlace de contraseña.\n2) Borra la cuenta del email VIEJO en Firebase Console → Authentication para revocar ese acceso.');
           handleCloseForm();
           setIsSaving(false);
           return;
         }
 
-        await updateDoc(doc(db, 'system_users', id), payload);
-        setUsers(users.map(u => u.id === id ? ({ ...u, ...payload } as SystemUserExt) : u));
+        const changes = changedFields(original, payload);
+        if (Object.keys(changes).length > 0) {
+          await updateDoc(doc(db, 'system_users', id), changes);
+        }
         alert("✅ User updated.");
       } else {
         // ===== AGREGAR (sin email, sin Auth) =====
@@ -170,11 +174,11 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
           createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'system_users', userId), dataToSave);
-        setUsers([...users, { id: userId, ...dataToSave } as SystemUserExt]);
         alert(`✅ User added.\n\nNo email has been sent yet. Click the ✈️ icon next to their name when you're ready to invite them.`);
       }
       handleCloseForm();
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Error saving user:", error);
       alert(`Failed to save user: ${error?.message || 'Unknown error'}`);
     } finally {
@@ -187,7 +191,6 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
     setIsSaving(true);
     try {
       await deleteDoc(doc(db, 'system_users', id));
-      setUsers(users.filter(u => u.id !== id));
     } catch (error) {
       console.error("Error deleting user:", error);
       alert("Failed to delete user.");
@@ -238,26 +241,14 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
         inviteSentAt: new Date().toISOString()
       };
 
-      let finalUserId = currentId;
-
       if (needsMigration) {
         // Crear nuevo doc con el Auth UID + borrar el viejo (con ID basado en email)
         const { id, ...userData } = user;
         const newData = { ...userData, ...updatedFields };
-        await setDoc(doc(db, 'system_users', authUid!), newData);
-        await deleteDoc(doc(db, 'system_users', currentId));
-        finalUserId = authUid!;
-        setUsers(users.map(u => u.id === currentId 
-          ? { ...u, id: finalUserId, ...updatedFields } as SystemUserExt 
-          : u
-        ));
+        await moveUserDoc(currentId, authUid!, newData);
       } else {
         // No hace falta migrar; solo actualizamos
         await updateDoc(doc(db, 'system_users', currentId), updatedFields);
-        setUsers(users.map(u => u.id === currentId 
-          ? { ...u, ...updatedFields } as SystemUserExt 
-          : u
-        ));
       }
 
       const msg = wasInvited
@@ -266,7 +257,8 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
           ? `📧 Email sent to ${user.email}\n\n⚠️ This email was already registered in Firebase Auth.`
           : `📧 Email sent to ${user.email}\n\nThey'll receive a link to set up their password.`;
       alert(msg);
-    } catch (error: any) {
+    } catch (caught) {
+      const error = caught as { code?: string; message?: string };
       console.error("Error sending invite:", error);
       alert(`Failed to send: ${error?.message || 'Unknown error'}`);
     } finally {
@@ -332,37 +324,31 @@ export default function UsersView({ onOpenMenu, roles }: UsersViewProps) {
     if (!window.confirm(summary)) return;
 
     setIsBulkImporting(true);
-    const importedUsers: SystemUser[] = [];
-    let errorCount = 0;
+    const toImport = validRows.map(row => {
+      // Buscar rol por nombre (case-insensitive); si no se encuentra, usa el primero
+      const matchedRole = roles.find(r => r.name.toLowerCase().trim() === row.roleName.toLowerCase().trim());
+      const roleId = matchedRole?.id || (roles[0]?.id || '');
+      const dataToSave = {
+        firstName: row.firstName,
+        lastName: row.lastName || '',
+        email: row.email,
+        phone: '',
+        altPhone: '',
+        roleId,
+        status: 'Pending Invite' as const,
+        inviteSent: false,
+        createdAt: new Date().toISOString(),
+        importedFromBulk: true
+      };
+      return { id: emailToPendingId(row.email), ...dataToSave };
+    });
 
-    for (const row of validRows) {
-      try {
-        // Buscar rol por nombre (case-insensitive); si no se encuentra, usa el primero
-        const matchedRole = roles.find(r => r.name.toLowerCase().trim() === row.roleName.toLowerCase().trim());
-        const roleId = matchedRole?.id || (roles[0]?.id || '');
+    // ⭐ En batches de hasta 500 (antes un viaje al servidor por usuario).
+    const { ok: importedUsers, failed } = await commitInChunks(toImport, (b, { id, ...data }) =>
+      b.set(doc(db, 'system_users', id), data),
+    );
+    const errorCount = failed.length;
 
-        const userId = emailToPendingId(row.email);
-        const dataToSave = {
-          firstName: row.firstName,
-          lastName: row.lastName || '',
-          email: row.email,
-          phone: '',
-          altPhone: '',
-          roleId,
-          status: 'Pending Invite' as const,
-          inviteSent: false,
-          createdAt: new Date().toISOString(),
-          importedFromBulk: true
-        };
-        await setDoc(doc(db, 'system_users', userId), dataToSave);
-        importedUsers.push({ id: userId, ...dataToSave } as SystemUserExt);
-      } catch (error) {
-        console.error(`Error importing ${row.email}:`, error);
-        errorCount++;
-      }
-    }
-
-    setUsers([...users, ...importedUsers]);
     setIsBulkImporting(false);
     setIsBulkOpen(false);
     setBulkText('');

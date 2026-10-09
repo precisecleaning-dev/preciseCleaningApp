@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Plus, Edit2, Trash2, X, ShieldAlert, CheckSquare, Square, Activity, Menu } from 'lucide-react';
-import type { Role, Permission, Status } from '../../types/index';
+import type { Role, Permission } from '../../types/index';
+import { useLiveCollection } from '../../shared/data/liveCollections';
 import { db } from '../../config/firebase';
-import { collection, getDocs, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import './RolesView.css';
 
 interface RolesViewProps {
   onOpenMenu: () => void;
   roles: Role[];
-  setRoles: React.Dispatch<React.SetStateAction<Role[]>>;
 }
 
 // ⭐ Tipo extendido local: añade `allowedStatusIds` y `hiddenGroups` aunque el tipo
@@ -32,7 +32,6 @@ const DEFAULT_MODULES = [
   'Houses',
   'Pipeline',
   'No Status',
-  'Notice Board',
   // ⭐ Permiso PROPIO para las notas de oficina: informacion interna que no debe
   //    ver el personal de campo. Sin marcar aqui, el campo no aparece en ningun
   //    lado, ni siquiera si esta activo en Configure Fields.
@@ -43,7 +42,6 @@ const DEFAULT_MODULES = [
   'Quality Check',
   'Quality Check Reports',
   'QC Dashboard',
-  'Recalls',
   // --- Administracion del negocio ---
   'Status History',
   'Payroll',
@@ -111,37 +109,20 @@ const buildEmptyPermissions = (): PermissionExt[] =>
     readOnlyFields: []
   }));
 
-export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProps) {
+export default function RolesView({ onOpenMenu, roles }: RolesViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [statuses, setStatuses] = useState<Status[]>([]);
+  // ⭐ Roles llegan por props desde App (store compartido, en vivo) y los
+  //    statuses del mismo store: antes esta vista volvía a descargar ambas
+  //    colecciones al abrirse. Guardar/borrar ya no toca la lista a mano: el
+  //    listener la actualiza solo.
+  const { data: statusData, loaded: statusesLoaded } = useLiveCollection('statuses');
+  const statuses = useMemo(
+    () => [...statusData].sort((a, b) => Number(a.order) - Number(b.order)),
+    [statusData],
+  );
+  const isLoading = !statusesLoaded;
   const [formData, setFormData] = useState<RoleExt>({ id: '', name: '', description: '', permissions: buildEmptyPermissions() });
-
-  // Cargar roles y status DIRECTO desde Firebase al iniciar
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const [rolesSnap, statusSnap] = await Promise.all([
-          getDocs(collection(db, 'settings_roles')),
-          getDocs(collection(db, 'settings_statuses'))
-        ]);
-
-        const loadedRoles = rolesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Role));
-        if (loadedRoles.length > 0) setRoles(loadedRoles);
-
-        const loadedStatuses = (statusSnap.docs.map(d => ({ id: d.id, ...d.data() } as Status)))
-          .sort((a, b) => Number(a.order) - Number(b.order));
-        setStatuses(loadedStatuses);
-      } catch (error) {
-        console.error("Error cargando datos de Firebase:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
-  }, [setRoles]);
 
   const handleOpenForm = (role?: Role) => {
     if (role) {
@@ -314,11 +295,9 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
       if (formData.id) {
         const { id, ...dataToUpdate } = formData;
         await updateDoc(doc(db, 'settings_roles', formData.id), dataToUpdate);
-        setRoles(roles.map(r => r.id === formData.id ? (formData as unknown as Role) : r));
       } else {
         const { id, ...dataToAdd } = formData;
-        const docRef = await addDoc(collection(db, 'settings_roles'), dataToAdd);
-        setRoles([...roles, { ...formData, id: docRef.id } as unknown as Role]);
+        await addDoc(collection(db, 'settings_roles'), dataToAdd);
       }
       setIsModalOpen(false);
     } catch (error) {
@@ -334,7 +313,6 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
       setIsSaving(true);
       try {
         await deleteDoc(doc(db, 'settings_roles', id));
-        setRoles(roles.filter(r => r.id !== id));
       } catch (error) {
         console.error("Error eliminando rol en Firebase:", error);
         alert("Hubo un error al eliminar el rol.");
@@ -451,8 +429,8 @@ export default function RolesView({ onOpenMenu, roles, setRoles }: RolesViewProp
                     </tr>
                   </thead>
                   <tbody>
-                    {formData.permissions.map((perm: PermissionExt, idx: number) => (
-                      <tr key={idx}>
+                    {formData.permissions.map((perm: PermissionExt) => (
+                      <tr key={perm.module}>
                         <td className="rv-td strong">
                           {/* ⭐ Maestro por fila: los 4 permisos del modulo de una vez. */}
                           <label className="rv-module-cell">

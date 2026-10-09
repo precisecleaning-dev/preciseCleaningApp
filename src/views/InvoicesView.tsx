@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
@@ -12,15 +12,13 @@ import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from 
 import { money, pct, marginTone, useJobFinancials } from '../utils/jobFinancials';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
-import type { Property, Team, SystemUser, Role, Status, Customer } from '../types/index';
+import type { Property, SystemUser, Role, Status } from '../types/index';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import { propertiesService } from '../services/propertiesService';
-import { db } from '../config/firebase';
-// ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { mapCustomerDoc } from '../utils/customerDocs';
-import { collection, onSnapshot } from 'firebase/firestore';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import { stampInvoiceEntry, invoiceEntryMs } from '../utils/invoiceEntry';
 import HousesView from './HousesView';
+import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './InvoicesView.css';
 
 const INVOICE_STATUSES = [
@@ -66,7 +64,7 @@ const parseDateForSort = (dateStr?: string | null): number => {
   //    · Cualquier otro caso                 →  se lee MM/DD (regla del negocio).
   //    Si AMBOS son <= 12 la fecha es AMBIGUA: se lee MM/DD y aparece en la
   //    herramienta "Revisar fechas" de Payroll para corregirla y guardarla en ISO.
-  const slash = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
   if (slash) {
     const a = +slash[1], b = +slash[2], y = +slash[3];
     const mon = a > 12 && b <= 12 ? b : a;
@@ -178,12 +176,19 @@ interface InvoicesViewProps {
 //    pero ya no se usa: el formulario de edicion SIEMPRE es el de HousesView
 //    incrustado aqui, para que sea exactamente el mismo en las dos vistas.
 export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: InvoicesViewProps) {
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [statuses, setStatuses] = useState<Status[]>([]);       // ⭐ Job statuses
-  const [customers, setCustomers] = useState<Customer[]>([]);   // ⭐ Para resolver nombre del cliente
+  // ⭐ Catálogos desde el store compartido (un listener por colección para toda la app).
+  const teamsLive = useLiveCollection('teams');
+  const statusesLive = useLiveCollection('statuses');            // ⭐ Job statuses
+  const customersLive = useLiveCollection('customers');          // ⭐ Para resolver nombre del cliente
+  const teams = teamsLive.data;
+  const statuses = useMemo(
+    () => [...statusesLive.data].sort((a, b) => Number(a.order || 0) - Number(b.order || 0)),
+    [statusesLive.data],
+  );
+  const customers = customersLive.data;
+  const isLoading = !teamsLive.loaded || !statusesLive.loaded || !customersLive.loaded;
   // ⭐ billing_services + payroll en tiempo real y fórmulas de la hoja
   const jobFin = useJobFinancials();
 
@@ -300,41 +305,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setHouseToView(prop);
   };
 
-  useEffect(() => {
-    setIsLoading(true);
-    const unsubscribes: (() => void)[] = [];
-    let loaded = 0;
-    // ⭐ Ya no se cargan aqui: 'properties' (llega por props desde App.tsx) ni
-    //    priorities/services (el modal de detalle es el de HousesView, que trae
-    //    sus propios catalogos).
-    const TOTAL = 3;
-    const tick = () => { loaded++; if (loaded >= TOTAL) setIsLoading(false); };
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_teams'),
-      (snap) => { setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]); tick(); },
-      (err) => { console.error("Error teams:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'settings_statuses'),
-      (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Status[];
-        setStatuses(data.sort((a, b) => Number(a.order || 0) - Number(b.order || 0)));
-        tick();
-      },
-      (err) => { console.error("Error statuses:", err); tick(); }
-    ));
-
-    unsubscribes.push(onSnapshot(
-      collection(db, 'customers'),
-      (snap) => { setCustomers(snap.docs.map(mapCustomerDoc)); tick(); },
-      (err) => { console.error("Error customers:", err); tick(); }
-    ));
-
-    return () => unsubscribes.forEach(u => u());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Cambiar status de invoice
   const handleStatusChange = async (propertyId: string, newStatus: string) => {
@@ -716,6 +686,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           <h1 className="inv-title">Invoices</h1>
           <p className="inv-subtitle">Billing, taxes &amp; profit per job</p>
         </div>
+      <HistoryWindowNotice />
       </header>
 
       {/* ⭐ Periodo — misma barra que el Overview */}

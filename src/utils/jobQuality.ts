@@ -4,10 +4,9 @@
 //    casa en `quality_checks` (misma regla que src/utils/qcStatus.ts) y en el
 //    status del trabajo (si está en "Quality Check", su QC está pendiente).
 
-import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { useMemo } from 'react';
 import type { Status } from '../types/index';
+import { useLiveCollection } from '../shared/data/liveCollections';
 import { isQualityCheckStatus } from './qcStatus';
 import type { Tone } from './jobFinancials';
 
@@ -33,33 +32,20 @@ export interface QcInfo {
 
 const NONE: QcInfo = { state: 'none', label: '—', tone: 'none', score: null };
 
-/** Último reporte de QC por casa, en tiempo real. */
+/** Último reporte de QC por casa, en tiempo real (store compartido). */
 export function useQcRecords(enabled = true) {
-  const [latest, setLatest] = useState<Map<string, QcDoc>>(new Map());
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const unsub = onSnapshot(
-      collection(db, 'quality_checks'),
-      (snap) => {
-        const m = new Map<string, QcDoc>();
-        snap.docs.forEach((d) => {
-          const r = d.data() as QcDoc;
-          if (!r.houseId || r.isTestRecord) return;
-          const prev = m.get(r.houseId);
-          const key = (x: QcDoc) => String(x.date || '') + String(x.createdAt || '');
-          if (!prev || key(r) > key(prev)) m.set(r.houseId, r);
-        });
-        setLatest(m);
-        setLoading(false);
-      },
-      (err) => { console.error('Error quality_checks:', err); setLoading(false); },
-    );
-    return unsub;
-  }, [enabled]);
-
-  return { latest, loading };
+  const { data, loaded } = useLiveCollection('qualityChecks', enabled);
+  const latest = useMemo(() => {
+    const m = new Map<string, QcDoc>();
+    const key = (x: QcDoc) => String(x.date || '') + String(x.createdAt || '');
+    (data as QcDoc[]).forEach((r) => {
+      if (!r.houseId || r.isTestRecord) return;
+      const prev = m.get(r.houseId);
+      if (!prev || key(r) > key(prev)) m.set(r.houseId, r);
+    });
+    return m;
+  }, [data]);
+  return { latest, loading: !loaded };
 }
 
 /** Estado de QC de un trabajo. */

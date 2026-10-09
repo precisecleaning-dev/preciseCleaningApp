@@ -12,7 +12,7 @@ import { dateSortValue } from './dateFormat';
 
 export type DateGroupMode = 'none' | 'year' | 'month' | 'week' | 'day';
 
-export interface DateGroup<T> {
+interface DateGroup<T> {
   key: string;
   label: string;
   /** Detalle opcional (rango de fechas de la semana). */

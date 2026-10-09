@@ -1,4 +1,6 @@
-import html2pdf from 'html2pdf.js';
+// ⭐ PERF: html2pdf.js (+ html2canvas + jsPDF, ~950 kB) se carga con import()
+//    dinámico la primera vez que se genera un PDF. Antes iba estático y lo
+//    descargaba cualquiera que abriera Quality Check, QC Reports o QC Dashboard.
 
 interface PDFOptions {
   filename: string;
@@ -6,34 +8,16 @@ interface PDFOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
-/**
- * Genera un PDF directamente desde HTML usando html2pdf.js (html2canvas + jsPDF).
- * 
- * Ventajas vs window.print():
- * - NO aparecen headers/footers del navegador (URL, fecha, título de tab)
- * - El PDF se descarga directamente sin pasar por el diálogo de impresión
- * - Salida idéntica en todos los navegadores
- * 
- * El htmlContent debe ser un documento HTML completo con DOCTYPE, html, head, body.
- * Los estilos se preservan completamente.
- */
-export async function generatePDFFromHTML(
-  htmlContent: string,
-  options: PDFOptions,
-): Promise<void> {
-  await renderPDF(htmlContent, options, 'save');
-}
 
 /**
- * ⭐ Igual que generatePDFFromHTML pero devuelve el PDF como Blob en vez de
- *    descargarlo. Es lo que permite ENVIARLO por WhatsApp: la API de compartir
+ * ⭐ Genera el PDF y lo devuelve como Blob (no lo descarga). Es lo que permite ENVIARLO por WhatsApp: la API de compartir
  *    del sistema (navigator.share) necesita un File real, no una descarga.
  */
 export async function generatePDFBlob(
   htmlContent: string,
   options: PDFOptions,
 ): Promise<Blob> {
-  const blob = await renderPDF(htmlContent, options, 'blob');
+  const blob = await renderPDF(htmlContent, options);
   if (!blob) throw new Error('No se pudo generar el PDF');
   return blob;
 }
@@ -48,8 +32,7 @@ const A4_CONTENT_PX = 718;
 async function renderPDF(
   htmlContent: string,
   options: PDFOptions,
-  mode: 'save' | 'blob',
-): Promise<Blob | void> {
+): Promise<Blob> {
   // Crear iframe oculto para aislar estilos del documento principal
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
@@ -146,12 +129,13 @@ async function renderPDF(
     // Pequeño delay extra para asegurar render completo
     await new Promise(res => setTimeout(res, 300));
 
-    // Configuración de html2pdf (tipo `any` para evitar conflictos con
-    // los tipos estrictos que html2pdf.js trae internamente)
-    const opt: any = {
-      margin: [10, 10, 10, 10],      // mm: arriba, izq, abajo, der
+    // Configuración de html2pdf. Sin anotación de tipo: `pagebreak` y varias
+    // opciones de html2canvas no están en los tipos que trae html2pdf.js, y un
+    // objeto en variable (no literal) se acepta con propiedades extra.
+    const opt = {
+      margin: [10, 10, 10, 10] as [number, number, number, number], // mm: arriba, izq, abajo, der
       filename: options.filename,
-      image: { type: 'jpeg', quality: 0.95 },
+      image: { type: 'jpeg' as const, quality: 0.95 },
       html2canvas: {
         scale: 2,                    // mayor calidad
         useCORS: true,               // permitir imágenes externas
@@ -190,12 +174,10 @@ async function renderPDF(
       }
     };
 
-    // Generar el PDF: descargarlo o devolverlo como Blob para compartir.
+    // Generar el PDF como Blob (para compartirlo por WhatsApp o descargarlo).
+    const { default: html2pdf } = await import('html2pdf.js');
     const worker = html2pdf().set(opt).from(doc.body);
-    if (mode === 'blob') {
-      return (await worker.output('blob')) as Blob;
-    }
-    await worker.save();
+    return (await worker.output('blob')) as Blob;
   } finally {
     // Limpiar iframe
     if (document.body.contains(iframe)) {

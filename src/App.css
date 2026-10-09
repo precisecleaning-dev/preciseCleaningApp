@@ -477,8 +477,3 @@ button, [role='button'], .nav-item {
 .app-loading-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #f8fafc; gap: 16px; }
 .app-loading-spinner { width: 48px; height: 48px; border: 4px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin-load 0.8s linear infinite; }
 .app-loading-text { font-size: 0.9rem; color: #64748b; font-weight: 500; }
-
-/* ---------- Pantalla "Under Construction" (App.tsx) ---------- */
-.app-under-construction { padding: 40px; text-align: center; color: #6b7280; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
-.app-under-construction-title { color: #111827; font-size: 1.5rem; margin: 0 0 8px 0; }
-.app-under-construction-text { margin: 0; }

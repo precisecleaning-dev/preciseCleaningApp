@@ -7,6 +7,593 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Auditoría de rendimiento, Firebase y caché (2026-10-09) — Fase 1
+
+Punto de partida: commit `2e4f005` (rama `fix/google-calendar-sync`) + el CLAUDE.md nuevo.
+Fase 1 es solo lectura: no se modificó código. Plan priorizado al final de esta sección.
+
+### 1. Línea base
+
+| Dato | Valor |
+|---|---|
+| React / React DOM | 19.2.4 (sin React Compiler) |
+| TypeScript | 5.9.3 (`strict` activo) |
+| Firebase | 12.11.0 (SDK modular) |
+| Vite | 7.3.1 (+ vite-plugin-pwa 1.3.0, `cssCodeSplit: false`) |
+| `tsc -b` / `tsc --noEmit -p tsconfig.app.json` | 0 errores / 0 errores |
+| `eslint .` | **195 problemas: 171 errores, 24 avisos** en 29 archivos |
+| Archivos JS en `dist/assets` | 87 (+1 CSS) |
+
+eslint por regla: `no-explicit-any` 139 · directivas `eslint-disable` sin uso 14 · `no-useless-escape` 13 ·
+`no-unused-vars` 12 · `exhaustive-deps` 10 · `no-unused-expressions` 2 · `prefer-const` 2 · `no-empty` 2 ·
+`set-state-in-effect` 1. Archivos con más problemas: QualityCheckView 56, dateFormat 17, App 16,
+HousesView 12, StatusHistoryView 11, SettingsView 10.
+
+**Carga inicial (lo que baja `index.html` antes de pintar):**
+
+| Archivo | Tamaño | gzip |
+|---|---|---|
+| `index-*.js` (arranque) | 703.8 kB | 218.5 kB |
+| `style-*.css` (todo el CSS, a propósito) | 423.7 kB | 72.0 kB |
+
+Composición del chunk de arranque (sourcemap): `@firebase/firestore` 261 kB · `react-dom` 178 kB ·
+`@firebase/auth` 75 kB · `webchannel-wrapper` 50 kB · **`@firebase/storage` 31 kB (no se usa al arrancar)** ·
+App.tsx 12 kB · resto < 10 kB c/u.
+
+**Chunks pesados al abrir una vista:**
+
+| Chunk | Tamaño | gzip | Qué lo hace pesado / quién lo carga |
+|---|---|---|---|
+| `ShareReportSheet-*.js` | **1,001 kB** | 290 kB | `html2pdf.js` 753 kB + `html2canvas` 198 kB, importados **estáticamente** por `utils/pdfGenerator.ts`. Se baja al abrir Quality Check, QC Reports o QC Dashboard aunque no se genere ningún PDF. |
+| `DataImportView-*.js` | 329 kB | 110 kB | `xlsx` 276 kB + `papaparse` 19 kB. Solo admins; ya es lazy. |
+| `HousesView-*.js` | 179 kB | 47 kB | HousesView.tsx (9,231 líneas) 144 kB. |
+| `QualityCheckHub-*.js` | 87 kB | 27 kB | QualityCheckView + QCRouteDrawer. |
+
+### 2. Firebase
+
+**Inicialización** (`src/config/firebase.ts`): SDK modular, una sola inicialización.
+`initializeFirestore` con `persistentLocalCache` + `persistentMultipleTabManager` y
+`CACHE_SIZE_UNLIMITED` → **la caché persistente está activa**. Auth con `initializeAuth`
+(IndexedDB + localStorage). `getStorage(app)` se crea en el arranque (ver Carga).
+La config está escrita en el archivo, no en `import.meta.env.VITE_FIREBASE_*` (no es secreta;
+el `.env` de la raíz no es un archivo de variables sino un fragmento de JS de ejemplo, y está en .gitignore).
+Al cerrar sesión **no** se ejecuta `terminate` + `clearIndexedDbPersistence`: los datos de clientes
+quedan en IndexedDB del equipo.
+
+**Totales de llamadas de lectura (código vivo, sin contar los archivos muertos de la sección 5):**
+69 `onSnapshot` · 47 `getDocs` · 8 `getDoc` · 2 `getDocsCacheFirst`.
+De 113 lecturas sobre colecciones, **111 no tienen `limit`** y **98 no tienen ni `where` ni `limit`**
+(descargan la colección completa). `getCountFromServer`/`getAggregateFromServer`: 0. Todos los
+`onSnapshot` revisados devuelven su `unsubscribe` en el cleanup (no hay fugas).
+
+Nota sobre el costo: el SDK comparte internamente un listener idéntico mientras dos componentes lo
+tienen abierto, así que dos `onSnapshot` iguales montados a la vez NO cobran doble. Lo que sí cobra:
+(a) cada `getDocs` sin filtro va al servidor y cobra **todos** los documentos en cada visita;
+(b) cada listener que se cierra al cambiar de vista y se vuelve a abrir más de 30 min después se
+cobra completo otra vez.
+
+**Inventario por colección** (W = `where`, L = `limit`; "listener" = onSnapshot, "lectura" = getDocs/getDoc):
+
+| Colección | Tamaño | Dónde se lee | Problema |
+|---|---|---|---|
+| `properties` | ~3,600 docs (según comentarios del código) | **App.tsx:180 listener global sin filtro**; PayrollView:474 **2º listener completo**; HousesView:1129 getDoc; MigrarPayroll getDocs completo; propertiesService.getAll (sin uso en vistas) | Cada sesión nueva cobra los ~3,600. El de PayrollView duplica el de App (los datos ya llegan por props). |
+| `quality_checks` | desconocido (crece con cada inspección) | listeners completos: QualityDashboardView:112, jobQuality.ts:43 (Overview), homeData.ts:128 (Owner/Manager), QCReportsTableView:125 (L); **getDocs completos en cada visita**: RecallsView:217, QCRouteView:116; QualityCheckView:429 `getDocsCacheFirst` (pinta del caché pero **siempre** hace un getDocs completo en segundo plano); qcRecordSync (W); QualityCheckView getDoc ×2 | Se baja completa al entrar a Quality Check, Recalls y QC Route; 3 listeners distintos que se abren/cierran al navegar. |
+| `status_history` | desconocido (1 doc por cada cambio de status; la más grande probablemente) | **jobRecall.ts:34 getDocs completo** (Overview y QC Dashboard) — y se repite cada vez que cambia `statuses` (≥2 veces por visita); RecallsView:219 getDocs completo; statusHistoryService (W, bien) | Se descarga toda la historia solo para saber qué casas pasaron por Recall. Se puede filtrar en el servidor por `toStatusId`/`toStatusName`. |
+| `recalls` | desconocido | jobRecall.ts:35 y RecallsView:218, getDocs completos | Igual que arriba. |
+| `billing_services` | ~1–2 por casa | **jobFinancials.ts:72 listener completo** (Overview, Invoices, Owner, Manager); StatusHistoryView:83 listener completo; HousesView ×3 y PropertyDetailModal (W, bien) | Colección completa en 2 listeners de vistas distintas. |
+| `payroll` | ~1–2 por casa | **jobFinancials.ts:80 listener completo**; PayrollView:458 y StatusHistoryView:97 listeners completos; payrollService:36 getDocs completo; MigrarPayroll ×2; PropertyDetailModal y payrollService:26 (W) | Igual. |
+| `customers` | desconocido | **9 listeners** (NoStatus, Payroll, Invoices, Houses, StatusHistory, QCReportsTable, QualityDashboard, homeData) + **getDocs completos**: PropertyDetailModal (en **cada apertura** del detalle), RecallsView, QCRouteView, customersService.getAll (Customers, Calendar), QualityCheckView (`getDocsCacheFirst` + refresco completo) | Catálogo grande sin listener global: se re-descarga al cambiar de vista y al abrir un detalle. |
+| `system_users` | pequeña | App.tsx:218 (W, perfil, bien); listeners completos en ActivityLog, Payroll, Houses, QualityDashboard, homeData; getDocs completos en PropertyDetailModal (cada apertura), ViewAsUserModal, NoticeBoard, Settings, Users; usersService (W) | Duplicado en 10 lugares. |
+| `settings_statuses` / `settings_teams` | pequeñas | 8 listeners cada una + 3/2 getDocs (PropertyDetailModal en cada apertura, Recalls, Roles) | Catálogo que casi no cambia, leído en ~10 lugares. |
+| `settings_services` / `settings_products` / `settings_priorities` / `settings_tax` / `settings_places` / `settings_tasks` | pequeñas | 2–5 lugares c/u (listeners + getDocs en PropertyDetailModal, HousesView:1918/1921, SettingsView) | Igual. |
+| `settings_roles` | pequeña | App.tsx:153 listener global; **HousesView:1453 2º listener** (llega por props); homeData:127; RolesView getDocs | Duplicado. |
+| `settings_company/main` | 1 doc (**logo en base64 dentro del doc**) | companyService (getDoc + listener + copia en localStorage); getDoc directo en QualityCheckView, QCReportsTableView, QualityDashboardView | El logo se guarda en Firestore como data URL (regla: imágenes a Storage). |
+| `app_settings/*` | 2 docs | HousesView:1417/1436 listeners; photoConfigService getDoc | OK. |
+| `checklists`, `damages` | por casa | HousesView (W, al abrir el detalle) | OK. |
+| `qc_routes` | desconocido | QCRoutesTableView listener completo; QCRouteView getDocs completo; liveRoute doc | Aceptable (pocas rutas), sin `limit`. |
+| `manager_tasks`, `time_clock` | nuevas | services propios; `time_clock` con W por semana | `manager_tasks` sin filtro (pequeña por ahora). |
+| `activity_logs` | grande | activityLogService (orderBy + limit + cursores) | **Bien** (el único ejemplo correcto de paginación). |
+| `trash` | desconocido | trashService (orderBy, sin limit) | Sin límite. |
+| `announcements`, `announcement_comments` | pequeñas | NoticeBoardView getDocs (vista sin acceso desde el menú) | — |
+| `payroll_records` | legado | MigrarPayroll (herramienta temporal) | — |
+
+**HousesView en modo `modals-only`** se monta además en Quality Check, QC Dashboard y Owner/Manager
+para abrir el detalle de una casa: abre sus 11 listeners de catálogos (statuses, teams, priorities,
+services, products, tax, customers, system_users, app_settings ×2, roles) aunque no se abra ningún modal.
+
+**Lecturas N+1 y escrituras:**
+- No hay lecturas `await getDoc` dentro de loops. Sí hay **escrituras secuenciales en loops** que deberían ir en `writeBatch`:
+  HousesView:3760–3800 (al guardar una casa: borra, **actualiza TODOS los servicios aunque no cambien** y crea pagos, uno por uno,
+  y los errores solo van a la consola), PayrollView:326 (corrección masiva de fechas), UsersView:338 (importación masiva), SettingsView:260.
+- `setDoc` sin `merge` que reescribe el documento completo: UsersView:124/172/247/357 (alta y reescritura de usuarios; en
+  altas es correcto, en ediciones conviene `updateDoc`). Los demás `setDoc` usan `merge: true`.
+- No hay escrituras en cada tecla (los formularios guardan al confirmar).
+- `serverTimestamp`/`increment`/`arrayUnion`/`runTransaction`: 0 usos. Las fechas se guardan con `new Date().toISOString()` del cliente.
+- Imágenes en base64 en Firestore: **logo de la empresa** (`settings_company/main.logo`). Las fotos van a Storage (bien).
+
+**Security Rules e índices:** no están en el repo (se manejan en la consola), no se pudieron auditar.
+
+### 3. Caché
+
+| Capa | Estado |
+|---|---|
+| Firestore persistente (IndexedDB) | **Activa**, tamaño ilimitado, varias pestañas. No se limpia al cerrar sesión. |
+| Listeners compartidos | Solo `properties`, `settings_roles` y el perfil, en App.tsx. El resto, por vista (ver tabla). |
+| Memoria con TTL | No existe. `utils/cacheFirstFetch.ts` (`getDocsCacheFirst`) pinta del caché pero siempre repite la lectura completa. |
+| TanStack Query | No se usa. |
+| localStorage | `pc_active_tab` (OK) · periodos de las barras (OK) · `pc_company_settings` (**copia de un doc de Firestore con el logo base64**, duplica la caché persistente; se usa para leer el logo de forma síncrona al generar PDFs) · `geo_v1__<dirección>` (**direcciones de clientes**, sin límite ni expiración) · `pc_house_form_drafts_v1` (**borradores del formulario de casas con datos de clientes, notas y payroll**). |
+| Hosting (Cloudflare Workers, `wrangler.jsonc`) | **No hay `public/_headers`**: los `assets/*` con hash no tienen `Cache-Control: immutable`. El Service Worker de la PWA los precachea (90 entradas, 3 MB), así que el impacto es menor tras la primera visita. |
+| Storage | `uploadBytesResumable` solo manda `contentType`, **sin `cacheControl`**. |
+| PWA | El manifest pide `/icon-192.png`, `/icon-512.png` y `favicon.ico`, que **no existen** en `public/` (404). |
+
+### 4. Carga
+
+- Todas las vistas de App.tsx ya usan `React.lazy` + `Suspense`, con precarga en reposo (`viewPrefetch.ts`).
+  En el arranque solo van LoginView, Sidebar, TopRightActions, ViewAsUserModal y RouteTransition (pequeños).
+- Librerías pesadas: `html2pdf.js` (953 kB con html2canvas) importada estáticamente → **el mayor desperdicio de carga**.
+  `xlsx`/`papaparse` estáticos dentro de DataImportView (aceptable, vista de admin).
+- `firebase/storage` se carga en el arranque por `config/firebase.ts` aunque solo lo usan la subida de fotos y el borrado.
+- `firebase/functions` ya va solo en HousesView (bien).
+- Modales grandes dentro de HousesView/QualityCheckView/PayrollView viajan en el chunk de su vista (se verán al dividir componentes).
+- `cssCodeSplit: false` es una decisión documentada (modales sin estilo con chunks de CSS tardíos); se mantiene.
+
+### 5. Código innecesario
+
+**Archivos sin uso (confirmado con grep + knip):**
+- `src/views/QCDashboardView.tsx` (+ .css, 631 líneas) — reemplazado por QualityDashboardView.
+- `src/views/QCReportsView.tsx` (+ .css, 296) — reemplazado por QCReportsTableView.
+- `src/views/ChecklistView.tsx` (+ .css, 948) — nadie lo importa; la colección `checklists` se sigue LEYENDO en el detalle de la casa, pero ya no hay pantalla para crear checklists. **Decisión de producto.**
+- `src/components/KpiBand.tsx` (+ .css) — reemplazado por KpiGrid (quedó del cambio de la ronda 5).
+- `src/components/RegisteredPaymentsPanel.tsx` (+ .css, 510).
+- `src/vite.config.ts` — copia vieja de la config dentro de `src/`.
+- `src/assets/react.svg`, `calendar-fixes.patch` (raíz), `.env` (fragmento de ejemplo, no es un .env real; ya ignorado por git).
+- knip también marca `functions/*`, `vite-env.d.ts` y `src/types/html2pdf.d.ts`: **falsos positivos** (otro paquete / tipos ambientales).
+
+**Vistas montadas en App.tsx pero sin entrada en el menú** (solo se llega si quedaron guardadas como última pestaña):
+`recalls` (RecallsView 958 líneas + PropertyDetailModal 324), `qc_route` (QCRouteView 724), `board` (NoticeBoardView 449),
+`done` ("Under construction"). **Decisión de producto**: volver a ponerlas en el menú o eliminarlas.
+
+**Código inalcanzable:** el modo "bypass" de App.tsx (`isBypass`, `handleLoginSuccess` sin `auth.currentUser`): LoginView
+solo llama `onLoginSuccess` después de un `signInWithEmailAndPassword` exitoso, así que nunca se activa — y si se activara
+daría permisos de superadmin. Eliminar.
+
+**Otros:** 16 `console.log` (HousesView 5, userAuthService 4, imageCompression 3, usersService 2, PayrollView 1,
+photoConfigService 1) · 14 `eslint-disable` sin uso · 18 exports y 15 tipos exportados sin uso (knip) · ~7 líneas de
+código comentado · dependencia **`browser-image-compression` sin ningún import** (la compresión es propia en
+`utils/imageCompression.ts`).
+
+**Funcionalidades duplicadas que funcionan (decisión de producto):**
+- Detalle de casa: el modal grande de HousesView vs `PropertyDetailModal` (solo lo usa RecallsView).
+- `collectionMap` repetido en HousesView, PayrollView, CalendarView y SettingsView (no es producto, se unifica en el lote de catálogos).
+
+### 6. Calidad
+
+| Métrica | Valor |
+|---|---|
+| `style={{` | 102 en 26 archivos; **101 usan variables CSS** (permitido). 1 con valores sueltos: RecallsView:159 (posición del menú) |
+| `<style>` embebido | 1 (HousesView:4312) — está dentro de un **string HTML de impresión**, no en JSX: excepción válida |
+| Objetos de estilo en JS | 0 |
+| Hover con `onMouseEnter/Leave` | 0 (el `onMouseLeave` de QualityCheckView:284 es para dibujar sobre un canvas, válido) |
+| `any` (eslint) | 139 · `as any` 49 · peores: QualityCheckView 38, App 16, StatusHistoryView 9, dateFormat 8, SettingsView 7 |
+| `React.FC` / clases | 0 / 0 |
+| `.tsx` de más de 150 líneas | 38 de 55 · HousesView **9,231** · QualityCheckView 2,668 · PayrollView 1,905 · DataImportView 1,127 · InvoicesView 990 |
+| `key` con índice | 22 directos + 8 en template (QCDashboardView 6, HousesView 3, StatusHistory 2, DataImport 2, …) |
+| `useEffect` que solo calcula datos derivados | ~8: PropertyDetailModal:50, StatusChangeModal:41, PayrollView:392/848, QualityCheckView:381, HousesView:1473 (totales del modal de servicios), HousesView:4461 (total de payroll), QCRouteDrawer:212 |
+| Services sin `withConverter` | todos (casts `as T` en cada vista) |
+
+### Plan priorizado (para aprobación — Fase 2)
+
+Orden: primero lo que baja lecturas de Firebase y tiempo de carga. Cada lote = un commit + verificación de CLAUDE.md.
+
+| # | Lote | Impacto | Riesgo | Notas |
+|---|---|---|---|---|
+| 1 | **Recall sin descargar toda la historia**: `useRecallHouses` y RecallsView consultan `status_history` con `where('toStatusId','in', idsDeRecall)` + `where('toStatusName','in', nombresDeRecall)` en vez de la colección completa, y no se repite cuando cambia `statuses`. | Alto (probablemente la colección más grande, leída en cada visita al Overview y QC Dashboard) | Bajo | Mismo resultado. Usa índices simples automáticos. |
+| 2 | **Store de datos compartido** (`src/shared/data/`): un listener por colección con conteo de usuarios y cierre diferido (p. ej. 15 min sin nadie que lo use). Hooks `useCatalog('settings_teams')`, `useCustomers()`, `useUsers()`, `useQualityChecks()`, y `useJobFinancials` apoyado en él. Sustituye ~60 listeners y ~25 `getDocs` de montaje (PropertyDetailModal en cada apertura, RecallsView, QCRouteView, QualityCheckView `getDocsCacheFirst`, CalendarView, ViewAsUserModal…). HousesView `modals-only` deja de abrir catálogos propios. PayrollView y HousesView usan `properties`/`roles` de App. | **Muy alto**: al navegar ya no se re-descarga nada; los listeners no se reinician | Medio (muchos archivos, cambio mecánico) | Los datos se ven igual o más frescos (pasan de lectura única a vivos). Por sub-lotes: catálogos → customers/users → quality_checks → billing/payroll. |
+| 3 | **Escrituras**: guardar casa solo actualiza servicios/pagos que cambiaron y en un `writeBatch`; corrección masiva de fechas (Payroll), importación de usuarios y creación en Settings con `writeBatch` (tandas de 500); `updateDoc` en ediciones de usuarios; aviso visible si una escritura falla (hoy solo consola). | Medio (escrituras) + integridad | Medio | El aviso de error es lo único "nuevo" que se vería. |
+| 4 | **Carga**: `html2pdf.js` con `import()` dinámico dentro de `pdfGenerator` (−1 MB al abrir Quality Check / QC Reports / QC Dashboard); `firebase/storage` fuera del arranque (−31 kB); `xlsx`/`papaparse` dinámicos en DataImportView. | Alto en vistas de QC | Bajo | El primer PDF tarda un instante más en generarse. |
+| 5 | **Caché**: `public/_headers` (assets inmutables 1 año; `index.html`, `sw.js`, `version.json`, `registerSW.js` sin caché); `cacheControl` en subidas a Storage; `cached()` en memoria con TTL para las lecturas únicas que queden (admin: Settings, Users, Roles, Trash); caché de geocodificación con tope y expiración. | Medio | Bajo | Requiere desplegar para notarse (yo no despliego). |
+| 6 | **Código innecesario**: borrar QCDashboardView, QCReportsView, KpiBand, RegisteredPaymentsPanel, `src/vite.config.ts`, `react.svg`, `calendar-fixes.patch`; modo bypass; 16 `console.log`; 14 `eslint-disable` sin uso; exports sin uso; quitar `browser-image-compression` de package.json. | Bajo (limpieza, −~1,600 líneas) | Bajo | Quitar la dependencia queda aprobado si apruebas el plan. |
+| 7 | **Estilos**: RecallsView:159 a variables CSS; anotar la excepción del `<style>` de impresión. | Muy bajo | Bajo | Casi todo ya cumple. |
+| 8 | **Tipos y componentes** (por sub-lotes): `withConverter` en los services; quitar `any` empezando por QualityCheckView, dateFormat, App; corregir los ~8 efectos de datos derivados y las `key` con índice; dividir HousesView (extraer hooks de datos, modal de detalle, formulario, editor de servicios/pagos, exportación PDF), luego QualityCheckView y PayrollView. | Mantenibilidad | **Alto** en la división de HousesView | Lo hago en pasos pequeños con verificación visual en el arnés de pruebas. |
+
+**Decisiones que necesito de ti (no las toco sin respuesta):**
+1. **Acotar las colecciones grandes** (el mayor ahorro posible): hoy cada sesión nueva descarga las ~3,600 casas completas, y
+   también todo `quality_checks`, `billing_services` y `payroll`. Opción: cargar solo una ventana (p. ej. últimos 12 meses +
+   futuras) y traer lo anterior bajo demanda (búsqueda / "ver más antiguos"). Cambia lo que se ve en búsquedas históricas,
+   Status History y Payroll de semanas viejas.
+2. **ChecklistView**: no tiene acceso desde ninguna parte. ¿Se borra o se vuelve a conectar?
+3. **Recalls, QC Route, Notice Board y "Under construction"**: montadas pero fuera del menú. ¿Se borran o vuelven al menú?
+   (Si Recalls se va, también PropertyDetailModal, el detalle duplicado.)
+4. **Borradores del formulario de casas** guardan datos de clientes en localStorage. ¿Mantener, pasar a IndexedDB, o a Firestore?
+5. **Cerrar sesión** debería borrar la caché local de Firestore (equipos compartidos). El siguiente inicio de sesión tarda un poco más. ¿Lo aplico?
+6. **Logo de la empresa** en base64 dentro de Firestore y copiado a localStorage → moverlo a Storage.
+7. **Íconos de la PWA** faltantes (`icon-192.png`, `icon-512.png`, `favicon.ico`): ¿los genero a partir de `logo.png`?
+8. **`xlsx` 0.18.5** tiene vulnerabilidades conocidas y ya no se publica en npm; cambiarlo implica otra dependencia.
+9. Config de Firebase a `VITE_FIREBASE_*` (necesita configurar las variables en el build de Cloudflare). Opcional.
+
+
+### Fase 2 — registro por lote
+
+- **Lote 1 (Recall).** `utils/jobRecall.ts` → `fetchRecallHistory()` hace hasta 4 consultas
+  `where(... 'in' ...)` sobre `status_history` (toStatusId/toStatusName y, para Recalls,
+  fromStatusId/fromStatusName) con los ids y nombres de los status de recall. `toStatusId` se busca
+  también por nombre porque hay registros viejos que guardan el nombre ahí. La clave del efecto es la
+  lista de status de recall, así que ya no se repite con cada snapshot de statuses.
+  Límite aceptado: un registro cuyo status de recall fue borrado y además tenía otro nombre ya no se
+  encuentra. En el arnés: Overview 44 → 6 documentos de `status_history`; Recalls 44 → 8.
+- **Lote 4 (carga).** `pdfGenerator` importa `html2pdf.js` dentro de `renderPDF` (verificado en el
+  arnés: el chunk solo se pide al tocar "WhatsApp"). `firebase/storage` vive en `config/storage.ts`.
+  DataImportView carga `xlsx`/`papaparse` en los handlers.
+- **Lote 6 (código innecesario).** Borrados: QCDashboardView, QCReportsView, KpiBand,
+  RegisteredPaymentsPanel (+ sus .css), `src/vite.config.ts`, `src/assets/react.svg`,
+  `calendar-fixes.patch`; el "modo bypass" de App.tsx; 16 `console.log`; 14 `eslint-disable` sin uso;
+  funciones sin uso (`compressImages`, `shareQCViaWhatsApp`, `resetScrollMemory`, `isViewPrefetched`,
+  `generatePDFFromHTML` + el modo "save" de `renderPDF`, `nearestNeighborOrder`, `brandingFooterHTML`);
+  `export` quitado de 21 helpers y 19 tipos que solo se usan dentro de su archivo; dependencia
+  `browser-image-compression`. Al quitar las directivas sin uso, el lint del React Compiler dejó de
+  "saltarse" `liveRoute.ts` y mostró 3 problemas que ya existían (refs escritos durante el render y un
+  `setState` síncrono en un efecto): se corrigieron sin cambiar el comportamiento.
+  **No se tocó:** ChecklistView y las vistas ocultas (decisiones pendientes), `formatDateTime` de
+  `utils/dateFormat.ts` (hay 4 copias locales con formatos distintos: se unifica en el lote 8),
+  `getPayrollTotal` duplicado en PropertyDetailModal (lote 8), `setPersistence(auth, browserLocalPersistence)`
+  en App.tsx: pisa la persistencia IndexedDB que configura `config/firebase.ts` (anotado, no se cambia
+  sin probar sesiones reales).
+
+- **Lote 2 (store compartido).** `src/shared/data/liveCollections.ts`: `useLiveCollection(key)` /
+  `useLiveData(key)` con `useSyncExternalStore`; un `onSnapshot` por colección para toda la app, con
+  conteo de suscriptores y cierre diferido de 15 min (`KEEP_ALIVE_MS`) tras el último. Colecciones:
+  statuses, teams, priorities, services, products, taxes, places, tasks, roles, users, customers
+  (con `mapCustomerDoc`), qualityChecks, billingServices, payroll. Si un listener falla se descarta
+  y el siguiente suscriptor lo reabre. `resetLiveCollections()` se llama al cerrar sesión (App.tsx).
+  Migrados: App (roles, ahora solo con sesión), HousesView (11 listeners → store; places/tasks del
+  checklist solo con el detalle abierto), jobFinancials, jobQuality, homeData, QualityDashboardView,
+  InvoicesView, NoStatusView, PayrollView (+ `properties` por props: se eliminó su 2º listener de
+  toda la colección), StatusHistoryView, QCReportsTableView, PropertyDetailModal, RecallsView,
+  QCRouteView, QualityCheckView (se eliminó `getDocsCacheFirst` y su archivo), CalendarView,
+  CustomersView, RolesView (sin `setRoles`), ViewAsUserModal, ActivityLogView.
+  Eliminados por quedar sin uso: `customersService.getAll`, `payrollService.getAll`,
+  `propertiesService.getAll`, `utils/cacheFirstFetch.ts`.
+  Las vistas que editaban su copia local (Customers, Roles, Quality Check) ya no la tocan a mano:
+  Firestore aplica la escritura local al instante en el listener y la revierte si el servidor la
+  rechaza. En el arnés, una navegación por 13 vistas pasó de reabrir cada catálogo en cada vista a
+  **un listener por colección**; al volver a una vista ya visitada el costo es 0 lecturas.
+  Cambios visibles menores (todos correcciones): StatusHistory, Recalls, QC Route y el detalle de
+  Recalls resuelven el nombre del cliente con `resolveCustomerName` (id real, legacy o nombre) en vez
+  de mostrar a veces el id crudo; QC Reports ya no se limita a los "primeros 2000 por id" (mostraba
+  un subconjunto arbitrario si había más).
+  **Pendiente (decisión):** StatusHistoryView suma `payroll.totalAmount`, que los pagos nuevos no
+  guardan → la columna Payroll sale $0.00. Se dejó igual; corregirlo cambia la cifra visible.
+
+- **Lote 3 (escrituras).** `src/shared/data/batchWrites.ts`: `commitOps(ops)` (grupo relacionado,
+  lanza si falla) y `commitInChunks(items, apply)` (tandas de 500, informa qué se guardó y qué no).
+  `payrollService` suma `batchCreate/batchUpdate/batchDelete`; `settingsService.createMany`.
+  - **Guardar casa (HousesView):** servicios y pagos del formulario van en UN batch. De los servicios
+    existentes solo se reescriben los que cambiaron (huella con claves ordenadas contra lo cargado al
+    abrir el formulario; al restaurar un borrador o duplicar no hay referencia y se escriben todos,
+    como antes). Editar un pago en el formulario (= borrar + recrear) ya no puede perder el pago si
+    falla la segunda mitad. Si el batch falla, aviso visible ("la casa se guardó, pero sus servicios
+    y pagos no"); antes solo quedaba en la consola. El documento de la casa sigue escribiéndose
+    completo: pasarlo a "solo campos cambiados" evitaría pisar ediciones simultáneas de otro usuario,
+    pero cambia qué gana en ese caso → pendiente, no se tocó.
+  - **Payroll:** pago consolidado, marcar semana pagada, editar y eliminar nómina → un batch cada uno
+    (antes `Promise.all` de N escrituras + creación del ajuste aparte: podían quedar casas en nómina
+    sin su bonus). Corrección masiva de fechas → tandas de 500; la lista local solo se actualiza con
+    las filas que sí se guardaron (antes también marcaba las fallidas).
+  - **Users:** alta masiva → tandas de 500 (los errores se cuentan por tanda); mover el documento al
+    cambiar de id (`pending_…` → nuevo email o UID de Auth) = set + delete atómicos (antes, si fallaba
+    el delete, quedaba el usuario duplicado); editar envía solo los campos que cambiaron y no escribe
+    si no cambió nada.
+  - **Settings:** las tareas nuevas de un lugar se crean en un batch.
+  En el arnés (con el mock registrando cada escritura): guardar una casa sin tocar servicios = 1
+  escritura (antes 2); editar un pago y re-guardar un servicio sin cambios = casa + 1 batch (delete +
+  set), sin reescribir el servicio; alta masiva de 3 con 1 duplicado = 1 batch de 2; lugar con 2
+  tareas = alta del lugar + 1 batch de 2. No probado contra Firestore real: reglas de seguridad que
+  acepten escrituras sueltas pero no en batch (no debería haber diferencia) y el aviso de error.
+
+- **Lote 5 (caché).**
+  - `public/_headers`: `/assets/*` con `Cache-Control: public, max-age=31536000, immutable` (Vite pone
+    hash en esos nombres). `index.html`, `sw.js`, `registerSW.js`, el manifest y `version.json` se
+    quedan con el valor por defecto de Cloudflare (revalidar) para que cada deploy llegue al instante.
+    Se nota solo después de desplegar.
+  - Fotos a Storage con `cacheControl: 'public, max-age=31536000'` (nombres únicos, nunca se
+    sobrescriben). Aplica a las fotos nuevas; las ya subidas conservan su metadata.
+  - `src/shared/utils/memoryCache.ts` (`cached`/`invalidate`/`clearMemoryCache`, tal cual CLAUDE.md,
+    más: un error no borra una entrada más nueva de la misma clave). Usos:
+    historia de recall (5 min; `statusHistoryService.log` invalida), colección `recalls` (5 min; nadie
+    la escribe desde la app), `getCompanySettings` (10 min; `saveCompanySettings` invalida; trae el
+    logo, que puede pesar cientos de kB), `trashService.getAll` (5 min; mover/restaurar/purgar
+    invalidan). Si una de las consultas de la historia de recall falla, falla toda y no se cachea
+    (antes devolvía lo que hubiera llegado; con consultas `in` de un solo campo no debería pasar).
+    Límite aceptado: lo que cambie OTRO usuario en esos datos se ve como máximo 5–10 min tarde al
+    navegar (antes se releía en cada visita, pero tampoco se actualizaba mientras la vista seguía
+    abierta). Al cerrar sesión se vacía junto con el store.
+  - **Users, Settings y Notice Board** pasan al store de listeners en vez de `getDocs` completos en cada
+    visita (Settings: 12 catálogos + `system_users`). Se sumaron al store los 4 catálogos que solo usa
+    Settings (categories, responsables, paymentMethods, businesses). Se quitaron todos los parches
+    manuales de listas locales: el listener refleja la escritura. Diferencias visibles: un usuario o
+    catálogo recién creado aparece en su orden real (por id) en vez de al final, y **borrar un lugar
+    ya no oculta sus tareas** en la lista Task: antes desaparecían solo de la pantalla (en Firestore
+    nunca se borraban y volvían al recargar). → decisión pendiente: ¿borrar las tareas con el lugar?
+  - Geocodificación: de una clave de localStorage por dirección, sin límite, a una sola clave
+    versionada (`app:v2:geocode`) con tope de 5,000 entradas (más que casas: el uso normal no
+    expulsa nada), vencimiento a un año SIN USO (cada uso renueva la fecha) y escrituras agrupadas;
+    las claves viejas (`geo_v1__…`) se migran completas y se borran una vez (probado en el
+    navegador del arnés, incluido el tope y el vencimiento). La primera versión tenía tope 500 y
+    90 días: la revisión independiente mostró que eso expulsaba direcciones y volvía más lento QC
+    Route; se corrigió antes de entregar. Sigue guardando
+    direcciones de clientes en el equipo → se suma a la decisión de datos de clientes en localStorage.
+  - En el arnés, el recorrido houses→qc→recalls→qcview→qcreports→users→settings dos veces pasó de
+    **166 a 83 lecturas**; la segunda vuelta cuesta 2 (los dos `onSnapshot` de documento de
+    `app_settings` que abre cada HousesView; con la caché persistente, reabrirlos antes de 30 min solo
+    cobra cambios, así que se dejaron). El mock del arnés ahora re-emite los listeners tras cada
+    escritura: se comprobó que Users (alta masiva) y Settings (lugar nuevo) muestran lo guardado sin
+    parche local.
+
+- **Lote 7 (estilos).** RecallsView: la posición del menú de status (`top/left/width` calculados al
+  abrirlo) pasa a variables CSS (`--menu-top/--menu-left/--menu-width`) leídas en `.rcv-pill-menu`;
+  verificado en el arnés (el menú abre pegado al botón). Revisados los 94 `style={{` restantes: todos
+  son variables CSS de valores de runtime (colores de Firestore, alturas del calendario, anchos de
+  barras), igual que las variables `style={order}`, `style={bar(...)}` y `style={pillVars}`. El único
+  `<style>` está dentro del HTML de impresión de fotos de HousesView (excepción documentada; sus
+  textos ya pasan por `escapeHtml`). El único `onMouseLeave` es el del lienzo de anotación (dibujo).
+
+- **Lote 8 (tipos y componentes).**
+  - **`any`: de 139 a 2**, ambos alias documentados con su `eslint-disable`: `QcFormData`
+    (`utils/qcReportPdf.ts`, la excepción de `qcData` de CLAUDE.md) y `Leaflet` (`utils/routing.ts`:
+    Leaflet llega por CDN y no hay `@types/leaflet`; instalarlo sería una dependencia nueva). Lo
+    demás se tipó de verdad: `dateFormat` con `unknown` + guardas; los 16 `as any` de App.tsx eran
+    innecesarios; campos que se guardan en `properties` y solo existían como extensión local pasan a
+    `Property` (`beforePhotosExcluded`, `afterPhotosExcluded`, `dateOfIssue`, `dueDate`, `qcPlaces`);
+    `StatusHistoryEntry` suma `source` y `reason` (se guardaban con `as any`) y `toStatusName` admite
+    `null`; `catch (e: any)` → forma `{ code?, message? }`; Settings con un tipo `SettingItem` para su
+    editor genérico; Quality Check con tipos para la cola offline, los trazos del anotador y los
+    eventos de mouse/touch; `settingsService` genérico (`getAll<T>`).
+  - `src/types/html2pdf.d.ts` borrado: duplicaba los tipos que ya trae `html2pdf.js`.
+  - ESLint: `no-unused-vars` con `ignoreRestSiblings` (`const { id, ...resto } = doc` es la forma de
+    quitar un campo antes de escribir). Problemas de `eslint .`: **195 (171 errores) → 5 avisos y 0 errores**
+    (quedan 5 `exhaustive-deps` en efectos que responden a una orden externa — p. ej. "abrir esta
+    casa" — o a cálculos con closures; cambiarlos altera cuándo se ejecutan).
+  - Estado derivado (antes copiado con `useEffect`): totales del servicio y del pago en HousesView,
+    total del formulario de edición, semana por defecto, detalle semanal en vivo y limpieza de la
+    selección en PayrollView, reinicio de la selección en StatusChangeModal, "cargando" del
+    historial en StatusHistoryPanel y apertura del panel de áreas en Quality Check (pasó a los
+    handlers que abren/cierran el formulario). **No se tocó** el recálculo de tramos de
+    QCRouteDrawer (los tramos viven dentro de `stops`; separarlos es un cambio más grande).
+  - `key` con índice → dato estable donde la lista cambia: fotos (URL), opciones de casa,
+    historial de notas, permisos por módulo, episodios de recall. Las listas fijas (esqueletos,
+    encabezados de semana, KPIs) conservan el índice, como permite CLAUDE.md.
+  - Duplicados unificados: `getPayrollTotal` (PayrollView y PropertyDetailModal usan el de
+    `jobFinancials`); `formatDateTime` de HousesView → el de `utils/dateFormat` (mismo formato
+    MM/DD/YYYY, h:mm AM/PM); Recalls y Status History comparten `formatDateTimeMx` (es-MX, el que ya
+    mostraban). Diferencia solo en datos raros: una fecha sin hora (registros viejos/importados) se
+    muestra como fecha MM/DD/YYYY — antes Status History la pasaba a "12:00 a. m." UTC, que en Texas
+    caía el día anterior — y una DD/MM con día > 12 se normaliza igual que en el resto de la app. Quedan aparte (formatos distintos a propósito o
+    dudosos): Notice Board y PropertyDetailModal (`es-ES` con mes corto) e Invoices
+    (`parseDateForSort`, que manda al final las fechas imposibles) → decisión de formato pendiente.
+  - **HousesView, primer paso de la división** (8,991 → 8,599 líneas), en `src/features/houses/`:
+    `serviceRecords.ts` (tipo, huella y `computeServiceTotals`), `houseDrafts.ts`,
+    `houseFieldConfig.ts`, y los componentes `SearchableSelect` y `StatusPillSelector` con su CSS
+    movido tal cual desde HousesView.css. Capturas del arnés antes/después (tabla, formulario,
+    selector abierto, detalle y móvil): **idénticas píxel a píxel**.
+  - Arreglos sueltos: un "9" suelto al final de RecallsView.tsx; el nombre del módulo y la fecha en
+    `key`; `LoginView` y Quality Check sin `catch` vacíos.
+
+### Fase 3 — reporte final (2026-10-09)
+
+Commits sobre la línea base `a9cec62`: Lote 1 `687e0a6`, Lote 4 `bdc29c2`, Lote 6 `edcede8`,
+Lote 2 `ef70009`, Lote 3 `d4b5f80`, Lote 5 `3d2f520`, Lote 7 `757e6dc`, Lote 8 `2bcf0b9`.
+No se desplegó nada ni se tocaron Security Rules ni índices.
+
+| Medida | Antes | Después |
+|---|---|---|
+| Bundle inicial `index-*.js` | 703.8 kB (gzip 218.5) | **673.7 kB (gzip 209.4)** |
+| Chunk que se baja al abrir Quality Check / QC Reports / QC Dashboard (`ShareReportSheet`) | 1,001 kB (gzip 290) | **25.7 kB** (html2pdf, 976 kB, solo al generar un PDF) |
+| `DataImportView` | 329 kB | **26.5 kB** (xlsx/papaparse al usarlos) |
+| `onSnapshot` en el código | 69 | **13** (uno de ellos es el store compartido: 1 listener por colección para 18 colecciones) |
+| `getDocs` / `getDoc` / `getDocsCacheFirst` | 47 / 8 / 2 | **23 / 6 / 0** |
+| Lecturas de colección sin `limit` | 111 de 113 | 30 de 31 (17 sin `where` ni `limit`: 4 de la herramienta MigrarPayroll, 2 de ChecklistView sin acceso, 2 de Notice Board oculto; el resto, colecciones que se escuchan completas → decisión 1) |
+| Lecturas en el arnés, recorrido de 14 vistas (2 vueltas) | 166 | **83**; repetir una vista ya visitada ≈ 0 |
+| Guardar una casa sin tocar sus servicios | 2+ escrituras sueltas | 1 escritura; servicios y pagos en 1 batch atómico |
+| `style={{` | 102 (1 con valores fijos) | 94 (todos variables CSS de runtime) |
+| `any` (eslint `no-explicit-any`) | 139 | **0** marcados; 2 alias documentados (`QcFormData`, `Leaflet`) |
+| `tsc -b` / `tsc --noEmit` | 0 / 0 | 0 / 0 |
+| `eslint .` | 195 (171 errores, 24 avisos) | **5 avisos, 0 errores** |
+| Líneas (`git diff --stat a9cec62..HEAD`) | — | 102 archivos, +2,395 / −5,371 (TS/TSX de `src`: 39,464 → 37,539) |
+
+**Qué no pude probar en un navegador real** (todo se probó con tsc, eslint, build y un arnés con
+Firestore simulado que cuenta lecturas y escrituras; nada contra el proyecto real):
+1. Firestore real: que las Security Rules acepten las escrituras en batch igual que sueltas; el
+   cobro real de lecturas del store (reaperturas antes/después de 30 min); el aviso de error cuando
+   falla un batch. *Cómo probar:* en la consola de Firebase → Usage, comparar lecturas de un día
+   normal antes y después del deploy; guardar una casa con un servicio editado y un pago editado y
+   revisar en Firestore que quedó un solo pago (no duplicado ni perdido).
+2. Payroll con datos reales: pago consolidado, marcar semana pagada, editar y eliminar nómina,
+   corrección masiva de fechas (el arnés no tiene nóminas asignadas). *Cómo probar:* asignar una
+   nómina con bonus a un empleado de prueba, editarla y eliminarla; las casas deben volver a
+   "Asignar nómina" sin ajustes huérfanos.
+3. Users: invitación (✈️, crea la cuenta en Auth) y cambio de email de un usuario `pending_…`
+   (mueve el documento en un batch). *Cómo probar:* con un correo de prueba.
+4. Caché en Cloudflare (`_headers`) y en Storage (`cacheControl`): solo se ve después de desplegar.
+   *Cómo probar:* DevTools → Network → un archivo de `/assets/` debe responder
+   `cache-control: public, max-age=31536000, immutable`; una foto subida después del deploy debe
+   traer `public, max-age=31536000`.
+5. Geocodificación real (Nominatim) en QC Route: el arnés no tiene red; sí se probó la migración de
+   la caché vieja en el navegador. *Cómo probar:* abrir QC Route con casas y revisar que el mapa
+   ubica las direcciones; en DevTools → Application → Local Storage debe existir `app:v2:geocode` y
+   ya no claves `geo_v1__…`.
+6. Generación de PDF y WhatsApp del QC (solo se verificó que `html2pdf` se descarga al tocar
+   WhatsApp), el dibujo sobre fotos del QC (tipos nuevos en los eventos de mouse/touch) y la cola
+   offline de fotos. *Cómo probar:* hacer una inspección con 2 fotos, anotar una, exportar el PDF;
+   repetir en modo avión y volver a conectar.
+7. Lo que se mueve con el tiempo: el cierre diferido de 15 min de los listeners y la expiración de
+   5–10 min de la caché en memoria.
+
+**Decisiones pendientes (no las toqué):**
+1. Acotar las colecciones grandes (`properties` ~3,600, `quality_checks`, `billing_services`,
+   `payroll`): hoy cada sesión nueva las descarga completas. Es el mayor ahorro que queda.
+2. ChecklistView: sin acceso desde ninguna parte. ¿Borrar o reconectar?
+3. Vistas montadas pero fuera del menú (Recalls, QC Route, Notice Board, "Under construction").
+4. Datos de clientes en localStorage: borradores del formulario de casas y caché de
+   geocodificación (direcciones). ¿Mantener, pasar a IndexedDB o quitar?
+5. Al cerrar sesión, borrar la caché local de Firestore (equipos compartidos).
+6. Logo de la empresa en base64 dentro de Firestore (y en localStorage) → Storage.
+7. Íconos de la PWA faltantes (`icon-192.png`, `icon-512.png`, `favicon.ico`).
+8. `xlsx` 0.18.5 con vulnerabilidades conocidas (cambiarlo = otra dependencia).
+9. Config de Firebase a variables `VITE_FIREBASE_*` (opcional).
+10. Status History suma `payroll.totalAmount` y los pagos sin ese campo salen en $0.00.
+11. `setPersistence(auth, browserLocalPersistence)` en App.tsx pisa la persistencia IndexedDB de Auth.
+12. Borrar un lugar en Settings no borra sus tareas (antes solo se ocultaban hasta recargar).
+13. Guardar una casa reescribe el documento completo: si dos personas la editan a la vez, gana la
+    última. Pasar a "solo campos cambiados" cambia quién gana.
+14. Formatos de fecha distintos por vista: MM/DD (casi todo), DD/MM es-MX (Recalls, Status
+    History), "09 oct" es-ES (Notice Board, detalle de Recalls).
+15. `@types/leaflet` (dependencia de desarrollo) para tipar el mapa en vez del alias `Leaflet`.
+16. Seguir dividiendo HousesView (detalle, formulario, editor de servicios/pagos, exportación) y
+    pasar los services a `withConverter` (hoy el store mapea los tipos una vez y los services
+    hacen un cast al leer).
+
+**Revisión independiente** (un agente aparte revisó `a9cec62..HEAD` sin haber hecho el trabajo):
+sin regresiones graves. Corregido después de la revisión:
+- Papelera: el botón "Refrescar" ahora siempre relee del servidor (con la caché en memoria
+  mostraba lo mismo hasta 5 min).
+- Geocodificación: tope 500 → 5,000, vencimiento por falta de uso, migración completa (ver Lote 5).
+- Overview / QC Dashboard: la colección `recalls` vuelve a contarse aunque el catálogo no tenga un
+  status de recall (el lote 1 la saltaba en ese caso).
+- Payroll: la semana por defecto vuelve a quedar fija (al registrar un pago de una semana más
+  nueva la vista ya no salta), ajustada durante el render en vez de en un efecto.
+- Data Import: al terminar vacía la caché en memoria (importar `settings_company`, papelera o
+  recalls se ve de inmediato).
+- TrashView importaba `'../types'` sin `/index` (regla del proyecto): corregido.
+Aceptado y documentado: (a) la marca de Recall ahora compara ids/nombres exactos del catálogo
+actual (lote 1: un registro viejo con un nombre de recall que ya no existe no se encuentra);
+(b) un batch es todo o nada: si al guardar una casa falla una sola escritura (p. ej. otra persona
+borró ese servicio mientras tanto), no se guarda ninguno de sus servicios/pagos y se avisa; antes
+se guardaban los demás en silencio.
+
+Nota: el build se corrió en una copia aparte para no subir `app-version.json`; el próximo
+`npm run build` del repo sube la versión como siempre.
+
+### Decisiones del usuario tras el reporte (2026-10-09)
+
+Respuestas: (1) acotar colecciones grandes con una ventana de 12 meses → sí; (2) borrar la caché
+local de Firestore al cerrar sesión → sí; (3) vistas sin acceso → borrar (confirmadas: ChecklistView,
+Recalls, QC Route vieja, Notice Board y "Under construction"); (4) borradores y caché de direcciones
+en localStorage → se mantienen como están.
+
+- **Vistas borradas.** `ChecklistView`, `RecallsView` (+ `PropertyDetailModal`, que solo usaba Recalls),
+  `QCRouteView` y `NoticeBoardView` con sus CSS; tabs `recalls`, `qc_route`, `board` y `done`
+  ("Under construction") de App.tsx, `viewPrefetch` y los módulos "Recalls" y "Notice Board" de
+  Roles. Un usuario cuya última pestaña guardada era una de esas entra a Houses. Se conservan: la
+  marca Recall del Overview y del QC Dashboard (`utils/jobRecall.ts`, ahora solo con lo que usan),
+  la pestaña Rutas del hub de Quality Check (los links `?qcRoute=` ya abrían esa) y el módulo
+  "Checklist" de Roles (lo usa el visor de checklist del detalle de la casa).
+  Ojo con el CSS global: `RecallsView.css` traía `html, body { overflow-x: hidden; max-width: 100% }`
+  en móvil y, por `cssCodeSplit: false`, aplicaba a toda la app: se movió a `index.css`. Se revisó
+  que ninguna otra clase de los CSS borrados se use fuera (solo modificadores genéricos dentro de
+  selectores con prefijo propio). Queda en Data Import el destino "Notice Board" (escribe en una
+  colección `notice_board` que nadie lee; ya era así): se dejó.
+- **Cerrar sesión borra la caché local.** `services/sessionService.ts` → `logout()` (Sidebar y
+  TopRightActions lo comparten; antes cada uno tenía su copia). Espera hasta 5 s a que se envíen
+  los cambios pendientes y, si no se pudo (sin conexión), pregunta antes de salir porque se
+  perderían; luego `signOut`, `terminate` + `clearIndexedDbPersistence` (con tope de 4 s, para no
+  quedarse colgado) y recarga. Para borrar, Firestore apaga también su cliente en las OTRAS pestañas
+  de la app: esas pestañas reciben un aviso (`BroadcastChannel 'pc-session'`, escuchado en App.tsx
+  con `reloadOnLogoutInOtherTabs`) y se recargan solas en la pantalla de login, en vez de quedar
+  abiertas con Firestore apagado. No se toca la cola de fotos sin conexión. **No probado contra Firestore real** (el
+  arnés simula Firestore): probar cerrando sesión con DevTools → Application → IndexedDB abierto;
+  la base `firestore/[DEFAULT]/bdprecise-2d4bc/main` debe desaparecer.
+- **Ventana de 12 meses en `properties`.** Respuestas: casas viejas que se cargan siempre = sin fecha
+  y sin cobrar; servicios cobrados, nómina y QC siguen completos por ahora; aviso "Ver todo el
+  historial" en las vistas. `src/shared/data/propertiesWindow.ts` → `subscribeProperties()` abre
+  CUATRO listeners de un solo campo y los une por id: `scheduleDate >= hoy−12 meses`,
+  `scheduleDate < "1900"`, `"2-" ≤ scheduleDate < "200"` e `invoiceStatus in [Needs Invoice,
+  Pending, "", y sus variantes en minúsculas/mayúsculas]` (Invoices compara sin mayúsculas y trata
+  el vacío como Pending). Los dos del medio atrapan las fechas vacías y las guardadas en formato
+  viejo con barras o guiones ("03/15/2024", "2-15-2024", "12-01-2023"): no se pueden comparar por
+  fecha, así que se cargan siempre hasta corregirlas.
+  - **Por qué cuatro listeners y no un `or()`** (hallazgo de la segunda revisión): con un `or()` que
+    tiene una desigualdad sobre `scheduleDate`, Firestore ordena por ese campo en TODAS las ramas y la
+    rama `invoiceStatus in` pide un índice compuesto que el proyecto no tiene → la consulta fallaba y
+    la app se quedaba sin casas. Con consultas de un solo campo no hace falta ningún índice. Si aun
+    así alguna falla, `fallBackToFull` cierra las cuatro y escucha la colección completa (como antes
+    de la ventana) y lo deja en consola. Costo: una casa reciente y sin cobrar llega por dos
+    listeners y se cobra dos veces en la primera carga (en el arnés: 25 lecturas para 17 casas).
+  - **Casa que sale de la ventana por una edición** (p. ej. una factura vieja marcada Paid): se
+    conserva en pantalla hasta recargar, para que no desaparezca de golpe de la lista donde se edita.
+    Una casa BORRADA sí se quita (sus últimos datos todavía cumplen la ventana; así se distinguen).
+  - **Registros viejos cuya casa no se cargó** (QC Reports, lista de QC de Quality Check y Payroll):
+    antes de la ventana se mostraban como "casa borrada"; ahora `isHiddenByWindow()` los oculta si
+    son anteriores al inicio de la ventana (aparecen con "Ver todo el historial"). Los recientes sin
+    casa siguen mostrándose como antes. Quality Check también lleva el aviso.
+  - Huecos conocidos (aceptados): una casa sin el campo `scheduleDate` (ni vacío) o con un valor que
+    no es texto, ya cobrada, no entra; tampoco una con fecha AAAA/MM/DD con barras (año primero) de
+    hace más de 12 meses ya cobrada. El formulario siempre escribe AAAA-MM-DD; solo podría pasar
+    con una importación vieja, y aparecen con "Ver todo el historial". `HistoryWindowNotice` (aviso + botón) va bajo el encabezado de
+  Overview/Pipeline, Invoices, Calendar, Status History, Payroll, No Status, QC Reports y QC
+  Dashboard (estas tres también pueden mostrar casas viejas). Al tocarlo, el listener pasa a la
+  colección completa por el resto de la sesión. Probado en el arnés: de 18 casas se cargan 17
+  (queda fuera la cobrada de hace 500 días); con "Ver todo" llegan las 18; una factura vieja
+  marcada Paid sigue en pantalla y una casa borrada sale. **No probado contra Firestore real:** que
+  las cuatro consultas abran sin pedir índice (son de un solo campo, que Firestore indexa solo,
+  salvo exenciones en la consola) — si la consola muestra "falling back" o un link de índice,
+  avisar. El ahorro real crece a medida que las fechas viejas se corrigen a AAAA-MM-DD.
+- **Todas las fechas en MM/DD/AAAA** (respuesta del usuario: "absolutamente todas las fechas del app
+  deben estar en MM/DD/AAAA, en formato de Estados Unidos… innegociablemente"). Decisión técnica:
+  lo que se VE es siempre MM/DD/AAAA; lo que se GUARDA sigue siendo AAAA-MM-DD (es lo que ya
+  escribían los campos de fecha, y es lo único que Firestore puede ordenar y filtrar por fecha —
+  la ventana de 12 meses depende de eso).
+  - Pantallas que mostraban otro formato y ahora van MM/DD/AAAA: Status History (dd/mm es-MX),
+    historial de status del detalle ("09 oct 2026" es-ES), Activity Log (dd/mm es-MX), Rutas de
+    QC ("09 oct 2026" y hora 24 h), notas ("Oct 09, 2026"), panel de inspección del QC Dashboard
+    (sin año), papelera, borradores, tareas del gerente ("Oct 5"), encabezado de Owner/Manager
+    ("Thursday, October 8" → "Thursday 10/08/2026"), Re-clean programado, barra de periodo
+    ("Oct 5 – Oct 11, 2026" → "10/05/2026 – 10/11/2026"), Calendar (títulos de día y semana y
+    detalle), PDF del QC ("October 9, 2026"), mensaje y nombre de archivo de WhatsApp
+    (MM-DD-AAAA en el archivo porque no admite barras), nombre por defecto de las rutas
+    ("Ruta 9/10/2026" día/mes → "Ruta 10/09/2026"), fechas crudas AAAA-MM-DD en detalles de
+    Calendar, Payroll, Status History y en la vista previa de Google Calendar. Se quedan con
+    nombre: los encabezados de mes ("octubre de 2026", "October") y de año, porque no son una
+    fecha de día; los días de la semana relativos ("Mon", "Today", "yesterday").
+  - **Campos de fecha:** `shared/components/DateInput` reemplaza los 16 `<input type="date">`
+    (formulario de casa, pago, Calendar, filtros de Payroll y QC Reports, periodo Custom) y el
+    `datetime-local` de las tareas del Owner (ahora fecha + hora opcional; sin hora = 11:59 p. m.,
+    que la lista ya mostraba como "sin hora" y la agenda de hoy muestra "—"; con hora y sin fecha =
+    hoy a esa hora). Muestra y deja escribir MM/DD/AAAA en cualquier idioma de navegador; el ícono
+    abre el calendario del sistema. Al escribir solo dígitos las barras se ponen solas; con barras
+    se respeta cada parte (corregir solo el día no corre los demás dígitos; "1/5/2024" vale);
+    pegar "2026-11-03" o "2026/11/03" lo convierte; año entre 1900 y 2100; borrar el campo guarda
+    vacío al instante (Enter ya no guarda la fecha vieja); una fecha incompleta o imposible vuelve,
+    al salir, a la que había al entrar. Probado en el arnés con el navegador en español (todos
+    esos casos, más 10152026 → 2026-10-15 guardado y 02/30 → vuelve a la anterior).
+  - **Fecha de "hoy" en hora local** (`todayIso`): 16 lugares usaban `toISOString()` (UTC) para
+    la fecha de un pago, de un QC, de una casa nueva, etc. En Texas, desde las 6–7 p. m. eso ya es
+    el día siguiente: se guardaba mañana. Corregido.
+  - **"Revisar fechas"** pasó de PayrollView a `features/houses/components/PropertyDateFixTool`
+    (mismo funcionamiento y CSS movido) y ahora también aparece en el Overview cuando hay fechas
+    por corregir. Las opciones muestran día de la semana + MM/DD/AAAA ("Fri 03/15/2024") en vez de
+    AAAA-MM-DD, y abre en la primera pestaña con casas. Probado en el arnés (corrige y la casa sale
+    de la ventana si es vieja y está cobrada).
+  - Fechas con hora completa (ISO con `T`, p. ej. `paidAt`, `createdAt` guardados como texto): se
+    muestran con el día LOCAL; antes `formatDate` tomaba los 10 primeros caracteres (día UTC) y un
+    pago marcado a las 8 p. m. en Texas salía con fecha de mañana. `dateSortValue` también usa el
+    instante exacto.
+  - Pendiente / a decidir: las horas de los campos `type="time"` siguen el idioma del navegador
+    (en español, 24 h); si se quieren también en h:mm AM/PM hace falta un campo de hora propio.
+    Las fechas que quedan con barras en receiveDate/dateOfIssue/dueDate se MUESTRAN bien
+    (MM/DD/AAAA); la herramienta solo corrige Schedule Date, que es el que usa la ventana.
+- **Segunda revisión independiente** (otro agente revisó los cambios de estas decisiones):
+  1. `or()` pedía un índice compuesto y podía dejar la app sin casas → 4 listeners + respaldo. ✔
+  2. QC y nómina viejos se veían como de "casa borrada" → `isHiddenByWindow` + aviso en QC. ✔
+  3. `formatDate` mostraba el día UTC de las fechas con hora → día local. ✔
+  4. Cerrar sesión dejaba las otras pestañas con Firestore apagado y podía colgarse → aviso a las
+     otras pestañas + tope de 4 s. ✔
+  5. DateInput: editar en medio corría los dígitos, sin tope de año, no aceptaba pegar AAAA-MM-DD,
+     Enter tras borrar guardaba la fecha vieja → corregido (ver "Campos de fecha"). ✔
+  6. Invoice Status en minúsculas o vacío quedaba fuera de la ventana → variantes y "" incluidos. ✔
+  7. Fechas viejas "2-15-2024" quedaban fuera → límite inferior "2-". ✔ (AAAA/MM/DD: hueco anotado)
+  8. Tarea del Owner sin hora salía "11:59" en la agenda de hoy; hora sin fecha se perdía → ✔
+  9. Horas de los campos `type="time"` en 24 h con el navegador en español → a decidir (arriba).
+
 ## Progreso por archivo (índice)
 - [x] `src/components/Header/Header.tsx` — **eliminado** (código muerto, no funcional).
 - [x] `src/components/PhotoSection.tsx` — mejoras semánticas aplicadas.

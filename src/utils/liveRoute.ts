@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { doc, onSnapshot, updateDoc, deleteField } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { SystemUser } from '../types/index';
-import type { LatLng } from './routing';
+import type { LatLng, Leaflet } from './routing';
 import { escapeHtml } from './escapeHtml';
 import './liveRoute.css';
 
 // ============================================================================
 //  liveRoute — seguimiento GPS en vivo sobre una ruta guardada (qc_routes).
 //
-//  Compartido por QCRouteDrawer (QualityCheckView) y QCRouteView para no
-//  duplicar la lógica. Cada usuario que activa "Seguir con GPS" publica su
+//  Lo usan QCRouteDrawer (QualityCheckView) y QCRoutesTableView. Cada usuario que activa "Seguir con GPS" publica su
 //  posición (throttleada) en el campo `live.{userKey}` del documento de la
 //  ruta; todos los que tengan esa misma ruta abierta ven las posiciones de
 //  los demás en el mapa (suscripción onSnapshot). Las posiciones con más de
@@ -26,11 +25,11 @@ export interface LiveUserPosition {
 }
 
 // ---------------------------------------------------------------------------
-//  Link compartible de una ruta. QCRouteView lee el parámetro `?qcRoute=<id>`
-//  al montar y abre esa ruta guardada automáticamente, así otra persona puede
-//  seguirla (y activar su propio "Seguir con GPS") con solo abrir el link.
+//  Link compartible de una ruta. App abre Quality Check con `?qcRoute=<id>` y
+//  QCRoutesTableView abre esa ruta guardada automáticamente, así otra persona
+//  puede seguirla (y activar su propio "Seguir con GPS") con solo abrir el link.
 // ---------------------------------------------------------------------------
-export const routeShareUrl = (routeId: string): string =>
+const routeShareUrl = (routeId: string): string =>
   `${window.location.origin}${window.location.pathname}?qcRoute=${encodeURIComponent(routeId)}`;
 
 export const shareRouteLink = async (routeId: string, name: string): Promise<void> => {
@@ -67,12 +66,14 @@ const initials = (name: string): string =>
  * posición (azul, pulsante, etiqueta "YO"); otros usuarios van en naranja
  * con sus iniciales. `L` es la instancia de Leaflet (de ensureLeaflet()).
  */
-export const liveDivIcon = (L: any, name: string, mine: boolean) => L.divIcon({
+export const liveDivIcon = (L: Leaflet, name: string, mine: boolean) => L.divIcon({
   className: 'qclive-div-icon',
   html: `<div class="qclive-marker${mine ? ' mine' : ''}" title="${escapeHtml(name)}">${mine ? 'YO' : escapeHtml(initials(name))}</div>`,
   iconSize: [34, 34],
   iconAnchor: [17, 17],
 });
+
+const NO_OTHERS: Record<string, LiveUserPosition> = {};
 
 export function useLiveRoute(routeId: string | null, currentUser?: SystemUser | null) {
   const [tracking, setTracking] = useState(false);
@@ -82,18 +83,21 @@ export function useLiveRoute(routeId: string | null, currentUser?: SystemUser | 
   const watchIdRef = useRef<number | null>(null);
   const lastPublishRef = useRef(0);
   const routeIdRef = useRef<string | null>(routeId);
-  routeIdRef.current = routeId;
+  // Los refs se actualizan después del render (no durante): los leen los
+  // callbacks del GPS, que siempre corren más tarde.
+  useEffect(() => { routeIdRef.current = routeId; }, [routeId]);
 
   const myName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Usuario';
   // ⭐ Tipo extendido local: los docs de users traen `id`, pero no está garantizado
   //    en el tipo global SystemUser; si falta, la clave cae al nombre.
   const myId = (currentUser as (SystemUser & { id?: string }) | null | undefined)?.id;
-  const myKeyRef = useRef('');
-  myKeyRef.current = sanitizeKey(myId ? String(myId) : myName);
+  const myKey = sanitizeKey(myId ? String(myId) : myName);
+  const myKeyRef = useRef(myKey);
+  useEffect(() => { myKeyRef.current = myKey; }, [myKey]);
 
   // ---------- suscripción a las posiciones de otros usuarios ----------
   useEffect(() => {
-    if (!routeId) { setOthers({}); return; }
+    if (!routeId) return; // sin ruta: `others` se entrega vacío (ver el return)
     const unsub = onSnapshot(doc(db, 'qc_routes', routeId), snap => {
       const data = snap.data() as { live?: Record<string, LiveUserPosition> } | undefined;
       const live = data?.live || {};
@@ -172,8 +176,7 @@ export function useLiveRoute(routeId: string | null, currentUser?: SystemUser | 
       }
       removeMyPosition();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { tracking, startTracking, stopTracking, myPos, others };
+  return { tracking, startTracking, stopTracking, myPos, others: routeId ? others : NO_OTHERS };
 }

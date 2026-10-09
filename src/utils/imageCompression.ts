@@ -3,7 +3,7 @@
  * Mantiene buena calidad visual mientras reduce drasticamente el tamaño
  */
 
-export interface CompressionOptions {
+interface CompressionOptions {
   maxWidth?: number;        // Máximo ancho/alto en pixeles (default: 1920)
   quality?: number;          // Calidad JPEG 0-1 (default: 0.85)
   maxSizeMB?: number;        // Tamaño máximo objetivo en MB (default: 1)
@@ -32,16 +32,13 @@ export async function compressImage(
     return file;
   }
 
-  const originalSize = file.size / 1024 / 1024; // MB
-  console.log(`📷 Original: ${file.name} (${originalSize.toFixed(2)} MB)`);
-
   // ⭐ CAMINO RÁPIDO: createImageBitmap decodifica fuera del hilo principal
   //    (la app no se congela con fotos de 12MP), respeta la orientación EXIF
   //    y es notablemente más rápido que FileReader+Image. Si el navegador no
   //    lo soporta, cae al camino clásico de abajo.
   if (typeof createImageBitmap === 'function') {
     try {
-      return await compressViaBitmap(file, opts, originalSize);
+      return await compressViaBitmap(file, opts);
     } catch (err) {
       console.warn('createImageBitmap falló; usando camino clásico:', err);
     }
@@ -116,10 +113,6 @@ export async function compressImage(
                 lastModified: Date.now()
               });
 
-              const finalSize = compressedFile.size / 1024 / 1024;
-              const reduction = ((1 - finalSize / originalSize) * 100).toFixed(1);
-              console.log(`✅ Compressed: ${compressedFile.name} (${finalSize.toFixed(2)} MB) - ${reduction}% smaller, quality: ${currentQuality.toFixed(2)}`);
-
               resolve(compressedFile);
             },
             'image/jpeg',
@@ -141,7 +134,6 @@ export async function compressImage(
 async function compressViaBitmap(
   file: File,
   opts: Required<CompressionOptions>,
-  originalSize: number
 ): Promise<File> {
   const bitmap = await createImageBitmap(file, {
     // Respeta la rotación EXIF del teléfono (fotos verticales llegan derechas)
@@ -184,21 +176,8 @@ async function compressViaBitmap(
       type: 'image/jpeg',
       lastModified: Date.now(),
     });
-    const finalSize = out.size / 1024 / 1024;
-    const reduction = ((1 - finalSize / originalSize) * 100).toFixed(1);
-    console.log(`Compressed(bitmap): ${out.name} (${finalSize.toFixed(2)} MB) - ${reduction}% smaller, q ${quality.toFixed(2)}`);
     return out;
   } finally {
     bitmap.close();
   }
-}
-
-/**
- * Comprime múltiples imágenes en paralelo
- */
-export async function compressImages(
-  files: File[],
-  options: CompressionOptions = {}
-): Promise<File[]> {
-  return Promise.all(files.map(file => compressImage(file, options)));
 }

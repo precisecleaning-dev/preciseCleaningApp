@@ -4,10 +4,11 @@ import {
   Upload, ArrowRight, AlertCircle, CheckCircle,
   Database, Loader2, RotateCcw, FileSpreadsheet, ChevronDown, Download, Menu
 } from 'lucide-react';
-import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+// ⭐ PERF: `xlsx` (~276 kB) y `papaparse` se cargan con import() dinámico al
+//    descargar una plantilla o elegir un CSV, no al abrir la vista.
 import { db } from '../config/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
+import { clearMemoryCache } from '../shared/utils/memoryCache';
 import './DataImportView.css';
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'array' | 'skip';
@@ -271,7 +272,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
   // ⭐ Genera y descarga una plantilla .xlsx para la colección elegida:
   //    Fila 1 = nombres de los campos (schema) · Fila 2 = formato esperado por tipo.
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     const def = getExportDef();
     if (!def) {
       alert('Selecciona una colección para descargar su plantilla.');
@@ -283,6 +284,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
     const headers = ['id', ...def.fields.map(f => f.name)];
     const exampleRow = ['[ID de AppSheet — será el ID del documento]', ...def.fields.map(f => TYPE_EXAMPLE[f.type] || '[texto]')];
 
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
     // Ancho de columnas cómodo según el header
     worksheet['!cols'] = headers.map(h => ({ wch: Math.max(14, h.length + 4) }));
@@ -465,7 +467,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
   // HANDLERS
   // ─────────────────────────────────────────────────────────────
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.csv')) {
       alert('Por favor selecciona un archivo CSV.');
       return;
@@ -473,6 +475,7 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
 
     setCsvFile(file);
 
+    const { default: Papa } = await import('papaparse');
     Papa.parse<CsvRow>(file, {
       header: true,
       skipEmptyLines: true,
@@ -587,6 +590,9 @@ export default function DataImportView({ onOpenMenu }: DataImportViewProps) {
         });
       }
 
+      // Lo importado puede ser configuración de empresa, papelera, recalls…:
+      // las lecturas guardadas en memoria dejan de valer.
+      clearMemoryCache();
       setStep('done');
     } catch (error) {
       console.error('Error durante la importación:', error);
