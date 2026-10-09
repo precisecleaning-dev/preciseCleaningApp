@@ -200,6 +200,7 @@ Utilidades existentes, listeners globales, excepciones documentadas y decisiones
 ### Estructura actual
 - El proyecto todavía está organizado por tipo (`src/views`, `src/components`, `src/services`, `src/utils`, `src/hooks`). Firebase se inicializa en `src/config/firebase.ts` (equivale a `lib/firebase.ts`). Código nuevo de datos compartidos va en `src/shared/`; lo existente se mueve solo cuando se toca.
 - Tipos compartidos: **solo** `src/types/index.ts`. Un import de `'../types'` (sin `/index`) es un error: `src/types.ts` ya no existe.
+- `src/features/quality-check/` tiene el panel de inspección de Quality Check (`QcCheckDrawer` y sus partes; datos en `qcForm.ts`: áreas internas `__general` y `__office` dentro de `qcData`, nunca muestres `__office` fuera del panel). QualityCheckView guarda, sube fotos y mueve la casa.
 - `src/features/houses/` recibe lo que se va sacando de `HousesView.tsx` (servicios cobrados, borradores, configuración de campos, `SearchableSelect`, `StatusPillSelector`). Lo siguiente que se extraiga de HousesView va ahí.
 
 ### Datos y listeners globales

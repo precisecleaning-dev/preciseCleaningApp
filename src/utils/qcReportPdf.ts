@@ -1,6 +1,7 @@
 import { escapeHtml } from './escapeHtml';
 import { computeQCScore } from './qcScore';
 import { formatDate } from './dateFormat';
+import { GENERAL_SLOT, GENERAL_SLOT_NAME } from '../features/quality-check/qcForm';
 
 // ============================================================================
 // ⭐ GENERADOR DEL PDF DE QUALITY CHECK — extraído de QualityCheckView.tsx para
@@ -24,7 +25,9 @@ export type QcFormData = Record<string, any>;
   // ⭐ Reúne las áreas que tienen datos (tareas, notas o fotos) para el reporte
 export const collectPlacesWithData = (places: QCPdfPlace[], qcDataObj: QcFormData) => {
     const out: { place: QCPdfPlace; photos: string[]; tasksData: Record<string, string>; notes: string; damage: string; score: number | undefined; corrections: string }[] = [];
-    places.forEach(p => {
+    // ⭐ Área interna "General" del panel de QC (fotos de la inspección y
+    //    "Notes for the team"); las fotos de oficina (__office) nunca van al PDF.
+    [...places, { id: GENERAL_SLOT, name: GENERAL_SLOT_NAME }].forEach(p => {
       const data = qcDataObj[p.id];
       if (!data) return;
       const hasPhotos = (data.photos || []).length > 0;

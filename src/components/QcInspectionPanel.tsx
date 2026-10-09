@@ -11,6 +11,7 @@ import WhatsAppIcon from './WhatsAppIcon';
 import type { QcDashRow, QcPlace, QcTask } from '../utils/qcDashboard';
 import { RESULT_LABEL } from '../utils/qcDashboard';
 import { formatDate, formatDateTime } from '../utils/dateFormat';
+import { GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT } from '../features/quality-check/qcForm';
 import './QcInspectionPanel.css';
 
 interface CleanerNote { key: string; author: string; at: string; text: string }
@@ -48,12 +49,14 @@ export default function QcInspectionPanel({
   }, [onClose]);
 
   const qcData = row.rec?.qcData || {};
+  // Las fotos de oficina del panel de QC (OFFICE_SLOT) no se muestran aquí.
   const areas = Object.entries(qcData)
+    .filter(([placeId]) => placeId !== OFFICE_SLOT)
     .map(([placeId, data]) => {
       const entries = Object.entries(data?.tasks || {});
       return {
         id: placeId,
-        name: places.find((p) => p.id === placeId)?.name || 'Area',
+        name: placeId === GENERAL_SLOT ? GENERAL_SLOT_NAME : places.find((p) => p.id === placeId)?.name || 'Area',
         items: entries.map(([taskId, v]) => ({
           id: taskId,
           name: tasks.find((t) => t.id === taskId)?.name || 'Task',

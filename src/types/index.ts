@@ -130,6 +130,11 @@ export interface Property {
   //    · áreas del Quality Check marcadas para esta casa (ids de settings_places;
   //      sin marcar = todas).
   qcPlaces?: string[];
+  //    · factura RETENIDA por un Quality Check que no pasó (RECALL con
+  //      "Create re-clean job"). Se libera cuando un QC de la casa pasa.
+  invoiceHold?: boolean;
+  invoiceHoldAt?: string;
+  invoiceHoldBy?: string;
 }
 
 // ==========================================

@@ -1,0 +1,232 @@
+/* ===== Panel de Quality Check (diseño 10/2026) =====
+   Panel lateral derecho en computadora; pantalla completa en el teléfono.
+   El fondo oscuro lo pone .qcd-overlay (QualityCheckView). */
+.qcd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.45);
+  animation: qcd-fade 150ms ease-out;
+}
+@keyframes qcd-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qcd-slide { from { transform: translateX(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .qcd-overlay, .qcd { animation: none; }
+}
+
+.qcd {
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border-left: 1px solid #e3e7ef;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 40px rgba(15, 23, 42, 0.18);
+  animation: qcd-slide 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  outline: none;
+}
+
+.qcd-lbl {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6475;
+}
+.qcd-lbl.office { color: #1d3fcf; }
+.qcd-kicker { color: #047857; }
+.qcd-hint { font-size: 12px; color: #5b6475; }
+
+/* ---- Encabezado ---- */
+.qcd-head {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e3e7ef;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.qcd-title-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.qcd-title { margin: 0; font-size: 20px; font-weight: 800; overflow-wrap: anywhere; }
+.qcd-sub { margin: 0; font-size: 13px; color: #5b6475; }
+.qcd-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.qcd-icon-btn {
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #e3e7ef;
+  background: #fff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.qcd-icon-btn:hover { background: #f1f5f9; }
+.qcd-icon-btn.whatsapp { color: #15803d; }
+.qcd-icon-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* ---- Cuerpo ---- */
+.qcd-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.qcd-block { display: flex; flex-direction: column; gap: 14px; }
+.qcd-block.small { gap: 8px; }
+.qcd-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.qcd-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.qcd-two.tight { gap: 8px; }
+.qcd-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.qcd-input {
+  height: 40px;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  color: #0f172a;
+}
+.qcd-textarea {
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+  color: #0f172a;
+}
+.qcd-textarea.white { background: #fff; }
+.qcd-input:focus, .qcd-textarea:focus { outline: 2px solid #c7d2fe; border-color: #1d3fcf; }
+
+/* ---- Puntaje ---- */
+.qcd-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e3e7ef;
+  background: #f8f9fc;
+}
+.qcd-score-num { margin: 2px 0 0; font-size: 28px; font-weight: 800; color: #334155; }
+.qcd-score-note { margin: 0; font-size: 12px; max-width: 200px; text-align: right; color: #5b6475; }
+.qcd-score.bad { background: #fef2f2; border-color: #fecaca; }
+.qcd-score.bad .qcd-lbl, .qcd-score.bad .qcd-score-num { color: #b91c1c; }
+.qcd-score.bad .qcd-score-note { color: #7f1d1d; }
+.qcd-score.ok { background: #ecfdf5; border-color: #a7f3d0; }
+.qcd-score.ok .qcd-lbl, .qcd-score.ok .qcd-score-num { color: #047857; }
+.qcd-score.ok .qcd-score-note { color: #065f46; }
+
+/* ---- Solo oficina ---- */
+.qcd-office {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #f8f9fc;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 14px;
+}
+.qcd-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+}
+.qcd-check input { width: 18px; height: 18px; min-height: 0; margin: 0; flex-shrink: 0; }
+
+/* ---- Resultado ---- */
+.qcd-result {
+  height: 44px;
+  min-height: 0;
+  border-radius: 10px;
+  border: 1px solid #e3e7ef;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.qcd-result.invoice { color: #047857; }
+.qcd-result.recall { color: #b91c1c; }
+.qcd-result.invoice.on { border: 2px solid #047857; background: #ecfdf5; }
+.qcd-result.recall.on { border: 2px solid #b91c1c; background: #fef2f2; }
+.qcd-result:hover { border-color: #94a3b8; }
+.qcd-result.invoice.on:hover { border-color: #047857; }
+.qcd-result.recall.on:hover { border-color: #b91c1c; }
+
+/* ---- Pie ---- */
+.qcd-foot {
+  padding: 16px 24px;
+  border-top: 1px solid #e3e7ef;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.qcd-save-state { margin-right: auto; font-size: 12px; color: #5b6475; min-width: 0; }
+.qcd-save-state .dirty { color: #b45309; font-weight: 700; }
+.qcd-save-state .ok { color: #047857; display: inline-flex; align-items: center; gap: 4px; }
+.qcd-btn {
+  height: 44px;
+  min-height: 0;
+  padding: 0 18px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.qcd-btn.ghost { border: 1px solid #e3e7ef; background: #fff; color: #334155; }
+.qcd-btn.ghost:hover { background: #f1f5f9; }
+.qcd-btn.primary { border: 0; background: #1d3fcf; color: #fff; padding: 0 22px; }
+.qcd-btn.primary:hover { background: #132c96; }
+.qcd-btn:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 640px) {
+  .qcd { max-width: none; border-left: 0; }
+  .qcd-head { padding: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+  .qcd-body { padding: 16px; }
+  .qcd-foot { padding-left: 16px; padding-right: 16px; }
+  .qcd-title { font-size: 18px; }
+  .qcd-icon-btn { width: 36px; height: 36px; }
+  .qcd-head-actions { gap: 4px; }
+  .qcd-score-num { font-size: 24px; }
+}
+
+/* Envoltorio que evita que un clic dentro del panel cierre el fondo. */
+.qcd-stop {
+  height: 100%;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+}
+@media (max-width: 640px) {
+  .qcd-stop { max-width: none; }
+}

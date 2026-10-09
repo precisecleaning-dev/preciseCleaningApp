@@ -1,0 +1,50 @@
+/* Checklist Pass / Fail del panel de Quality Check. */
+.qcl { display: flex; flex-direction: column; gap: 14px; }
+.qcl-empty { margin: 0; font-size: 13px; color: #5b6475; }
+.qcl-section { display: flex; flex-direction: column; }
+.qcl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #f8f9fc;
+  border-radius: 8px;
+}
+.qcl-name { margin: 0; font-size: 13px; font-weight: 800; color: #0f172a; }
+.qcl-count { font-size: 12px; font-weight: 700; }
+.qcl-count.ok { color: #047857; }
+.qcl-count.bad { color: #b91c1c; }
+.qcl-count.muted { color: #5b6475; }
+.qcl-items { list-style: none; margin: 0; padding: 0; }
+.qcl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0 10px 10px;
+  border-bottom: 1px solid #eef0f5;
+  font-size: 14px;
+  color: #1e293b;
+}
+.qcl-task { min-width: 0; overflow-wrap: anywhere; }
+.qcl-yn { display: flex; gap: 4px; flex-shrink: 0; }
+.qcl-btn {
+  height: 32px;
+  min-height: 0;
+  min-width: 52px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid #e3e7ef;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+}
+.qcl-btn.ok { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
+.qcl-btn.bad { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+.qcl-btn:hover { border-color: #94a3b8; }
+@media (max-width: 640px) {
+  .qcl-btn { height: 40px; min-width: 58px; }
+}

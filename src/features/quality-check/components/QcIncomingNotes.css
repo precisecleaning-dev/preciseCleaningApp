@@ -1,0 +1,115 @@
+/* Notas de la oficina y de los limpiadores en el panel de Quality Check. */
+.qin-office,
+.qin-cleaners {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+}
+.qin-office {
+  gap: 8px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  padding: 12px 14px;
+}
+.qin-cleaners {
+  gap: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 14px;
+}
+.qin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.qin-lbl {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.qin-lbl.office { color: #1d3fcf; }
+.qin-lbl.cleaners { color: #92400e; }
+.qin-meta { font-size: 11px; }
+.qin-meta.office { color: #3730a3; }
+.qin-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1e1b4b;
+  white-space: pre-line;
+}
+.qin-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.qin-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.qin-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.qin-note-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #78350f;
+}
+.qin-note-author { font-weight: 700; }
+.qin-note-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1e293b;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.qin-photos { display: flex; flex-direction: column; gap: 6px; }
+.qin-photo-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.qin-photo {
+  display: block;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #fde68a;
+}
+.qin-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qin-photo.more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #92400e;
+}

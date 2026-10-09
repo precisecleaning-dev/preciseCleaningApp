@@ -1,0 +1,89 @@
+/* Cuadrícula de fotos del panel de Quality Check (4 columnas, cuadradas). */
+.qpg-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.qpg-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+.qpg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.qpg-act {
+  position: absolute;
+  top: 4px;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.65);
+  color: #fff;
+  cursor: pointer;
+}
+.qpg-act.edit { left: 4px; }
+.qpg-act.remove { right: 4px; }
+.qpg-act:hover { background: rgba(15, 23, 42, 0.85); }
+.qpg-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.35);
+  color: #fff;
+}
+.qpg-tile.busy .qpg-img { opacity: 0.6; }
+.qpg-queued {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+.qpg-add {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #1d3fcf;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.qpg-grid.card .qpg-add { background: #fff; }
+.qpg-add:hover { border-color: #1d3fcf; background: #eef2ff; }
+.qpg-file { display: none; }
+@media (max-width: 640px) {
+  .qpg-act { width: 32px; height: 32px; }
+}

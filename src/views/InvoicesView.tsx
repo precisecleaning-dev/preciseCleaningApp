@@ -3,7 +3,7 @@ import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, CalendarDays, ChevronDown, ChevronRight, Users, Edit2, Trash2,
-  X, StickyNote, Menu, FileImage
+  X, StickyNote, Menu, FileImage, PauseCircle
 } from 'lucide-react';
 import PeriodBar from '../components/PeriodBar';
 import KpiGrid from '../components/KpiGrid';
@@ -241,8 +241,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    las vistas. Siempre usa el incrustado propio (no delega al padre).
   const [houseToView, setHouseToView] = useState<Property | null>(null);
   // ⭐ Tab con el que abre el detalle: "media" para el boton de fotos/PDF y
-  //    "overview" cuando se abre el detalle completo desde la fila o el ojo.
-  const [detailTab, setDetailTab] = useState<'overview' | 'financials' | 'media'>('media');
+  //    sin tab (null) cuando se abre el detalle completo desde la fila o el ojo:
+  //    abre en la pestaña por defecto del detalle (Notes & Photos).
+  const [detailTab, setDetailTab] = useState<'media' | null>('media');
   const openPhotosPdf = (house: Property) => {
     setEditorMounted(true);
     setDetailTab('media');
@@ -301,7 +302,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    Invoices gracias al modo 'modals-only'.
   const openDetail = (prop: Property) => {
     setEditorMounted(true);
-    setDetailTab('overview');
+    setDetailTab(null);
     setHouseToView(prop);
   };
 
@@ -519,11 +520,19 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         <td className={`inv-td right money profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>{money(f.profit)}</td>
         <td className="inv-td right"><span className={`inv-mpill ${marginTone(f.margin)}`}>{pct(f.margin)}</span></td>
         <td className="inv-td" onClick={(e) => e.stopPropagation()}>
-          <InvoiceStatusPill
-            currentStatus={prop.invoiceStatus || 'Pending'}
-            onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
-            disabled={isSaving || (!isSuperAdmin && !canEdit)}
-          />
+          <div className="inv-status-cell">
+            <InvoiceStatusPill
+              currentStatus={prop.invoiceStatus || 'Pending'}
+              onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
+              disabled={isSaving || (!isSuperAdmin && !canEdit)}
+            />
+            {/* ⭐ Factura retenida por un QC que no pasó (RECALL con re-clean). */}
+            {prop.invoiceHold && (
+              <span className="inv-hold" title="Factura retenida: el Quality Check no pasó. Se libera cuando un QC de esta casa pase.">
+                <PauseCircle size={11} /> QC hold
+              </span>
+            )}
+          </div>
         </td>
         {canSeeOfficeNotes && textCell(prop, 'officeNote')}
         {textCell(prop, 'issues')}
@@ -953,7 +962,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           clearHouseToOpenEdit={() => setHouseToEdit(null)}
           houseToOpenDetail={houseToView}
           clearHouseToOpenDetail={() => setHouseToView(null)}
-          detailInitialTab={detailTab}
+          detailInitialTab={detailTab ?? undefined}
         />
       )}
 

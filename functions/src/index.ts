@@ -1024,8 +1024,17 @@ export const onqualitycheckfinished = onDocumentWritten(
       "<span style=\"background:#f3e8ff;color:#7c3aed;padding:4px 12px;border-radius:12px;font-weight:700;\">Recall</span>" :
       "<span style=\"background:#dcfce7;color:#166534;padding:4px 12px;border-radius:12px;font-weight:700;\">Passed</span>";
 
+    // Texto libre (cliente, dirección, inspector…) escapado antes de ir al HTML.
+    const esc = (v: string): string => v
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const row = (label: string, value?: string): string =>
-      `<tr><td style="padding:6px 12px;color:#64748b;font-size:13px;">${label}</td><td style="padding:6px 12px;color:#0f172a;font-weight:600;font-size:14px;">${value || "—"}</td></tr>`;
+      `<tr><td style="padding:6px 12px;color:#64748b;font-size:13px;">${label}</td><td style="padding:6px 12px;color:#0f172a;font-weight:600;font-size:14px;">${value ? esc(String(value)) : "—"}</td></tr>`;
+    // Fecha en MM/DD/AAAA (regla del negocio); se guarda AAAA-MM-DD.
+    const mdy = (v?: string): string => {
+      const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[2]}/${m[3]}/${m[1]}` : String(v || "");
+    };
 
     const html = `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
@@ -1035,7 +1044,7 @@ export const onqualitycheckfinished = onDocumentWritten(
           ${row("Dirección", after.address)}
           ${row("Equipo", after.team)}
           ${row("Inspector", after.inspector)}
-          ${row("Fecha", after.date)}
+          ${row("Fecha", mdy(after.date))}
           ${row("Duración (min)", typeof after.durationMinutes === "number" ? String(after.durationMinutes) : "—")}
         </table>
         <p style="color:#64748b;font-size:13px;margin-top:16px;">

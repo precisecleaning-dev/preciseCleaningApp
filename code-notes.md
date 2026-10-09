@@ -7,6 +7,57 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Detalle de la casa y nuevo panel de Quality Check (2026-10-09)
+
+- **Detalle de la casa:** "Notes & Photos" es la primera pestaña y abre por defecto (pedido del
+  usuario). Si el usuario no la puede ver (permiso, o empleado antes de Start Job) abre en
+  "Overview & Log"; si deja de estar disponible estando abierta (Undo Start Job) se muestra
+  Overview (`shownDetailTab`). Invoices (fila/ojo) y No Status ya no fuerzan Overview.
+- **Panel de Quality Check** (`src/features/quality-check/`: `QcCheckDrawer`, `QcChecklist`,
+  `QcIncomingNotes`, `QcPhotoGrid`, `qcForm.ts`) reemplaza el modal con selector de áreas, según
+  el diseño del usuario. Panel lateral derecho en computadora, pantalla completa en el teléfono.
+  Respuestas del usuario: checklist = áreas y tareas de Settings; se quitan el puntaje 1-3, Daños
+  y fotos por área; se quedan PDF/WhatsApp/Email (íconos en el encabezado); "Notify property
+  manager" y "Create re-clean job" funcionan.
+  - Datos: Pass/Fail se guardan como antes (`qcData[área].tasks[tarea] = 'Yes'|'No'`), así el %,
+    el PDF, QC Reports y el QC Dashboard no cambian. Fotos generales y "Notes for the team" van
+    en el área interna `__general` (sale en el PDF como "General"); "Photos for office" en
+    `__office` (nunca en PDF, WhatsApp, email ni en el panel del QC Dashboard). Campos nuevos del
+    documento: `inspectorId`, `clientNotes`, `notifyManager`, `outcome`, `reclean`; el inspector
+    y la fecha ahora se eligen (antes: usuario actual y hoy). Reportes viejos: sus fotos por área
+    se ven en "Photos" y siguen en el PDF; notas, daños y puntaje viejos se conservan al guardar.
+  - Flujo: "Save QC" sin resultado guarda el avance (Pending) y deja el panel abierto (antes
+    "Done"). Con **Invoice**: terminado/aprobado, la casa pasa a "Quality Check" (como "Save
+    All"), salvo que ya esté en Invoice (nunca se regresa), y se libera la factura retenida. Con
+    **RECALL** + "Create re-clean job": la casa pasa a Recall (como antes) y queda
+    `invoiceHold: true` (etiqueta "QC hold" en Invoices e "Invoice hold" en el Overview) hasta que
+    un QC de la casa se apruebe. RECALL sin re-clean: queda registrado como no aprobado y la casa
+    va a "Quality Check". Editar un reporte ya terminado sin elegir resultado conserva su estado
+    y no mueve la casa ni reenvía el email automático.
+  - "Notify property manager" (sección solo oficina, permiso Office Notes): al terminar abre el
+    email al correo del cliente en Customers (o el de la empresa) con el resumen, las "Notes for
+    client" y el PDF para adjuntar.
+  - "From the office" = nota general + Office Notes (con permiso); "Notes from the cleaners" =
+    Employee's Note + fotos Before/After de la casa.
+  - Revisión independiente (corregido antes de entregar): reporte terminado que volvía a Pending
+    al editarlo; casa en Invoice que regresaba a Quality Check; fecha vieja con barras que se
+    cambiaba por hoy; fotos que terminaban de subir con el panel cerrado iban al formulario de
+    otra casa (ahora van al reporte guardado de su casa) y no se puede terminar mientras suben;
+    fotos en cola sin conexión de una casa se veían en otra (la cola ahora es por casa + área);
+    correo del property manager que quedaba en el siguiente email; notas generales importadas
+    de AppSheet (`generalNotes`); foco del teclado al abrir/cerrar; botones de foto más grandes
+    en el teléfono. También el email automático del servidor (`functions/src/index.ts`) ahora
+    escapa el texto y muestra la fecha MM/DD/AAAA — **hay que desplegar Functions** para que
+    aplique.
+  - CSS: se quitaron de `QualityCheckView.css` las ~130 reglas del modal viejo (selector de áreas,
+    tarjetas por área, barra de áreas, botones Done/Save All).
+  - **Pendiente / a decidir:** si alguien pasa a Invoice a mano una casa con la factura retenida,
+    la etiqueta "QC hold" se queda como aviso hasta que un QC pase (¿liberarla al pasarla a mano?).
+    El QC Dashboard sigue contando "invoices on hold" con su regla de antes (re-cleans sin pagar).
+  - **No probado contra Firebase real** (sí en el arnés con Firestore simulado, escritorio y
+    teléfono): subida real de fotos a Storage, cola sin conexión con fotos de General, y que las
+    Security Rules acepten los campos nuevos.
+
 ## Auditoría de rendimiento, Firebase y caché (2026-10-09) — Fase 1
 
 Punto de partida: commit `2e4f005` (rama `fix/google-calendar-sync`) + el CLAUDE.md nuevo.

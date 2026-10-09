@@ -1810,3 +1810,21 @@
 @supports not selector(::-webkit-scrollbar) {
   .inv-page.inv-unified .inv-table-wrap { scrollbar-color: #b8c1d1 #eef1f6; }
 }
+
+/* ⭐ Factura retenida por un Quality Check que no pasó (QC hold). */
+.inv-page .inv-status-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inv-page .inv-hold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  white-space: nowrap;
+}

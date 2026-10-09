@@ -2,7 +2,7 @@
 //    View": operaciones, Quality Check, cobro, resumen automático y finanzas en
 //    una sola fila por trabajo, agrupada por periodo con subtotales.
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { ChevronRight, Pencil, Trash2, Sparkles, RotateCcw } from 'lucide-react';
+import { ChevronRight, Pencil, Trash2, Sparkles, RotateCcw, PauseCircle } from 'lucide-react';
 import type { Property } from '../types/index';
 import { money, pct, marginTone, type JobFinancials } from '../utils/jobFinancials';
 import type { UnifiedGroup } from '../utils/unifiedRows';
@@ -177,6 +177,11 @@ export default function UnifiedJobsTable({
                           {wasRecall?.(r.prop) && (
                             <span className="ujt-recall" title="Esta casa estuvo en Recall">
                               <RotateCcw size={11} /> Recall
+                            </span>
+                          )}
+                          {r.prop.invoiceHold && (
+                            <span className="ujt-recall hold" title="Factura retenida hasta que un Quality Check pase">
+                              <PauseCircle size={11} /> Invoice hold
                             </span>
                           )}
                         </div>

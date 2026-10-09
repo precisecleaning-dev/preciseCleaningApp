@@ -327,7 +327,6 @@ export default function NoStatusView({
           clearHouseToOpenDetail={() => setHouseToView(null)}
           houseToOpenEdit={houseToEdit}
           clearHouseToOpenEdit={() => setHouseToEdit(null)}
-          detailInitialTab="overview"
         />
       )}
     </div>

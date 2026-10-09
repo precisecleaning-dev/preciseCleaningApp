@@ -3488,10 +3488,20 @@ export default function HousesView({
     }
   };
 
+  // ⭐ "Notes & Photos" es la primera pestaña del detalle y la que abre por
+  //    defecto (pedido del usuario, 10/2026). Si este usuario no la puede ver
+  //    (permiso, o empleado antes de Start Job), abre en "Overview & Log".
+  const mediaTabAvailable = (house: Property | null): boolean =>
+    isVisible("media") && isElementVisible("btn_tabMedia") && photosUnlockedFor(house);
+  // Si la pestaña elegida deja de estar disponible (p. ej. el empleado deshace
+  // Start Job estando en Notes & Photos), se muestra Overview en vez de nada.
+  const shownDetailTab: DetailTab =
+    activeDetailTab === "media" && !mediaTabAvailable(selectedHouse) ? "overview" : activeDetailTab;
+
   const handleOpenDetail = async (house: Property) => {
     setSelectedHouse(house);
     setIsAssigningWorker(false);
-    setActiveDetailTab("overview");
+    setActiveDetailTab(mediaTabAvailable(house) ? "media" : "overview");
     setBeforeFiles([]);
     setAfterFiles([]);
     setBeforePhotoURLs(house.beforePhotos || []);
@@ -5711,8 +5721,18 @@ export default function HousesView({
               )}
 
               <div className="hv-detail-tabs">
+                {/* ⭐ Primera pestaña. Empleado: aparece SOLO después de Start Job */}
+                {mediaTabAvailable(selectedHouse) && (
+                  <button
+                    className={`hv-detail-tab${shownDetailTab === "media" ? " active" : ""}`}
+                    onClick={() => setActiveDetailTab("media")}
+                  >
+                    <FileImage size={14} className="hv-tab-icon-inline" /> Notes
+                    & Photos
+                  </button>
+                )}
                 <button
-                  className={`hv-detail-tab${activeDetailTab === "overview" ? " active" : ""}`}
+                  className={`hv-detail-tab${shownDetailTab === "overview" ? " active" : ""}`}
                   onClick={() => setActiveDetailTab("overview")}
                 >
                   <Briefcase size={14} className="hv-tab-icon-inline" />{" "}
@@ -5721,35 +5741,23 @@ export default function HousesView({
                 {isVisible("financial") &&
                   isElementVisible("btn_tabFinancials") && (
                     <button
-                      className={`hv-detail-tab${activeDetailTab === "financials" ? " active" : ""}`}
+                      className={`hv-detail-tab${shownDetailTab === "financials" ? " active" : ""}`}
                       onClick={() => setActiveDetailTab("financials")}
                     >
                       <BarChart3 size={14} className="hv-tab-icon-inline" />{" "}
                       Financials & Billing
                     </button>
                   )}
-                {/* ⭐ Empleado: el tab de fotos aparece SOLO después de Start Job */}
-                {isVisible("media") &&
-                  isElementVisible("btn_tabMedia") &&
-                  photosUnlockedFor(selectedHouse) && (
-                    <button
-                      className={`hv-detail-tab${activeDetailTab === "media" ? " active" : ""}`}
-                      onClick={() => setActiveDetailTab("media")}
-                    >
-                      <FileImage size={14} className="hv-tab-icon-inline" /> Notes
-                      & Photos
-                    </button>
-                  )}
                 {/* ⭐ History: historial de cambios de status de ESTA casa */}
                 <button
-                  className={`hv-detail-tab${activeDetailTab === "history" ? " active" : ""}`}
+                  className={`hv-detail-tab${shownDetailTab === "history" ? " active" : ""}`}
                   onClick={() => setActiveDetailTab("history")}
                 >
                   <History size={14} className="hv-tab-icon-inline" /> History
                 </button>
               </div>
 
-              {activeDetailTab === "overview" && (
+              {shownDetailTab === "overview" && (
                 <div className="fade-in">
                   <div className="hv-detail-grid">
                     {anyVisible(
@@ -6096,7 +6104,7 @@ export default function HousesView({
 
               {/* ⭐ TAB HISTORY: todos los cambios de status por los que ha
                   pasado la casa (quién lo cambió, cuándo, de qué a qué). */}
-              {activeDetailTab === "history" && (
+              {shownDetailTab === "history" && (
                 <div className="fade-in">
                   {/* key con el status actual: si cambian el status con el tab
                       abierto, el panel se remonta y recarga el historial. */}
@@ -6108,7 +6116,7 @@ export default function HousesView({
                 </div>
               )}
 
-              {activeDetailTab === "financials" && isVisible("financial") && (
+              {shownDetailTab === "financials" && isVisible("financial") && (
                 <div className="fade-in">
                   <div className="hv-fin-kpi-grid">
                     <div className="hv-fin-kpi-card revenue">
@@ -6357,7 +6365,7 @@ export default function HousesView({
                 </div>
               )}
 
-              {activeDetailTab === "media" &&
+              {shownDetailTab === "media" &&
                 isVisible("media") &&
                 photosUnlockedFor(selectedHouse) && (
                   <div className="fade-in">
