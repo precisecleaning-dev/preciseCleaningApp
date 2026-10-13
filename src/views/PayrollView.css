@@ -903,6 +903,25 @@ dl.pv-detail-banner {
 .pv-row-actions.end {
   justify-content: flex-end;
 }
+/* ⭐ Botón "Pagar" de cada fila (mismo verde que "Pagar seleccionadas"). */
+.pv-row-actions.end { align-items: center; }
+.pv-pay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 6px 12px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 8px;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pv-pay-btn:hover { background: #059669; }
 
 .pv-paybar {
   display: flex;

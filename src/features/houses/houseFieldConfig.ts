@@ -81,16 +81,6 @@ export const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     section: "Header",
   },
   {
-    id: "board_beforePhotos",
-    label: "Before Photos (tarjeta del Pipeline)",
-    section: "Pipeline",
-  },
-  {
-    id: "board_afterPhotos",
-    label: "After Photos (tarjeta del Pipeline)",
-    section: "Pipeline",
-  },
-  {
     id: "card_checklist",
     label: "Checklist (botón y visor en el detalle)",
     section: "Sections",

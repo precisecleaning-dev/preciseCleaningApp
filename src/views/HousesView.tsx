@@ -4191,14 +4191,7 @@ export default function HousesView({
               onQuickStatusChange={handleQuickStatusChange}
               canEdit={!!canEdit}
               isSaving={isSaving}
-              showBeforePhotos={isElementVisible("board_beforePhotos")}
-              showAfterPhotos={isElementVisible("board_afterPhotos")}
-              photoGate={photosUnlockedFor}
               showOfficeNote={canSeeOfficeNotes()}
-              onOpenPhotos={(prop) => {
-                handleOpenDetail(prop);
-                setActiveDetailTab("media");
-              }}
             />
           ) : (
             <>

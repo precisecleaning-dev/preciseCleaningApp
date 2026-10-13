@@ -375,8 +375,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   // Filtro de scope (sólo lo que el usuario tiene permitido ver)
 
   // ⭐ Esta vista muestra las casas cuyo STATUS DE TRABAJO es "Invoice".
-  //    MISMA mecánica que StatusHistoryView (que sí encuentra los 3,616):
-  //    fuente = prop `properties` de App (con respaldo en la carga local), y
+  //    Fuente = prop `properties` de App (con respaldo en la carga local), y
   //    resolución del status por id/nombre en minúsculas contra settings_statuses.
   // ⭐ RENDIMIENTO — todo lo de abajo estaba SIN memoizar y se recalculaba en cada
   //    render (cada clic/tecla): filtrar 3,700 props contra statuses con .find, y

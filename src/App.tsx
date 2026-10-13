@@ -24,7 +24,6 @@ const QualityCheckHub = lazy(() => import('./views/QualityCheckHub'));
 const PayrollView = lazy(() => import('./views/PayrollView'));
 const InvoicesView = lazy(() => import('./views/InvoicesView'));
 // ⭐ NO STATUS — casas sin estado asignado (salieron de Overview y Pipeline)
-const NoStatusView = lazy(() => import('./views/NoStatusView'));
 // ⭐ ACTIVITY LOG — bitacora de todo lo que se hace en la app
 const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
 // ⭐ Papelera de reciclaje: restaurar o eliminar definitivamente lo borrado.
@@ -45,7 +44,6 @@ const QualityDashboardView = lazy(() => import('./views/QualityDashboardView'));
 const OwnerView = lazy(() => import('./views/OwnerView'));
 const ManagerView = lazy(() => import('./views/ManagerView'));
 // ⭐ Vista de historial de status por casa
-const StatusHistoryView = lazy(() => import('./views/StatusHistoryView'));
 // ⭐ Modulo de empresa (logo, nombre, correo, direccion)
 const CompanySettingsView = lazy(() => import('./views/CompanySettingsView'));
 // ⭐ Configuracion de compresion/captura de fotos
@@ -68,12 +66,12 @@ import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'no_status' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'status_history' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'no_status', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'status_history', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -299,7 +297,7 @@ export default function App() {
       qc_report: ['Quality Check'], qc_reports_table: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
       owner: ['Owner'], manager: ['Manager'],
-      status_history: ['Status History'], payroll: ['Payroll'],
+      payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
       data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
       settings: ['Settings'], migrar_payroll: ['Settings'],
@@ -309,7 +307,7 @@ export default function App() {
     const mods = TAB_MODULE[activeTab];
     if (!mods || mods.some(canViewModule)) return; // sin mapeo o permitido: no tocar
     const order: TabOptions[] = ['houses', 'pipeline', 'invoices', 'calendar', 'qc_report',
-      'qc_reports_table', 'status_history', 'payroll', 'customers', 'roles', 'users', 'data_import', 'company',
+      'qc_reports_table', 'payroll', 'customers', 'roles', 'users', 'data_import', 'company',
       'photo_settings', 'settings'];
     const fallback = order.find(t => (TAB_MODULE[t] || []).some(canViewModule));
     if (fallback) setActiveTab(fallback);
@@ -479,19 +477,6 @@ export default function App() {
           />
         )}
         
-        {/* ⭐ NO STATUS — mismo permiso que Houses; desde aqui se les asigna
-            estado y pasan al flujo normal de Overview y Pipeline. */}
-        {activeTab === 'no_status' && (
-          <NoStatusView
-            properties={visibleProperties}
-            setProperties={setProperties}
-            onOpenMenu={toggleMenu}
-            currentUser={effectiveUser}
-            activeRole={activeRole}
-            isSuperAdmin={isSuperAdmin}
-          />
-        )}
-
         {activeTab === 'activity_log' && (
           <ActivityLogView
             onOpenMenu={toggleMenu}
@@ -646,16 +631,6 @@ export default function App() {
               clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
             />
           </>
-        )}
-
-        {/* ⭐ RECALLS — vista dedicada con ranking de equipos */}
-
-        {/* ⭐ STATUS HISTORY — historial de status por casa */}
-        {activeTab === 'status_history' && (
-          <StatusHistoryView
-            onOpenMenu={toggleMenu}
-            properties={visibleProperties}
-          />
         )}
 
         {activeTab === 'customers' && <CustomersView onOpenMenu={toggleMenu} />}

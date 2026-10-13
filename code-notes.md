@@ -7,6 +7,24 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Vistas quitadas, Pipeline sin fotos y botón Pagar en Payroll (2026-10-13)
+
+- **No Status y Status History quitadas** (pedido del usuario): archivos, pestañas `no_status` y
+  `status_history` de App.tsx (tipos, `VALID_TABS`, guardia de permisos), menú lateral,
+  `viewPrefetch` y módulos de Roles. Quien tenía guardada una de esas pestañas entra a Houses. El
+  historial de status de cada casa sigue en el detalle (pestaña History, `StatusHistoryPanel`) y la
+  colección `status_history` se sigue escribiendo. Ojo: las casas SIN status ya no tienen una vista
+  propia; se ven en Overview (buscador) mientras no se les asigne uno.
+- **Pipeline sin botones Before / After**: se quitaron de la tarjeta, sus props
+  (`showBeforePhotos`, `showAfterPhotos`, `onOpenPhotos`, `photoGate`), su CSS y los dos elementos
+  del configurador de campos (`board_beforePhotos`, `board_afterPhotos`). Las fotos siguen en el
+  detalle de la casa (Notes & Photos).
+- **Payroll: botón "Pagar" en cada fila** (solo con alcance de nómina "All", casas sin pagar).
+  Casa sin nómina: filtra al empleado de esa casa, la deja marcada y abre el mismo pago de "Pagar
+  seleccionadas" (el modal arranca en Status "Pending" como ese flujo; se elige "Paid" para dejarla
+  pagada). Casa ya en una nómina sin pagar: la marca como pagada (`handleMarkAsPaid`). Antes había
+  que elegir primero un empleado en el filtro para que aparecieran los checks y el botón.
+
 ## Botón de menú único (2026-10-09)
 
 - Cada vista tenía su propio botón de menú (13 clases distintas: `ns-`, `inv-`, `al-`, `cs-`, `ps-`,

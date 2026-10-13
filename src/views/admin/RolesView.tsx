@@ -32,7 +32,6 @@ const DEFAULT_MODULES = [
   // --- Operacion diaria ---
   'Houses',
   'Pipeline',
-  'No Status',
   // ⭐ Permiso PROPIO para las notas de oficina: informacion interna que no debe
   //    ver el personal de campo. Sin marcar aqui, el campo no aparece en ningun
   //    lado, ni siquiera si esta activo en Configure Fields.
@@ -44,7 +43,6 @@ const DEFAULT_MODULES = [
   'Quality Check Reports',
   'QC Dashboard',
   // --- Administracion del negocio ---
-  'Status History',
   'Payroll',
   'Invoices',
   'Customers',

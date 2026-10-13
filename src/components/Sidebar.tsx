@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, History, Camera, ArrowLeftRight, HelpCircle, ScrollText, Trash2, FileBarChart, Eye, Gauge, Briefcase, UserCog
+  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ArrowLeftRight, ScrollText, Trash2, FileBarChart, Eye, Gauge, Briefcase, UserCog
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Role, Permission } from '../types/index';
@@ -118,7 +118,6 @@ export default function Sidebar({
     // ⭐ NO STATUS — casas sin estado asignado. Usa el permiso de Houses para
     //    que funcione sin tocar el catalogo de Roles; si mas adelante quieres un
     //    permiso propio, agrega el modulo "No Status" y cambia el canView de aqui.
-    { tab: 'no_status', label: 'No Status', icon: HelpCircle, visible: canViewOrLegacy('No Status', canView('Houses')) },
     // ⭐ INVOICES — check INDEPENDIENTE de Houses
     { tab: 'invoices', label: 'Invoices', icon: FileText, visible: canView('Invoices') },
     // ⭐ CALENDAR
@@ -137,7 +136,6 @@ export default function Sidebar({
     // ⭐ STATUS HISTORY — SOLO su propio permiso (el fallback a Houses se eliminó:
     //    existía de antes de que el módulo estuviera en Roles y hacía que roles sin
     //    el permiso lo vieran igual).
-    { tab: 'status_history', label: 'Status History', icon: History, visible: canView('Status History') },
     // ⭐ PAYROLL — usa módulo "Payroll" (NO "Settings")
     { tab: 'payroll', label: 'Payroll', icon: DollarSign, visible: canView('Payroll') },
     // ⭐ CUSTOMERS

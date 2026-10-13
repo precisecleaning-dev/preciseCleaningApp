@@ -35,7 +35,6 @@ import type { TabOptions } from '../App';
 const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   houses: () => import('../views/HousesView'),
   pipeline: () => import('../views/HousesView'),
-  no_status: () => import('../views/NoStatusView'),
   invoices: () => import('../views/InvoicesView'),
   calendar: () => import('../views/CalendarView'),
   qc_report: () => import('../views/QualityCheckHub'),
@@ -43,7 +42,6 @@ const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   qc_dashboard: () => import('../views/QualityDashboardView'),
   owner: () => import('../views/OwnerView'),
   manager: () => import('../views/ManagerView'),
-  status_history: () => import('../views/StatusHistoryView'),
   payroll: () => import('../views/PayrollView'),
   customers: () => import('../views/CustomersView'),
   activity_log: () => import('../views/ActivityLogView'),
@@ -69,7 +67,6 @@ const IDLE_ORDER: TabOptions[] = [
   'invoices',
   'calendar',
   'qc_report',
-  'no_status',
   'payroll',
   'customers',
 ];

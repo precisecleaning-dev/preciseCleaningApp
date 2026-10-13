@@ -440,6 +440,22 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
       prev.includes(teamId) ? prev.filter(t => t !== teamId) : [...prev, teamId],
     );
 
+  // ⭐ Botón "Pagar" de cada fila (pedido del usuario, 10/2026).
+  //    · Casa todavía sin nómina: filtra al empleado de esa casa, la deja marcada
+  //      y abre el mismo pago consolidado de "Pagar seleccionadas" (si cierra el
+  //      modal puede marcar más casas del mismo empleado y pagarlas juntas).
+  //    · Casa ya en una nómina sin pagar: la marca como pagada.
+  const startPayFor = (record: PayrollRecordExt) => {
+    if (!record.id || record.status === 'Paid') return;
+    if (record.batchId) { void handleMarkAsPaid(record); return; }
+    const emp = employees.find(e => e.id === record.employeeId);
+    if (!emp) { alert('Esta casa no tiene un empleado válido asignado.'); return; }
+    setEmployeeQuery(empName(emp));
+    setSelectedEmployee(emp.id);
+    setSelectedRecordIds([record.id as string]);
+    setPayForm({ date: todayIso(), bonus: 0, bonusNote: '', discount: 0, discountNote: '', status: 'Pending' });
+  };
+
   // ⭐ Seleccionar/deseleccionar todas las casas pendientes de UN equipo.
   const toggleTeamSelected = (records: PayrollRecordExt[]) => {
     const ids = records.filter(r => r.id && r.status !== 'Paid').map(r => r.id as string);
@@ -956,6 +972,16 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                         y desde la pestaña Nóminas, ya no con Mark Paid aquí) */}
                     <td className="pv-td right" onClick={(e) => e.stopPropagation()}>
                       <div className="pv-row-actions end">
+                        {canSeeAllPayroll && record.status !== 'Paid' && (
+                          <button
+                            type="button"
+                            onClick={() => startPayFor(record)}
+                            className="pv-pay-btn"
+                            title={record.batchId ? 'Marcar como pagada' : 'Pagar esta casa'}
+                          >
+                            <Wallet size={14} /> Pagar
+                          </button>
+                        )}
                         {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (HousesView modals-only) para rectificar información */}
                         {prop && <button onClick={() => { setHouseEditorMounted(true); setHouseToEdit(prop); }} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
                         <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar pago"><Edit2 size={16} /></button>

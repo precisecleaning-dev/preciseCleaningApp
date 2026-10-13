@@ -1,5 +1,4 @@
-// Antes reimplementado con contenido idéntico en RecallsView.tsx y StatusHistoryView.tsx,
-// y con nombres distintos (RECALL_HINTS/isRecallStatus) en QualityCheckView.tsx. Cubre solo
+// Única fuente para detectar Recall por texto (antes había copias en varias vistas). Cubre solo
 // la detección de "¿este texto de status corresponde a Recall?" por coincidencia de texto.
 
 const RECALL_STATUS_HINTS = ['recall', 're-call', 're call', 'recleaning', 're-clean', 'callback', 'call back'];
