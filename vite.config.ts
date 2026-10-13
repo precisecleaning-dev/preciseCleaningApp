@@ -67,8 +67,36 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+
+        // ⭐ "HAY QUE RECARGAR PARA VER LOS CAMBIOS" (10/2026).
+        //    Antes la página (index.html) salía del precache del Service
+        //    Worker: tras cada deploy, la primera apertura mostraba la versión
+        //    VIEJA y había que recargar otra vez. Ahora la navegación va
+        //    primero a la red (NetworkFirst, con navigation preload para que
+        //    no espere al arranque del SW) y solo si no hay red en 4 s usa la
+        //    copia guardada; sin ninguna copia, el index.html del precache
+        //    (la app sigue abriendo sin internet).
+        //    directoryIndex: null evita que el precache responda "/" con su
+        //    index.html antes de llegar a esta regla.
+        //    navigateFallback: null es OBLIGATORIO: si se omite, vite-plugin-pwa
+        //    pone "index.html" por defecto y esa ruta (cache-first) gana antes
+        //    de llegar a la regla NetworkFirst.
+        navigateFallback: null,
+        directoryIndex: null,
+        navigationPreload: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-shell',
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 5 },
+              precacheFallback: { fallbackURL: '/index.html' },
+            },
+          },
+        ],
 
         // ⭐ CAUSA DEL ERROR "Failed to load module script ... MIME type text/html".
         //
@@ -86,11 +114,9 @@ export default defineConfig({
         //    en dias).
         skipWaiting: true,
         clientsClaim: true,
-        // 3. El fallback a index.html es SOLO para rutas de navegacion. Sin este
-        //    denylist, una peticion de /assets/algo.js que falla tambien recibia
-        //    index.html desde el propio SW, reproduciendo el error incluso
-        //    estando offline el servidor.
-        navigateFallbackDenylist: [/^\/assets\//, /^\/api\//, /\.[a-zA-Z0-9]+$/],
+        // 3. El respaldo a index.html es SOLO para navegaciones (la regla de
+        //    arriba filtra por request.mode === 'navigate'): una peticion de
+        //    /assets/algo.js que falla nunca recibe HTML desde el propio SW.
       },
     }),
   ],

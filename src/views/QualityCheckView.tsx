@@ -15,6 +15,7 @@ import { useLiveCollection } from '../shared/data/liveCollections';
 import { getCompanySettings } from '../services/companyService';
 import { storageService } from '../services/storageService';
 import { propertiesService } from '../services/propertiesService';
+import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
 import { compressImage } from '../utils/imageCompression';
 import { statusHistoryService } from '../services/statusHistoryService';
 import { db } from '../config/firebase';
@@ -352,7 +353,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [qcLive.data]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  // ⭐ La casa abierta se muestra EN VIVO (useLiveHouse): notas, fotos y
+  //    status que cambian en otra vista o equipo aparecen en el panel sin
+  //    cerrarlo.
+  const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const selectedHouse = useLiveHouse(openedHouse, properties);
+  // ⭐ PERF: casa por id en O(1). La lista de registros buscaba su casa con
+  //    properties.find en cada render (registros × ~3,600 casas).
+  const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
@@ -635,12 +643,12 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    Memoizado para que el drawer no re-sincronice/geocodifique en cada render del padre.
   const routeDrawerHouses = useMemo<RouteDrawerHouse[]>(() =>
     routeHouseIds
-      .map(id => properties.find(p => p.id === id))
+      .map(id => propById.get(id))
       .filter((h): h is Property => Boolean(h))
       .map(h => ({ id: h.id, client: getClientName(h.client), address: h.address || '', ...houseCoords(h) })),
     // getClientName/houseCoords se recrean por render pero solo dependen de customersList/properties.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeHouseIds, properties, customersList]);
+    [routeHouseIds, propById, customersList]);
 
   // ⭐ Id del estado "Quality Check" (para regresar una casa cuando NO pasó)
   const getQualityCheckStatusId = (): string | null => {
@@ -804,7 +812,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const qcCategory = (qc: QCRecord): 'Pending' | 'Finished' | 'Recall' => {
     if (qc.status !== 'Finished') return 'Pending';
 
-    const house = properties.find(p => p.id === qc.houseId);
+    const house = propById.get(qc.houseId);
     if (house) {
       const raw = String(house.statusId || '').trim();
       const st = statuses.find(x => String(x.id) === raw || String(x.name) === raw);
@@ -895,7 +903,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    Con la ventana de 12 meses, un registro viejo cuya casa no se cargó es
   //    historial oculto, no una casa borrada (ver isHiddenByWindow).
   const qcListInFlow = qcList.filter(qc => {
-    const house = properties.find(p => p.id === qc.houseId);
+    const house = propById.get(qc.houseId);
     if (!house) return !isHiddenByWindow(fullHistory, false, dateSortValue(qc.date));
     return isQualityCheckStatus(house.statusId, statuses) || isRecallStatus(house);
   });
@@ -917,7 +925,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
     // (Aquí `cat` solo puede ser 'Finished': Pending y Recall ya retornaron
     //  arriba, por eso ya no hay comparaciones por pestaña — TS2367.)
-    return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId)), qc.inspector || '']);
+    return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(propById.get(qc.houseId)), qc.inspector || '']);
   });
 
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
@@ -1025,7 +1033,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const handleEditQC = (qc: QCRecord) => {
     // Si la propiedad no está en el listado, usamos los datos guardados en el reporte.
-    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
+    const house = (propById.get(qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     if (qc.id) savedQcDocByHouse.current[house.id] = qc.id;
     setSelectedHouse(house);
     setEditingQcId(qc.id as string);
@@ -1282,7 +1290,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         // QC nunca la regresa. Invoice libera la factura retenida (se mira la
         // casa cargada; si no está cargada por la ventana de 12 meses, se escribe
         // igual para no dejarla retenida).
-        const fresh = properties.find(p => p.id === selectedHouse.id);
+        const fresh = propById.get(selectedHouse.id);
         const alreadyInvoiced = isInvoiceStatus(statuses, (fresh || selectedHouse).statusId);
         const releaseHold = outcome === 'invoice' && (!fresh || !!fresh.invoiceHold);
         await moveHouseAfterQC(selectedHouse, alreadyInvoiced ? null : getQualityCheckStatusId(),
@@ -1622,7 +1630,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   const handleExportFromTable = async (qc: QCRecord) => {
     // Si la propiedad no está en el listado, reconstruimos lo necesario desde el propio reporte.
-    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
+    const house = (propById.get(qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     const inspector = qc.inspector || 'Unknown';
     const recordQcData = (qc.qcData as QcFormData) || {};
 
@@ -1681,7 +1689,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   const openEmailForQC = (qc: QCRecord) => {
-    const house = (properties.find(p => p.id === qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
+    const house = (propById.get(qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
     setEmailTo(branding.email || DEFAULT_EMAIL_TO);
     setEmailCtx(buildEmail(house, (qc.qcData as QcFormData) || {}, qc.inspector || 'Unknown', qc.date, qc.team));
     setEmailExport(() => () => handleExportFromTable(qc));
@@ -2140,7 +2148,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                 </div>
                 <div className="qcv-record-meta-row">
                   <span className="qcv-record-meta-item"><CalendarDays size={14} color="#94a3b8" /> {formatDate(qc.date)}</span>
-                  <span className="qcv-record-meta-item"><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(properties.find(p => p.id === qc.houseId))}</span>
+                  <span className="qcv-record-meta-item"><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(propById.get(qc.houseId))}</span>
                   <span className="qcv-record-meta-item"><User size={14} color="#94a3b8" /> {qc.inspector || 'Unknown'}</span>
                   <span className="qcv-record-meta-item"><Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}</span>
                 </div>

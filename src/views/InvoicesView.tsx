@@ -272,7 +272,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       const payload: Partial<Property> = {};
       payload[noteField] = value;
       await propertiesService.update(noteHouse.id, payload);
-      setProperties(properties.map(p => p.id === noteHouse.id ? { ...p, ...payload } : p));
       setNoteHouse(null);
     } catch (error) {
       console.error("Error saving note:", error);
@@ -313,7 +312,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(propertyId, { invoiceStatus: newStatus });
-      setProperties(properties.map(p => p.id === propertyId ? { ...p, invoiceStatus: newStatus } : p));
     } catch (error) {
       console.error("Error updating invoice status:", error);
       alert("Failed to update invoice status.");
@@ -330,7 +328,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       //    casa quede ARRIBA en esta vista (ver src/utils/invoiceEntry.ts).
       const payload = stampInvoiceEntry({ statusId: newStatusId }, statuses, newStatusId);
       await propertiesService.update(propertyId, payload);
-      setProperties(properties.map(p => p.id === propertyId ? { ...p, ...payload } : p));
     } catch (error) {
       console.error("Error updating job status:", error);
       alert("Failed to update job status.");
@@ -346,7 +343,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.update(prop.id, { taxExempt });
-      setProperties(properties.map(p => p.id === prop.id ? { ...p, taxExempt } : p));
     } catch (error) {
       console.error("Error updating tax:", error);
       alert("Failed to update taxes.");
@@ -360,7 +356,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setIsSaving(true);
     try {
       await propertiesService.delete(propertyId);
-      setProperties(properties.filter(p => p.id !== propertyId));
     } catch (error) {
       console.error("Error deleting property:", error);
       alert("Failed to delete property.");

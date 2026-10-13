@@ -7,6 +7,124 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Lote B — "La información tarda en mostrarse" (2026-10-13)
+
+- **La app ya no espera a las casas para dibujarse.** Antes "Cargando datos..." tapaba toda la
+  pantalla hasta tener casas + roles + perfil. Ahora basta roles + perfil (deciden menú y
+  permisos): el menú y las vistas que no usan casas (Settings, Customers, Users, Roles, Activity,
+  Trash…) aparecen de inmediato; las que sí las usan (`TABS_WITH_PROPERTIES` en App.tsx) muestran
+  el esqueleto de la vista (`ViewSkeleton`) hasta el primer snapshot. Una vista nueva que reciba
+  `properties` va en ese conjunto.
+- **El código de la última pestaña se descarga antes.** Si el equipo ya usó la app
+  (`pc_active_tab` en localStorage), `prefetchView` arranca al cargar el módulo, en paralelo con
+  la verificación de sesión (antes esperaba a que Firebase confirmara la sesión).
+- **`preconnect`** a Firestore, Auth (securetoken, identitytoolkit) y Storage en `index.html`: el
+  DNS + TLS se resuelven mientras baja el JavaScript.
+- **HousesView en modo `modals-only`** (encima de Quality Check, Payroll, Invoices,
+  Owner/Manager…) ya no filtra, ordena ni agrupa las ~3,600 casas en cada cambio: no dibuja la
+  tabla. "Mi historial" solo se calcula con el panel abierto.
+- **Búsqueda del Overview con `useDeferredValue`**: la caja responde al instante y el filtrado va
+  un paso atrás (equivale al debounce de CLAUDE.md sin temporizadores).
+- **Búsquedas por id en O(1)** (`propById`) en Payroll, Quality Check y QC Reports: cada fila
+  buscaba su casa con `properties.find` (registros × 3,600 casas en cada render). Payroll además
+  convierte las fechas una vez por registro antes de ordenar (antes en cada comparación).
+- **Calendar** agrupa los trabajos por fecha una vez por cambio de casas (antes cada celda
+  recorría todas las casas en cada render). Mismo criterio (`scheduleDate || receiveDate`) y orden.
+- Medido: el chunk principal (≈676 KB, 210 KB gzip) es casi todo Firebase (Firestore 263 KB, Auth
+  75 KB, WebChannel 50 KB) + React DOM (178 KB); el código propio pesa ~40 KB. Bajarlo más
+  requiere cambiar de arquitectura (ver "Prompt de plan de acción").
+
+Evaluado y NO cambiado (cambia lo que se ve o requiere aprobación):
+- Las compuertas de carga de Invoices/Payroll/Calendar esperan catálogos chicos (statuses,
+  customers): quitarlas mostraría ids o "cliente eliminado" por un instante.
+- El guardado del QC espera el envío del email automático antes de avisar y cerrar: mandarlo en
+  segundo plano cambia el mensaje final (hoy incluye el resultado del email).
+- El Overview abre `billing_services` y `payroll` completos para las columnas de finanzas (todos los
+  roles las ven). Totales por casa mantenidos en el servidor (Cloud Function) quitarían esas
+  descargas: requiere aprobación (desplegar Functions y escribir campos nuevos en `properties`).
+
+## Lote A — "Hay que recargar para ver los cambios" (2026-10-13)
+
+Causas encontradas y arreglo:
+- **Copias congeladas de la casa abierta.** El detalle de Houses, el de Calendar, el panel de
+  Quality Check y el modal de casa de Payroll trabajaban sobre la casa tal como estaba al abrirlos;
+  lo que cambiaba en otra vista u otro equipo no aparecía hasta cerrar y reabrir. Ahora guardan la
+  casa abierta (`openedHouse`) y muestran su versión EN VIVO con
+  `features/houses/hooks/useLiveHouse.ts` (`useLiveHouse`): la toma de la lista global y, si no
+  está (fuera de la ventana de 12 meses o de lo visible para el rol), abre un listener de ese
+  documento mientras siga abierta. El pago abierto en Payroll también se toma en vivo por id.
+- **Parches manuales con la lista vieja.** `setProperties(properties.map(...))` después de cada
+  escritura usaba el `properties` del render (closure viejo): si el listener ya había entregado
+  datos más nuevos, el parche los PISABA con la copia vieja y esos cambios no se veían hasta
+  recargar. Quitados: HousesView ×11, InvoicesView ×5, CalendarView ×3, QCReportsTableView ×1. El
+  listener refleja cada escritura al instante (también sin internet). Calendar y QCReportsTable ya
+  no reciben `setProperties`. Quedan los de `PropertyDateFixTool` (funcionales, inofensivos).
+- **Servicios y pagos del detalle leídos una sola vez.** Ahora `useHouseRecords(houseId)` escucha
+  `billing_services` y `payroll` filtrados por `propertyId` (consultas de un solo campo, sin
+  índice) mientras el detalle está abierto. Excepción documentada a "usa el store compartido": el
+  store de esas colecciones las baja completas (miles) para mostrar 2–5 documentos.
+  `housePayrollRecords` queda solo como borrador del FORMULARIO. Editar desde el detalle reutiliza
+  esos datos: el formulario abre sin consultar Firestore; si no, las dos lecturas van en paralelo.
+- **Fotos del detalle.** Quitar una foto guardada solo la escondía: "Save Photos" reescribía la
+  lista completa desde la copia y la foto volvía al recargar (y la cuenta de índices de archivos
+  nuevos quedaba corrida). Ahora las guardadas se leen en vivo, las quitadas se marcan
+  (`detailRemoved`) y al guardar viajan `arrayRemove` + `arrayUnion` en un batch; "fuera del
+  reporte" se guarda como diferencia contra lo que había al abrir.
+- **Escrituras de leer-modificar-escribir.** Nota nueva (`notesHistory`), trabajadores asignados,
+  fotos encoladas sin conexión (`syncPendingPhotos`, además una lectura menos) → `arrayUnion` /
+  `arrayRemove` (`propertiesService.arrayChange` / `batchArrayChange`). El formulario de edición
+  de Houses y el de Calendar escriben SOLO los campos que cambiaron desde que se abrieron
+  (`features/houses/houseDiff.ts`); los arreglos van con union/remove. Antes reescribían la casa
+  completa y borraban lo que otra persona había guardado mientras tanto. Alta nueva y borrador
+  restaurado siguen escribiendo todo (no hay "antes" contra qué comparar).
+- **Editar un pago en Payroll** reescribía el registro completo: si alguien lo marcaba Paid en el
+  intermedio, volvía a Pending. Ahora solo manda montos, notas y total.
+- **Ventana de 12 meses.** Firestore entrega el cambio `removed` con los datos VIEJOS (que aún
+  cumplían la ventana), así que toda casa que salía por una edición (p. ej. factura vieja marcada
+  Paid) se trataba como borrada y desaparecía de la lista donde se estaba editando. Ahora se
+  escucha ese documento suelto: si existe se conserva (en vivo), si no, se quita. El corte es el
+  día 1 del mes (antes "hoy − 12 meses"): la consulta es idéntica todo el mes y la caché local la
+  reutiliza; carga hasta ~30 días más de historial. Las cuatro consultas publican una vez por
+  tarea (microtask) en vez de una por consulta.
+- **Listeners compartidos que fallaban** (p. ej. permisos que aún no llegan al iniciar sesión)
+  quedaban muertos hasta que otra vista los pidiera. Ahora se reabren solos con espera creciente
+  (2 s → 60 s) mientras alguien los use.
+- **Mapeo incremental** (`shared/data/incrementalSnapshot.ts`) en `liveCollections` y en el
+  listener completo de casas: solo se re-mapean los documentos que cambiaron; los demás conservan
+  su objeto (menos renders en listas grandes).
+- **Service Worker.** La página salía del precache: tras cada deploy la primera apertura mostraba
+  la versión vieja. Ahora las navegaciones son NetworkFirst (4 s, navigation preload) con respaldo
+  al `index.html` del precache sin red; `directoryIndex: null` evita que el precache conteste "/".
+  `_headers` marca `no-cache` explícito para `/`, `index.html`, `sw.js`, `registerSW.js`,
+  `version.json` y el manifest. Al detectar versión nueva se pide `registration.update()`.
+- **Papelera:** los pagos de una casa borrada se guardaban como `payroll_records` (colección
+  vieja): el pago NO se borraba de `payroll` (quedaba huérfano en Payroll) y al restaurar se
+  escribía en la colección equivocada. Ahora `payroll`; al restaurar entradas viejas,
+  `payroll_records` se mapea a `payroll` (reescribe el mismo documento).
+
+Correcciones tras la revisión independiente del lote:
+- `navigateFallback: null` explícito: si se omite, vite-plugin-pwa pone `"index.html"` por defecto
+  y esa ruta cache-first gana antes que la regla NetworkFirst (el cambio no hacía nada). Probado
+  con `vite preview` + Playwright: con la config vieja la primera recarga tras un "deploy" seguía en
+  el bundle viejo; con la nueva trae el nuevo, y sin red la app abre desde la caché.
+- Restaurar una entrada vieja de la papelera (`payroll_records`): si el pago sigue en `payroll`
+  (nunca se borraba) NO se reescribe; pudo marcarse Paid después y volvería a Pending.
+- Formulario de Houses: el sello de entrada a Invoice y la bitácora comparan contra la casa tal
+  como se abrió (no contra la versión en vivo): no se atribuyen a esta persona cambios ajenos.
+- Reintentos de `liveCollections`: máximo 6 seguidos (≈2 min); un rol sin permiso de lectura no
+  queda reintentando para siempre. Una vista nueva que pida la colección vuelve a intentar.
+- Al borrar la casa abierta (Houses, Calendar) se suelta `openedHouse` (no queda un listener del
+  documento borrado).
+
+Pendiente (no hecho en este lote):
+- El texto acumulado de una nota (`note`/`officeNote`/`employeeNote`) sigue siendo
+  leer-modificar-escribir sobre la casa en vivo; dos mensajes simultáneos pueden dejar uno solo en
+  el texto (el historial guarda ambos). Requiere `runTransaction` si llega a pasar.
+- InvoicesView y CalendarView borran casas DIRECTO (sin papelera ni motivo), a diferencia de
+  Houses. Decisión de producto: preguntar si deben usar la papelera.
+- No todas las vías de cambio de status escriben `status_history` (solo algunas). Unificarlas
+  cambia datos guardados: preguntar.
+
 ## Vistas quitadas, Pipeline sin fotos y botón Pagar en Payroll (2026-10-13)
 
 - **No Status y Status History quitadas** (pedido del usuario): archivos, pestañas `no_status` y

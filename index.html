@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
 
+    <!-- ⭐ Conexiones adelantadas a Firebase: el DNS + TLS de Firestore, Auth
+         y Storage se resuelven mientras baja el JavaScript, no después
+         (100–300 ms menos en la primera carga de datos en el teléfono). -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://firebasestorage.googleapis.com" />
+
     <!-- ⭐ Tipografía del diseño "Unified Jobs View" (Overview e Invoices) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

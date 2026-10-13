@@ -21,20 +21,28 @@
 // de un solo campo no hace falta ningún índice. Si alguna falla igual, se cae
 // al listener de la colección completa (como antes) para no dejar la app vacía.
 //
-// Una casa que SALE de la ventana por una edición propia (p. ej. una factura
-// vieja que se marca Paid) se conserva en pantalla hasta recargar: si no,
-// desaparecería de golpe de la lista donde se la está editando. Una casa
-// BORRADA sí se quita (sus últimos datos todavía cumplían la ventana).
+// Una casa que SALE de la ventana por una edición (p. ej. una factura vieja
+// que se marca Paid) se conserva en pantalla hasta recargar: si no,
+// desaparecería de golpe de la lista donde se la está editando. Para saber si
+// salió o si la BORRARON se escucha ese documento suelto: Firestore entrega
+// el cambio 'removed' con los datos VIEJOS, que todavía cumplían la ventana,
+// así que mirarlos no alcanza (antes toda casa que salía se trataba como
+// borrada y desaparecía). Mientras siga existiendo, se muestra en vivo.
+//
+// El corte de la ventana es el primer día del mes (no "hoy menos 12 meses"):
+// así la consulta es idéntica todo el mes y la caché local de Firestore la
+// reutiliza en cada sesión en vez de tratarla como una consulta nueva.
 //
 // Schedule Date se guarda AAAA-MM-DD; en pantalla SIEMPRE se muestra MM/DD/AAAA.
 // ============================================================================
 import { useSyncExternalStore } from 'react';
 import {
-  collection, onSnapshot, query, where,
+  collection, doc, onSnapshot, query, where,
   type DocumentData, type QuerySnapshot,
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import type { Property } from '../../types/index';
+import { incrementalMapper } from './incrementalSnapshot';
 
 export const WINDOW_MONTHS = 12;
 
@@ -76,18 +84,12 @@ export function showFullHistory(): void {
   listeners.forEach((notify) => notify());
 }
 
-/** Primer día incluido en la ventana, como AAAA-MM-DD (hora local). */
+/** Primer día incluido en la ventana, como AAAA-MM-DD (hora local): el día 1
+ *  del mes de hace 12 meses. */
 export function windowStartIso(now: Date = new Date()): string {
-  const d = new Date(now.getFullYear(), now.getMonth() - WINDOW_MONTHS, now.getDate());
+  const d = new Date(now.getFullYear(), now.getMonth() - WINDOW_MONTHS, 1);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-/** ¿Estos datos de casa entran en la ventana? (misma regla que las consultas). */
-function matchesWindow(data: DocumentData, cutoff: string): boolean {
-  const s = data.scheduleDate;
-  if (typeof s === 'string' && (s >= cutoff || s < BEFORE_ISO_DATES || (s >= LOW_TWO_FROM && s < LOW_TWO_TO))) return true;
-  return UNPAID_INVOICE_STATUSES.includes(data.invoiceStatus);
 }
 
 /**
@@ -102,9 +104,12 @@ export function subscribeProperties(
   const toProperty = (id: string, data: DocumentData) => ({ id, ...data }) as Property;
   const col = collection(db, 'properties');
 
-  if (full) {
-    return onSnapshot(col, (snap) => onData(snap.docs.map((d) => toProperty(d.id, d.data()))), onError);
-  }
+  const fullListener = () => {
+    const toList = incrementalMapper((d) => toProperty(d.id, d.data()));
+    return onSnapshot(col, (snap) => onData(toList(snap)), onError);
+  };
+
+  if (full) return fullListener();
 
   const cutoff = windowStartIso();
   const queries = [
@@ -116,14 +121,54 @@ export function subscribeProperties(
   const parts = queries.map(() => new Map<string, Property>());
   const arrived = queries.map(() => false);
   const kept = new Map<string, Property>(); // salieron de la ventana por una edición
+  const keptUnsubs = new Map<string, () => void>(); // listener del documento suelto
   let fallbackUnsub: (() => void) | null = null;
   let stopped = false;
+  let publishQueued = false;
 
-  const publish = () => {
+  const publishNow = () => {
+    publishQueued = false;
+    if (stopped || fallbackUnsub) return; // ya manda el listener completo
     if (!arrived.every(Boolean)) return; // esperar el primer resultado de las cuatro
     const all = new Map<string, Property>(kept);
     parts.forEach((m) => m.forEach((p, id) => all.set(id, p)));
     onData([...all.values()]);
+  };
+  // Una escritura suele mover la casa en dos consultas a la vez (sale de una
+  // y entra a otra): se publica UNA vez por tarea, no una por consulta.
+  const publish = () => {
+    if (publishQueued) return;
+    publishQueued = true;
+    queueMicrotask(publishNow);
+  };
+
+  const stopKeeping = (id: string) => {
+    keptUnsubs.get(id)?.();
+    keptUnsubs.delete(id);
+    kept.delete(id);
+  };
+
+  // La casa dejó de cumplir las cuatro consultas: ¿salió de la ventana o la
+  // borraron? Lo dice su documento. Mientras tanto se muestra con los últimos
+  // datos conocidos para que no parpadee.
+  const keepWatching = (id: string, last: Property) => {
+    kept.set(id, last);
+    if (keptUnsubs.has(id)) return;
+    const unsub = onSnapshot(
+      doc(db, 'properties', id),
+      (snap) => {
+        if (!keptUnsubs.has(id)) return;
+        if (snap.exists()) kept.set(id, toProperty(id, snap.data()));
+        else stopKeeping(id); // borrada
+        publish();
+      },
+      (err) => {
+        console.error('No se pudo seguir la casa fuera de la ventana:', err);
+        stopKeeping(id);
+        publish();
+      },
+    );
+    keptUnsubs.set(id, unsub);
   };
 
   const handle = (i: number) => (snap: QuerySnapshot<DocumentData>) => {
@@ -131,13 +176,11 @@ export function subscribeProperties(
       const id = ch.doc.id;
       if (ch.type === 'removed') {
         parts[i].delete(id);
-        const data = ch.doc.data();
         const stillListed = parts.some((m) => m.has(id));
-        if (!stillListed && !matchesWindow(data, cutoff)) kept.set(id, toProperty(id, data));
-        if (!stillListed && matchesWindow(data, cutoff)) kept.delete(id); // borrada
+        if (!stillListed) keepWatching(id, toProperty(id, ch.doc.data()));
       } else {
         parts[i].set(id, toProperty(id, ch.doc.data()));
-        kept.delete(id);
+        stopKeeping(id); // volvió a entrar: la trae su consulta
       }
     });
     arrived[i] = true;
@@ -148,7 +191,9 @@ export function subscribeProperties(
     if (stopped || fallbackUnsub) return;
     console.error('No se pudo abrir la ventana de casas; se carga la colección completa:', err);
     unsubs.forEach((u) => u());
-    fallbackUnsub = onSnapshot(col, (snap) => onData(snap.docs.map((d) => toProperty(d.id, d.data()))), onError);
+    keptUnsubs.forEach((u) => u());
+    keptUnsubs.clear();
+    fallbackUnsub = fullListener();
   };
 
   const unsubs = queries.map((q, i) => onSnapshot(q, handle(i), fallBackToFull));
@@ -156,6 +201,8 @@ export function subscribeProperties(
   return () => {
     stopped = true;
     unsubs.forEach((u) => u());
+    keptUnsubs.forEach((u) => u());
+    keptUnsubs.clear();
     fallbackUnsub?.();
   };
 }

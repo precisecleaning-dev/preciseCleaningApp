@@ -55,7 +55,14 @@ export function useVersionCheck(): boolean {
         if (!res.ok) return;
         const data = (await res.json()) as { buildTime?: string };
         if (cancelled || !data.buildTime) return;
-        if (data.buildTime !== BUILD_TIME) setUpdateAvailable(true);
+        if (data.buildTime !== BUILD_TIME) {
+          setUpdateAvailable(true);
+          // Que el Service Worker nuevo se instale ya, mientras el usuario
+          // decide recargar (sin esto el navegador lo busca solo al navegar).
+          navigator.serviceWorker?.getRegistration?.()
+            .then((reg) => reg?.update())
+            .catch(() => { /* sin SW: la recarga normal basta */ });
+        }
       } catch {
         /* sin red: se reintenta en el siguiente ciclo */
       }

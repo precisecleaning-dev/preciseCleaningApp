@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 // ⭐ createPortal: la CÁMARA RÁPIDA se monta en document.body. Con z-index
 //    10000 nada se abre encima, así que el portal es seguro y garantiza que el
 //    overlay fixed cubra el viewport real aunque un ancestro tenga transform
@@ -106,7 +106,6 @@ import {
   onSnapshot,
   getDocs,
   setDoc,
-  getDoc,
 } from "firebase/firestore";
 import { formatDate, formatDateTime, formatTime, dateSortValue, todayIso } from "../utils/dateFormat";
 import { escapeHtml } from "../utils/escapeHtml";
@@ -136,6 +135,8 @@ import {
   type PendingPhoto,
 } from "../utils/offlinePhotoQueue";
 import { type ServiceRecord, recordFingerprint, computeServiceTotals } from "../features/houses/serviceRecords";
+import { useHouseRecords, useLiveHouse } from "../features/houses/hooks/useLiveHouse";
+import { changedFields, listDiff } from "../features/houses/houseDiff";
 import { type HouseDraft, DRAFTS_MAX, loadDrafts, persistDrafts } from "../features/houses/houseDrafts";
 import {
   CONFIGURABLE_FIELDS,
@@ -182,6 +183,10 @@ const NO_STATUS_FILTER = "__NO_STATUS__";
 // ⭐ PERF: la lista de trabajos se pinta por bloques. Renderizar miles de
 //    filas de golpe era lo que hacia sentir la vista lenta al abrir.
 const JOBS_PAGE_SIZE = 50;
+
+const NO_REMOVED: { before: string[]; after: string[] } = { before: [], after: [] };
+// Lista vacía estable para el modo 'modals-only' (no dibuja la tabla).
+const NO_PROPERTIES: Property[] = [];
 
 
 interface HousesViewProps {
@@ -233,11 +238,19 @@ export default function HousesView({
   const [statusFilter, setStatusFilter] = useState("All");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  // ⭐ La caja de búsqueda responde al instante; el filtrado de miles de casas
+  //    va un paso atrás, sin bloquear el teclado (React 19 useDeferredValue).
+  const deferredSearch = useDeferredValue(searchTerm);
   const [priorityFilter, setPriorityFilter] = useState("All");
 
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  // ⭐ Casa abierta (detalle/edición): se guarda la que se abrió y se MUESTRA
+  //    su versión en vivo (useLiveHouse). Antes era una copia congelada que
+  //    cada handler parchaba a mano: lo que cambiaba en otra vista o en otro
+  //    equipo no aparecía hasta recargar.
+  const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const selectedHouse = useLiveHouse(openedHouse, properties);
   const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>("overview");
 
   // Configuración del modal central de cambio de estado (null = cerrado).
@@ -314,6 +327,9 @@ export default function HousesView({
   //    Y salga como salga, el trabajo NO se pierde: queda como borrador
   //    recuperable desde el botón "Borradores" junto a New Job.
   const formSnapshotRef = useRef<string>("");
+  // ⭐ La casa tal como estaba al abrir el formulario de edición: al guardar
+  //    se escriben solo las diferencias contra ella (null = alta o borrador).
+  const formBaseRef = useRef<Property | null>(null);
   // ⭐ Servicios tal como llegaron de Firestore al abrir el formulario (id →
   //    huella). Al guardar solo se reescriben los que cambiaron; antes se
   //    actualizaban TODOS, uno por uno, aunque nadie los hubiera tocado.
@@ -417,7 +433,15 @@ export default function HousesView({
   const [workersTouched, setWorkersTouched] = useState(false);
   const [isPayrollFromForm, setIsPayrollFromForm] = useState(false);
   const [payrollsToDelete, setPayrollsToDelete] = useState<string[]>([]);
-  const [houseServices, setHouseServices] = useState<ServiceRecord[]>([]);
+  // ⭐ Servicios y pagos del DETALLE en vivo (listener acotado a la casa):
+  //    marcar un pago como Paid en Payroll o agregar un servicio desde otro
+  //    equipo se ve sin cerrar y volver a abrir. `housePayrollRecords` queda
+  //    como el borrador del FORMULARIO.
+  const detailRecords = useHouseRecords(
+    isDetailModalOpen && selectedHouse ? selectedHouse.id : null,
+  );
+  const houseServices = detailRecords.services;
+  const detailPayrollRecords = detailRecords.payroll;
   const [formServices, setFormServices] = useState<ServiceRecord[]>([]);
   const [servicesToDelete, setServicesToDelete] = useState<string[]>([]);
 
@@ -474,8 +498,19 @@ export default function HousesView({
     return () => clearTimeout(t);
   }, [formData.address]);
 
+  // En el FORMULARIO: todas las fotos visibles (guardadas + nuevas). En el
+  // DETALLE: solo las vistas previas de las nuevas; las guardadas se toman en
+  // vivo de la casa (ver shownPhotoURLs).
   const [beforePhotoURLs, setBeforePhotoURLs] = useState<string[]>([]);
   const [afterPhotoURLs, setAfterPhotoURLs] = useState<string[]>([]);
+  // ⭐ Detalle: fotos guardadas que el usuario quitó y aún no guarda. Antes
+  //    quitarlas solo las escondía: al presionar "Save Photos" se volvía a
+  //    escribir la lista completa y la foto regresaba al recargar.
+  const [detailRemoved, setDetailRemoved] = useState<{ before: string[]; after: string[] }>(NO_REMOVED);
+  // Detalle: "fuera del reporte" tal como estaba al abrir (para guardar solo
+  // lo que el usuario cambió).
+  const detailExcludedBaseRef = useRef<{ before: string[]; after: string[] }>(NO_REMOVED);
+  const detailOpenIdRef = useRef<string>("");
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [afterFiles, setAfterFiles] = useState<File[]>([]);
 
@@ -746,14 +781,10 @@ export default function HousesView({
           address,
           type,
         );
-        const snap = await getDoc(doc(db, "properties", propertyId));
-        const data = (snap.exists() ? snap.data() : {}) as {
-          beforePhotos?: string[];
-          afterPhotos?: string[];
-        };
+        // ⭐ arrayUnion: sin leer la casa antes (una lectura menos) y sin
+        //    pisar las fotos que otra persona haya agregado entretanto.
         const field = type === "before" ? "beforePhotos" : "afterPhotos";
-        const merged = [...(data[field] || []), ...urls];
-        await updateDoc(doc(db, "properties", propertyId), { [field]: merged });
+        await propertiesService.arrayChange(propertyId, "add", { [field]: urls });
         for (const it of items) await removePending(it.id);
       } catch (err) {
         console.error("Error sincronizando fotos pendientes:", err);
@@ -1611,7 +1642,8 @@ export default function HousesView({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const myHistoryHouses = useMemo(
     () =>
-      properties
+      // Solo se calcula con el panel abierto (antes, en cada cambio de casas).
+      (isHistoryOpen ? properties : NO_PROPERTIES)
         .filter((p) => {
           if (!currentUser) return false;
           const assigned = p.assignedWorkers?.includes(currentUser.id);
@@ -1624,12 +1656,16 @@ export default function HousesView({
             dateSortValue(b.scheduleDate || b.receiveDate) -
             dateSortValue(a.scheduleDate || a.receiveDate),
         ),
-    [properties, currentUser],
+    [properties, currentUser, isHistoryOpen],
   );
 
+  // ⭐ PERF: en modo 'modals-only' (encima de Quality Check, Payroll,
+  //    Invoices, Owner/Manager…) no se dibuja la tabla: antes igual se
+  //    filtraban, ordenaban y agrupaban las ~3,600 casas en cada cambio.
+  const listEnabled = renderMode === "full";
   const propertiesWithScope = useMemo(
     () =>
-      properties.filter((prop) => {
+      (listEnabled ? properties : NO_PROPERTIES).filter((prop) => {
         if (userScope !== "All") {
           if (!currentUser) return false;
           const isAssigned = prop.assignedWorkers?.includes(currentUser.id);
@@ -1661,7 +1697,7 @@ export default function HousesView({
         return true;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex, statuses.length],
+    [properties, listEnabled, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex, statuses.length],
   );
 
   const uniqueHouses = useMemo(
@@ -1718,8 +1754,8 @@ export default function HousesView({
     }
 
     let passSearch = true;
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
+    if (deferredSearch.trim()) {
+      const q = deferredSearch.toLowerCase().trim();
       const addressMatch = (p.address || "").toLowerCase().includes(q);
       const clientName = getClientName(p.client);
       const clientMatch = clientName.toLowerCase().includes(q);
@@ -1813,7 +1849,7 @@ export default function HousesView({
       invoiceFilter,
       statusFilter,
       priorityFilter,
-      searchTerm,
+      deferredSearch,
       customersList,
       priorities,
       formConfig,
@@ -1891,7 +1927,7 @@ export default function HousesView({
       invoiceFilter,
       statusFilter,
       priorityFilter,
-      searchTerm,
+      deferredSearch,
       customersList,
       priorities,
       formConfig,
@@ -1945,12 +1981,6 @@ export default function HousesView({
         targetLabel: logLabel(prop),
         changes: [{ field, before: label(before), after: label(value) }],
       });
-      setProperties(
-        properties.map((p) => (p.id === prop.id ? { ...p, ...payload } : p)),
-      );
-      if (selectedHouse && selectedHouse.id === prop.id) {
-        setSelectedHouse({ ...selectedHouse, ...payload });
-      }
     } catch (error) {
       console.error(`Error updating ${field}:`, error);
       alert(field === "teamId" ? "Failed to update team." : "Failed to update invoice status.");
@@ -1995,14 +2025,6 @@ export default function HousesView({
           },
         ],
       });
-      setProperties(
-        properties.map((p) =>
-          p.id === propertyId ? { ...p, ...statusPayload } : p,
-        ),
-      );
-      if (selectedHouse && selectedHouse.id === propertyId) {
-        setSelectedHouse({ ...selectedHouse, ...statusPayload });
-      }
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Failed to update job status.");
@@ -2053,16 +2075,6 @@ export default function HousesView({
         employeeStartedById: currentUser?.id || "",
       };
       await propertiesService.update(selectedHouse.id, startPayload);
-      const updatedHouse = {
-        ...selectedHouse,
-        employeeStartedAt: startedAt,
-        employeeStartedBy: startedBy,
-        employeeStartedById: currentUser?.id || "",
-      } as Property;
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
-      );
     } catch (error) {
       console.error("Error marking as started:", error);
       alert("Failed to start job.");
@@ -2088,16 +2100,6 @@ export default function HousesView({
         employeeStartedById: null,
       };
       await propertiesService.update(selectedHouse.id, undoStartPayload);
-      const updatedHouse = {
-        ...selectedHouse,
-        employeeStartedAt: undefined,
-        employeeStartedBy: undefined,
-        employeeStartedById: undefined,
-      } as Property;
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
-      );
     } catch (error) {
       console.error("Error undoing start job:", error);
       alert("Failed to undo start job.");
@@ -2148,16 +2150,6 @@ export default function HousesView({
         employeeFinishedById: currentUser?.id || "",
       };
       await propertiesService.update(selectedHouse.id, finishPayload);
-      const updatedHouse = {
-        ...selectedHouse,
-        employeeFinishedAt: finishedAt,
-        employeeFinishedBy: finishedBy,
-        employeeFinishedById: currentUser?.id || "",
-      } as Property;
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
-      );
     } catch (error) {
       console.error("Error marking as finished:", error);
       alert("Failed to mark property as finished.");
@@ -2183,16 +2175,6 @@ export default function HousesView({
         employeeFinishedById: null,
       };
       await propertiesService.update(selectedHouse.id, undoFinishPayload);
-      const updatedHouse = {
-        ...selectedHouse,
-        employeeFinishedAt: undefined,
-        employeeFinishedBy: undefined,
-        employeeFinishedById: undefined,
-      } as Property;
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
-      );
     } catch (error) {
       console.error("Error undoing finished status:", error);
       alert("Failed to undo finished status.");
@@ -2404,21 +2386,12 @@ export default function HousesView({
     if (!selectedHouse || !canEdit) return;
     setIsSaving(true);
     try {
-      const currentWorkers = selectedHouse.assignedWorkers || [];
-      const isAssigned = currentWorkers.includes(workerId);
-      const newWorkersList = isAssigned
-        ? currentWorkers.filter((id) => id !== workerId)
-        : [...currentWorkers, workerId];
-      await propertiesService.update(selectedHouse.id, {
-        assignedWorkers: newWorkersList,
-      });
-      const updatedHouse = {
-        ...selectedHouse,
-        assignedWorkers: newWorkersList,
-      };
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
+      const isAssigned = (selectedHouse.assignedWorkers || []).includes(workerId);
+      // ⭐ Atómico: no pisa a quien asignó a otra persona al mismo tiempo.
+      await propertiesService.arrayChange(
+        selectedHouse.id,
+        isAssigned ? "remove" : "add",
+        { assignedWorkers: [workerId] },
       );
     } catch (error) {
       console.error("Error updating workers:", error);
@@ -2546,26 +2519,12 @@ export default function HousesView({
           totalAmount: total,
         };
         await payrollService.update(String(editingPayrollId), payload);
-        setHousePayrollRecords((prev) =>
-          prev
-            .map((r) =>
-              String(r.id) === String(editingPayrollId)
-                ? { ...r, ...payload }
-                : r,
-            )
-            .sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date)),
-        );
         setIsPayrollModalOpen(false);
         setEditingPayrollId(null);
         alert("Payment updated successfully.");
         return;
       }
-      const newId = await payrollService.create(dataToSave);
-      setHousePayrollRecords(
-        [...housePayrollRecords, { ...dataToSave, id: newId }].sort(
-          (a, b) => dateSortValue(b.date) - dateSortValue(a.date),
-        ), // ⭐ más reciente primero
-      );
+      await payrollService.create(dataToSave);
       setIsPayrollModalOpen(false);
       alert("Payment registered successfully.");
     } catch (error) {
@@ -2593,7 +2552,6 @@ export default function HousesView({
     setIsSaving(true);
     try {
       await payrollService.delete(id);
-      setHousePayrollRecords(housePayrollRecords.filter((r) => r.id !== id));
     } catch (e) {
       console.error(e);
       alert("Error deleting record.");
@@ -2663,20 +2621,11 @@ export default function HousesView({
 
     setIsSaving(true);
     try {
+      // El listener de la casa (useHouseRecords) muestra el cambio al instante.
       if (serviceForm.id) {
-        await updateDoc(
-          doc(db, "billing_services", serviceForm.id),
-          dataToSave,
-        );
-        setHouseServices(
-          houseServices.map((r) => (r.id === serviceForm.id ? dataToSave : r)),
-        );
+        await updateDoc(doc(db, "billing_services", serviceForm.id), dataToSave);
       } else {
-        const docRef = await addDoc(
-          collection(db, "billing_services"),
-          dataToSave,
-        );
-        setHouseServices([{ ...dataToSave, id: docRef.id }, ...houseServices]);
+        await addDoc(collection(db, "billing_services"), dataToSave);
       }
       setIsServiceModalOpen(false);
     } catch (error) {
@@ -2692,7 +2641,6 @@ export default function HousesView({
     setIsSaving(true);
     try {
       await deleteDoc(doc(db, "billing_services", id));
-      setHouseServices(houseServices.filter((r) => r.id !== id));
     } catch (error) {
       console.error("Error deleting service:", error);
     } finally {
@@ -2713,6 +2661,7 @@ export default function HousesView({
     setWorkersTouched(false);
     loadedServicesRef.current = new Map();
 
+    formBaseRef.current = house || null;
     if (house) {
       setFormData(house);
       setBeforePhotoURLs(house.beforePhotos || []);
@@ -2722,33 +2671,47 @@ export default function HousesView({
       setBeforeExcluded(house.beforePhotosExcluded || []);
       setAfterExcluded(house.afterPhotosExcluded || []);
       refreshPendingCounts();
-      try {
-        const q = query(
-          collection(db, "billing_services"),
-          where("propertyId", "==", house.id),
-        );
-        const srvSnap = await getDocs(q);
-        const loaded = srvSnap.docs.map(
-          (d) => ({ id: d.id, ...d.data() }) as ServiceRecord,
-        );
+      // ⭐ Si se edita desde el detalle, sus servicios y pagos ya están en
+      //    vivo y el formulario abre sin esperar a Firestore. Si no, se piden
+      //    EN PARALELO (antes uno después del otro) y por separado: un fallo
+      //    en una consulta no tumba la otra.
+      const fromDetail =
+        isDetailModalOpen && detailRecords.loaded && detailRecords.houseId === house.id;
+      const [srvRes, payRes] = fromDetail
+        ? ([
+            { status: "fulfilled", value: detailRecords.services },
+            { status: "fulfilled", value: detailRecords.payroll },
+          ] as const)
+        : await Promise.allSettled([
+            getDocs(
+              query(
+                collection(db, "billing_services"),
+                where("propertyId", "==", house.id),
+              ),
+            ).then((snap) =>
+              snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ServiceRecord),
+            ),
+            payrollService.getByPropertyId(house.id),
+          ]);
+      if (srvRes.status === "fulfilled") {
+        const loaded = srvRes.value;
         loadedServicesRef.current = new Map(
           loaded.map((s) => [s.id as string, recordFingerprint(s)]),
         );
         setFormServices(loaded);
-      } catch (error) {
-        console.error("Error fetching form services:", error);
+      } else {
+        console.error("Error fetching form services:", srvRes.reason);
         loadedServicesRef.current = new Map();
         setFormServices([]);
       }
       // ⭐ El formulario ahora tambien muestra y registra PAGOS (card Payroll),
-      //    antes solo disponibles en el modal de detalle. Se cargan aparte de
-      //    los servicios para que un fallo en una consulta no tumbe la otra.
-      try {
-        const pRecords = await payrollService.getByPropertyId(house.id);
+      //    antes solo disponibles en el modal de detalle.
+      if (payRes.status === "fulfilled") {
+        const pRecords = [...payRes.value];
         pRecords.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
         setHousePayrollRecords(pRecords);
-      } catch (error) {
-        console.error("Error fetching form payroll:", error);
+      } else {
+        console.error("Error fetching form payroll:", payRes.reason);
         setHousePayrollRecords([]);
       }
     } else {
@@ -2806,6 +2769,7 @@ export default function HousesView({
     };
     delete duplicated.gcalEventId;
     delete duplicated.gcalSyncedAt;
+    formBaseRef.current = null;
     setFormData({
       ...duplicated,
       id: "",
@@ -2882,6 +2846,7 @@ export default function HousesView({
   };
 
   const restoreDraft = (draft: HouseDraft) => {
+    formBaseRef.current = null;
     setFormData(draft.formData);
     setFormServices(draft.formServices || []);
     setHousePayrollRecords(draft.housePayrollRecords || []);
@@ -3073,10 +3038,16 @@ export default function HousesView({
       //    ARRIBA en InvoicesView (ver src/utils/invoiceEntry.ts). Si ya estaba
       //    en Invoice antes, se conserva la marca original: guardar otros campos
       //    no debe reordenar la lista.
+      // Con la copia de cuando se abrió el formulario: así solo se sella si
+      // ESTE guardado cambia el status (y solo se escribe lo que cambió).
+      const openedBase =
+        formBaseRef.current && formBaseRef.current.id === workingId
+          ? formBaseRef.current
+          : null;
       const prevStatusId = isNew
         ? ""
         : String(
-          properties.find((p) => p.id === workingId)?.statusId || "",
+          (openedBase ?? properties.find((p) => p.id === workingId))?.statusId || "",
         );
       const enteredInvoiceNow = String(formData.statusId || "") !== prevStatusId;
 
@@ -3093,13 +3064,46 @@ export default function HousesView({
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
-      await propertiesService.update(workingId, dataForFirestore);
+      const base = openedBase;
+      if (isNew || !base) {
+        // Alta nueva o borrador restaurado: no hay "antes" contra qué comparar.
+        await propertiesService.update(workingId, dataForFirestore);
+      } else {
+        // ⭐ Edición: solo los campos que cambiaron desde que se abrió el
+        //    formulario, y los arreglos (fotos, trabajadores, historial de
+        //    notas) con arrayUnion/arrayRemove. Antes se reescribía la casa
+        //    COMPLETA con la copia del formulario: un cambio de status, una
+        //    nota o una foto que otra persona guardó mientras tanto se perdía.
+        const {
+          beforePhotos: nextBefore = [], afterPhotos: nextAfter = [],
+          beforePhotosExcluded: nextBeforeEx = [], afterPhotosExcluded: nextAfterEx = [],
+          assignedWorkers: nextWorkers = [], notesHistory: nextNotes = [],
+          ...plain
+        } = dataForFirestore;
+        const fields = changedFields(base, plain);
+        const bp = listDiff(base.beforePhotos, nextBefore);
+        const ap = listDiff(base.afterPhotos, nextAfter);
+        const bx = listDiff(base.beforePhotosExcluded, nextBeforeEx);
+        const ax = listDiff(base.afterPhotosExcluded, nextAfterEx);
+        const wk = listDiff(base.assignedWorkers, nextWorkers);
+        const nh = listDiff(base.notesHistory, nextNotes);
+        await commitOps([
+          (b) =>
+            propertiesService.batchArrayChange(b, workingId, {
+              fields,
+              remove: { beforePhotos: bp.remove, afterPhotos: ap.remove, beforePhotosExcluded: bx.remove, afterPhotosExcluded: ax.remove, assignedWorkers: wk.remove, notesHistory: nh.remove },
+              add: { beforePhotos: bp.add, afterPhotos: ap.add, beforePhotosExcluded: bx.add, afterPhotosExcluded: ax.add, assignedWorkers: wk.add, notesHistory: nh.add },
+            }),
+        ]);
+      }
 
       // ⭐ Bitacora: en una edicion se guarda SOLO lo que cambio, campo por
       //    campo (antes -> despues). En un alta el diff no aporta: ya se
       //    registro arriba como 'create'.
       if (!isNew) {
-        const original = properties.find((p) => p.id === workingId);
+        // Contra la copia de cuando se abrió: la bitácora no debe atribuirle a
+        // esta persona lo que otra cambió mientras tanto.
+        const original = openedBase ?? properties.find((p) => p.id === workingId);
         logActivity({
           action: "update",
           module: "Houses",
@@ -3171,25 +3175,6 @@ export default function HousesView({
         );
       }
       setPayrollsToDelete([]);
-
-      if (isNew) {
-        const fullNewData = {
-          ...finalDataToUpdate,
-          id: workingId,
-          description: `${getClientName(formData.client)} - ${formData.rooms} rooms`,
-          city: "TBD",
-          size: "TBD",
-        };
-        setProperties([...properties, fullNewData as Property]);
-      } else {
-        setProperties(
-          properties.map((p) =>
-            p.id === workingId
-              ? ({ ...finalDataToUpdate, id: workingId } as Property)
-              : p,
-          ),
-        );
-      }
 
       setBeforeFiles([]);
       setAfterFiles([]);
@@ -3268,26 +3253,24 @@ export default function HousesView({
       at: new Date().toISOString(),
       action: "created" as const,
     };
-    const payload: Partial<PropertyU> = {
-      [field]: nextValue,
-      notesHistory: [...(selectedHouse.notesHistory || []), entry],
-    };
     setSendingNote(field);
     try {
-      await propertiesService.update(selectedHouse.id, payload as Partial<Property>);
-      const updatedHouse = { ...selectedHouse, ...payload } as Property;
+      // ⭐ El mensaje entra al historial con arrayUnion: dos personas que
+      //    escriben a la vez ya no se borran el mensaje la una a la otra.
+      await propertiesService.arrayChange(
+        selectedHouse.id,
+        "add",
+        { notesHistory: [entry] },
+        { [field]: nextValue } as Partial<Property>,
+      );
       logActivity({
         action: "update",
         module: "Houses",
         user: currentUser,
         targetId: selectedHouse.id,
-        targetLabel: logLabel(updatedHouse),
+        targetLabel: logLabel(selectedHouse),
         changes: [{ field, before: prev, after: nextValue }],
       });
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === selectedHouse.id ? updatedHouse : p)),
-      );
       return true;
     } catch (error) {
       console.error("❌ Error saving note:", error);
@@ -3322,45 +3305,40 @@ export default function HousesView({
         "after",
         workingId,
       );
-      const uploadedBeforeUrls = beforeRes.urls;
-      const uploadedAfterUrls = afterRes.urls;
 
-      const existingBeforeFromStorage = (
-        selectedHouse.beforePhotos || []
-      ).filter((u) => u.startsWith("http"));
-      const existingAfterFromStorage = (selectedHouse.afterPhotos || []).filter(
-        (u) => u.startsWith("http"),
-      );
+      // ⭐ Solo los cambios, de forma atómica: fotos quitadas (arrayRemove),
+      //    fotos nuevas (arrayUnion) y lo que el usuario sacó o metió al
+      //    reporte. Antes se reescribía la lista completa con la copia de la
+      //    pantalla: las fotos quitadas regresaban y las que otro equipo
+      //    subía mientras tanto se perdían.
+      const bx = listDiff(detailExcludedBaseRef.current.before, beforeExcluded);
+      const ax = listDiff(detailExcludedBaseRef.current.after, afterExcluded);
+      await commitOps([
+        (b) =>
+          propertiesService.batchArrayChange(b, workingId, {
+            remove: {
+              beforePhotos: detailRemoved.before,
+              afterPhotos: detailRemoved.after,
+              beforePhotosExcluded: bx.remove,
+              afterPhotosExcluded: ax.remove,
+            },
+            add: {
+              beforePhotos: beforeRes.urls,
+              afterPhotos: afterRes.urls,
+              beforePhotosExcluded: bx.add,
+              afterPhotosExcluded: ax.add,
+            },
+          }),
+      ]);
+      detailExcludedBaseRef.current = { before: beforeExcluded, after: afterExcluded };
 
-      const finalBeforePhotos = [
-        ...existingBeforeFromStorage,
-        ...uploadedBeforeUrls,
-      ];
-      const finalAfterPhotos = [
-        ...existingAfterFromStorage,
-        ...uploadedAfterUrls,
-      ];
-
-      await propertiesService.update(workingId, {
-        beforePhotos: finalBeforePhotos,
-        afterPhotos: finalAfterPhotos,
-        beforePhotosExcluded: beforeExcluded,
-        afterPhotosExcluded: afterExcluded,
+      // Las vistas previas ya no hacen falta: la casa en vivo trae las URLs.
+      [...beforePhotoURLs, ...afterPhotoURLs].forEach((u) => {
+        if (u.startsWith("blob:")) URL.revokeObjectURL(u);
       });
-
-      const updatedHouse = {
-        ...selectedHouse,
-        beforePhotos: finalBeforePhotos,
-        afterPhotos: finalAfterPhotos,
-      };
-      setSelectedHouse(updatedHouse);
-      setProperties(
-        properties.map((p) => (p.id === workingId ? updatedHouse : p)),
-      );
-
-      setBeforePhotoURLs(finalBeforePhotos);
-      setAfterPhotoURLs(finalAfterPhotos);
-
+      setBeforePhotoURLs([]);
+      setAfterPhotoURLs([]);
+      setDetailRemoved(NO_REMOVED);
       setBeforeFiles([]);
       setAfterFiles([]);
 
@@ -3446,7 +3424,9 @@ export default function HousesView({
             };
             delete rest.id;
             return {
-              collectionName: "payroll_records",
+              // ⭐ Antes decía 'payroll_records' (colección vieja): el pago no
+              //    se borraba de 'payroll' y quedaba huérfano en Payroll.
+              collectionName: "payroll",
               originalId: String(r.id),
               data: rest,
             };
@@ -3473,10 +3453,11 @@ export default function HousesView({
         targetLabel: logLabel(target),
         detail: `Enviado a la papelera. Motivo: "${deleteReason.trim()}". Incluye ${relatedPayrolls.length} payroll(s) y ${relatedServicesSnap.size} servicio(s) facturado(s). Recuperable en Recycle Bin.`,
       });
-      setProperties(properties.filter((p) => p.id !== target.id));
       setDeleteTarget(null);
       setDeleteReason("");
       setIsDetailModalOpen(false);
+      // Sin casa abierta: no queda escuchando el documento borrado.
+      if (openedHouse?.id === target.id) setSelectedHouse(null);
     } catch (error) {
       console.error("Error moving to trash:", error);
       const fbErr = error as { code?: string; message?: string };
@@ -3504,35 +3485,32 @@ export default function HousesView({
     setActiveDetailTab(mediaTabAvailable(house) ? "media" : "overview");
     setBeforeFiles([]);
     setAfterFiles([]);
-    setBeforePhotoURLs(house.beforePhotos || []);
-    setAfterPhotoURLs(house.afterPhotos || []);
+    // Las fotos guardadas se leen en vivo de la casa; aquí solo van las nuevas.
+    setBeforePhotoURLs([]);
+    setAfterPhotoURLs([]);
+    setDetailRemoved(NO_REMOVED);
+    const excludedBase = {
+      before: house.beforePhotosExcluded || [],
+      after: house.afterPhotosExcluded || [],
+    };
+    detailExcludedBaseRef.current = excludedBase;
+    setBeforeExcluded(excludedBase.before);
+    setAfterExcluded(excludedBase.after);
+    // Los servicios y pagos de la casa llegan por su listener (useHouseRecords).
+    setPendingForHouse({ before: 0, after: 0 });
     setIsDetailModalOpen(true);
 
+    detailOpenIdRef.current = house.id;
     try {
-      setBeforeExcluded(house.beforePhotosExcluded || []);
-      setAfterExcluded(house.afterPhotosExcluded || []);
       const pend = await getPendingByProperty(house.id);
+      // Si mientras tanto se abrió otra casa, este resultado ya no aplica.
+      if (detailOpenIdRef.current !== house.id) return;
       setPendingForHouse({
         before: pend.filter((p) => p.type === "before").length,
         after: pend.filter((p) => p.type === "after").length,
       });
-
-      const pRecords = await payrollService.getByPropertyId(house.id);
-      // ⭐ Más reciente primero (dateSortValue tolera los formatos de fecha mixtos)
-      pRecords.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
-      setHousePayrollRecords(pRecords);
-
-      const q = query(
-        collection(db, "billing_services"),
-        where("propertyId", "==", house.id),
-      );
-      const srvSnap = await getDocs(q);
-      const srvRecords = srvSnap.docs.map(
-        (d) => ({ id: d.id, ...d.data() }) as ServiceRecord,
-      );
-      setHouseServices(srvRecords);
     } catch (error) {
-      console.error("Error fetching detail records:", error);
+      console.error("Error fetching pending photos:", error);
     }
   };
 
@@ -3584,21 +3562,51 @@ export default function HousesView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseToOpenEdit]);
 
+  // Fotos que se MUESTRAN. Formulario: su buffer. Detalle: las guardadas de
+  // la casa EN VIVO, menos las quitadas sin guardar, más las nuevas.
+  const shownPhotoURLs = (type: "before" | "after"): string[] => {
+    const local = type === "before" ? beforePhotoURLs : afterPhotoURLs;
+    if (isFormModalOpen || !selectedHouse) return local;
+    const stored =
+      (type === "before" ? selectedHouse.beforePhotos : selectedHouse.afterPhotos) || [];
+    const removed = detailRemoved[type];
+    return [...stored.filter((u) => !removed.includes(u)), ...local];
+  };
+
+  // Quitar una foto en el DETALLE: una nueva se descarta; una guardada se
+  // marca para quitarla al presionar "Save Photos".
+  const removeDetailPhoto = (index: number, type: "before" | "after") => {
+    const url = shownPhotoURLs(type)[index];
+    if (!url) return;
+    const previews = type === "before" ? beforePhotoURLs : afterPhotoURLs;
+    const previewIndex = previews.indexOf(url);
+    if (previewIndex >= 0) {
+      const setPreviews = type === "before" ? setBeforePhotoURLs : setAfterPhotoURLs;
+      const setFiles = type === "before" ? setBeforeFiles : setAfterFiles;
+      setPreviews((prev) => prev.filter((u) => u !== url));
+      setFiles((prev) => prev.filter((_, i) => i !== previewIndex));
+      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    } else {
+      setDetailRemoved((prev) => ({ ...prev, [type]: [...prev[type], url] }));
+    }
+    const setExcluded = type === "before" ? setBeforeExcluded : setAfterExcluded;
+    setExcluded((prev) => prev.filter((u) => u !== url));
+  };
+
   const handleRemovePhoto = (index: number, type: "before" | "after") => {
+    if (!isFormModalOpen) {
+      removeDetailPhoto(index, type);
+      return;
+    }
     const removedUrl = (type === "before" ? beforePhotoURLs : afterPhotoURLs)[
       index
     ];
-    const isFormOpen = isFormModalOpen;
-
     if (type === "before") {
       const newUrls = [...beforePhotoURLs];
       newUrls.splice(index, 1);
       setBeforePhotoURLs(newUrls);
 
-      const storedCount =
-        (isFormOpen
-          ? formData.beforePhotos?.length
-          : selectedHouse?.beforePhotos?.length) || 0;
+      const storedCount = formData.beforePhotos?.length || 0;
 
       if (index >= storedCount) {
         const fileIndex = index - storedCount;
@@ -3606,21 +3614,16 @@ export default function HousesView({
         newFiles.splice(fileIndex, 1);
         setBeforeFiles(newFiles);
       } else {
-        if (isFormOpen) {
-          const updatedFormDataPhotos = [...(formData.beforePhotos || [])];
-          updatedFormDataPhotos.splice(index, 1);
-          setFormData({ ...formData, beforePhotos: updatedFormDataPhotos });
-        }
+        const updatedFormDataPhotos = [...(formData.beforePhotos || [])];
+        updatedFormDataPhotos.splice(index, 1);
+        setFormData({ ...formData, beforePhotos: updatedFormDataPhotos });
       }
     } else {
       const newUrls = [...afterPhotoURLs];
       newUrls.splice(index, 1);
       setAfterPhotoURLs(newUrls);
 
-      const storedCount =
-        (isFormOpen
-          ? formData.afterPhotos?.length
-          : selectedHouse?.afterPhotos?.length) || 0;
+      const storedCount = formData.afterPhotos?.length || 0;
 
       if (index >= storedCount) {
         const fileIndex = index - storedCount;
@@ -3628,11 +3631,9 @@ export default function HousesView({
         newFiles.splice(fileIndex, 1);
         setAfterFiles(newFiles);
       } else {
-        if (isFormOpen) {
-          const updatedFormDataPhotos = [...(formData.afterPhotos || [])];
-          updatedFormDataPhotos.splice(index, 1);
-          setFormData({ ...formData, afterPhotos: updatedFormDataPhotos });
-        }
+        const updatedFormDataPhotos = [...(formData.afterPhotos || [])];
+        updatedFormDataPhotos.splice(index, 1);
+        setFormData({ ...formData, afterPhotos: updatedFormDataPhotos });
       }
     }
 
@@ -3643,9 +3644,7 @@ export default function HousesView({
 
   const generatePDF = async (type: "before" | "after") => {
     const excluded = type === "before" ? beforeExcluded : afterExcluded;
-    const urls = (type === "before" ? beforePhotoURLs : afterPhotoURLs).filter(
-      (u) => !excluded.includes(u),
-    );
+    const urls = shownPhotoURLs(type).filter((u) => !excluded.includes(u));
 
     if (urls.length === 0) {
       alert(
@@ -3861,11 +3860,15 @@ export default function HousesView({
 
 
   const totalBilled = houseServices.reduce((sum, r) => sum + r.total, 0);
-  const totalPayroll = housePayrollRecords.reduce(
+  const totalPayroll = detailPayrollRecords.reduce(
     (sum, r) => sum + r.totalAmount,
     0,
   );
   const netProfit = totalBilled - totalPayroll;
+  const formTotalPayroll = housePayrollRecords.reduce(
+    (sum, r) => sum + r.totalAmount,
+    0,
+  );
 
   const formTotalBilled = formServices.reduce((sum, r) => sum + r.total, 0);
 
@@ -5250,7 +5253,7 @@ export default function HousesView({
                           Total Payroll
                         </span>
                         <span className="hv-payroll-form-total-value">
-                          ${totalPayroll.toFixed(2)}
+                          ${formTotalPayroll.toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -6275,7 +6278,7 @@ export default function HousesView({
                           </tr>
                         </thead>
                         <tbody>
-                          {housePayrollRecords.length === 0 ? (
+                          {detailPayrollRecords.length === 0 ? (
                             <tr>
                               <td
                                 colSpan={canEdit ? 7 : 6}
@@ -6285,7 +6288,7 @@ export default function HousesView({
                               </td>
                             </tr>
                           ) : (
-                            housePayrollRecords.map((record) => {
+                            detailPayrollRecords.map((record) => {
                               const emp = employees.find(
                                 (e) => e.id === record.employeeId,
                               );
@@ -6451,7 +6454,7 @@ export default function HousesView({
                           <PhotoSection
                             label="Before"
                             type="before"
-                            urls={beforePhotoURLs}
+                            urls={shownPhotoURLs("before")}
                             excludedUrls={beforeExcluded}
                             pendingCount={pendingForHouse.before}
                             canEdit={isElementVisible("btn_uploadPhoto")}
@@ -6503,7 +6506,7 @@ export default function HousesView({
                           <PhotoSection
                             label="After"
                             type="after"
-                            urls={afterPhotoURLs}
+                            urls={shownPhotoURLs("after")}
                             excludedUrls={afterExcluded}
                             pendingCount={pendingForHouse.after}
                             canEdit={isElementVisible("btn_uploadPhoto")}

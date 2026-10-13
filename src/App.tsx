@@ -71,6 +71,12 @@ export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'cal
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
 const ACTIVE_TAB_KEY = 'pc_active_tab';
+
+/** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
+const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
+  'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
+  'qc_reports_table', 'qc_dashboard', 'owner', 'manager',
+]);
 const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
@@ -87,6 +93,15 @@ const getInitialTab = (): TabOptions => {
   }
   return 'houses';
 };
+
+// ⭐ Quien ya usó la app en este equipo casi siempre tiene la sesión guardada:
+//    el código de su última pestaña empieza a descargarse YA, en paralelo con
+//    la verificación de sesión, en vez de esperar a que Firebase la confirme.
+try {
+  if (typeof window !== 'undefined' && window.localStorage.getItem(ACTIVE_TAB_KEY)) {
+    prefetchView(getInitialTab());
+  }
+} catch { /* sin localStorage: se precarga al confirmar la sesión */ }
 
 // ⭐ Pantalla de carga reutilizable (verificando sesión / cargando datos).
 const LoadingScreen = ({ text }: { text: string }) => (
@@ -371,10 +386,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  // ⭐ ¿Está toda la data base lista para pintar las vistas?
-  //    properties + roles + perfil con su primer snapshot. Con la caché local
-  //    esto se cumple en milisegundos al recargar.
-  const appDataReady = propertiesLoaded && rolesLoaded && profileLoaded;
+  // ⭐ ¿Está la data base lista para pintar la app? Roles + perfil (deciden
+  //    el menú y los permisos). Las CASAS ya no bloquean toda la pantalla:
+  //    el menú y las vistas que no las usan (Settings, Customers, Users…)
+  //    aparecen de inmediato, y las que sí las usan muestran el esqueleto
+  //    de la vista hasta el primer snapshot (evita pintar 0 / "no existe").
+  const appDataReady = rolesLoaded && profileLoaded;
+  const waitingForProperties = !propertiesLoaded && TABS_WITH_PROPERTIES.has(activeTab);
 
   // ⭐ Mientras Firebase verifica si hay sesión guardada, pantalla de carga.
   if (!isAuthChecked) {
@@ -450,6 +468,7 @@ export default function App() {
             layout. Con la precarga en reposo casi nunca llega a verse. */}
         <Suspense fallback={<ViewSkeleton />}>
         <RouteTransition routeKey={activeTab}>
+        {waitingForProperties ? <ViewSkeleton /> : (<>
         {activeTab === 'houses' && (
           <HousesView
             properties={visibleProperties}
@@ -506,7 +525,6 @@ export default function App() {
         {activeTab === 'calendar' && (
           <CalendarView
             properties={propertiesForModule('Calendar')}
-            setProperties={setProperties}
             onOpenMenu={toggleMenu}
             onCheckHouse={handleCheckHouse}
           />
@@ -555,7 +573,6 @@ export default function App() {
           <QCReportsTableView
             onOpenMenu={toggleMenu}
             properties={visibleProperties}
-            setProperties={setProperties}
             currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
@@ -662,7 +679,7 @@ export default function App() {
         {activeTab === 'migrar_payroll' && canViewMigrarPayroll && <MigrarPayroll />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
-
+        </>)}
         </RouteTransition>
         </Suspense>
       </main>

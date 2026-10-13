@@ -27,6 +27,7 @@ import type {
   Service, Status, SystemUser, Task, Tax, Team, Place,
 } from '../../types/index';
 import { mapCustomerDoc } from '../../utils/customerDocs';
+import { incrementalMapper } from './incrementalSnapshot';
 import type { QcRecordLite } from '../../utils/qcDashboard';
 
 /** Cuánto sigue abierto un listener después de que ninguna vista lo usa. */
@@ -85,7 +86,17 @@ interface Entry {
   subscribers: Set<() => void>;
   unsub: (() => void) | null;
   closeTimer: ReturnType<typeof setTimeout> | null;
+  /** Reintento programado tras un error del listener. */
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  /** Errores seguidos (para espaciar los reintentos). */
+  failures: number;
 }
+
+/** Espera antes de reabrir un listener que falló: 2 s, 4 s, 8 s… hasta 60 s. */
+const retryDelay = (failures: number) => Math.min(60_000, 2_000 * 2 ** Math.max(0, failures - 1));
+/** Reintentos seguidos como máximo (≈2 min): un rol SIN permiso de lectura
+ *  no debe quedar reintentando para siempre. Se reinicia al volver a pedirla. */
+const MAX_RETRIES = 6;
 
 const EMPTY: LiveSnapshot<never> = { data: [], loaded: false };
 const entries = new Map<LiveKey, Entry>();
@@ -93,7 +104,7 @@ const entries = new Map<LiveKey, Entry>();
 function entryFor(key: LiveKey): Entry {
   let e = entries.get(key);
   if (!e) {
-    e = { snapshot: EMPTY, subscribers: new Set(), unsub: null, closeTimer: null };
+    e = { snapshot: EMPTY, subscribers: new Set(), unsub: null, closeTimer: null, retryTimer: null, failures: 0 };
     entries.set(key, e);
   }
   return e;
@@ -104,18 +115,38 @@ function publish(e: Entry, snapshot: LiveSnapshot<unknown>) {
   e.subscribers.forEach((notify) => notify());
 }
 
+function clearRetry(e: Entry) {
+  if (e.retryTimer) clearTimeout(e.retryTimer);
+  e.retryTimer = null;
+}
+
 function open(key: LiveKey, e: Entry) {
-  if (e.unsub) return;
+  if (e.unsub || e.retryTimer) return;
   const source = SOURCES[key] as Source<unknown>;
+  // ⭐ Solo se mapean los documentos que cambiaron; los demás conservan su
+  //    objeto (ver incrementalSnapshot.ts).
+  const toList = incrementalMapper(source.map);
   e.unsub = onSnapshot(
     collection(db, source.path),
-    (snap) => publish(e, { data: snap.docs.map(source.map), loaded: true }),
+    (snap) => {
+      e.failures = 0;
+      publish(e, { data: toList(snap), loaded: true });
+    },
     (err) => {
       console.error(`Error escuchando ${source.path}:`, err);
-      // Un listener con error ya no recibe nada: se descarta para que el
-      // próximo componente que lo pida lo vuelva a abrir.
+      // Un listener con error ya no recibe nada. Antes se quedaba así hasta
+      // que otra vista lo pidiera (había que recargar para ver datos nuevos):
+      // ahora, si alguien lo sigue usando, se reabre solo, cada vez más
+      // espaciado (p. ej. permisos que todavía no llegaban al iniciar sesión).
       e.unsub = null;
+      e.failures += 1;
       publish(e, { data: e.snapshot.data, loaded: true });
+      if (e.subscribers.size > 0 && e.failures <= MAX_RETRIES) {
+        e.retryTimer = setTimeout(() => {
+          e.retryTimer = null;
+          if (e.subscribers.size > 0) open(key, e);
+        }, retryDelay(e.failures));
+      }
     },
   );
 }
@@ -127,6 +158,7 @@ function subscribe(key: LiveKey, notify: () => void): () => void {
     e.closeTimer = null;
   }
   e.subscribers.add(notify);
+  if (!e.unsub && !e.retryTimer) e.failures = 0; // intento nuevo: reintentos completos
   open(key, e);
   return () => {
     e.subscribers.delete(notify);
@@ -134,6 +166,7 @@ function subscribe(key: LiveKey, notify: () => void): () => void {
       e.closeTimer = setTimeout(() => {
         e.closeTimer = null;
         if (e.subscribers.size > 0) return;
+        clearRetry(e);
         e.unsub?.();
         e.unsub = null;
       }, KEEP_ALIVE_MS);
@@ -150,6 +183,8 @@ export function resetLiveCollections(): void {
   entries.forEach((e) => {
     if (e.closeTimer) clearTimeout(e.closeTimer);
     e.closeTimer = null;
+    clearRetry(e);
+    e.failures = 0;
     e.unsub?.();
     e.unsub = null;
     publish(e, EMPTY);

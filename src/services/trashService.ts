@@ -14,6 +14,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -31,7 +32,7 @@ const TRASH_CACHE = 'trash:';
 /** Un documento relacionado que se borra junto con el principal
  *  (ej. payrolls y servicios facturados de una casa). */
 export interface TrashRelatedDoc {
-  /** Colección donde vivía (ej. 'payroll_records') */
+  /** Colección donde vivía (ej. 'payroll') */
   collectionName: string;
   /** Id original del documento */
   originalId: string;
@@ -72,6 +73,13 @@ const stripUndefined = (obj: Record<string, unknown>): Record<string, unknown> =
   }
   return out;
 };
+
+// ⭐ Las casas borradas antes de 10/2026 guardaron sus pagos como
+//    'payroll_records', una colección que ya no se usa (todo vive en
+//    'payroll'): si hay que restaurarlos, van a 'payroll'.
+function restoreCollection(name: string): string {
+  return name === 'payroll_records' ? 'payroll' : name;
+}
 
 export const trashService = {
   /** Mueve un documento (y sus relacionados) a la papelera y borra los
@@ -140,8 +148,21 @@ export const trashService = {
   async restore(entry: TrashEntry): Promise<void> {
     const batch = writeBatch(db);
     batch.set(doc(db, entry.collectionName, entry.originalId), entry.data);
+    // Pagos de entradas viejas ('payroll_records'): nunca se borraron de
+    // 'payroll'. Si siguen ahí NO se tocan (pudieron marcarse Paid después;
+    // escribir la copia de la papelera los regresaría a Pending).
+    const legacyStillThere = new Set<string>();
+    await Promise.all(
+      (entry.related || [])
+        .filter((r) => r.collectionName === 'payroll_records')
+        .map(async (r) => {
+          const snap = await getDoc(doc(db, 'payroll', r.originalId));
+          if (snap.exists()) legacyStillThere.add(r.originalId);
+        }),
+    );
     for (const r of entry.related || []) {
-      batch.set(doc(db, r.collectionName, r.originalId), r.data);
+      if (r.collectionName === 'payroll_records' && legacyStillThere.has(r.originalId)) continue;
+      batch.set(doc(db, restoreCollection(r.collectionName), r.originalId), r.data);
     }
     batch.delete(doc(db, TRASH_COLLECTION, entry.id));
     await batch.commit();

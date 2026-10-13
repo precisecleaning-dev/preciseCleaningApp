@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, X, Edit2, Trash2,
   Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin
 } from 'lucide-react';
-import type { CSSProperties, Dispatch, SetStateAction } from 'react';
+import type { CSSProperties } from 'react';
 import type { Property, Customer } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import CustomSelect from '../components/CustomSelect';
@@ -14,6 +14,8 @@ import './CalendarView.css';
 
 // --- FIREBASE SERVICES ---
 import { propertiesService } from '../services/propertiesService';
+import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
+import { changedFields } from '../features/houses/houseDiff';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import MenuButton from '../shared/components/MenuButton';
 
@@ -35,10 +37,11 @@ interface CalendarViewProps {
   onOpenMenu: () => void;
   onCheckHouse?: (house: Property) => void;
   properties: Property[];
-  setProperties: Dispatch<SetStateAction<Property[]>>;
 }
 
-export default function CalendarView({ onOpenMenu, onCheckHouse, properties, setProperties }: CalendarViewProps) {
+const NO_JOBS: Property[] = [];
+
+export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: CalendarViewProps) {
 
   // --- FIREBASE STATES ---
   // `properties` viene de App.tsx (lista en tiempo real vía onSnapshot, compartida con
@@ -66,7 +69,12 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   // --- MODAL STATES ---
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  // ⭐ Se guarda la casa que se abrió y se muestra su versión EN VIVO
+  //    (useLiveHouse): los cambios hechos en otra vista o equipo se ven sin
+  //    cerrar el detalle. `openedHouse` es además la base para guardar solo
+  //    los campos que cambiaron en el formulario.
+  const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const selectedHouse = useLiveHouse(openedHouse, properties);
   const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null); // Modal "todos los trabajos del día"
   
   const [formData, setFormData] = useState<Property>({
@@ -168,10 +176,11 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
     
     setIsSaving(true);
     try {
-      if (selectedHouse && selectedHouse.id) {
+      if (openedHouse && openedHouse.id) {
         const { id, ...dataToUpdate } = formData;
-        await propertiesService.update(selectedHouse.id, dataToUpdate);
-        setProperties(properties.map(p => p.id === selectedHouse.id ? { ...formData } : p));
+        // ⭐ Solo lo que cambió desde que se abrió el formulario: lo que otra
+        //    persona guardó mientras tanto en los demás campos no se pisa.
+        await propertiesService.update(openedHouse.id, changedFields(openedHouse, dataToUpdate));
       } else {
         const { id, ...dataToAdd } = formData;
         const completeData = {
@@ -179,8 +188,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
           description: `${formData.client} - ${formData.rooms} rooms`,
           city: 'TBD', size: 'TBD'
         };
-        const newId = await propertiesService.create(completeData);
-        setProperties([...properties, { ...formData, id: newId, description: completeData.description, city: completeData.city, size: completeData.size }]);
+        await propertiesService.create(completeData);
       }
       handleCloseForm();
     } catch (error) {
@@ -199,8 +207,8 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
     setIsSaving(true);
     try {
       await propertiesService.delete(selectedHouse.id);
-      setProperties(properties.filter(p => p.id !== selectedHouse.id));
       setIsDetailModalOpen(false);
+      setSelectedHouse(null);
     } catch (error) {
       console.error("Error deleting:", error);
       alert("Error trying to delete property.");
@@ -271,23 +279,35 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties, set
   // --- RENDER HELPERS ---
   const MAX_MONTH_EVENTS = 5; // Máximo de eventos visibles por día en la vista de mes
 
+  // ⭐ PERF: trabajos agrupados por fecha UNA vez por cambio de casas. Antes
+  //    cada celda del calendario (hasta 42 en la vista de mes) recorría las
+  //    ~3,600 casas en cada render. Mismo criterio y mismo orden que antes.
+  const jobsByDate = useMemo(() => {
+    const map = new Map<string, Property[]>();
+    properties.forEach(p => {
+      const key = p.scheduleDate || p.receiveDate;
+      if (!key) return;
+      const list = map.get(key);
+      if (list) list.push(p);
+      else map.set(key, [p]);
+    });
+    map.forEach(list => list.sort((a, b) => {
+      const ta = parseTimeToMinutes(a.timeIn || '');
+      const tb = parseTimeToMinutes(b.timeIn || '');
+      if (ta === null && tb === null) return 0;
+      if (ta === null) return 1; // sin hora al final
+      if (tb === null) return -1;
+      return ta - tb;
+    }));
+    return map;
+  }, [properties]);
+
   // Trabajos que pertenecen a una fecha, ordenados por hora de entrada
-  const getJobsForDate = (date: Date) => {
+  const getJobsForDate = (date: Date): Property[] => {
     const offset = date.getTimezoneOffset();
     const localDate = new Date(date.getTime() - (offset * 60 * 1000));
     const dateString = localDate.toISOString().split('T')[0];
-
-    // Trabajos del dia (prop `properties` en tiempo real), ordenados por hora de entrada.
-    return properties
-      .filter(p => (p.scheduleDate || p.receiveDate) === dateString)
-      .sort((a, b) => {
-        const ta = parseTimeToMinutes(a.timeIn || '');
-        const tb = parseTimeToMinutes(b.timeIn || '');
-        if (ta === null && tb === null) return 0;
-        if (ta === null) return 1; // sin hora al final
-        if (tb === null) return -1;
-        return ta - tb;
-      });
+    return jobsByDate.get(dateString) ?? NO_JOBS;
   };
 
   const openJobDetail = (job: Property) => {

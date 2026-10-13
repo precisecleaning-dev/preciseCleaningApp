@@ -92,14 +92,13 @@ const fmtDuration = (mins?: number | null): string => {
 interface Props {
   onOpenMenu: () => void;
   properties: Property[];
-  setProperties?: React.Dispatch<React.SetStateAction<Property[]>>;
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
 }
 
 export default function QCReportsTableView({
-  onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin = false,
+  onOpenMenu, properties, currentUser, activeRole, isSuperAdmin = false,
 }: Props) {
   // ⭐ Datos del store compartido (un listener por colección para toda la app).
   //    Antes: listener propio de quality_checks con limit(2000) SIN orden (los
@@ -152,8 +151,9 @@ export default function QCReportsTableView({
     return teams.find(t => t.id === teamId)?.name || 'Unassigned';
   };
 
-  const houseFor = (r: QCReportRow): Property | undefined =>
-    properties.find(p => p.id === r.houseId);
+  // ⭐ PERF: casa por id en O(1) (antes properties.find por cada fila).
+  const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
+  const houseFor = (r: QCReportRow): Property | undefined => propById.get(r.houseId);
 
   // ⭐ Estados a los que ESTA vista deja mover una casa (ver statusFilters.ts):
   //    Quality Check · Recall · Invoice. Sin "In Progress": un reporte terminado
@@ -179,7 +179,6 @@ export default function QCReportsTableView({
     try {
       const prevStatusId = house.statusId;
       await propertiesService.update(house.id, { statusId: newStatusId });
-      setProperties?.(prev => prev.map(p => (p.id === house.id ? { ...p, statusId: newStatusId } : p)));
       try {
         await statusHistoryService.log({
           propertyId: house.id,

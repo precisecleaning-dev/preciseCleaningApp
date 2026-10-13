@@ -6,3 +6,19 @@
 # de inmediato.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# ⭐ Lo que decide QUÉ versión corre se revalida siempre (no-cache = puede
+#    guardarse, pero se pregunta al servidor antes de usarlo). Explícito para
+#    no depender del valor por defecto del hosting.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/registerSW.js
+  Cache-Control: no-cache
+/version.json
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

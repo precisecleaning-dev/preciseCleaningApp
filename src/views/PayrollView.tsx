@@ -18,6 +18,7 @@ import { getRelationName, getRelationColor } from '../utils/relations';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
 import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTool';
+import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
 import { todayIso } from '../utils/dateFormat';
 import DateInput from '../shared/components/DateInput';
 import './PayrollView.css';
@@ -154,6 +155,9 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   //    "Ver todo el historial"; si no, saldrían sin dirección ni equipo.
   const fullHistory = useFullHistory();
   const loadedHouseIds = useMemo(() => new Set(properties.map(p => p.id)), [properties]);
+  // ⭐ PERF: casa por id en O(1). Antes cada fila de nómina recorría las
+  //    ~3,600 casas con properties.find (millones de comparaciones por render).
+  const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const records = useMemo(() => {
     // paidAt/paidBy: campos locales de PayrollRecordExt (ver arriba).
     const newest = (r: PayrollRecordExt) =>
@@ -187,9 +191,20 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   const [isSaving, setIsSaving] = useState(false);
 
   // Estados de Modales
-  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecordExt | null>(null);
+  // Pago abierto en el modal: se muestra su versión EN VIVO (si otra persona
+  // lo marca Paid mientras está abierto, el modal lo refleja).
+  const [openedPayroll, setSelectedPayroll] = useState<PayrollRecordExt | null>(null);
+  const selectedPayroll = useMemo(
+    () =>
+      openedPayroll
+        ? ((payrollLive.data as PayrollRecordExt[]).find(r => r.id === openedPayroll.id) ?? openedPayroll)
+        : null,
+    [openedPayroll, payrollLive.data],
+  );
   const [isEditingPayroll, setIsEditingPayroll] = useState(false);
-  const [selectedHouse, setSelectedHouse] = useState<Property | null>(null);
+  // Casa abierta en el modal, mostrada EN VIVO (useLiveHouse).
+  const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
+  const selectedHouse = useLiveHouse(openedHouse, properties);
   // ⭐ Casa a EDITAR desde el botón de la fila: monta HousesView en modo 'modals-only'.
   //    IMPORTANTE: houseEditorMounted mantiene HousesView MONTADO una vez usado.
   //    HousesView llama clearHouseToOpenEdit() apenas abre el formulario; si el montaje
@@ -243,7 +258,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   //    vinculada (pedido explícito del negocio: la nómina se agrupa por semana trabajada).
   //    Solo si el registro no tiene casa o la casa no tiene scheduleDate, cae a record.date.
   const recScheduleTime = (r: PayrollRecordExt): number => {
-    const prop = properties.find(p => p.id === r.propertyId);
+    const prop = propById.get(r.propertyId);
     const t = toTime(prop?.scheduleDate);
     if (!isNaN(t)) return t;
     // Registros sin casa (ajustes de bonus/descuento): usan la fecha del pago
@@ -283,9 +298,9 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
         const suffix = allPaid ? (lastPaidT ? `(Pagado ${fmtDate(new Date(lastPaidT))})` : '(Pagado)') : '(Pendiente)';
         return { key: String(k), label: weekLabel(k), suffix };
       });
-    // recScheduleTime depende de properties (closure); por eso está en las deps.
+    // recScheduleTime depende de propById (closure); por eso está en las deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, properties]);
+  }, [records, propById]);
 
   // Semana seleccionada: la elegida si sigue existiendo; si no (o si todavía no
   // hay ninguna), la más reciente QUEDA fijada — llegar una semana más nueva no
@@ -323,7 +338,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     else out = [...out].sort((a, b) => empName(a.emp).localeCompare(empName(b.emp)));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, employees, properties, selectedWeekKey, weekSearch, weekSort]);
+  }, [records, employees, propById, selectedWeekKey, weekSearch, weekSort]);
 
   // El modal de detalle semanal muestra siempre los registros en vivo: se
   // guardan los elegidos y se vuelven a buscar en `records` en cada render.
@@ -362,7 +377,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     const startT = startDate ? toTime(startDate) : null;
     const endT = endDate ? toTime(endDate) + (24 * 60 * 60 * 1000 - 1) : null; // fin inclusivo
 
-    return records.filter(record => {
+    const list = records.filter(record => {
       if (!record.propertyId) return false;
       // ⭐ Alcance 'Own': el usuario solo ve SUS propios registros de nómina.
       if (!canSeeAllPayroll && record.employeeId !== currentUser?.id) return false;
@@ -374,20 +389,22 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
         if (endT !== null && recT > endT) return false;
       }
       return true;
-    }).sort((a, b) => {
-      // ⭐ Orden principal: fecha del PAGO registrado (record.date) descendente —
-      //    el pago que registras hoy desde el botón Pay aparece ARRIBA, sin importar
-      //    el Schedule Date de la casa (había casas con schedule en nov/dic que
-      //    enterraban los pagos recientes cientos de filas abajo).
-      const ca = toTime(a.date), cb = toTime(b.date);
-      const d = (isNaN(cb) ? 0 : cb) - (isNaN(ca) ? 0 : ca);
-      if (d !== 0) return d;
-      // ⭐ Empate (o sin fecha de pago): Schedule Date de la casa descendente.
-      const ta = recScheduleTime(a), tb = recScheduleTime(b);
-      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
     });
+    // ⭐ Orden principal: fecha del PAGO registrado (record.date) descendente —
+    //    el pago que registras hoy desde el botón Pay aparece ARRIBA, sin importar
+    //    el Schedule Date de la casa (había casas con schedule en nov/dic que
+    //    enterraban los pagos recientes cientos de filas abajo).
+    //    Empate (o sin fecha de pago): Schedule Date de la casa descendente.
+    // PERF: las fechas se convierten UNA vez por registro, no en cada
+    // comparación del sort (antes ~2 conversiones × n·log n).
+    const num = (t: number) => (isNaN(t) ? 0 : t);
+    return list
+      .map(r => ({ r, paid: num(toTime(r.date)), sched: num(recScheduleTime(r)) }))
+      .sort((a, b) => (b.paid - a.paid) || (b.sched - a.sched))
+      .map(k => k.r);
+    // recScheduleTime lee propById (closure).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, properties, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
+  }, [records, propById, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
 
   const viewCounts = {
     pending: baseFiltered.filter(r => classifyRecord(r) === 'pending').length,
@@ -406,7 +423,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   //    registro. Las casas sin equipo caen en un grupo "Sin equipo" al final
   //    en vez de desaparecer.
   const groupedByTeam = useMemo(() => {
-    const propById = new Map(properties.map(p => [p.id, p]));
     const groups = new Map<string, { teamId: string; teamName: string; teamColor: string; records: PayrollRecordExt[]; subtotal: number }>();
 
     filteredRecords.forEach(record => {
@@ -433,7 +449,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
       if (b.teamId === '__sin_equipo__') return -1;
       return a.teamName.localeCompare(b.teamName);
     });
-  }, [filteredRecords, properties, teams]);
+  }, [filteredRecords, propById, teams]);
 
   const toggleTeamCollapsed = (teamId: string) =>
     setCollapsedTeams(prev =>
@@ -687,7 +703,17 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     if (!editForm || !editForm.id) return;
     
     const total = Number(editForm.baseAmount || 0) + Number(editForm.extraAmount || 0) - Number(editForm.discountAmount || 0);
-    const finalData = { ...editForm, totalAmount: total };
+    // ⭐ Solo los campos que este modal edita. Antes se reescribía el pago
+    //    completo con la copia del modal: si alguien lo marcaba Paid mientras
+    //    tanto (p. ej. un pago consolidado), el status volvía a Pending.
+    const finalData: Partial<PayrollRecord> = {
+      baseAmount: Number(editForm.baseAmount || 0),
+      extraAmount: Number(editForm.extraAmount || 0),
+      extraNote: editForm.extraNote || '',
+      discountAmount: Number(editForm.discountAmount || 0),
+      discountNote: editForm.discountNote || '',
+      totalAmount: total,
+    };
 
     setIsSaving(true);
     try {
@@ -930,7 +956,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
 
                     {!isCollapsed && group.records.map(record => {
                 const emp = employees.find(e => e.id === record.employeeId);
-                const prop = properties.find(p => p.id === record.propertyId);
+                const prop = propById.get(record.propertyId);
                 const isSelected = record.id ? selectedRecordIds.includes(record.id as string) : false;
                 // ⭐ Resolver nombre del cliente
                 const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
@@ -1160,7 +1186,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                     <span className="pv-label">Casas incluidas en este pago ({selectedRecords.length})</span>
                     <ul className="pvp-house-list">
                       {selectedRecords.map(rec => {
-                        const prop = properties.find(p => p.id === rec.propertyId);
+                        const prop = propById.get(rec.propertyId);
                         return (
                           <li key={rec.id} className="pvp-house">
                             <div className="pvp-house-info">
@@ -1247,7 +1273,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                     <span className="pv-label">Casas incluidas ({housesInBatch.length})</span>
                     <ul className="pvp-house-list">
                       {housesInBatch.map(rec => {
-                        const prop = properties.find(p => p.id === rec.propertyId);
+                        const prop = propById.get(rec.propertyId);
                         return (
                           <li key={rec.id} className="pvp-house">
                             <div className="pvp-house-info">
@@ -1327,7 +1353,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                         </thead>
                         <tbody>
                           {houses.map(rec => {
-                            const prop = properties.find(p => p.id === rec.propertyId);
+                            const prop = propById.get(rec.propertyId);
                             return (
                               <tr
                                 key={rec.id}
@@ -1373,7 +1399,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
             <div className="pv-modal-body">
               {(() => {
                 const emp = employees.find(e => e.id === selectedPayroll.employeeId);
-                const prop = properties.find(p => p.id === selectedPayroll.propertyId);
+                const prop = propById.get(selectedPayroll.propertyId);
                 const isPaid = selectedPayroll.status === 'Paid';
                 const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
 
