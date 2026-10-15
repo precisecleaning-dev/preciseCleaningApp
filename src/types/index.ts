@@ -171,6 +171,7 @@ export interface Status {
   business?: string;
   color: string;
   order: number | string; // Orden en el que aparece en pantalla
+  cavalryOrder?: number | string; // Orden de la columna en la pestaña Cavalry del Pipeline (vacío = order)
   showInDashboard?: boolean; // NUEVO: Checkbox para saber si se muestra en el inicio
   dashboardOrder?: number; // Orden dentro del dashboard (distinto de `order`)
 }

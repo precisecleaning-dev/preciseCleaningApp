@@ -23,6 +23,10 @@ Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea pre
   número de la pestaña son las casas que salen en su tablero. Hasta que llegan los clientes el
   tablero espera ("Loading metrics..."), para no pintar casas de Cavalry en Normal. Cambiar de
   empresa quita el filtro de la tarjeta KPI. Una empresa sin status muestra un aviso.
+- Form Order propio de Cavalry (`cavalryOrder` en el status, campo "Form Order (Cavalry)" que sale
+  al marcar Cavalry): ordena solo las columnas y KPIs de la pestaña Cavalry (`statusOrderIn`). Vacío =
+  usa el Form Order de siempre. El Form Order normal sigue ordenando la pestaña Normal y los
+  desplegables de status.
 - Ojo: una casa cuyo status no es de su empresa no sale en ningún tablero (p. ej. una casa de
   Cavalry en Recall mientras Recall solo sea Normal). El cambio de status desde el tablero ofrece
   solo los status de esa empresa.

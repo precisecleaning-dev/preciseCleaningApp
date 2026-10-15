@@ -14,7 +14,7 @@ import { useLiveCollection } from '../shared/data/liveCollections';
 import CustomSelect from '../components/CustomSelect';
 import './SettingsView.css';
 import MenuButton from '../shared/components/MenuButton';
-import { BUSINESSES, statusBusinesses, type BusinessName } from '../shared/utils/businesses';
+import { BUSINESSES, statusBusinesses, statusInBusiness, type BusinessName } from '../shared/utils/businesses';
 
 const settingsOptions: SettingOption[] = [
   { id: 'category', label: 'Category Expenses', icon: Tags },
@@ -57,6 +57,7 @@ interface SettingItem {
   id: string;
   name?: string;
   order?: number | string;
+  cavalryOrder?: number | string;
   business?: string;
   color?: string;
   percentage?: number;
@@ -129,7 +130,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({ 
-    order: '' as number | string, name: '', business: '', color: '#3b82f6', percentage: '' as string,
+    order: '' as number | string, cavalryOrder: '' as number | string, name: '', business: '', color: '#3b82f6', percentage: '' as string,
     estimatedTime: '' as number | string, placeId: '', price: '' as number | string,
     placeTasks: [] as {id: string, name: string}[],
     teamId: '',
@@ -146,7 +147,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     if (item) {
       setSelectedItem(item);
       setFormData({ 
-        order: item.order || '', name: item.name || '', business: item.business || '', 
+        order: item.order || '', cavalryOrder: item.cavalryOrder || '', name: item.name || '', business: item.business || '', 
         color: item.color || '#3b82f6', percentage: (item.percentage !== undefined && item.percentage !== null && item.percentage !== 0) ? String(item.percentage) : '', estimatedTime: item.estimatedTime || '',
         placeId: item.placeId || '', price: item.price || '',
         placeTasks: currentSettingView === 'place' ? tasks.filter(t => t.placeId === item.id).map(t => ({id: t.id, name: t.name})) : [],
@@ -156,7 +157,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       });
     } else {
       setSelectedItem(null);
-      setFormData({ order: '', name: '', business: '', color: '#3b82f6', percentage: '', estimatedTime: '', placeId: '', price: '', placeTasks: [], teamId: '', showInDashboard: false, dashboardOrder: '' });
+      setFormData({ order: '', cavalryOrder: '', name: '', business: '', color: '#3b82f6', percentage: '', estimatedTime: '', placeId: '', price: '', placeTasks: [], teamId: '', showInDashboard: false, dashboardOrder: '' });
     }
     setNewTaskInput('');
     setIsDetailModalOpen(false); 
@@ -252,6 +253,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
       if (['team','responsable','priority','status'].includes(currentSettingView)) dataToSave.color = formData.color;
       if (currentSettingView === 'status') {
         dataToSave.order = formData.order;
+        dataToSave.cavalryOrder = formStatusBusinesses.includes('Cavalry') ? formData.cavalryOrder : '';
         dataToSave.showInDashboard = formData.showInDashboard;
         dataToSave.dashboardOrder = formData.dashboardOrder;
       }
@@ -431,6 +433,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                           {currentSettingView === 'status' && (
                             <>
                               <th className="stv-th">Order</th>
+                              <th className="stv-th">Cavalry Order</th>
                               <th className="stv-th">Name</th>
                               <th className="stv-th">Business</th>
                               <th className="stv-th center">In Dash?</th>
@@ -527,6 +530,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                     {currentSettingView === 'status' && statuses.map((status) => (
                       <tr key={status.id} onClick={() => handleOpenDetail(status)} className="stv-row">
                         <td data-label="Order" className="stv-td">{status.order}</td>
+                        <td data-label="Cavalry Order" className="stv-td">{statusInBusiness(status, 'Cavalry') && status.cavalryOrder ? status.cavalryOrder : '-'}</td>
                         <td data-label="Name" className="stv-td strong">{status.name}</td>
                         <td data-label="Business" className="stv-td muted">{statusBusinesses(status.business).join(', ')}</td>
                         <td data-label="In Dash?" className="stv-td center">
@@ -723,6 +727,13 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                     </fieldset>
                   )}
 
+                  {currentSettingView === 'status' && formStatusBusinesses.includes('Cavalry') && (
+                    <div className="stv-form-group">
+                      <label className="stv-label">Form Order (Cavalry)</label>
+                      <input type="number" className="stv-input" placeholder="Same as Form Order" value={formData.cavalryOrder} onChange={(e) => setFormData({ ...formData, cavalryOrder: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleSave()} />
+                    </div>
+                  )}
+
                   {(currentSettingView === 'team' || currentSettingView === 'priority' || currentSettingView === 'service') && (
                     <div className="stv-form-group">
                       <label className="stv-label">Business</label>
@@ -841,6 +852,9 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                 <dl className="stv-detail-list">
                   {currentSettingView === 'status' && (
                     <div className="stv-detail-item"><dt className="stv-detail-label">Form Order</dt><dd className="stv-detail-value">{selectedItem.order}</dd></div>
+                  )}
+                  {currentSettingView === 'status' && statusInBusiness(selectedItem, 'Cavalry') && (
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Form Order (Cavalry)</dt><dd className="stv-detail-value">{selectedItem.cavalryOrder || 'Same as Form Order'}</dd></div>
                   )}
                   {currentSettingView === 'task' && (
                     <div className="stv-detail-item"><dt className="stv-detail-label">Place</dt><dd className="stv-detail-value">{places.find(p => p.id === selectedItem.placeId)?.name || 'Unknown'}</dd></div>

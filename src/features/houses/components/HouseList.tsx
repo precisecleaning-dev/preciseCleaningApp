@@ -40,7 +40,7 @@ import RepairClientsModal from "./RepairClientsModal";
 import VirtualItems from "../../../shared/components/VirtualItems";
 import BusinessTabs from "../../../shared/components/BusinessTabs";
 import { useBusiness } from "../../../shared/hooks/useBusiness";
-import { cavalryClientKeys, houseBusiness, statusInBusiness } from "../../../shared/utils/businesses";
+import { cavalryClientKeys, houseBusiness, statusInBusiness, statusOrderIn } from "../../../shared/utils/businesses";
 
 // ⭐ Valor del filtro para "casas sin status" (no choca con ningún nombre real)
 const NO_STATUS_FILTER = "__NO_STATUS__";
@@ -206,12 +206,15 @@ export default function HouseList({
     () => (separateBusiness ? scopedProperties.filter((p) => houseBusiness(p, cavalryKeys) === business) : scopedProperties),
     [scopedProperties, separateBusiness, cavalryKeys, business],
   );
-  // Columnas del tablero: status visibles para el rol y de la empresa elegida.
-  // Sin clientes todavía no se sabe qué casa es de quién: el tablero espera.
+  // Columnas del tablero: status visibles para el rol y de la empresa elegida,
+  // en el Form Order de esa empresa. Sin clientes todavía no se sabe qué casa
+  // es de quién: el tablero espera.
   const boardLoading = !statusesLoaded || !customersLoaded;
   const boardStatuses = boardLoading
     ? []
-    : statuses.filter((s) => isStatusVisibleForRole(s.id) && statusInBusiness(s, business));
+    : statuses
+        .filter((s) => isStatusVisibleForRole(s.id) && statusInBusiness(s, business))
+        .sort((a, b) => statusOrderIn(a, business) - statusOrderIn(b, business));
   // Casas de cada empresa en su tablero, para el conteo de las pestañas.
   const businessCounts = useMemo(() => {
     const counts = { Normal: 0, Cavalry: 0 };
