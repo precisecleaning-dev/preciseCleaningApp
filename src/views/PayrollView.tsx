@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
@@ -6,7 +6,6 @@ import {
   Search, Wallet, ClipboardList, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
-import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
 import { db, auth } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
 import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore';
@@ -21,6 +20,7 @@ import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTo
 import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
 import { todayIso } from '../utils/dateFormat';
 import DateInput from '../shared/components/DateInput';
+import VirtualItems from '../shared/components/VirtualItems';
 import './PayrollView.css';
 import MenuButton from '../shared/components/MenuButton';
 
@@ -29,12 +29,11 @@ interface PayrollViewProps {
   // ⭐ Casas del listener global de App.tsx (antes esta vista abría un SEGUNDO
   //    listener sobre toda la colección `properties`).
   properties: Property[];
-  setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
-  // ⭐ Contexto de usuario para el formulario de edición de casa (HousesView modals-only):
-  //    sin esto, canEdit de HousesView sería false y el formulario quedaría de solo lectura.
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  /** Formulario de la casa: el de Houses, abierto encima por App. */
+  onOpenHouseEdit: (house: Property) => void;
 }
 
 
@@ -129,7 +128,11 @@ const weekLabel = (mondayT: number): string => {
   return `${MESES[a.getMonth()]} ${a.getDate()} - ${MESES[b.getMonth()]} ${b.getDate()}`;
 };
 
-export default function PayrollView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
+// ⭐ Clasificación de cada casa respecto a la nómina (sub-pestañas):
+const classifyRecord = (r: PayrollRecordExt): 'pending' | 'ennomina' | 'paid' =>
+  !r.batchId ? 'pending' : (r.status === 'Paid' ? 'paid' : 'ennomina');
+
+export default function PayrollView({ onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onOpenHouseEdit }: PayrollViewProps) {
   // ══════════════════════════════════════════════════════════════════════════
   // ⭐ ALCANCE POR ROL (scope del módulo Payroll en Roles & Permissions):
   //    · 'All'  → ve la nómina de TODOS los empleados y el filtro de empleado.
@@ -187,7 +190,9 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   const customersLive = useLiveCollection('customers');
   const customers = customersLive.data;
 
-  const isLoading = !payrollLive.loaded || !usersLive.loaded || !statusesLive.loaded || !customersLive.loaded;
+  // ⭐ Las filas se pintan en cuanto llega la nómina; cliente y empleado
+  //    muestran "…" hasta que llegan sus catálogos (nunca el id crudo).
+  const isLoading = !payrollLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
 
   // Estados de Modales
@@ -205,13 +210,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   // Casa abierta en el modal, mostrada EN VIVO (useLiveHouse).
   const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
   const selectedHouse = useLiveHouse(openedHouse, properties);
-  // ⭐ Casa a EDITAR desde el botón de la fila: monta HousesView en modo 'modals-only'.
-  //    IMPORTANTE: houseEditorMounted mantiene HousesView MONTADO una vez usado.
-  //    HousesView llama clearHouseToOpenEdit() apenas abre el formulario; si el montaje
-  //    dependiera de houseToEdit, se desmontaría en el mismo frame y el modal moriría
-  //    al instante (el bug de "el botón no hace nada").
-  const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
-  const [houseEditorMounted, setHouseEditorMounted] = useState(false);
 
   // Formulario temporal de edición
   const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
@@ -249,6 +247,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   // ⭐ Resolver el nombre del cliente desde la colección customers (retrocompatible)
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
+    if (!customersLive.loaded) return '…';
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
@@ -366,10 +365,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   //    cursor como en ServiciosCompletados, o agregar un campo `createdAt` uniforme.
 
   // Lógica de Filtros
-  // ⭐ Clasificación de cada casa respecto a la nómina (sub-pestañas):
-  const classifyRecord = (r: PayrollRecordExt): 'pending' | 'ennomina' | 'paid' =>
-    !r.batchId ? 'pending' : (r.status === 'Paid' ? 'paid' : 'ennomina');
-
   // Registros filtrados SOLO por fechas (Schedule Date) y empleado; la sub-pestaña
   // reparte después entre pending / en nómina / paid. Los registros de ajuste
   // (bonus/descuento, sin casa) no se listan aquí — se ven en la pestaña Nóminas.
@@ -406,12 +401,14 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, propById, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
 
-  const viewCounts = {
+  // Memoizado: la tabla se vuelve a dibujar al hacer scroll (ventana de filas) y
+  // estos recorridos sobre miles de registros no deben repetirse en cada paso.
+  const viewCounts = useMemo(() => ({
     pending: baseFiltered.filter(r => classifyRecord(r) === 'pending').length,
     ennomina: baseFiltered.filter(r => classifyRecord(r) === 'ennomina').length,
     paid: baseFiltered.filter(r => classifyRecord(r) === 'paid').length,
-  };
-  const filteredRecords = baseFiltered.filter(r => classifyRecord(r) === assignView);
+  }), [baseFiltered]);
+  const filteredRecords = useMemo(() => baseFiltered.filter(r => classifyRecord(r) === assignView), [baseFiltered, assignView]);
 
   // ⭐ Selección de casas para el pago consolidado (solo registros pendientes)
   // La selección para pagar solo aplica en la vista de pendientes
@@ -455,6 +452,14 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     setCollapsedTeams(prev =>
       prev.includes(teamId) ? prev.filter(t => t !== teamId) : [...prev, teamId],
     );
+
+  const tableRows = useMemo(
+    () => groupedByTeam.flatMap(group => [
+      { group, record: null },
+      ...(collapsedTeams.includes(group.teamId) ? [] : group.records.map(record => ({ group, record }))),
+    ]),
+    [groupedByTeam, collapsedTeams],
+  );
 
   // ⭐ Botón "Pagar" de cada fila (pedido del usuario, 10/2026).
   //    · Casa todavía sin nómina: filtra al empleado de esa casa, la deja marcada
@@ -548,9 +553,11 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   // Totales sobre TODO lo filtrado por fecha/empleado (independiente de la sub-pestaña):
   // pagado = casas en nómina pagadas; en nómina = asignadas sin pagar;
   // pendiente = casas aún sin asignar a ninguna nómina.
-  const totalPaid = baseFiltered.filter(r => classifyRecord(r) === 'paid').reduce((sum, r) => sum + getPayrollTotal(r), 0);
-  const totalEnNomina = baseFiltered.filter(r => classifyRecord(r) === 'ennomina').reduce((sum, r) => sum + getPayrollTotal(r), 0);
-  const totalPending = baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getPayrollTotal(r), 0);
+  const { totalPaid, totalEnNomina, totalPending } = useMemo(() => ({
+    totalPaid: baseFiltered.filter(r => classifyRecord(r) === 'paid').reduce((sum, r) => sum + getPayrollTotal(r), 0),
+    totalEnNomina: baseFiltered.filter(r => classifyRecord(r) === 'ennomina').reduce((sum, r) => sum + getPayrollTotal(r), 0),
+    totalPending: baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getPayrollTotal(r), 0),
+  }), [baseFiltered]);
 
   const handleMarkAsPaid = async (record: PayrollRecordExt) => {
     if (!record.id) return;
@@ -735,6 +742,119 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
     : 0;
 
 
+  // Filas de la tabla (cabecera de equipo + registros), dibujadas por ventana:
+  // Paid trae miles y con todas en el DOM la pestaña se congelaba segundos.
+  const renderGroupRow = (group: (typeof groupedByTeam)[number]) => {
+    const isCollapsed = collapsedTeams.includes(group.teamId);
+    const groupPendingIds = group.records
+      .filter(r => r.id && r.status !== 'Paid')
+      .map(r => r.id as string);
+    const groupAllSelected =
+      groupPendingIds.length > 0 &&
+      groupPendingIds.every(id => selectedRecordIds.includes(id));
+
+    return (
+      <tr key={`team:${group.teamId}`} className="pv-group-row">
+        {selectedEmployee && assignView === 'pending' && (
+          <td className="pv-td check" onClick={(e) => e.stopPropagation()}>
+            {groupPendingIds.length > 0 && (
+              <input
+                type="checkbox"
+                className="pv-row-check"
+                checked={groupAllSelected}
+                onChange={() => toggleTeamSelected(group.records)}
+                aria-label={`Seleccionar las casas de ${group.teamName}`}
+              />
+            )}
+          </td>
+        )}
+        <td
+          className="pv-group-cell"
+          colSpan={selectedEmployee && assignView === 'pending' ? 5 : 5}
+          onClick={() => toggleTeamCollapsed(group.teamId)}
+        >
+          <div className="pv-group-inner">
+            <span className="pv-group-chevron">
+              {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+            </span>
+            <span
+              className="pv-group-dot"
+              style={{ '--team-color': group.teamColor } as CSSProperties}
+            />
+            <span className="pv-group-name">{group.teamName}</span>
+            <span className="pv-group-count">{group.records.length} casa(s)</span>
+            <span className="pv-group-total">${group.subtotal.toFixed(2)}</span>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderRecordRow = (record: PayrollRecordExt) => {
+    const emp = employees.find(e => e.id === record.employeeId);
+    const prop = propById.get(record.propertyId);
+    const isSelected = record.id ? selectedRecordIds.includes(record.id as string) : false;
+    // ⭐ Resolver nombre del cliente
+    const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
+
+    return (
+      <tr
+        key={record.id}
+        onClick={() => setSelectedPayroll(record)}
+        className="pv-row"
+      >
+        {/* ⭐ Check para armar el pago del empleado (solo casas pendientes) */}
+        {selectedEmployee && assignView === 'pending' && (
+          <td className="pv-td check" onClick={(e) => e.stopPropagation()}>
+            {record.status !== 'Paid' && (
+              <input
+                type="checkbox"
+                className="pv-row-check"
+                checked={isSelected}
+                onChange={() => toggleRecordSelected(record)}
+                aria-label="Seleccionar casa para pagar"
+              />
+            )}
+          </td>
+        )}
+
+        <td className="pv-td">
+          <div className="pv-client-name">{clientName}</div>
+          <div className="pv-client-address"><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
+        </td>
+
+        {/* ⭐ Muestra el Schedule Date de la casa (coherente con el filtro); cae a record.date si no hay */}
+        <td className="pv-td">{fmtDate(prop?.scheduleDate || record.date)}</td>
+
+        <td className="pv-td strong">{usersLive.loaded ? empName(emp) || 'Unknown' : '…'}</td>
+
+        <td className="pv-td amount">${getPayrollTotal(record).toFixed(2)}</td>
+
+        {/* ⭐ Acciones al final de la fila (el status ahora se gestiona al pagar
+            y desde la pestaña Nóminas, ya no con Mark Paid aquí) */}
+        <td className="pv-td right" onClick={(e) => e.stopPropagation()}>
+          <div className="pv-row-actions end">
+            {canSeeAllPayroll && record.status !== 'Paid' && (
+              <button
+                type="button"
+                onClick={() => startPayFor(record)}
+                className="pv-pay-btn"
+                title={record.batchId ? 'Marcar como pagada' : 'Pagar esta casa'}
+              >
+                <Wallet size={14} /> Pagar
+              </button>
+            )}
+            {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (el de Houses) para rectificar información */}
+            {prop && <button onClick={() => onOpenHouseEdit(prop)} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
+            <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar pago"><Edit2 size={16} /></button>
+            <button onClick={() => handleDeletePayroll(record.id as string)} className="pv-icon-btn delete" title="Eliminar"><Trash2 size={16} /></button>
+          </div>
+        </td>
+
+      </tr>
+    );
+  };
+
   return (
     <div className="fade-in pv-page">
 
@@ -749,7 +869,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
         </div>
         {/* ⭐ Corrección de fechas mal capturadas (solo alcance 'All') */}
         {canSeeAllPayroll && (
-          <PropertyDateFixTool properties={properties} setProperties={setProperties} getClientName={getClientName} />
+          <PropertyDateFixTool properties={properties} getClientName={getClientName} />
         )}
       </header>
 
@@ -892,137 +1012,35 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
               <th className="pv-th actions right">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell">Loading payroll data...</td></tr>
-            ) : records.length === 0 ? (
-              // ⭐ Distinguir entre "BD vacía" y "filtros excluyen todo"
-              <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell">No payroll records in database yet. Register payments from the Houses view.</td></tr>
-            ) : filteredRecords.length === 0 ? (
-              <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell italic">
-                {assignView === 'pending'
-                  ? 'No hay casas pendientes de asignar con los filtros actuales.'
-                  : assignView === 'ennomina'
-                    ? 'No hay casas en nómina sin pagar con los filtros actuales.'
-                    : 'No hay casas pagadas con los filtros actuales.'}
-              </td></tr>
-            ) : (
-              // ⭐ AGRUPADO POR EQUIPO: cada equipo abre con una fila de cabecera
-              //    (nombre, numero de casas y subtotal) y se puede colapsar.
-              groupedByTeam.map(group => {
-                const isCollapsed = collapsedTeams.includes(group.teamId);
-                const groupPendingIds = group.records
-                  .filter(r => r.id && r.status !== 'Paid')
-                  .map(r => r.id as string);
-                const groupAllSelected =
-                  groupPendingIds.length > 0 &&
-                  groupPendingIds.every(id => selectedRecordIds.includes(id));
-
-                return (
-                  <Fragment key={group.teamId}>
-                    <tr className="pv-group-row">
-                      {selectedEmployee && assignView === 'pending' && (
-                        <td className="pv-td check" onClick={(e) => e.stopPropagation()}>
-                          {groupPendingIds.length > 0 && (
-                            <input
-                              type="checkbox"
-                              className="pv-row-check"
-                              checked={groupAllSelected}
-                              onChange={() => toggleTeamSelected(group.records)}
-                              aria-label={`Seleccionar las casas de ${group.teamName}`}
-                            />
-                          )}
-                        </td>
-                      )}
-                      <td
-                        className="pv-group-cell"
-                        colSpan={selectedEmployee && assignView === 'pending' ? 5 : 5}
-                        onClick={() => toggleTeamCollapsed(group.teamId)}
-                      >
-                        <div className="pv-group-inner">
-                          <span className="pv-group-chevron">
-                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                          </span>
-                          <span
-                            className="pv-group-dot"
-                            style={{ '--team-color': group.teamColor } as CSSProperties}
-                          />
-                          <span className="pv-group-name">{group.teamName}</span>
-                          <span className="pv-group-count">{group.records.length} casa(s)</span>
-                          <span className="pv-group-total">${group.subtotal.toFixed(2)}</span>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {!isCollapsed && group.records.map(record => {
-                const emp = employees.find(e => e.id === record.employeeId);
-                const prop = propById.get(record.propertyId);
-                const isSelected = record.id ? selectedRecordIds.includes(record.id as string) : false;
-                // ⭐ Resolver nombre del cliente
-                const clientName = prop ? getClientName(prop.client) : 'Unknown Property';
-
-                return (
-                  <tr
-                    key={record.id}
-                    onClick={() => setSelectedPayroll(record)}
-                    className="pv-row"
-                  >
-                    {/* ⭐ Check para armar el pago del empleado (solo casas pendientes) */}
-                    {selectedEmployee && assignView === 'pending' && (
-                      <td className="pv-td check" onClick={(e) => e.stopPropagation()}>
-                        {record.status !== 'Paid' && (
-                          <input
-                            type="checkbox"
-                            className="pv-row-check"
-                            checked={isSelected}
-                            onChange={() => toggleRecordSelected(record)}
-                            aria-label="Seleccionar casa para pagar"
-                          />
-                        )}
-                      </td>
-                    )}
-
-                    <td className="pv-td">
-                      <div className="pv-client-name">{clientName}</div>
-                      <div className="pv-client-address"><MapPin size={12} /> {prop ? prop.address : 'Unknown Address'}</div>
-                    </td>
-
-                    {/* ⭐ Muestra el Schedule Date de la casa (coherente con el filtro); cae a record.date si no hay */}
-                    <td className="pv-td">{fmtDate(prop?.scheduleDate || record.date)}</td>
-
-                    <td className="pv-td strong">{empName(emp) || 'Unknown'}</td>
-
-                    <td className="pv-td amount">${getPayrollTotal(record).toFixed(2)}</td>
-
-                    {/* ⭐ Acciones al final de la fila (el status ahora se gestiona al pagar
-                        y desde la pestaña Nóminas, ya no con Mark Paid aquí) */}
-                    <td className="pv-td right" onClick={(e) => e.stopPropagation()}>
-                      <div className="pv-row-actions end">
-                        {canSeeAllPayroll && record.status !== 'Paid' && (
-                          <button
-                            type="button"
-                            onClick={() => startPayFor(record)}
-                            className="pv-pay-btn"
-                            title={record.batchId ? 'Marcar como pagada' : 'Pagar esta casa'}
-                          >
-                            <Wallet size={14} /> Pagar
-                          </button>
-                        )}
-                        {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (HousesView modals-only) para rectificar información */}
-                        {prop && <button onClick={() => { setHouseEditorMounted(true); setHouseToEdit(prop); }} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
-                        <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar pago"><Edit2 size={16} /></button>
-                        <button onClick={() => handleDeletePayroll(record.id as string)} className="pv-icon-btn delete" title="Eliminar"><Trash2 size={16} /></button>
-                      </div>
-                    </td>
-
-                  </tr>
-                )
-              })}
-                  </Fragment>
-                );
-              })
-            )}
-          </tbody>
+          {isLoading || records.length === 0 || filteredRecords.length === 0 ? (
+            <tbody>
+              {isLoading ? (
+                Array.from({ length: 6 }, (_, i) => (
+                  <tr key={i}><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-td"><div className="skel-line skel-row-main" /></td></tr>
+                ))
+              ) : records.length === 0 ? (
+                // ⭐ Distinguir entre "BD vacía" y "filtros excluyen todo"
+                <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell">No payroll records in database yet. Register payments from the Houses view.</td></tr>
+              ) : (
+                <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell italic">
+                  {assignView === 'pending'
+                    ? 'No hay casas pendientes de asignar con los filtros actuales.'
+                    : assignView === 'ennomina'
+                      ? 'No hay casas en nómina sin pagar con los filtros actuales.'
+                      : 'No hay casas pagadas con los filtros actuales.'}
+                </td></tr>
+              )}
+            </tbody>
+          ) : (
+            // ⭐ AGRUPADO POR EQUIPO: cada equipo abre con una fila de cabecera
+            //    (nombre, numero de casas y subtotal) y se puede colapsar.
+            <VirtualItems
+              items={tableRows}
+              estimate={72}
+              colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5}
+              renderItem={item => item.record ? renderRecordRow(item.record) : renderGroupRow(item.group)}
+            />
+          )}
         </table>
       </div>
 
@@ -1063,8 +1081,8 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
             </div>
           </div>
 
-          {isLoading ? (
-            <div className="pnw-empty">Cargando nóminas...</div>
+          {isLoading || !usersLive.loaded ? (
+            <div className="skel-card" />
           ) : weeks.length === 0 ? (
             <div className="pnw-empty">
               Aún no hay nóminas asignadas. Ve a la pestaña "Asignar nómina", elige un empleado, marca sus casas con el check y presiona "Pagar seleccionadas" — el pago aparecerá aquí agrupado por semana.
@@ -1648,23 +1666,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
       )}
 
       {/* ══════════ MODAL: REVISAR Y CORREGIR FECHAS ══════════ */}
-
-      {/* ⭐ EDICIÓN DE LA CASA sin salir de Payroll: HousesView en modo 'modals-only'
-          dibuja únicamente su formulario de edición encima de esta vista.
-          Se monta solo mientras hay una casa por editar (mismo patrón que Invoices). */}
-      {houseEditorMounted && (
-        <HousesView
-          renderMode="modals-only"
-          onOpenMenu={() => { /* sin página propia en modals-only */ }}
-          properties={properties}
-          setProperties={setProperties}
-          currentUser={currentUser}
-          activeRole={activeRole}
-          isSuperAdmin={isSuperAdmin}
-          houseToOpenEdit={houseToEdit}
-          clearHouseToOpenEdit={() => setHouseToEdit(null)}
-        />
-      )}
 
     </div>
   );

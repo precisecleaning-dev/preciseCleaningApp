@@ -15,7 +15,9 @@
     <!-- ⭐ Tipografía del diseño "Unified Jobs View" (Overview e Invoices) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- media="print" + onload: la hoja ya no frena el primer pintado. El login y
+         el menú usan system-ui; las vistas con esta letra pintan después. -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
 
     <!--
       ⭐ viewport-fit=cover: sin esto, env(safe-area-inset-*) devuelve 0 y el
@@ -68,6 +70,25 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Con sesión guardada pintamos ya el menú y el esqueleto, sin esperar al JS (~2 s
+      // en el teléfono). Mismo marcado que el esqueleto de App.tsx (ViewSkeleton): si
+      // cambia uno, cambia el otro. React lo reemplaza al montar.
+      try {
+        if (Object.keys(localStorage).some((k) => k.startsWith('firebase:authUser:'))) {
+          document.documentElement.classList.add('has-session');
+          const rows = '<div class="skel-row"><div class="skel-line skel-row-main"></div><div class="skel-line skel-row-side"></div></div>'.repeat(6);
+          document.getElementById('root').innerHTML =
+            '<div class="app-container"><aside class="sidebar-container ' + (innerWidth > 768 ? 'open' : 'closed') + '" aria-hidden="true"></aside>' +
+            '<main class="main-content"><div class="skel-page" role="status" aria-busy="true" aria-live="polite"><span class="u-sr-only">Cargando…</span>' +
+            '<div class="skel-header"><div class="skel-line skel-title"></div><div class="skel-line skel-subtitle"></div></div>' +
+            '<div class="skel-stats"><div class="skel-card"></div><div class="skel-card"></div><div class="skel-card"></div></div>' +
+            '<div class="skel-block">' + rows + '</div></div></main></div>';
+        }
+      } catch {
+        // sin localStorage: se queda el fondo liso hasta que monte React
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

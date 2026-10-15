@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Search, MapPin, Users, CalendarDays, Clock, User, Check, Repeat,
@@ -9,9 +9,8 @@ import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { getCompanySettings } from '../services/companyService';
 import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import type { Customer, Property, Role, SystemUser } from '../types/index';
-import type { QCRecord } from './QualityCheckView';
-import { propertiesService } from '../services/propertiesService';
-import { statusHistoryService } from '../services/statusHistoryService';
+import type { QualityCheckRecord } from '../types/index';
+import { changeHouseStatus, houseLogLabel } from '../features/houses/services/houseStatus';
 import { exportQCReportPDF, type QCPdfPlace, type QCPdfTask, type QCPdfBranding } from '../utils/qcReportPdf';
 import { formatDate } from '../utils/dateFormat';
 import { computeQCScore, passRateColors } from '../utils/qcScore';
@@ -57,16 +56,7 @@ const TAB_LABEL: Record<ReportTab, string> = {
   recall: 'Recall',
 };
 
-type QCReportRow = QCRecord & {
-  id: string;
-  createdAt?: string | null;
-  correctionsDoneAt?: string | null;
-  correctionsDoneBy?: string | null;
-  // ⭐ Resultado (%) guardado al cerrar la inspeccion. Los registros anteriores a
-  //    este cambio no lo tienen: se recalcula al vuelo desde qcData.
-  passRate?: number | null;
-  passRateAnswered?: number | null;
-};
+type QCReportRow = QualityCheckRecord & { id: string };
 
 const toMs = (iso?: string | null): number => {
   if (!iso) return NaN;
@@ -104,7 +94,7 @@ export default function QCReportsTableView({
   //    Antes: listener propio de quality_checks con limit(2000) SIN orden (los
   //    primeros 2000 por id, no los más recientes) + 5 catálogos propios.
   const { data: qcData, loaded: qcLoaded } = useLiveCollection('qualityChecks');
-  // QCReportRow es el tipo local de esta vista (QCRecord + campos de la tabla).
+  // QCReportRow: el reporte de types/index.ts con id seguro (viene de Firestore).
   const reports = qcData as unknown as QCReportRow[];
   const customers = useLiveData('customers');
   const statuses = useLiveData('statuses');
@@ -115,6 +105,8 @@ export default function QCReportsTableView({
   const isLoading = !qcLoaded;
 
   const [search, setSearch] = useState('');
+  // La caja responde al instante; el filtro de la tabla va un paso atrás.
+  const deferredSearch = useDeferredValue(search);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [activeTab, setActiveTab] = useState<ReportTab>('quality_check');
@@ -160,13 +152,6 @@ export default function QCReportsTableView({
   //    no devuelve la casa a trabajo en curso.
   const allowedStatuses = useMemo(() => qcReportsAllowedStatuses(statuses), [statuses]);
 
-  const resolveStatusName = (statusId?: string | null): string => {
-    const raw = String(statusId || '').trim();
-    if (!raw) return '';
-    const st = statuses.find(s => String(s.id) === raw || String(s.name) === raw);
-    return st?.name || raw;
-  };
-
   const handleStatusChange = async (house: Property, newStatusId: string) => {
     // ⭐ Doble candado: el modal ya solo ofrece los permitidos, pero si en el futuro
     //    alguien invoca esto desde otro lado, la regla se sigue cumpliendo aquí.
@@ -177,18 +162,16 @@ export default function QCReportsTableView({
     }
     setIsSaving(true);
     try {
-      const prevStatusId = house.statusId;
-      await propertiesService.update(house.id, { statusId: newStatusId });
-      try {
-        await statusHistoryService.log({
-          propertyId: house.id,
-          fromStatusId: prevStatusId || null,
-          fromStatusName: resolveStatusName(prevStatusId) || null,
-          toStatusId: newStatusId,
-          toStatusName: target.name,
-          changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
-        });
-      } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
+      // ⭐ Casa + status_history en un batch (todo o nada) y bitácora después.
+      //    Al pasar a "Invoice" ahora también se estampa sentToInvoiceAt, como
+      //    en el resto de la app (antes desde aquí caía al fondo de Invoices).
+      await changeHouseStatus(house, newStatusId, {
+        statuses,
+        actor: currentUser,
+        source: 'qc_reports',
+        module: 'Quality Check',
+        label: houseLogLabel(getClientName(house.client), house.address),
+      });
 
       // ⭐ Alinear el REPORTE de calidad con el nuevo estado de la casa.
       //    Quality Check clasifica por `quality_checks.result`, no por el estado
@@ -203,20 +186,23 @@ export default function QCReportsTableView({
     }
   };
 
+  // Lo que el PDF necesita de un reporte (exportar, email y WhatsApp).
+  const pdfInput = (r: QCReportRow) => ({
+    house: { address: r.address || '' },
+    clientName: getClientName(r.client),
+    teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
+    qcData: r.qcData || {},
+    inspectorName: r.inspector || 'Unknown',
+    recordDate: r.date,
+    places,
+    tasks,
+    branding,
+  });
+
   const handleExportPdf = async (r: QCReportRow) => {
     setExportingId(r.id);
     try {
-      await exportQCReportPDF({
-        house: { address: r.address || '' },
-        clientName: getClientName(r.client),
-        teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
-        qcData: r.qcData || {},
-        inspectorName: r.inspector || 'Unknown',
-        recordDate: r.date,
-        places,
-        tasks,
-        branding,
-      });
+      await exportQCReportPDF(pdfInput(r));
     } catch (e) {
       console.error('Error generando el PDF:', e);
       alert('No se pudo generar el PDF del reporte.');
@@ -225,9 +211,6 @@ export default function QCReportsTableView({
     }
   };
 
-  // ⭐ ENVIAR POR WHATSAPP. Se genera el MISMO HTML que el PDF (returnHtml) y se
-  //    comparte: en movil sale la hoja del sistema con el archivo adjunto; en
-  //    escritorio se descarga y se abre WhatsApp Web con el resumen.
   // ⭐ ENVIAR POR EMAIL — ENVÍO REAL, no `mailto:`.
   //
   //    Antes esto abría el cliente de correo del dispositivo y dejaba al usuario
@@ -251,18 +234,7 @@ export default function QCReportsTableView({
 
     setSendingEmailId(r.id);
     try {
-      const html = await exportQCReportPDF({
-        house: { address: r.address || '' },
-        clientName,
-        teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
-        qcData: r.qcData || {},
-        inspectorName: r.inspector || 'Unknown',
-        recordDate: r.date,
-        places,
-        tasks,
-        branding,
-        returnHtml: true,
-      });
+      const html = await exportQCReportPDF({ ...pdfInput(r), returnHtml: true });
       if (!html || typeof html !== 'string') {
         alert('Este reporte no tiene datos para enviar (sin tareas, notas ni fotos).');
         return;
@@ -285,21 +257,13 @@ export default function QCReportsTableView({
   const [shareReady, setShareReady] = useState<PreparedQCShare | null>(null);
   const [shareClient, setShareClient] = useState('');
 
+  // ⭐ ENVIAR POR WHATSAPP. Se genera el MISMO HTML que el PDF (returnHtml) y se
+  //    comparte: en movil sale la hoja del sistema con el archivo adjunto; en
+  //    escritorio se descarga y se abre WhatsApp Web con el resumen.
   const handleShareWhatsApp = async (r: QCReportRow) => {
     setSharingId(r.id);
     try {
-      const html = await exportQCReportPDF({
-        house: { address: r.address || '' },
-        clientName: getClientName(r.client),
-        teamName: r.team || getTeamName(houseFor(r)?.teamId) || '—',
-        qcData: r.qcData || {},
-        inspectorName: r.inspector || 'Unknown',
-        recordDate: r.date,
-        places,
-        tasks,
-        branding,
-        returnHtml: true,
-      });
+      const html = await exportQCReportPDF({ ...pdfInput(r), returnHtml: true });
       if (!html || typeof html !== 'string') {
         alert('Este reporte no tiene datos para enviar.');
         return;
@@ -392,7 +356,7 @@ export default function QCReportsTableView({
   }, [reports, fullHistory, loadedHouseIds]);
 
   const filteredReports = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     return finishedReports.filter(r => {
       if (tabForReport(r) !== activeTab) return false;
       if (startDate && r.date < startDate) return false;
@@ -403,7 +367,7 @@ export default function QCReportsTableView({
     });
     // getClientName depende solo de customers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finishedReports, search, startDate, endDate, activeTab, customers, properties, statuses]);
+  }, [finishedReports, deferredSearch, startDate, endDate, activeTab, customers, properties, statuses]);
 
   const counts = useMemo(() => {
     const acc: Record<ReportTab, number> = { quality_check: 0, invoice: 0, recall: 0 };

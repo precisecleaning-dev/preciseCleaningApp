@@ -5,20 +5,11 @@
 //    status del trabajo (si está en "Quality Check", su QC está pendiente).
 
 import { useMemo } from 'react';
-import type { Status } from '../types/index';
+import type { QcRecordLite, Status } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import { isQualityCheckStatus } from './qcStatus';
+import { latestByHouse } from './qcDashboard';
 import type { Tone } from './jobFinancials';
-
-interface QcDoc {
-  houseId?: string;
-  date?: string;
-  createdAt?: string;
-  status?: string;
-  result?: string | null;
-  passRate?: number | null;
-  isTestRecord?: boolean;
-}
 
 export type QcState = 'passed' | 'failed' | 'pending' | 'none';
 
@@ -35,16 +26,7 @@ const NONE: QcInfo = { state: 'none', label: '—', tone: 'none', score: null };
 /** Último reporte de QC por casa, en tiempo real (store compartido). */
 export function useQcRecords(enabled = true) {
   const { data, loaded } = useLiveCollection('qualityChecks', enabled);
-  const latest = useMemo(() => {
-    const m = new Map<string, QcDoc>();
-    const key = (x: QcDoc) => String(x.date || '') + String(x.createdAt || '');
-    (data as QcDoc[]).forEach((r) => {
-      if (!r.houseId || r.isTestRecord) return;
-      const prev = m.get(r.houseId);
-      if (!prev || key(r) > key(prev)) m.set(r.houseId, r);
-    });
-    return m;
-  }, [data]);
+  const latest = useMemo(() => latestByHouse(data), [data]);
   return { latest, loading: !loaded };
 }
 
@@ -53,7 +35,7 @@ export function qcInfoFor(
   houseId: string,
   statusIdOrName: string | null | undefined,
   statuses: Status[],
-  latest: Map<string, QcDoc>,
+  latest: Map<string, QcRecordLite>,
 ): QcInfo {
   const r = latest.get(houseId);
   if (r) {

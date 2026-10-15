@@ -86,7 +86,8 @@ export function showFullHistory(): void {
 
 /** Primer día incluido en la ventana, como AAAA-MM-DD (hora local): el día 1
  *  del mes de hace 12 meses. */
-export function windowStartIso(now: Date = new Date()): string {
+function windowStartIso(): string {
+  const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth() - WINDOW_MONTHS, 1);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

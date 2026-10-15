@@ -149,8 +149,16 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       try {
         allowed = await usersService.isEmailWhitelisted(email.trim());
       } catch (whitelistErr) {
-        console.error("No se pudo verificar la lista blanca (se permite el acceso):", whitelistErr);
-        allowed = true;
+        // ⭐ Con las Security Rules por rol (security/firestore.rules) un correo
+        //    que no está en la lista, o un usuario Inactive, no puede leer
+        //    system_users: eso es un "no autorizado", no una falla de red.
+        //    Con las reglas de hoy este código nunca llega aquí.
+        if ((whitelistErr as { code?: string } | null)?.code === "permission-denied") {
+          allowed = false;
+        } else {
+          console.error("No se pudo verificar la lista blanca (se permite el acceso):", whitelistErr);
+          allowed = true;
+        }
       }
 
       if (!allowed) {
@@ -190,6 +198,24 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     }
   };
 
+
+  // El mismo campo en "Sign In" y en "Forgot it?".
+  const emailField = (
+    <div>
+      <label className="login-label stacked">Email Address</label>
+      <div className="login-input-wrap">
+        <Mail size={18} color="#94a3b8" className="login-input-icon" />
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          className="login-input"
+          placeholder="your.email@company.com"
+        />
+      </div>
+    </div>
+  );
   return (
     <div className="login-screen">
       <div className="login-card">
@@ -225,20 +251,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
         {view === 'login' ? (
           <form onSubmit={handleLogin} className="login-form">
-            <div>
-              <label className="login-label stacked">Email Address</label>
-              <div className="login-input-wrap">
-                <Mail size={18} color="#94a3b8" className="login-input-icon" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="login-input"
-                  placeholder="your.email@company.com"
-                />
-              </div>
-            </div>
+            {emailField}
 
             <div>
               <div className="login-label-row">
@@ -277,20 +290,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <p className="login-subtitle forgot-intro">
               Enter your email and we'll send you a link to reset your password.
             </p>
-            <div>
-              <label className="login-label stacked">Email Address</label>
-              <div className="login-input-wrap">
-                <Mail size={18} color="#94a3b8" className="login-input-icon" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="login-input"
-                  placeholder="your.email@company.com"
-                />
-              </div>
-            </div>
+            {emailField}
             <button type="submit" disabled={resetLoading} className="login-submit">
               {resetLoading ? 'Sending...' : 'Send reset link'} <ArrowRight size={18} />
             </button>

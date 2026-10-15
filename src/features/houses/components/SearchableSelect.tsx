@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, X } from 'lucide-react';
 import './SearchableSelect.css';
 
-export interface SelectOption {
+interface SelectOption {
   id: string;
   name: string;
   color?: string;

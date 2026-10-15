@@ -17,8 +17,10 @@ import { useLiveCollection } from '../shared/data/liveCollections';
 const TAX_RATE = 0.0825;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-export const money = (n: number) =>
-  `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Un solo formateador: toLocaleString crea uno nuevo en cada llamada y el
+// Overview en Year formatea miles de montos.
+const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const money = (n: number) => `$${MONEY.format(n)}`;
 export const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)}%`);
 
 export interface JobFinancials {

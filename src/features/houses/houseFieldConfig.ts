@@ -2,7 +2,7 @@
 // Campos y botones de Houses que se pueden ocultar o dejar en solo lectura por
 // rol (botón "Configure Fields"). Extraído de HousesView.tsx.
 
-export type ConfigurableElement = { id: string; label: string; section: string };
+type ConfigurableElement = { id: string; label: string; section: string };
 
 export const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
   { id: "client", label: "Client", section: "General Info" },

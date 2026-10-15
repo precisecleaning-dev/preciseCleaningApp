@@ -279,6 +279,16 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     setIsDetailModalOpen(true);
   };
 
+  // Editar y borrar al final de cada fila de catálogo.
+  const actionsCell = (item: SettingItem) => (
+    <td data-label="Actions" className="stv-td right">
+      <div className="stv-actions-cell">
+        <button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(item); }}><Edit2 size={16} /></button>
+        <button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(item.id); }}><Trash2 size={16} /></button>
+      </div>
+    </td>
+  );
+
   const handleDeleteClick = (id: string) => {
     setItemToDelete(id);
     setIsDeleteModalOpen(true);
@@ -477,28 +487,28 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                     {currentSettingView === 'category' && categories.map((cat) => (
                       <tr key={cat.id} onClick={() => handleOpenDetail(cat)} className="stv-row">
                         <td data-label="Name" className="stv-td">{cat.name}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(cat); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(cat.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(cat)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'team' && teams.map((team) => (
                       <tr key={team.id} onClick={() => handleOpenDetail(team)} className="stv-row">
                         <td data-label="Name" className="stv-td">{team.name}</td><td data-label="Business" className="stv-td muted">{team.business || '-'}</td><td data-label="Color" className="stv-td"><span className="stv-color-dot sz-16" style={{ '--dot-color': team.color } as CSSProperties}></span></td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(team); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(team.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(team)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'responsable' && responsables.map((resp) => (
                       <tr key={resp.id} onClick={() => handleOpenDetail(resp)} className="stv-row">
                         <td data-label="Name" className="stv-td">{resp.name}</td><td data-label="Color" className="stv-td"><span className="stv-color-dot sz-16" style={{ '--dot-color': resp.color } as CSSProperties}></span></td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(resp); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(resp.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(resp)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'priority' && priorities.map((priority) => (
                       <tr key={priority.id} onClick={() => handleOpenDetail(priority)} className="stv-row">
                         <td data-label="Name" className="stv-td">{priority.name}</td><td data-label="Business" className="stv-td muted">{priority.business || '-'}</td><td data-label="Color" className="stv-td"><span className="stv-color-dot sz-16" style={{ '--dot-color': priority.color } as CSSProperties}></span></td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(priority); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(priority.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(priority)}
                       </tr>
                     ))}
 
@@ -514,14 +524,14 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                         </td>
                         <td data-label="Dash Order" className="stv-td center">{status.showInDashboard ? status.dashboardOrder : '-'}</td>
                         <td data-label="Color" className="stv-td"><span className="stv-color-dot sz-16" style={{ '--dot-color': status.color } as CSSProperties}></span></td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(status); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(status.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(status)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'place' && places.map((place) => (
                       <tr key={place.id} onClick={() => handleOpenDetail(place)} className="stv-row">
                         <td data-label="Name" className="stv-td">{place.name}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(place); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(place.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(place)}
                       </tr>
                     ))}
 
@@ -530,7 +540,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                       return (
                         <tr key={task.id} onClick={() => handleOpenDetail(task)} className="stv-row">
                           <td data-label="Place" className="stv-td muted">{placeName}</td><td data-label="Task" className="stv-td medium">{task.name}</td>
-                          <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(task); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(task.id); }}><Trash2 size={16} /></button></div></td>
+                          {actionsCell(task)}
                         </tr>
                       )
                     })}
@@ -538,28 +548,28 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                     {currentSettingView === 'product' && products.map((product) => (
                       <tr key={product.id} onClick={() => handleOpenDetail(product)} className="stv-row">
                         <td data-label="Name" className="stv-td">{product.name}</td><td data-label="Price" className="stv-td muted">{product.price ? `$${Number(product.price).toFixed(2)}` : '-'}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(product); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(product.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(product)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'business' && businesses.map((bus) => (
                       <tr key={bus.id} onClick={() => handleOpenDetail(bus)} className="stv-row">
                         <td data-label="Name" className="stv-td">{bus.name}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(bus); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(bus.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(bus)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'service' && services.map((srv) => (
                       <tr key={srv.id} onClick={() => handleOpenDetail(srv)} className="stv-row">
                         <td data-label="Name" className="stv-td">{srv.name}</td><td data-label="Est. Time" className="stv-td muted">{srv.estimatedTime || '-'}</td><td data-label="Business" className="stv-td muted">{srv.business || '-'}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(srv); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(srv.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(srv)}
                       </tr>
                     ))}
 
                     {currentSettingView === 'payment' && paymentMethods.map((payment) => (
                       <tr key={payment.id} onClick={() => handleOpenDetail(payment)} className="stv-row">
                         <td data-label="Name" className="stv-td">{payment.name}</td>
-                        <td data-label="Actions" className="stv-td right"><div className="stv-actions-cell"><button className="stv-icon-btn" onClick={(e) => { e.stopPropagation(); handleOpenForm(payment); }}><Edit2 size={16} /></button><button className="stv-icon-btn delete" onClick={(e) => { e.stopPropagation(); handleDeleteClick(payment.id); }}><Trash2 size={16} /></button></div></td>
+                        {actionsCell(payment)}
                       </tr>
                     ))}
 

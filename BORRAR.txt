@@ -1,5 +1,2 @@
 Borra estos archivos de tu proyecto (git rm):
-src/views/NoStatusView.css
-src/views/NoStatusView.tsx
-src/views/StatusHistoryView.css
-src/views/StatusHistoryView.tsx
+vite-env.d.ts

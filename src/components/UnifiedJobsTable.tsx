@@ -1,14 +1,19 @@
 // ⭐ Tabla unificada del Overview — diseño "Precise Cleaning – Unified Jobs
 //    View": operaciones, Quality Check, cobro, resumen automático y finanzas en
 //    una sola fila por trabajo, agrupada por periodo con subtotales.
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronRight, Pencil, Trash2, Sparkles, RotateCcw, PauseCircle } from 'lucide-react';
 import type { Property } from '../types/index';
 import { money, pct, marginTone, type JobFinancials } from '../utils/jobFinancials';
 import type { UnifiedGroup } from '../utils/unifiedRows';
+import VirtualItems from '../shared/components/VirtualItems';
 import './UnifiedJobsTable.css';
 
 const PAGE = 50;
+
+type JobsTableItem =
+  | { kind: 'group' | 'more'; g: UnifiedGroup; open: boolean; limit: number }
+  | { kind: 'row'; r: UnifiedGroup['rows'][number] };
 
 /** Opciones del status del invoice (mismas que Invoices y el formulario). */
 const BILLING_OPTIONS = ['Needs Invoice', 'Pending', 'Paid', 'Pre-Paid'];
@@ -50,11 +55,15 @@ interface UnifiedJobsTableProps {
   onBillingChange?: (prop: Property, value: string) => void;
   /** ¿La casa estuvo alguna vez en Recall? */
   wasRecall?: (prop: Property) => boolean;
+  /** Casas con un guardado rápido en camino (se marcan, no se bloquean). */
+  pendingIds?: ReadonlySet<string>;
 }
 
-export default function UnifiedJobsTable({
+// ⭐ memo: con props estables (useStableCallback en HousesView) la tabla no se
+//    vuelve a dibujar cuando cambia algo que no le toca (p. ej. el formulario).
+export default memo(function UnifiedJobsTable({
   groups, loading, emptyText, renderStatus, onOpen, onOpenQc, onEdit, onDelete,
-  teams, onTeamChange, onBillingChange, wasRecall,
+  teams, onTeamChange, onBillingChange, wasRecall, pendingIds,
 }: UnifiedJobsTableProps) {
   // Grupos ABIERTOS por defecto (el periodo ya acota el volumen); se pliegan.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -67,6 +76,175 @@ export default function UnifiedJobsTable({
       return next;
     });
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
+
+  // Encabezado de cada grupo, sus trabajos y "Show more" en una sola lista: así
+  // se dibuja por ventana (Year son cientos de filas pesadas).
+  const items = useMemo(
+    () =>
+      groups.flatMap((g): JobsTableItem[] => {
+        const open = !collapsed.has(g.key);
+        const limit = shown[g.key] ?? PAGE;
+        if (!open) return [{ kind: 'group', g, open, limit }];
+        return [
+          { kind: 'group', g, open, limit },
+          ...g.rows.slice(0, limit).map((r): JobsTableItem => ({ kind: 'row', r })),
+          ...(g.rows.length > limit ? [{ kind: 'more', g, open, limit } as const] : []),
+        ];
+      }),
+    [groups, collapsed, shown],
+  );
+
+  const renderItem = (item: JobsTableItem) => {
+    if (item.kind === 'row') {
+      const { r } = item;
+      return (
+        <tr key={r.prop.id} className={`ujt-row${pendingIds?.has(r.prop.id) ? ' is-pending' : ''}`} onClick={() => onOpen(r.prop)}>
+          <td>
+            <div className="ujt-strong">{r.date}</div>
+            <div className="ujt-muted">{r.time}</div>
+          </td>
+          <td className="ujt-client">
+            <div className="ujt-strong">{r.client}</div>
+            <div className="ujt-muted">{r.address}</div>
+            {r.note && <div className="ujt-muted ujt-note" title={r.note}>{r.note}</div>}
+          </td>
+          <td className="ujt-semibold">{r.type}</td>
+          <td onClick={(e) => e.stopPropagation()}>
+            {onTeamChange ? (
+              // ⭐ Team editable en la misma celda: select nativo con
+              //    forma de pastilla (teclado y lector de pantalla).
+              <select
+                className={`ujt-select team${r.teamName ? '' : ' empty'}`}
+                style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}
+                value={r.teamName ? String(r.prop.teamId || '') : ''}
+                aria-label={`Team de ${r.client}`}
+                onChange={(e) => onTeamChange(r.prop, e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            ) : r.teamName ? (
+              <span className="ujt-team" style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}>{r.teamName}</span>
+            ) : (
+              <span className="ujt-team-none">Unassigned</span>
+            )}
+          </td>
+          <td onClick={(e) => e.stopPropagation()}>{renderStatus(r.prop)}</td>
+          <td onClick={(e) => e.stopPropagation()}>
+            {/* ⭐ Grado de Quality Check (el % de la inspección) + si
+                la casa estuvo alguna vez en Recall. */}
+            <div className="ujt-qc">
+              {r.qc.state === 'none' ? (
+                <span className="ujt-pill none">—</span>
+              ) : (
+                <button
+                  type="button"
+                  className={`ujt-grade ${r.qc.tone}`}
+                  onClick={() => onOpenQc(r.prop)}
+                  title="Ver inspección"
+                >
+                  {r.qc.score !== null && <span className="ujt-grade-num">{r.qc.score}%</span>}
+                  <span className="ujt-grade-txt">
+                    {r.qc.state === 'passed' ? 'Passed' : r.qc.state === 'failed' ? 'Re-clean' : 'QC pending'}
+                  </span>
+                </button>
+              )}
+              {wasRecall?.(r.prop) && (
+                <span className="ujt-recall" title="Esta casa estuvo en Recall">
+                  <RotateCcw size={11} /> Recall
+                </span>
+              )}
+              {r.prop.invoiceHold && (
+                <span className="ujt-recall hold" title="Factura retenida hasta que un Quality Check pase">
+                  <PauseCircle size={11} /> Invoice hold
+                </span>
+              )}
+            </div>
+          </td>
+          <td onClick={(e) => e.stopPropagation()}>
+            {onBillingChange ? (
+              <select
+                className={`ujt-select pill ${billingTone(r.billing)}`}
+                value={BILLING_OPTIONS.find((o) => o.toLowerCase() === r.billing.toLowerCase().trim()) || ''}
+                aria-label={`Billing de ${r.client}`}
+                onChange={(e) => onBillingChange(r.prop, e.target.value)}
+              >
+                <option value="">—</option>
+                {BILLING_OPTIONS.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            ) : (
+              <span className={`ujt-pill ${billingTone(r.billing)}`}>{r.billing || '—'}</span>
+            )}
+          </td>
+          <td className="ujt-ai">
+            <span className={`ujt-aitag ${INSIGHT_TONE[r.insight.tag]}`}>{r.insight.tag}</span>
+            <div>{r.insight.text}</div>
+          </td>
+          <td className="n money">{moneyOrDash(r.fin, r.fin.servicePrice)}</td>
+          <td className="n">{moneyOrDash(r.fin, r.fin.taxes)}</td>
+          <td className="n ujt-strong">{moneyOrDash(r.fin, r.fin.finalCost)}</td>
+          <td className="n">{moneyOrDash(r.fin, r.fin.payroll)}</td>
+          <td className={`n ujt-strong ${hasMoney(r.fin) ? (r.fin.profit < 0 ? 'neg' : 'pos') : ''}`}>{moneyOrDash(r.fin, r.fin.profit)}</td>
+          <td className="n"><span className={`ujt-pill ${marginTone(r.fin.margin)}`}>{pct(r.fin.margin)}</span></td>
+          <td className="n" onClick={(e) => e.stopPropagation()}>
+            <div className="ujt-actions">
+              {onEdit && (
+                <button type="button" className="ujt-iconbtn" aria-label="Edit job" onClick={() => onEdit(r.prop)}>
+                  <Pencil size={16} />
+                </button>
+              )}
+              {onDelete && (
+                <button type="button" className="ujt-iconbtn danger" aria-label="Delete job" onClick={() => onDelete(r.prop)}>
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      );
+    }
+    const { g, open, limit } = item;
+    if (item.kind === 'more') {
+      return (
+        <tr key={`more:${g.key}`} className="ujt-more">
+          <td colSpan={15}>
+            <button
+              type="button"
+              className="ujt-more-btn"
+              onClick={() => setShown((s) => ({ ...s, [g.key]: limit + 100 }))}
+            >
+              Show more — {limit} of {g.rows.length}
+            </button>
+          </td>
+        </tr>
+      );
+    }
+    const tone = marginTone(g.fin.margin);
+    return (
+      <tr key={`group:${g.key}`} className="ujt-group" onClick={() => toggle(g.key)}>
+        <td colSpan={7}>
+          <span className="ujt-group-title">
+            <ChevronRight size={16} className={`ujt-chevron${open ? ' open' : ''}`} />
+            {g.label}
+            {g.detail && <span className="ujt-group-range">{g.detail}</span>}
+            <span className="ujt-count">{g.rows.length} {g.rows.length === 1 ? 'job' : 'jobs'}</span>
+          </span>
+        </td>
+        <td className="ujt-ai ujt-group-ai"><Sparkles size={12} /> {g.ai}</td>
+        <td className="n money strong">{moneyOrDash(g.fin, g.fin.servicePrice)}</td>
+        <td className="n strong">{moneyOrDash(g.fin, g.fin.taxes)}</td>
+        <td className="n strong">{moneyOrDash(g.fin, g.fin.finalCost)}</td>
+        <td className="n strong">{moneyOrDash(g.fin, g.fin.payroll)}</td>
+        <td className={`n strong ${hasMoney(g.fin) ? (g.fin.profit < 0 ? 'neg' : 'pos') : ''}`}>{moneyOrDash(g.fin, g.fin.profit)}</td>
+        <td className="n"><span className={`ujt-pill ${tone}`}>{pct(g.fin.margin)}</span></td>
+        <td></td>
+      </tr>
+    );
+  };
 
   return (
     <div className="ujt-card">
@@ -96,158 +274,10 @@ export default function UnifiedJobsTable({
           ) : total === 0 ? (
             <tbody><tr><td colSpan={15} className="ujt-empty">{emptyText}</td></tr></tbody>
           ) : (
-            groups.map((g) => {
-              const open = !collapsed.has(g.key);
-              const limit = shown[g.key] ?? PAGE;
-              const tone = marginTone(g.fin.margin);
-              return (
-                <tbody key={g.key}>
-                  <tr className="ujt-group" onClick={() => toggle(g.key)}>
-                    <td colSpan={7}>
-                      <span className="ujt-group-title">
-                        <ChevronRight size={16} className={`ujt-chevron${open ? ' open' : ''}`} />
-                        {g.label}
-                        {g.detail && <span className="ujt-group-range">{g.detail}</span>}
-                        <span className="ujt-count">{g.rows.length} {g.rows.length === 1 ? 'job' : 'jobs'}</span>
-                      </span>
-                    </td>
-                    <td className="ujt-ai ujt-group-ai"><Sparkles size={12} /> {g.ai}</td>
-                    <td className="n money strong">{moneyOrDash(g.fin, g.fin.servicePrice)}</td>
-                    <td className="n strong">{moneyOrDash(g.fin, g.fin.taxes)}</td>
-                    <td className="n strong">{moneyOrDash(g.fin, g.fin.finalCost)}</td>
-                    <td className="n strong">{moneyOrDash(g.fin, g.fin.payroll)}</td>
-                    <td className={`n strong ${hasMoney(g.fin) ? (g.fin.profit < 0 ? 'neg' : 'pos') : ''}`}>{moneyOrDash(g.fin, g.fin.profit)}</td>
-                    <td className="n"><span className={`ujt-pill ${tone}`}>{pct(g.fin.margin)}</span></td>
-                    <td></td>
-                  </tr>
-                  {open && g.rows.slice(0, limit).map((r) => (
-                    <tr key={r.prop.id} className="ujt-row" onClick={() => onOpen(r.prop)}>
-                      <td>
-                        <div className="ujt-strong">{r.date}</div>
-                        <div className="ujt-muted">{r.time}</div>
-                      </td>
-                      <td className="ujt-client">
-                        <div className="ujt-strong">{r.client}</div>
-                        <div className="ujt-muted">{r.address}</div>
-                        {r.note && <div className="ujt-muted ujt-note" title={r.note}>{r.note}</div>}
-                      </td>
-                      <td className="ujt-semibold">{r.type}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {onTeamChange ? (
-                          // ⭐ Team editable en la misma celda: select nativo con
-                          //    forma de pastilla (teclado y lector de pantalla).
-                          <select
-                            className={`ujt-select team${r.teamName ? '' : ' empty'}`}
-                            style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}
-                            value={r.teamName ? String(r.prop.teamId || '') : ''}
-                            aria-label={`Team de ${r.client}`}
-                            onChange={(e) => onTeamChange(r.prop, e.target.value)}
-                          >
-                            <option value="">Unassigned</option>
-                            {teams.map((t) => (
-                              <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                          </select>
-                        ) : r.teamName ? (
-                          <span className="ujt-team" style={{ '--team-color': r.teamColor || '#64748b' } as CSSProperties}>{r.teamName}</span>
-                        ) : (
-                          <span className="ujt-team-none">Unassigned</span>
-                        )}
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>{renderStatus(r.prop)}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {/* ⭐ Grado de Quality Check (el % de la inspección) + si
-                            la casa estuvo alguna vez en Recall. */}
-                        <div className="ujt-qc">
-                          {r.qc.state === 'none' ? (
-                            <span className="ujt-pill none">—</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className={`ujt-grade ${r.qc.tone}`}
-                              onClick={() => onOpenQc(r.prop)}
-                              title="Ver inspección"
-                            >
-                              {r.qc.score !== null && <span className="ujt-grade-num">{r.qc.score}%</span>}
-                              <span className="ujt-grade-txt">
-                                {r.qc.state === 'passed' ? 'Passed' : r.qc.state === 'failed' ? 'Re-clean' : 'QC pending'}
-                              </span>
-                            </button>
-                          )}
-                          {wasRecall?.(r.prop) && (
-                            <span className="ujt-recall" title="Esta casa estuvo en Recall">
-                              <RotateCcw size={11} /> Recall
-                            </span>
-                          )}
-                          {r.prop.invoiceHold && (
-                            <span className="ujt-recall hold" title="Factura retenida hasta que un Quality Check pase">
-                              <PauseCircle size={11} /> Invoice hold
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {onBillingChange ? (
-                          <select
-                            className={`ujt-select pill ${billingTone(r.billing)}`}
-                            value={BILLING_OPTIONS.find((o) => o.toLowerCase() === r.billing.toLowerCase().trim()) || ''}
-                            aria-label={`Billing de ${r.client}`}
-                            onChange={(e) => onBillingChange(r.prop, e.target.value)}
-                          >
-                            <option value="">—</option>
-                            {BILLING_OPTIONS.map((o) => (
-                              <option key={o} value={o}>{o}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className={`ujt-pill ${billingTone(r.billing)}`}>{r.billing || '—'}</span>
-                        )}
-                      </td>
-                      <td className="ujt-ai">
-                        <span className={`ujt-aitag ${INSIGHT_TONE[r.insight.tag]}`}>{r.insight.tag}</span>
-                        <div>{r.insight.text}</div>
-                      </td>
-                      <td className="n money">{moneyOrDash(r.fin, r.fin.servicePrice)}</td>
-                      <td className="n">{moneyOrDash(r.fin, r.fin.taxes)}</td>
-                      <td className="n ujt-strong">{moneyOrDash(r.fin, r.fin.finalCost)}</td>
-                      <td className="n">{moneyOrDash(r.fin, r.fin.payroll)}</td>
-                      <td className={`n ujt-strong ${hasMoney(r.fin) ? (r.fin.profit < 0 ? 'neg' : 'pos') : ''}`}>{moneyOrDash(r.fin, r.fin.profit)}</td>
-                      <td className="n"><span className={`ujt-pill ${marginTone(r.fin.margin)}`}>{pct(r.fin.margin)}</span></td>
-                      <td className="n" onClick={(e) => e.stopPropagation()}>
-                        <div className="ujt-actions">
-                          {onEdit && (
-                            <button type="button" className="ujt-iconbtn" aria-label="Edit job" onClick={() => onEdit(r.prop)}>
-                              <Pencil size={16} />
-                            </button>
-                          )}
-                          {onDelete && (
-                            <button type="button" className="ujt-iconbtn danger" aria-label="Delete job" onClick={() => onDelete(r.prop)}>
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {open && g.rows.length > limit && (
-                    <tr className="ujt-more">
-                      <td colSpan={15}>
-                        <button
-                          type="button"
-                          className="ujt-more-btn"
-                          onClick={() => setShown((s) => ({ ...s, [g.key]: limit + 100 }))}
-                        >
-                          Show more — {limit} of {g.rows.length}
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              );
-            })
+            <VirtualItems items={items} estimate={64} colSpan={15} renderItem={renderItem} />
           )}
         </table>
       </div>
     </div>
   );
-}
+});

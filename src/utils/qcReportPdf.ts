@@ -1,3 +1,4 @@
+import type { QcFormData } from '../types/index';
 import { escapeHtml } from './escapeHtml';
 import { computeQCScore } from './qcScore';
 import { formatDate } from './dateFormat';
@@ -15,12 +16,6 @@ export interface QCPdfPlace { id: string; name: string }
 export interface QCPdfTask { id: string; placeId: string; name: string }
 export interface QCPdfBranding { name: string; address?: string; logo?: string; email?: string }
 
-// ⭐ Datos del formulario de Quality Check (`qcData`): un objeto por área
-//    (placeId → { tasks, photos, notes, damage, score, corrections, … }) cuya
-//    forma depende de la configuración de áreas y tareas. Excepción documentada
-//    en CLAUDE.md: este alias es el único `any` aceptado para esos datos.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type QcFormData = Record<string, any>;
 
   // ⭐ Reúne las áreas que tienen datos (tareas, notas o fotos) para el reporte
 export const collectPlacesWithData = (places: QCPdfPlace[], qcDataObj: QcFormData) => {

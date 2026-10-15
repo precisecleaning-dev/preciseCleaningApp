@@ -13,33 +13,9 @@
 //      viejos, recalculado desde qcData con el mismo util que el PDF.
 //    · Issues = áreas con al menos una tarea marcada "No".
 
-import type { Property } from '../types/index';
+import type { Property, QcRecordLite } from '../types/index';
+
 import { computeQCScore } from './qcScore';
-
-export interface QcRecordLite {
-  id: string;
-  houseId: string;
-  date?: string;
-  createdAt?: string;
-  status?: string;
-  result?: string | null;
-  inspector?: string;
-  team?: string;
-  client?: string;
-  address?: string;
-  passRate?: number | null;
-  passRateAnswered?: number | null;
-  qcData?: Record<string, QcPlaceData>;
-  isTestRecord?: boolean;
-}
-
-export interface QcPlaceData {
-  tasks?: Record<string, string>;
-  notes?: string;
-  damage?: string;
-  corrections?: string;
-  photos?: string[];
-}
 
 export interface QcTask { id: string; placeId: string; name: string }
 export interface QcPlace { id: string; name: string }

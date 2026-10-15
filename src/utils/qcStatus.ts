@@ -1,4 +1,4 @@
-import type { Status } from '../types/index';
+import type { QcStatusRecord, Status } from '../types/index';
 
 // Antes reimplementado casi idéntico en QCRouteView.tsx y QualityCheckView.tsx (ambos
 // archivos incluso tenían el comentario "misma lógica que Quality Check" admitiéndolo).
@@ -6,12 +6,8 @@ import type { Status } from '../types/index';
 // (geocoding/haversine), que sigue siendo dos features paralelas intencionalmente
 // separadas por ahora (ver code-notes.md).
 
-export interface QCStatusLike {
-  houseId: string;
-  date: string;
-  status: 'Finished' | 'Pending';
-  result?: 'passed' | 'failed' | null;
-}
+/** Lo mínimo de un reporte de QC para estas reglas (types/index.ts). */
+type QCStatusLike = QcStatusRecord;
 
 /** Determina si un status (id o nombre) corresponde a "Quality Check". */
 export const isQualityCheckStatus = (statusIdOrName: string | null | undefined, statuses: Status[]): boolean => {

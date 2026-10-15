@@ -7,6 +7,671 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Rendimiento: reporte final y guía (2026-10-15, rama `rendimiento`)
+
+- `docs/guia-del-codigo.md`: cómo funciona la app, datos, pantallas críticas, resultados antes/después
+  (contra `acae38d`) y guion para presentarla. Las referencias `archivo:línea` son de esta versión.
+- Medición final de la caché de Firestore con documentos "bajados del servidor" (cargados con
+  `loadBundle`, no como escrituras pendientes): 3,600 casas salen de la caché en ~1.4 s en escritorio
+  y ~4.0 s en el teléfono (CPU ×4), contando desde que se abre la página. Es el piso que impide llegar
+  a 1 s en las pantallas con casas; ver "Dónde no se llegó a 1 segundo" en la guía.
+
+## Rendimiento, Paso 5: limpieza (2026-10-15, rama `rendimiento`)
+
+- knip: dejan de exportarse funciones y tipos que solo se usan en su archivo; se borran el tipo
+  `CollectionName`, los reexports de `QcFormData`/`QcPlaceData`, el parámetro sin uso de
+  `windowStartIso` y `vite-env.d.ts` de la raíz (ningún tsconfig lo incluía). Métodos sin uso:
+  `settingsService.getAll`, `qualityChecks.remove`.
+- Lo que knip sigue marcando y se queda a propósito: `functions/` (otro paquete),
+  `security/tests` y `@firebase/rules-unit-testing` (los usa `npm run test:rules`), el binario
+  `firebase` (CLI global) y `taskProjectsCol`/`taskProjectRef` (convención de services por
+  colección; `userTasksService` exporta los suyos igual). `getAll`/`getOne` de los services de
+  tareas tampoco se usan todavía, pero son parte de esa convención.
+- Duplicados (jscpd, 0.6 % del código): unificados los campos de dinero de PayrollModal, el email
+  del login, los botones por rol de FieldConfigModal, el input del PDF en QC Reports, la celda de
+  acciones de Settings y el "último QC por casa" (jobQuality usa `latestByHouse`). Capturas antes y
+  después idénticas (login, olvido de contraseña, Settings, pago, QC Reports) y la batería de
+  modales de la casa sin diferencias.
+- Sin cambiar: hay 5 `getClientName` locales con textos distintos para un cliente que no se
+  encuentra ("Unknown", "-", "Unknown Client", "Cliente sin registrar"…). Unificarlos cambia lo que
+  se ve: decisión de producto, pendiente. Estado sincronizado con `useEffect`: no quedó ningún caso.
+  CSS sin uso: el detector no encontró reglas (la Fase 1 ya quitó ~1,900 líneas).
+
+## Rendimiento, Paso 4: render e interacción (2026-10-15, rama `rendimiento`)
+
+Medido con el arnés de vistas en producción (3,600 casas) y la Event Timing API (≈ INP): la
+interacción más lenta y las tareas largas por clic. Teléfono = CPU ×4.
+- **Listas por ventana** (`shared/hooks/useVirtualRows` + `shared/components/VirtualItems`, sin
+  dependencias): solo están en el DOM los elementos cerca de la pantalla; el resto es un relleno
+  (`u-vr-spacer`, tokens.css) con el alto medido. Desde 60 elementos. Cada elemento es UN hijo
+  directo (fila o tarjeta) y se mide por la distancia al siguiente (incluye el gap). La lista vive
+  en su propio componente para que el scroll no vuelva a dibujar toda la vista. El ancla es un ref
+  de callback: el lint `react-hooks/refs` no deja leer un ref devuelto por un hook en el render.
+- Aplicado a Payroll (tabla), Overview (tabla y tarjetas) e Invoices (tabla y tarjetas). Encabezados
+  de grupo, filas y "Show more" van en una sola lista plana. Verificado recorriendo cada lista con
+  scroll: mismos elementos, en el mismo orden, mismo alto total; plegar, "Show more", editar Team en
+  línea y abrir detalle igual que antes.
+- Payroll: conteos, totales y `filteredRecords` memoizados (`classifyRecord` fuera del componente).
+- `money()` con un solo `Intl.NumberFormat` (`toLocaleString` creaba uno por llamada) y el orden por
+  fecha del Overview con la clave calculada una vez por casa (antes se convertía la fecha en cada
+  comparación del sort). Eran lo que más pesaba al pasar a Year según el perfil de CPU.
+- Resultado en el teléfono: Payroll Paid 8.0 s → 0.14 s, Pending 2.4 → 0.10 s; Overview Year
+  3.5 s → 0.3 s, Month 1.1 → 0.15 s, Week 0.74 → 0.13 s; Invoices Year 3.9 → 0.22 s, chip All
+  2.3 → 0.26 s, búsqueda 1.7 → 0.08 s. Scroll de 16,000 px en Paid: 7.0 s de tareas largas → 0.56 s.
+- Límites conocidos: "buscar en la página" del navegador solo encuentra lo que está dibujado; las
+  columnas de una tabla se calculan con las filas dibujadas (con nombres muy largos pueden moverse
+  unos px al hacer scroll; con los datos de prueba, ±1 px).
+- Sin cambiar: grilla de casas de Quality Check (varias columnas, no encaja con la ventana por
+  filas; "All" tarda ~0.5 s en el teléfono) y el mes del Calendar (~0.55 s). Esqueletos que solo
+  aparecen pasados 300 ms: no mejora ninguna métrica medible, no se hizo. Guardados sin esperar al
+  servidor (`isSaving` global en el detalle de la casa): pendiente de aprobación.
+
+## Rendimiento, Paso 3: datos en Firestore (2026-10-15, rama `rendimiento`)
+
+Medido con el SDK real de Firestore y caché persistente, sin red (banco en el scratchpad: 3,600
+casas, 5,400 servicios, 5,400 pagos, 2,000 QC; CPU ×4). Ojo: los documentos se sembraron como
+escrituras pendientes, no bajados del servidor; sirve para comparar, no como cifra absoluta.
+- Leer las ~3,600 casas de la ventana desde la caché tarda **~3.4 s** en un teléfono, y Firestore
+  atiende las consultas en fila: lo que se pide después espera.
+- **Casas solo cuando una pestaña las usa** (App.tsx, `propertiesWanted`): el listener se abre
+  con la primera pestaña de `TABS_WITH_PROPERTIES` y ya no se cierra. Entrar por Task list: las
+  tareas salen de la caché en 1.2 s en vez de 3.9 s, y al iniciar sesión se leen ~25 documentos
+  en vez de ~4,700 (arnés).
+- `security/firestore.indexes.json`: índices compuestos que pide el código (solo la bitácora).
+- **Probado y descartado: `in` por tandas de 30 para servicios, pagos y QC del periodo.** En el
+  servidor se leen muchos menos documentos, pero cada consulta nueva (otra semana, otro filtro)
+  hace que Firestore recorra en la caché la colección COMPLETA, una vez por tanda: 12 s contra
+  8.7 s con las tres colecciones completas. Mismo motivo para no acotar el QC de Owner/Manager:
+  el grupo de casas cambia en el día y cada cambio vuelve a recorrer los 2,000 reportes.
+- **Propuesta pendiente (cambia el modelo de datos): totales en la casa.** `billingTotal`,
+  `payrollTotal` y `qcLast` (id, status, result, passRate, date, áreas fallidas) dentro de
+  `properties`, mantenidos por Cloud Functions al escribir en `billing_services`, `payroll` y
+  `quality_checks`, con una función de relleno para las casas existentes. Overview, Invoices y
+  Owner/Manager dejarían de escuchar esas tres colecciones completas (~12,800 documentos por
+  sesión nueva).
+- Sin cambiar: recalls con `getDocs` y caché de 5 min (marca secundaria del Overview); el `getDoc`
+  por registro al restaurar la papelera (no es pantalla crítica); Payroll sigue con la colección
+  completa (su `date` tiene formatos mixtos, ver la nota en PayrollView).
+
+## Rendimiento, Paso 2: arranque y red (2026-10-15, rama `rendimiento`)
+
+- **Esqueleto desde `index.html`**: si localStorage tiene `firebase:authUser:*` (sesión guardada;
+  App.tsx la deja ahí con `setPersistence(browserLocal)`), un script en línea marca
+  `html.has-session` y pinta el menú + `ViewSkeleton` antes de que baje el JS. App.tsx muestra el
+  mismo esqueleto mientras Firebase confirma la sesión (`hasStoredSession`). **El marcado de
+  `index.html` debe ser igual al de `appSkeleton` y `ViewSkeleton`**: si se cambia uno, se cambia
+  el otro (capturas comparadas píxel a píxel: idénticas en escritorio y teléfono). Sin sesión,
+  todo igual que antes ("Verificando sesión..." y el login).
+- **Brillo del esqueleto con `transform`** en un `::after` (RouteTransition.css): con
+  `background-position` repintaba el hilo principal en cada fotograma mientras arrancaba la app.
+- **Google Fonts con `media="print"` + `onload`**: ya no frena el primer pintado (el login y el
+  menú usan system-ui).
+- Medido con un arnés que corre `App.tsx` real (Auth y Firestore simulados, sesión guardada,
+  600 ms de Auth): menú y esqueleto visibles en 1.35 s en vez de 2.7 s en el teléfono, y 0.13 s
+  en vez de 0.88 s en escritorio. Los datos llegan igual (±30 ms, ruido).
+- **No se cambió (medido o revisado):**
+  - Cadena de arranque: el SDK de Auth valida la sesión guardada contra el servidor
+    (`accounts:lookup`) antes de `onAuthStateChanged`, y Firestore no lee ni su caché hasta que
+    Auth termina. Perfil, roles y casas ya arrancan en paralelo. Leer el rol de custom claims no
+    quita ningún paso (igual hace falta el documento del rol con sus permisos).
+  - Orden de persistencia de Auth (`[browserLocal, indexedDB]` y quitar el `setPersistence` de
+    App): hoy la sesión pasa de localStorage a IndexedDB y vuelve en cada arranque, pero medido
+    no cambia nada (±30 ms). Se dejó como está.
+  - Preconnects y `public/_headers` (assets inmutables, `index.html`/`sw.js` con no-cache) ya
+    estaban.
+- **Propuestas pendientes de aprobación** (cambian datos o el uso sin conexión): miniaturas de
+  fotos de Storage; sacar html2pdf y xlsx del precache del Service Worker.
+
+## Rendimiento, Paso 1: bundle (2026-10-15, rama `rendimiento`)
+
+Prompt "Optimización de velocidad". Medido contra `acae38d` (Lighthouse en el login, mediana de 5).
+- **Login sin gapi**: `usersService` creaba una app secundaria con `getAuth()` al importarse, y el
+  login lo importa. `getAuth` trae el resolver de popups y baja `apis.google.com/js/api.js`. Se
+  borró `inviteUser` (nadie lo usaba; invitar vive en `userAuthService`) y `userAuthService` usa
+  `initializeAuth` en memoria. No usamos login con popup ni redirect.
+- **Chunks `react` y `firebase`** (`manualChunks` en vite.config.ts): el JS de arranque pesa lo
+  mismo (206 KB gz), pero un deploy normal solo cambia `index` (21 KB gz). Storage y functions
+  NO van en `firebase`, si no se cargarían al arrancar.
+- **firebase/functions bajo demanda** (`src/config/functions.ts`, `callable(nombre)`): HousesView
+  baja de 52.8 a 49.7 KB gz.
+- Ya estaba bien y no se tocó: vistas con `lazy()` + `ViewSkeleton`, precarga en hover/toque y en
+  reposo (`viewPrefetch.ts`), Storage diferido, html2pdf/xlsx/papaparse con `import()`, íconos
+  importados uno a uno, Firestore con `initializeFirestore` + caché persistente.
+- knip: ninguna dependencia de producción sin uso. Lo que marca (exports sin uso,
+  `vite-env.d.ts` de la raíz) no pesa en el bundle; queda para el Paso 5.
+
+## Tipos y services por colección: user_tasks y task_projects (2026-10-15, rama `features-cr`)
+
+Tarea de Antonio ("cambio de estructura", la primera de varias). Decisiones de Omar: rama desde
+`main` de GitHub con todo lo de los zips encima, y "mover y reusar" (sin duplicar).
+- **Rama `features-cr`**: sale de `origin/main` (a7de797, igual a nuestra V00036) con los 31
+  commits locales encima (Task List, Fases 0–2, renombres, Scope, pestañas…) y la tarea al final.
+  En GitHub la rama principal se llama `main`, no `master`.
+- **Tipos**: `src/types/userTasks.ts` (`UserTask`, `UserTaskStatus`, `UserTaskApproval`,
+  `UserTaskApprovalStatus`, `TaskAttachment`, `TaskComment`, `Repeat`, `RepeatFreq`) y
+  `src/types/taskProjects.ts` (`TaskProject`, `TaskProjectStatus`). Antes `OpsTask`,
+  `OpsProject`, `OpsApproval`… en `index.ts`; se renombraron en todo el código. `index.ts` los
+  reexporta (se sigue importando desde `'../types/index'`). `OpsPriorities` (user_priorities) se
+  queda en `index.ts`: no era parte de la tarea.
+- **Services** en `src/services` (estilo objeto, como `propertiesService`):
+  - `taskProjectsService`: `create`, `update` (maneja `doneAt`), `delete` (solo sin tareas),
+    `getAll`, `getOne`; y `bumpProjectCounters` para que las tareas muevan los contadores en su
+    batch.
+  - `userTasksService`: `create`, `update`, `delete` (con contadores del proyecto y archivos de
+    Storage), `getAll(filtros)`, `getOne`, y lo que ya usaba la pantalla: `complete`, `reopen`,
+    `requestApproval`, `decideApproval`, `setApproval`, `addComment`, `addAttachment`,
+    `removeAttachment`. `getAll` acepta filtros de igualdad (`status`, `assigneeUserId`,
+    `createdByUserId`, `projectId`); sin filtros trae toda la colección (CLAUDE.md: evitarlo).
+  - Se borraron `features/ops/services/opsRefs.ts` y `opsTasksService.ts`; el top 3 quedó en
+    `features/ops/services/prioritiesService.ts`. El converter tipado pasó a
+    `src/lib/firebase/typedConverter.ts`.
+- La pantalla no cambia: el Task list, Owner y Manager usan los services nuevos. Verificado con
+  el arnés: las 10 funciones contra el mock (crear/editar/borrar con contadores, getAll con y sin
+  filtros, getOne de uno que no existe → null) y los recorridos del Task list, Owner/Manager,
+  pestañas y reasignar escriben lo mismo que antes (solo cambia la fecha del día).
+
+## Task list: quién puede reasignar una tarea (2026-10-14, rama `tareas-reasignar`)
+
+Pedido de Omar: "Si me asignaron una tarea, no puedo cambiar el Assignee. Si la asigné yo, sí".
+- `canReassignTask` (opsPermissions.ts): quien la asignó (`createdByUserId`) siempre puede;
+  a quien se la asignó otra persona, nunca (aunque su rol tenga Edit). Con Task List → Edit se
+  pueden seguir reasignando las tareas de OTRAS personas (como antes), para que el dueño o un
+  gerente reparta trabajo.
+- Panel: sin permiso, "Assignee" se ve como texto (como "Assigned by"), no como selector
+  deshabilitado. El resto de la tarea (fecha, hora, prioridad, proyecto…) lo sigue editando la
+  persona asignada.
+- Reglas propuestas: un `update` que cambie `assigneeUserId`/`assigneeUserName` solo pasa si
+  `createdByUserId` es uno mismo, o con Edit y la tarea no está asignada a uno mismo. Pruebas en
+  security/tests.
+
+## Task list: quién asignó la tarea, de solo lectura (2026-10-14, rama `tareas-asignado-por`)
+
+Pedido de Omar: ver quién le asignó una tarea, y que ese dato no se pueda editar.
+- Fila: "From Jesus" junto a la persona cuando la asignó otra persona (`assignedByLabel` en
+  TaskListView: no sale si se la asignó la misma persona ni en la pestaña "Assigned by" de quien
+  se mira; "From Me" si la asignó uno mismo y se ve en "Everyone").
+- Panel: fila "Assigned by" con avatar, nombre y fecha de creación (MM/DD/AAAA), como texto, sin
+  control. Sale de `createdByUserId` / `createdByUserName` / `createdAt`, que ninguna pantalla
+  escribe después de crear la tarea (`TaskPatch` no los incluye). Las reglas propuestas también
+  lo impiden: un `update` de `user_tasks` que toque `createdByUserId`, `createdByUserName` o
+  `createdAt` se rechaza (prueba nueva en security/tests).
+- Sin cambio: quien tiene la tarea asignada todavía puede cambiar "Assignee" en el panel (regla
+  de antes: edita sus tareas). Si se quiere que solo quien la asignó o Edit puedan reasignar, es
+  otro cambio.
+
+## Task list: pestañas "Assigned to me" / "Assigned by me" (2026-10-14, rama `tareas-asignadas-pestanas`)
+
+Pedido de Omar: ver las tareas que uno asignó y las que le asignaron, para todos los roles,
+separadas en pestañas.
+- Debajo de la fila para agregar: "Assigned to me · N" (las que tiene asignadas, como antes, con
+  "Waiting for your OK") y "Assigned by me · N" (las abiertas que creó para OTRA persona; las
+  que se asignó a sí mismo salen en la primera). Al ver a otra persona dicen "Assigned to Sandy"
+  / "Assigned by Sandy". Con "Everyone" no hay pestañas.
+- Rige igual con Scope Own: lo que uno asignó también es "suyo" (las reglas ya dejaban leer las
+  tareas con `createdByUserId` propio). Nueva consulta `useCreatedTasks`:
+  `createdByUserId == x && status == open` (solo igualdades, sin índice compuesto); una prueba
+  más en security/tests.
+- Desde "Assigned by me" se abre el panel, se edita (quien la creó puede) y se marca hecha.
+- Owner y Manager no cambian (siguen con las pendientes según el Scope).
+- Verificado con el arnés (Sandy con All y con Own, mirando a otra persona y "Everyone"); los
+  recorridos del Task list escriben lo mismo que antes.
+
+## Owner y Manager: solo ver y completar tareas; sin selector Owner/Manager (2026-10-14, rama `home-solo-completar`)
+
+Pedido de Omar: "lo que se muestra en Owner es lo mismo que en Task list"; las tareas se agregan
+SOLO desde el Task list. En Owner y Manager solo se ven las pendientes y se marcan hechas.
+- Owner: se quitan el formulario "New task" y el botón de borrar. Quedan la lista (con filtro por
+  persona), la casilla para completar (con Undo) y el enlace "Open Task List". Con Scope All
+  muestra lo mismo que el Task list en "Everyone" (verificado: 7 / 7 en el arnés).
+- `TaskChecklist` ya no tiene `onDelete`.
+- **Sin selector Owner / Manager** arriba a la derecha (`HomeHeader` solo dibuja menú, saludo
+  y fecha); entre las dos vistas se cambia con el menú lateral. `homeTabs`/`canViewHome` de
+  App.tsx ya no existen.
+- CSS borrado: formulario (`hm-newtask`, `hm-field`, `hm-input`, `hm-due-row`, `hm-btn.big`,
+  `hm-btn.primary`), `hm-task-del` y `hm-switch`.
+
+## Task list: Scope de Roles y tareas en Owner/Manager (2026-10-14, rama `tareas-scope-home`)
+
+Pedido de Omar (con capturas de Task list, Roles, Owner y Manager). Decisiones suyas:
+- **"Assign to"** sigue saliendo de `system_users`, solo usuarios activos cuyo rol puede abrir
+  Task List (más uno mismo): así nadie recibe una tarea que no puede ver. Un empleado aparece en
+  cuanto su rol tenga Task List → View. Helper único `assignablePeople` (opsPermissions.ts), lo
+  usan el Task list y el formulario rápido de Owner.
+- **Scope de Task List en Roles** (columna Scope que ya existía): `All` ve las tareas de todos
+  (selector de persona y "Everyone"); `Own` solo las suyas (asignadas a él, más las que esperan
+  su OK). `taskListRights().seesAll`. Rige en Task list, Owner y Manager. Un rol que no declara
+  el módulo (roles viejos que heredan de Manager/Owner) ve todas, como antes; Administrator,
+  todas. Ojo: Roles pone `Own` por defecto al declarar un módulo nuevo: los roles Owner y Admin
+  deben quedar en `All`.
+- **Owner y Manager muestran las tareas pendientes del Task list** (`user_tasks` abiertas) en vez
+  de `manager_tasks`, que ya no se usa (sus documentos quedan en Firestore; se borró
+  `services/managerTasksService.ts` y su regla). Hook `features/ops/hooks/useHomeTasks.ts`: un
+  listener (`status == open`, o `assigneeUserId == yo` con Own) y las mismas acciones del Task
+  list (contadores del proyecto, repeticiones, visto bueno, Undo).
+  - Owner: "Open tasks" (o "My open tasks" con Own), filtro por persona con quienes tienen
+    tareas, borrar con Task List → Delete, formulario rápido que crea en `user_tasks` (sin
+    duración ni proyecto) y enlace "Open Task List". El resumen "Team" y "Today's time" usan
+    estas tareas. Vencida = fecha anterior a hoy (igual que el Task list; antes contaba la hora).
+  - Manager: "Manager tasks" = las de los usuarios cuyo rol tiene Manager → View (y las
+    propias); con Own, "My tasks". Antes eran solo las del que entra.
+  - Ya no se ven las hechas de los últimos 2 días tachadas: al marcarla sale de la lista (con
+    Undo unos segundos, `UndoToast`, el mismo del Task list).
+  - Si el rol no puede abrir Task List, la tarjeta de tareas no se muestra.
+- **Reglas propuestas**: el espejo `user_access` guarda `o` (Scope Own) por módulo
+  (functions/src/userAccess.ts); `user_tasks` con Own solo deja leer/cambiar/borrar las tareas
+  asignadas, creadas o por aprobar de uno mismo. Las consultas de la app con Own siempre filtran
+  por `assigneeUserId` o `approval.approverUserId`. Pruebas nuevas en security/tests (no se
+  pudieron correr aquí: el emulador no se descarga en este entorno). **Hace falta desplegar las
+  funciones y correr `rebuilduseraccess` para que `o` exista antes de publicar las reglas.**
+- Verificado con el arnés: Owner como admin (todas, filtro, crear con fecha y hora, completar con
+  contadores y Undo, tarea con OK pendiente no se marca, borrar), Owner con Own (solo las suyas,
+  sin borrar), Manager con All (las de gerentes) y con Own, Task list con Own (sin selector,
+  consulta filtrada por persona). Los recorridos del Task list escriben lo mismo que antes.
+
+## Task list: nombres de colecciones y campos (2026-10-14, rama `user-tasks-nombres`)
+
+Pedido de Omar: `ops_tasks` parecía "operadores"; los campos de usuario se leen mejor con
+`User`. Decisiones suyas: renombrar las tres colecciones y TODOS los campos que guardan un
+usuario; no hay tareas reales que conservar (lo que haya en `ops_*` era de prueba y deja de
+verse en la app, no se migra).
+
+- Colecciones: `ops_tasks` → `user_tasks` (+ `comments`), `ops_projects` → `projects`
+  (+ `updates`), `ops_priorities` → `user_priorities` (id = id del usuario). Nombres en
+  `COLLECTIONS` / `SUBCOLLECTIONS`; `OPS_COLLECTIONS` ya no existe. Clave del store:
+  `useLiveData('projects')` (antes `opsProjects`).
+- Campos: `assigneeId/Name` → `assigneeUserId/UserName`, `createdById/Name` →
+  `createdByUserId/UserName`, `doneById` → `doneByUserId`, `authorId/Name` →
+  `authorUserId/UserName` (comentarios y updates), `ownerId/Name` → `ownerUserId/UserName`,
+  `teamIds` → `teamUserIds`, y en `approval`: `approverUserId/UserName`, `requestedByUserId`.
+  Las consultas usan los nombres nuevos (`where('assigneeUserId'…)`,
+  `where('approval.approverUserId'…)`): ninguna necesita índice compuesto.
+- Storage: adjuntos nuevos en `user_tasks/{taskId}/…` (antes `ops/tasks/…`; la regla de
+  Storage es una sola para todo el bucket).
+- `security/firestore.rules` y sus pruebas con los nombres nuevos. **Antes de publicar, las
+  reglas de la consola deben permitir `user_tasks`, `projects` y `user_priorities`** (si siguen
+  con `match /ops_tasks…`, la vista Task list queda sin permiso).
+- **`commentCount` se queda.** `comments.length` solo existe con los comentarios cargados (al
+  abrir una tarea); para el 💬 de cada fila habría que leer los comentarios de todas las tareas
+  de la lista. El contador viaja en el mismo batch que el comentario (`increment(1)`); hoy los
+  comentarios no se borran sueltos (solo con la tarea). Si se agrega "borrar comentario", va
+  con `increment(-1)` en el mismo batch.
+- Sin cambio: `manager_tasks` (las tareas rápidas de Owner/Manager) conserva
+  `assigneeId/assigneeName`: es otra colección, con datos en uso. (Después, el mismo día, Owner
+  y Manager pasaron a usar `user_tasks` y `manager_tasks` dejó de usarse.)
+- Los nombres de código (`OpsTask`, `features/ops`, `opsRefs.ts`) siguen con "Ops": son de la
+  Fase 3 (nombres).
+- Verificado con el arnés: los 4 recorridos del Task list (agregar, completar con repetición y
+  deshacer, panel, comentario, archivo, top 3, proyectos, otra persona, borrar, visto bueno)
+  escriben lo mismo que antes con los nombres nuevos; capturas iguales salvo la hora.
+
+### Segunda ronda (mismo día): comentarios dentro de la tarea, sin seriesId, durationMinutes
+Decisiones de Omar tras revisar el diagrama:
+- **Comentarios → `user_tasks.comments[]`** = `{ userId, userName, text, createdAt }` (se va la
+  subcolección `comments` y `commentCount`; la fila cuenta con `comments.length`). Comentar y
+  cada paso del visto bueno es UNA escritura de la tarea con `arrayUnion`. `createdAt` es ISO:
+  Firestore no acepta `serverTimestamp()` dentro de un arreglo. Un comentario se identifica por
+  `userId` + `createdAt` (no tiene id). Costo: abrir una tarea ya no lee sus comentarios (antes
+  una lectura por comentario); la lista trae los comentarios de cada tarea (documentos algo más
+  grandes, mismas lecturas). Se pierde: con la subcolección las reglas impedían editar un
+  comentario; dentro del arreglo, quien edita la tarea podría reescribirlos (igual que
+  `notesHistory` de las casas). Borrar una tarea ya no lee sus comentarios.
+- **`seriesId` fuera**: solo se escribía, ninguna pantalla lo leía. Cada repetición es una tarea
+  suelta; si algún día se quiere el historial de una serie, se agrega entonces.
+- **`durationMin` → `durationMinutes`**: sigue en minutos (2 h = 120, medio día = 240) porque
+  se suma en `projects.openMinutes`; mismo nombre que `quality_checks.durationMinutes`.
+- Sin cambio, a propósito: `status` ya es texto (`open`/`done`) y el front controla los valores;
+  `approval.approverUserId` ya es quien aprueba y `approval.status` tiene 4 estados (`draft`,
+  `pending`, `approved`, `changes`), así que no se agrega `isApproved` (duplicaría el status).
+  "Assign to" ya sale de `system_users`, filtrado a quien puede abrir Task List (Roles &
+  Permissions). Correo al aprobador: "ahora no"; si se quiere, va con una Cloud Function (las
+  reglas propuestas solo dejan escribir en `mail` correos al email de la empresa).
+
+### Tercera ronda (mismo día): `task_projects` y campos del proyecto; QC sin Finished
+Pedido de Omar: `projects` → `task_projects` y una estructura nueva del proyecto.
+- **Colección `task_projects`** (`COLLECTIONS.taskProjects`, clave del store `taskProjects`).
+  Campos: `title` (antes `name`), `description` (antes `goal`; en pantalla sigue "Goal"),
+  `ownerUserId/UserName`, `teamId` (→ `settings_teams`, o `null`; antes `teamUserIds[]`, que
+  nadie llenaba), `startDate` y `dueDate` (`AAAA-MM-DD` o vacío), `repeat` (texto `daily`/
+  `weekdays`/`weekly`/`monthly` o `null`; sin pantalla todavía), `color` (nombre plano de
+  `PROJECT_COLORS` en `opsOptions.ts`, o `null` = color automático por id, como antes),
+  `status`, contadores, `comments[]` (mismo map que las tareas, sin adjuntos; sin pantalla
+  todavía), `doneAt` (ISO al pasar a `done`, `null` al salir de `done`; `updateProject` lo
+  maneja solo), `createdByUserId`, `createdAt`. La tarea guarda `projectTitle` (antes
+  `projectName`). Se van la subcolección `updates` (solo existía el tipo) y la carpeta de
+  Storage `projects/…`: solo las tareas llevan archivos.
+- Lo que se propuso y NO se hizo, a propósito:
+  - `tasks: ID[]` en el proyecto: la tarea ya guarda `projectId` y Firestore las trae con
+    `where('projectId', '==', id)` (no hace falta JOIN). Un arreglo duplicaría la relación,
+    habría que mantenerlo en cada alta, baja y cambio de proyecto, y se desincroniza.
+  - `userOwnerId` / `createdBy`: se dejan `ownerUserId` y `createdByUserId` para seguir la
+    regla acordada (todo campo de usuario termina en `UserId`).
+  - Se quedan `ownerUserName`, `status` y los contadores (`taskCount`, `doneCount`,
+    `openMinutes`): la lista y el top 3 los muestran sin leer las tareas.
+- Formulario de Projects: Team (de Settings → Teams), Start date y 7 colores. Un proyecto
+  nuevo toma el siguiente color libre de la lista; al editar uno viejo sin color se marca el
+  que ya se veía, así que guardarlo no cambia cómo se ve.
+- Reglas propuestas: `match /task_projects/{projectId}`; los que no editan proyectos solo
+  pueden cambiar contadores y `comments`. **La consola debe permitir `task_projects`.**
+- **Quality Check: las casas con QC Finished ya no se muestran** en la pantalla del inspector
+  (pedido de Omar con captura). Se quitan las tarjetas de reportes terminados, la pestaña
+  "Finished" (quedan All / Pending / Recall; All = Pending + Recall) y el aviso "No hay
+  registros…". Esos reportes siguen en Quality Check Reports (PDF y correo). Se pierde en esa
+  pantalla: Editar, Borrar y exportar un reporte terminado; si hace falta, se agrega en
+  Quality Check Reports.
+- Verificado con el arnés: proyectos (crear con equipo, fechas y color; editar color, que
+  cambia el chip de la fila; done → `doneAt`, active → `null`), los 4 recorridos del Task list
+  (mismas escrituras salvo los nombres) y la vista QC antes/después (sin Finished, mismas
+  casas pendientes y en Recall, sin errores).
+
+## Refactor de la auditoría V00038 — Fase 2: carpetas y archivos (2026-10-14, rama `refactor/fase-2`)
+
+Pedido: "Continúa con el refactor". Fase 2 solo mueve y divide (H-11 división, H-16, H-17 tipos),
+sin cambiar reglas ni lo que se ve. Antes, en `refactor/fase-1`, el commit 8fb812e (barra de
+sesión `SessionActions`, sin fondo gris, notas con scroll y ampliables).
+
+### Resultado
+- `views/HousesView.tsx`: 8,549 → **328 líneas** (orquestador). Nuevos en `features/houses`:
+  `HouseList` (958), `HouseDetail` (2,069), `HouseForm` (1,942), 14 modales sueltos, hooks
+  `useHouseCatalogs`, `useHouseAccess`, `useHouseSettings`, `useHouseDamages`, `useHouseChecklist`,
+  `usePhotoQueue` (+ `usePendingForHouse`), `useHousePhotos`; `photoReport.ts`,
+  `payrollRecords.ts`, `services/billingServices.ts`, `services/gcalSync.ts`.
+- `src/lib/firebase/collections.ts` (`COLLECTIONS`); houses y quality-check ya no escriben
+  nombres de colección a mano.
+- Quality Check: `services/qualityChecks.ts` y `services/qcRoutes.ts`; `QualityCheckView`,
+  `QCRoutesTableView` y `QCRouteDrawer` ya no importan `firebase/firestore`.
+- Tipos de `quality_checks` en `types/index.ts` (`QualityCheckRecord`, `QcRecordLite`,
+  `QcStatusRecord`, `QcFormData`, `QcPlaceData`); `Property.unit` también (antes `PropertyU`).
+- Líneas (src, contra 8fb812e): ts/tsx 36,733 → 37,466 (+733: encabezados, imports y props de
+  ~30 archivos nuevos); CSS sin cambio (16,563).
+- Build (KB / gzip), contra 8fb812e: HousesView 181.33 / 48.47 → 186.44 / 52.76 (los nombres de
+  props y de lo que devuelven los hooks no se minifican; el costo de dividir) · QualityCheckHub
+  99.71 / 31.88 · style.css 355.59 · index 683.10 · `COLLECTIONS` en su propio chunk de 0.9 KB.
+- Commits: 516abbd (hooks + 14 modales) · 9c69416 (HouseList, ServiceModal, PayrollModal) ·
+  fcfb666 (HouseDetail, HouseForm) · 1ff2093 (Quality Check, tipos, COLLECTIONS) · cierre (V00042).
+
+### Decisiones no obvias
+- **La casa abierta y sus servicios/pagos se quedan en HousesView.** Un solo `useHouseRecords`
+  para el detalle Y el formulario: "Edit Details" desde el detalle abre con los datos ya cargados
+  (si cada componente tuviera su listener, el formulario esperaría uno nuevo). El cambio de status
+  del detalle también se queda ahí (usa `properties` para el status anterior, igual que antes).
+- **Detalle y formulario se montan en cada apertura** (`key` = contador). Lo que antes eran 15
+  `setX([])` de reseteo en `handleOpenDetail`/`handleOpenForm`/`handleDuplicate`/`restoreDraft`
+  ahora es el estado inicial (`initialForm()` en HouseForm).
+- **Ramas muertas fuera.** `handleSavePayroll`/`handleSaveService`/`handleOpenServiceForm` tenían
+  la rama "desde el formulario" y la "desde el detalle" juntas (`fromForm`); cada componente se
+  queda con la suya. La lógica de cada rama es la misma.
+- **Fotos sin conexión.** `usePhotoQueue` (HousesView) sube o encola, sincroniza al volver la
+  señal y lleva el contador; `usePendingForHouse(id, syncVersion)` cuenta las pendientes de la casa
+  abierta y se vuelve a contar después de cada sincronización.
+- **"HouseModals" no es un archivo:** cada modal es su propio componente (más fácil de encontrar y
+  de cargar), y los que solo usa el detalle o el formulario se dibujan dentro de él, DESPUÉS de su
+  modal (mismo z-index 9999: el orden del DOM decide cuál queda arriba).
+
+### Diferencias de comportamiento (casos borde, antes eran errores)
+- Retomar un borrador muestra sus propias fotos y "fuera del reporte"; antes quedaban las del
+  formulario anterior (y al guardar se escribían en la casa equivocada).
+- "Edit" desde la lista cuenta las fotos pendientes de ESA casa; antes, las de la última abierta.
+- "Duplicate" ya no se lleva a la copia las fotos nuevas que se agregaron en el detalle sin
+  guardar (antes se subían a la casa nueva sin verse en el formulario).
+- CfTest (temporal) tiene 3 botones: el de "email de QC" dependía de la función
+  `onqualitycheckfinished`, que se quitó en Fase 1.
+- Las fotos de Damages siguen yendo a la carpeta AfterPhotos (igual que antes; ahora sin cast).
+
+### Verificación
+- tsc y eslint sin errores (las 2 advertencias de siempre en QualityCheckView), build V00042.
+- Arnés (Firebase simulado + Playwright): los 9 recorridos de `regress.sh` iguales a la línea base
+  (solo cambia una hora); modales del detalle y formulario iguales; 3 recorridos nuevos (detalle:
+  Start, Financials, editar/borrar servicio y pago, Export PDF, Sync manual, Edit Details, salir
+  sin cambios, Duplicate, New Job; duplicar con servicios y retomar borrador; QC: rutas, editar y
+  borrar ruta, correcciones hechas) con resultado idéntico antes y después (`git stash`).
+- 36 capturas (escritorio y teléfono) iguales salvo el reloj de Owner/Manager.
+- No probado: Firebase real, la Cloud Function de Calendar real (el simulador responde vacío y se
+  va al método manual), el contenido del PDF impreso, la sincronización real al volver la señal.
+
+### Pendiente para fases siguientes
+- Vistas que aún importan `firebase/firestore`: Payroll, Manager, Settings, Roles, Users,
+  Activity Log, Data Import (y `utils/liveRoute.ts`).
+- Tablas de servicios y pagos casi iguales en HouseDetail y HouseForm, y los menús de
+  trabajadores: candidatas a un componente compartido (Fase 5).
+- `liveCollections` (`SOURCES`) todavía con nombres a mano: pasa a `COLLECTIONS` con los
+  converters de Fase 4.
+
+## Refactor de la auditoría V00038 — Fase 1: velocidad y menos código (2026-10-14, rama `refactor/fase-1`)
+
+Pedido de Omar: seguir con el plan y "disminuir líneas de código, más sencillo y rápido".
+Decisiones suyas en esta fase: borrar MigrarPayroll (ya terminó), Calendar usa el detalle y el
+formulario de Houses, el QC se cierra sin esperar con el reporte completo por correo (y se quita
+el resumen del servidor para que no lleguen dos), y el inspector baja solo los QC de casas en
+flujo (H-05a).
+
+### Resultado
+- Líneas (src): ts/tsx 37,507 → 36,751 · CSS 18,600 → 16,597 · `functions/src/index.ts`
+  1,177 → 1,075. En total ≈2,860 líneas menos (diff: +963 / −3,827).
+- Build (KB / gzip), contra el cierre de Fase 0: style.css 393.05 → 356.14 / 61.31 ·
+  index 683.61 → 682.96 · HousesView 186.50 → 180.57 · InvoicesView 22.08 → 20.97 ·
+  CalendarView 22.50 → 9.97 · QualityCheckHub 98.93 → 99.97 (+1 KB: escucha por casas y guardado
+  sin esperar) · PayrollView 46.00.
+- Commits: 16d3bf7 (MigrarPayroll fuera) · ac3a36a (Calendar → Houses) · 068b1c2 (CSS sin uso) ·
+  5c5fba5 (H-07) · 9f4e27f (H-05a) · 7371027 (H-15) · 60094e6 (H-09/H-08/H-10/H-06/H-11, V00041).
+
+### Decisiones no obvias
+- **Host único de modales de Houses (App).** Invoices y Payroll ya no incrustan su propio
+  `HousesView`: piden la casa con `onOpenHouseDetail(house, 'media'?)` / `onOpenHouseEdit`. El host
+  se monta la primera vez que se pide una casa (`houseModalsUsed`) y va en su propio
+  `<Suspense fallback={null}>`: si el chunk de HousesView no estaba descargado, no cambia la
+  pestaña por el esqueleto. Calendar, QC, QC Dashboard y Owner/Manager tampoco lo montan ya si
+  nadie abre una casa.
+- **`setProperties` fuera de las vistas.** Solo lo usaba "Revisar fechas" para parchar la lista
+  después de escribir; el listener de App ya refleja la escritura al instante (y un parche local
+  pisaba el siguiente snapshot igual).
+- **Guardado por fila (H-06).** `usePendingById` no deshabilita la fila: la marca con
+  `.is-pending` (opacidad 0.6) hasta que el servidor confirma. Sin señal queda marcada; es el
+  aviso de "pendiente de sincronizar". Los `isSaving` de modales (formularios, pagos) se quedan:
+  bloquean su propio botón, no la lista. El modal de nota de Invoices se cierra al guardar.
+- **Edit al instante (H-08).** `useHouseRecords` escucha la casa mientras el detalle O el
+  formulario están abiertos. Un efecto copia servicios y pagos al borrador UNA vez por apertura
+  (`formSeedFor`), conserva lo `temp-` que el usuario ya agregó y reescribe la "foto" de cambios
+  sin guardar; va declarado DESPUÉS del efecto de la foto para que lo reemplace en el mismo commit.
+  Guardar antes de que lleguen no borra nada (las bajas son explícitas). Si el listener falla
+  (permisos), el esqueleto se queda: antes salían listas vacías.
+- **Tabla o tarjetas (H-10).** Houses usa `PHONE_QUERY` (48rem = 768px) e Invoices
+  `(max-width: 900px)`: los mismos cortes de su CSS, que se queda como respaldo.
+- **memo (H-11, parcial).** `UnifiedJobsTable` y `JobCard` con `memo`; HousesView les pasa
+  handlers de `useStableCallback` y `renderRowStatus`/`wasRecall` con `useCallback` (con
+  `eslint-disable` porque `getClientName` y `findStatusOf` dependen de `customersList` y
+  `statusIndex`). Escribir en el formulario de la casa ya no redibuja la lista. Falta
+  "HouseForm con su propio estado": va con la división de HousesView (Fase 2).
+- **H-15.** `useDeferredValue` difiere el filtro; en Invoices las filas no tienen `memo`, así que
+  el render urgente las vuelve a pintar con los mismos datos. Para quitarlo del todo, la lista de
+  Invoices como componente con `memo` (Fase 2).
+- **H-05a.** `useQcForHouses`: tandas de 30 ids con `where('houseId', 'in', …)`. Si cambia el grupo
+  de casas en flujo se vuelven a abrir las tandas (≈ los reportes de esas casas, decenas) y se
+  muestra lo anterior mientras llegan. `qcListInFlow` ya no tiene la rama de "casa borrada".
+- **H-07.** `batch.commit()` sin `await`: el panel se cierra con el batch aplicado en local. La
+  bitácora y el correo corren al confirmar; si el servidor rechaza, aviso con la casa y el
+  código. Se quitó `onqualitycheckfinished`: el próximo `firebase deploy --only functions`
+  pregunta si borrarla (responder que sí) y `QC_REPORT_EMAIL` ya no se usa.
+- Calendar borra desde el detalle de Houses: la bitácora dice "Houses", no "Calendar". El botón
+  "Quality Check" del detalle viejo de Calendar ya no existe (el de Houses no lo tiene).
+- `reportToEdit` (QualityCheckView/Hub) se quitó: la pestaña Reportes del hub ya no existía.
+- `knip` carga `vite.config.ts` y sube `app-version.json`: revertirlo después (anotado en CLAUDE.md).
+
+### Verificación
+- `tsc` (app y functions) sin errores · `eslint .` 0 errores, los mismos 3 avisos de antes ·
+  `style={{` sin cambios salvo `JobCard` (1, variable CSS `--team-bg` que venía de HousesView) ·
+  sin `any` nuevos.
+- Arnés (Firebase simulado, Playwright): 36 capturas antes/después idénticas salvo el reloj de
+  Owner/Manager; con red simulada de 1.5 s, Edit muestra el formulario en ~200 ms y servicios/
+  pagos llegan después; Invoices pinta filas sin "Loading financial data"; cambiar el invoice
+  status no deshabilita ninguna otra fila; en 390 px no existe la tabla y en escritorio no
+  existen las tarjetas (Houses e Invoices); Fotos/PDF de Invoices abre el detalle en "Notes &
+  Photos"; Editar casa desde Invoices y Payroll abre el formulario de Houses. Las pruebas de
+  Fase 0 (historial en 7 rutas, QC todo o nada, papelera en 4 vistas y restaurar) siguen igual.
+- **No probado aquí:** Firebase real, sin señal en un teléfono real, Lighthouse/CLS/INP, React
+  Profiler, ni lecturas reales por pantalla (con `medir-lecturas.patch`).
+
+### Pendiente
+- H-11 completo (HouseForm con su propio estado) y la lista de Invoices con `memo`: Fase 2.
+- Medir en producción las lecturas del inspector antes/después de H-05a.
+
+## Refactor de la auditoría V00038 — Fase 0 (2026-10-13, rama `refactor/fase-0`)
+
+Auditoría completa (hallazgos H-01…H-26) y prompt por fases: entregados a Omar como
+`auditoria-V00038.md`. Esta fase cubre H-01, H-02, H-03 y H-12.
+
+### Línea base (antes de cambiar nada, commit 854ac57)
+- `tsc --noEmit -p tsconfig.app.json`: 0 errores. `eslint src`: 0 errores, 3 avisos
+  (exhaustive-deps en DataImportView, HousesView, QualityCheckView) + 34 `eslint-disable` de
+  exhaustive-deps.
+- `vite build` (chunks principales, KB / gzip): index 683.57 / 212.40 · style.css 391.27 / 67.01 ·
+  HousesView 189.37 / 50.69 · QualityCheckHub 99.17 / 31.35 · PayrollView 47.02 / 11.17 ·
+  storage 32.20 / 10.71 · InvoicesView 22.01 / 6.51 · CalendarView 21.78 / 5.54 ·
+  html2pdf 975.76 / 281.18 y xlsx 429.19 / 142.94 (los dos últimos con `import()` al usarse).
+- **No medido aquí (requiere sesión real contra Firebase):** Lighthouse móvil de Overview,
+  Invoices y Quality Check, y lecturas por carga en frío. Estimado de la auditoría (no medido):
+  Overview ≈13,600 · Invoices ≈10,850 · Owner/Manager ≈13,600 · Quality Check ≈3,500 ·
+  Payroll ≈6,000 documentos. Cómo medirlo: DevTools → Lighthouse (móvil) con sesión iniciada; y
+  en Firebase Console → Firestore → Usage, una sesión nueva por pantalla. Para contar por
+  pantalla: `medir-lecturas.patch` (entregado aparte, NO está en el repo) agrega un
+  `console.info('[lecturas] …')` con el tamaño del primer snapshot de cada listener; se aplica con
+  `git apply`, se corre `npm run dev` en una ventana de incógnito (caché vacía = carga en frío) y
+  se quita con `git checkout -- src/shared/data`.
+
+### H-12 · Cambios de status con historial (commit 6acd75d)
+- `features/houses/services/houseStatus.ts`: `changeHouseStatus` (casa + `status_history` en un
+  batch, bitácora después), `addStatusChange` / `addStatusHistory` para meter el historial en un
+  batch que ya existe (formularios de Houses y Calendar, cierre de QC).
+- Rutas: Overview/Pipeline, formulario de Houses, Invoices (Job Status), formulario de Calendar
+  (ahora también con bitácora; App le pasa `currentUser`), modal de status de Quality Check y QC
+  Reports (que ahora también estampa `sentToInvoiceAt`, antes no lo hacía).
+- `statusHistoryService` quedó solo para leer. Probado en el arnés: cada ruta escribe 1 casa + 1
+  historial en el mismo batch y 1 bitácora.
+
+### H-03 · Cierre de QC atómico (commit 6acd75d)
+- Reporte (id generado en el cliente) + casa (status, `invoiceHold`) + historial en un
+  `writeBatch`. Si el batch falla no queda nada escrito y el aviso lo dice con el código; el
+  aviso de éxito usa el status real que quedó. Probado con fallo forzado en la casa
+  (`permission-denied` simulado): reporte y casa sin cambios.
+- El commit todavía espera la confirmación del servidor (sin señal no se cierra): es H-07, Fase 1.
+
+### H-02 · Borrar casa = papelera en las 4 vistas (commit 1560542)
+- Decisión de Omar (2026-10-13): **motivo obligatorio** también en Invoices, Calendar y QC.
+- `moveHouseToTrash` + `useHouseTrash` + `DeleteHouseDialog` (Escape cierra, sin motivo no
+  habilita "Delete"). A la papelera va la versión en vivo de la casa al confirmar. La bitácora
+  dice desde qué vista se borró; en la papelera el módulo es siempre "Houses" (es su colección).
+- Se quitó `propertiesService.delete`. Probado: Houses, Invoices, Calendar y QC mueven casa +
+  pago + servicio; restaurar desde Invoices los regresa completos.
+
+### H-01 · Reglas por rol (propuesta, sin publicar)
+- Omar aprobó instalar `@firebase/rules-unit-testing` y `firebase-tools` como devDependencies. Se
+  instaló solo la primera (5.0.2, la que pide `firebase` 12; 14 líneas en el lock). Para
+  `firebase-tools` basta el CLI global que ya se usa para desplegar funciones (pesa ~600 paquetes).
+- `security/` (firestore.rules, storage.rules, README con decisiones D-1…D-9, 28 pruebas en
+  `tests/`). **No está en `firebase.json`**: un deploy no la publica. `firebase.json` solo ganó un
+  bloque `emulators` (no afecta el deploy) para `npm run test:rules`.
+- Por qué el espejo `user_access/{email}`: `system_users` no usa el uid como id y los permisos son
+  una lista de objetos; las reglas no pueden leer ninguna de las dos cosas. Lo mantienen
+  `syncuseraccessonuser`, `syncuseraccessonrole` y `rebuilduseraccess` (functions/src/userAccess.ts,
+  `computeAccess` probado aparte con 7 casos: admin, empleado sin dinero, gerente heredando Task
+  List, herencia de Settings, permiso declarado que gana a la herencia, inactivo, sin rol).
+- Modelo: "ver un módulo = trabajar en él", como la app hoy (salvo Houses y Task List). Endurecer
+  más (separar ver/editar) primero exige cambiar las pantallas.
+- Funciones: `synchousetocalendar`, `calendardiagnostics` y `setupcalendarwatch` piden usuario
+  activo con Houses (antes solo sesión). `LoginView`: `permission-denied` al revisar la lista
+  blanca ahora es "ACCESS DENIED" (hoy nunca ocurre; con las reglas, un correo fuera de la lista
+  quedaba adentro con la app vacía).
+- Revisión independiente de la propuesta (otro agente, solo lectura) y lo que se corrigió:
+  · el trigger del espejo podía borrar el acceso de un usuario recién invitado (Users lo mueve de
+    id con set + delete y los avisos llegan en cualquier orden) → ahora recalcula por email desde
+    `system_users`;
+  · se podía fabricar una entrada de `trash` (p. ej. un usuario con rol de admin) para que un
+    administrador la "restaurara" → la regla solo deja crearla en el mismo batch que borra una
+    casa, y `trashService.restore` solo restaura casas con pagos y servicios;
+  · poner el propio correo en otro usuario, o editar el rol propio, daba otro rol → bloqueado
+    (D-8 en el README);
+  · `houses_form_config` lo guarda quien edita Roles & Permissions, la campana lee la bitácora para
+    todos, MigrarPayroll se abre con Settings, `notice_board` (Data Import) y el alta de casas con
+    solo "agregar" (D-9) → las reglas ahora lo permiten;
+  · el historial de notas no puede vaciarse, la salida del reloj se marca una vez y en Storage
+    solo borran Quality Check y Task List.
+- **No verificado:** las pruebas de reglas no corrieron aquí (el emulador no se puede descargar
+  en este entorno). El lint de `functions/` tampoco (eslint no está instalado en
+  `functions/node_modules`; `index.ts` ya tenía 61 líneas de más de 80 que `google` marcaría).
+
+### Pendiente de Fase 0
+- **Export de las reglas e índices actuales** de la consola: con eso se crean `firestore.rules`,
+  `storage.rules` y `firestore.indexes.json` en la raíz, idénticos, y se declaran en `firebase.json`.
+  No se crean antes: declararlos con otro contenido haría que un `firebase deploy` cambiara
+  producción.
+- Decisiones D-1…D-7 de `security/README.md` antes de publicar las reglas.
+- ~~¿Dos correos por QC?~~ Resuelto en Fase 1 (H-07): se quitó `onqualitycheckfinished`; queda
+  el reporte completo que manda la app.
+
+## Visto bueno en tareas y archivos + corrección en las notas de la casa (2026-10-13)
+
+- **Approval en el Task list** (diseño "Approval"): map `approval` en `ops_tasks`
+  (`OpsApproval`: status draft · pending · approved · changes, approverId/Name, requestedById/At,
+  decidedAt, note; null = no hace falta). Casilla "Needs OK" en la fila para agregar (crea el
+  requisito "por enviar" con el dueño como aprobador: rol con Owner, si no Administrator). En el
+  panel: "For [persona] · Send for approval"; quien aprueba ve arriba "Waiting for your OK"
+  (listener `approval.approverId == yo` y `approval.status == 'pending'`, solo igualdades) y
+  responde Approve / Request changes (con nota). Cada envío o respuesta deja un comentario en la
+  tarea (mismo batch). **Regla:** la tarea no se puede marcar hecha hasta que esté aprobada. Al
+  repetirse, la siguiente vuelve a "por enviar" con el mismo aprobador. Etiquetas en la fila:
+  Needs OK, Waiting for {nombre}, Approved, Changes requested.
+- **Notas de la casa (Office, General, Employee) con archivos y corrección** (pedido de Omar):
+  - Clip en el compositor: los archivos se suben a `{Cliente}/NoteFiles/` (misma carpeta del
+    cliente que las fotos; imágenes comprimidas, si no se pueden comprimir va la original) y el
+    mensaje guarda `attachments` en su entrada de `notesHistory` (`NoteHistoryEntry` en
+    types/index.ts). Un mensaje puede ser solo archivos: entonces el texto acumulado del campo no
+    cambia.
+  - Lápiz en la burbuja: cada quien corrige SUS mensajes; un administrador, cualquiera; la "Nota
+    anterior" (texto sin historial, de AppSheet) la corrige quien tiene Edit en Houses.
+    `propertiesService.editNoteMessage` usa `runTransaction`: cambia esa entrada (por autor +
+    hora; marca `editedAt`/`editedBy`) y rehace el texto acumulado del campo conservando el texto
+    viejo que hubiera antes del historial. Corregir la "Nota anterior" reemplaza el campo y deja
+    una entrada 'edited' con el texto completo (como las ediciones antiguas). El mensaje se ve
+    "editada"; el modal Historial muestra la corrección y los archivos.
+  - No incluido: quitar un archivo de un mensaje ya enviado, borrar mensajes.
+
+## Task list de gerentes (2026-10-13)
+
+Vista nueva "Task List" (pestaña `task_list`) según el diseño "Sandy's tasks". Código en
+`src/features/ops/` (vista, componentes, hooks, servicios); tipos en `src/types/index.ts` (sección 5).
+- **Datos:** colecciones del diagrama entidad-relación: `ops_tasks` (+ `comments`), `ops_projects`,
+  `ops_priorities/{userId}`; adjuntos en Storage `ops/tasks/{id}/…`. Referencias tipadas con
+  `withConverter` en `services/opsRefs.ts`. Campo agregado al modelo: `ops_tasks.priorityId` (FK →
+  `settings_priorities`, el mismo catálogo de prioridades de la app; el diseño muestra "Priority").
+- **Lecturas acotadas:** tareas ABIERTAS de la persona (`assigneeId ==` y `status == 'open'`) o de
+  todos (`status == 'open'`): solo igualdades, sin índice compuesto. Las hechas no se descargan.
+  Proyectos por el store compartido (`useLiveData('opsProjects')`). Comentarios y top 3 con
+  listener propio solo mientras se ven.
+- **Escrituras:** cada acción en un `writeBatch`; los contadores del proyecto (`taskCount`,
+  `doneCount`, `openMinutes`) con `increment()` al crear, completar, reabrir, borrar, cambiar de
+  proyecto o de duración (solo si el proyecto existe). Comentario = documento + `commentCount`
+  +1 en el mismo batch. Adjuntos con `arrayUnion`/`arrayRemove`; imágenes comprimidas antes de subir.
+- **Repetición:** al marcar hecha una tarea que se repite se crea la siguiente en el mismo batch
+  (misma `seriesId`). La fecha se cuenta desde el vencimiento o desde hoy, la más tarde (una tarea
+  diaria atrasada vuelve mañana). "Undo" (6 s) reabre la tarea y borra la repetición creada.
+- **Secciones:** Overdue, Today, This week (hasta el domingo, semana lunes–domingo como
+  `utils/periods.ts`), Later, No date. Fechas en MM/DD/AAAA (el diseño mostraba "Oct 9": se aplicó
+  la regla del negocio) y horas h:mm AM/PM; la hora se elige de una lista cada 15 min (un
+  `<input type="time">` depende del idioma del navegador).
+- **Permisos (módulo "Task List" en Roles):** sin declarar, lo ven quienes tienen Manager u Owner
+  (`opsPermissions.ts`). Todos los que la ven agregan, completan, comentan y adjuntan; editan las
+  tareas que crearon o les asignaron y su propio top 3. `canEdit`: cualquier tarea, proyectos y el
+  top 3 de otros. `canDelete`: borrar tareas y proyectos (un proyecto con tareas solo se archiva).
+  Todos los gerentes ven todo: selector de persona o "Everyone" en el encabezado.
+- **Colores** de proyectos y avatares: derivados del id (sin campo nuevo).
+- **Pendiente / no incluido:** menciones con @ (el composer del diseño las sugiere), subcolección
+  `updates` de proyectos (sin pantalla todavía), equipo (`teamIds`) y repetición de proyectos,
+  historial de tareas hechas, integración con Slack (`/tarea`).
+- **Security Rules (las aplica Omar en la consola; no están en el repo):** si las reglas no tienen
+  un permiso general para usuarios con sesión, hay que agregar `ops_tasks` (+ `comments`),
+  `ops_projects` y `ops_priorities` para `request.auth != null`, y en Storage `ops/**` (lectura y
+  borrado con sesión; subida con sesión y tamaño < 20 MB). Sin eso la vista queda vacía y las
+  escrituras avisan "permission-denied".
+
 ## Lote B — "La información tarda en mostrarse" (2026-10-13)
 
 - **La app ya no espera a las casas para dibujarse.** Antes "Cargando datos..." tapaba toda la

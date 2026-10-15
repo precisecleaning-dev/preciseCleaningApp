@@ -37,6 +37,18 @@ export default defineConfig({
     //    (el 'Cambiar estado' de Invoices, formularios, etc.). Con un solo
     //    CSS eso es imposible: los modales siempre flotan al frente.
     cssCodeSplit: false,
+    rollupOptions: {
+      output: {
+        // react y firebase en chunks propios: casi nunca cambian, así un deploy
+        // normal solo invalida el código de la app y lo demás sigue en caché.
+        // ojo: storage y functions se quedan fuera, si no se cargarían al arrancar.
+        manualChunks(id) {
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react'
+          if (/node_modules\/(firebase|@firebase)\/(app|auth|firestore|component|util|logger|webchannel-wrapper)\//.test(id)) return 'firebase'
+          if (/node_modules\/idb\//.test(id)) return 'firebase'
+        },
+      },
+    },
   },
   plugins: [
     {

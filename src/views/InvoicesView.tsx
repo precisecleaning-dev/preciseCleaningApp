@@ -1,4 +1,5 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useDeferredValue } from 'react';
+import type { ReactNode } from 'react';
 import { formatDate } from '../utils/dateFormat';
 import type { CSSProperties } from 'react';
 import {
@@ -16,11 +17,16 @@ import type { Property, SystemUser, Role, Status } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import { propertiesService } from '../services/propertiesService';
 import { getRelationName, getRelationColor } from '../utils/relations';
-import { stampInvoiceEntry, invoiceEntryMs } from '../utils/invoiceEntry';
-import HousesView from './HousesView';
+import { invoiceEntryMs } from '../utils/invoiceEntry';
+import { changeHouseStatus, houseLogLabel } from '../features/houses/services/houseStatus';
+import { useHouseTrash } from '../features/houses/hooks/useHouseTrash';
+import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
+import { useMediaQuery } from '../shared/hooks/useMediaQuery';
+import { usePendingById } from '../shared/hooks/usePendingById';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './InvoicesView.css';
 import MenuButton from '../shared/components/MenuButton';
+import VirtualItems from '../shared/components/VirtualItems';
 
 const INVOICE_STATUSES = [
   { id: 'Pre-Paid', name: 'Pre-Paid', color: '#8b5cf6' },
@@ -166,18 +172,20 @@ const JobStatusPill = ({ currentStatusId, statuses, onRequestOpen, disabled, ful
 interface InvoicesViewProps {
   onOpenMenu: () => void;
   properties: Property[];
-  setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
-  onEditProperty?: (property: Property) => void;
+  /** Detalle y formulario de la casa: los de Houses, abiertos encima por App. */
+  onOpenHouseDetail: (house: Property, tab?: 'media') => void;
+  onOpenHouseEdit: (house: Property) => void;
 }
 
-// ⭐ onEditProperty se mantiene en la interfaz por compatibilidad con App.tsx,
-//    pero ya no se usa: el formulario de edicion SIEMPRE es el de HousesView
-//    incrustado aqui, para que sea exactamente el mismo en las dos vistas.
-export default function InvoicesView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: InvoicesViewProps) {
-  const [isSaving, setIsSaving] = useState(false);
+export default function InvoicesView({ onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit }: InvoicesViewProps) {
+  // ⭐ Guardado por fila: un cambio no deshabilita las demás filas ni espera al
+  //    servidor (el listener ya muestra el cambio); si falla, avisa.
+  const { pending, run } = usePendingById();
+  // Solo se dibuja la tabla o solo las tarjetas (mismo corte que el CSS).
+  const isPhone = useMediaQuery('(max-width: 900px)');
 
   // ⭐ Catálogos desde el store compartido (un listener por colección para toda la app).
   const teamsLive = useLiveCollection('teams');
@@ -189,9 +197,13 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     [statusesLive.data],
   );
   const customers = customersLive.data;
-  const isLoading = !teamsLive.loaded || !statusesLive.loaded || !customersLive.loaded;
+  // ⭐ Las filas se pintan en cuanto hay statuses (deciden qué casa es "Invoice");
+  //    el dinero, el cliente y el equipo se completan cuando llegan sus datos.
+  const isLoading = !statusesLive.loaded;
   // ⭐ billing_services + payroll en tiempo real y fórmulas de la hoja
   const jobFin = useJobFinancials();
+  const cash = (n: number): ReactNode => (jobFin.loading ? <span className="skel-line skel-money" /> : money(n));
+  const cashText = (n: number) => (jobFin.loading ? '…' : money(n));
 
   // ⭐ Periodo (Day / Week / Month / Year / Custom) — misma barra que el
   //    Overview. Reemplaza Start/End Date y "Agrupar por": el periodo filtra y
@@ -203,6 +215,8 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
   // Filtros UI
   const [searchClient, setSearchClient] = useState('');
+  // La caja responde al instante; el filtro de la tabla va un paso atrás.
+  const deferredSearch = useDeferredValue(searchClient);
   // ⭐ Default 'All' para que TODAS las casas se vean al entrar (antes 'Pending' las ocultaba)
   const [filterStatus, setFilterStatus] = useState<string>('All');
 
@@ -222,41 +236,17 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       return next;
     });
 
-  // ⭐ Edición de la casa SIN salir de Invoices: esta vista incrusta HousesView en
-  //    modo 'modals-only' y abre SU formulario de edición aquí mismo, para que sea
-  //    exactamente el mismo que en Overview.
-  //    ⚠ houseToEdit es solo el DISPARADOR: HousesView lo consume y lo limpia al
-  //    instante (así funciona su houseToOpenEdit). Por eso el montaje del editor va
-  //    en una bandera aparte que queda encendida — si se condicionara al disparador,
-  //    el componente se desmontaría justo después de abrir y el modal "se cerraría".
-  const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
-  const [editorMounted, setEditorMounted] = useState(false);
-  const openEdit = (house: Property) => {
-    setEditorMounted(true);
-    setHouseToEdit(house);
-  };
-
-  // ⭐ FOTOS / PDF sin salir de Invoices: abre el DETALLE de la casa (HousesView
-  //    en modo 'modals-only') directo en el tab "Notes & Photos", donde están los
-  //    botones Export PDF de Before/After — misma UI y permisos que el resto de
-  //    las vistas. Siempre usa el incrustado propio (no delega al padre).
-  const [houseToView, setHouseToView] = useState<Property | null>(null);
-  // ⭐ Tab con el que abre el detalle: "media" para el boton de fotos/PDF y
-  //    sin tab (null) cuando se abre el detalle completo desde la fila o el ojo:
-  //    abre en la pestaña por defecto del detalle (Notes & Photos).
-  const [detailTab, setDetailTab] = useState<'media' | null>('media');
-  const openPhotosPdf = (house: Property) => {
-    setEditorMounted(true);
-    setDetailTab('media');
-    setHouseToView(house);
-  };
+  // ⭐ Fotos/PDF, detalle y edición: el MISMO detalle y formulario de Houses,
+  //    abiertos encima de Invoices (App monta HousesView en modo 'modals-only').
+  const openPhotosPdf = (house: Property) => onOpenHouseDetail(house, 'media');
+  const openDetail = (house: Property) => onOpenHouseDetail(house);
+  const openEdit = onOpenHouseEdit;
   // ⭐ EDITOR DE TEXTO en modal para las columnas Note / Notes / Issues: la
   //    celda muestra UNA línea truncada (la fila no crece) y al tocarla se abre
   //    el texto completo para verlo o editarlo. Cada columna guarda su campo.
   const [noteHouse, setNoteHouse] = useState<Property | null>(null);
   const [noteField, setNoteField] = useState<TextField>('note');
   const [noteDraft, setNoteDraft] = useState('');
-  const [isSavingNote, setIsSavingNote] = useState(false);
 
   const openNote = (prop: Property, field: TextField = 'note') => {
     setNoteHouse(prop);
@@ -264,21 +254,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     setNoteDraft(fieldText(prop, field));
   };
 
-  const saveNote = async () => {
+  // Se guarda en segundo plano y el modal se cierra al instante.
+  const saveNote = () => {
     if (!noteHouse) return;
-    setIsSavingNote(true);
-    try {
-      const value = noteDraft.trim();
-      const payload: Partial<Property> = {};
-      payload[noteField] = value;
-      await propertiesService.update(noteHouse.id, payload);
-      setNoteHouse(null);
-    } catch (error) {
-      console.error("Error saving note:", error);
-      alert("Failed to save the note.");
-    } finally {
-      setIsSavingNote(false);
-    }
+    const payload: Partial<Property> = { [noteField]: noteDraft.trim() };
+    run(noteHouse.id, () => propertiesService.update(noteHouse.id, payload), 'Failed to save the note.');
+    setNoteHouse(null);
   };
 
   // ⭐ Config del modal central de cambio de estado (mismo que Houses/QC)
@@ -292,79 +273,44 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
   // ⭐ Resolver el nombre del cliente a partir del ID guardado en la propiedad.
   //    Retrocompatible: si el valor es un nombre legacy se devuelve igual.
+  //    Mientras llegan los clientes se muestra "…" (nunca el id crudo).
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
+    if (!customersLive.loaded) return '…';
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
-  // ⭐ DETALLE: es el MISMO modal de HousesView (con todas sus pestanias, fotos,
-  //    danios, checklist y acciones), no una copia reducida. Se abre encima de
-  //    Invoices gracias al modo 'modals-only'.
-  const openDetail = (prop: Property) => {
-    setEditorMounted(true);
-    setDetailTab(null);
-    setHouseToView(prop);
-  };
+  // Status del invoice
+  const handleStatusChange = (propertyId: string, invoiceStatus: string) =>
+    run(propertyId, () => propertiesService.update(propertyId, { invoiceStatus }), 'Failed to update invoice status.');
 
-
-  // Cambiar status de invoice
-  const handleStatusChange = async (propertyId: string, newStatus: string) => {
-    setIsSaving(true);
-    try {
-      await propertiesService.update(propertyId, { invoiceStatus: newStatus });
-    } catch (error) {
-      console.error("Error updating invoice status:", error);
-      alert("Failed to update invoice status.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // ⭐ cambiar el job status (statusId) de la propiedad
-  const handleJobStatusChange = async (propertyId: string, newStatusId: string) => {
-    setIsSaving(true);
-    try {
-      // ⭐ Si el destino es "Invoice", estampa la marca de entrada para que la
-      //    casa quede ARRIBA en esta vista (ver src/utils/invoiceEntry.ts).
-      const payload = stampInvoiceEntry({ statusId: newStatusId }, statuses, newStatusId);
-      await propertiesService.update(propertyId, payload);
-    } catch (error) {
-      console.error("Error updating job status:", error);
-      alert("Failed to update job status.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  // ⭐ Job status (statusId): casa + status_history en un batch y bitácora
+  //    después; si el destino es "Invoice" se estampa la marca de entrada.
+  const handleJobStatusChange = (prop: Property, newStatusId: string) =>
+    run(prop.id, () => changeHouseStatus(prop, newStatusId, {
+      statuses,
+      actor: currentUser,
+      source: 'invoices',
+      module: 'Invoices',
+      label: houseLogLabel(getClientName(prop.client), prop.address),
+    }), 'Failed to update job status.');
 
   // ⭐ Exento de impuestos (columna Taxes): alterna el 8.25% del trabajo.
   //    Recibe la casa del clic (no un "seleccionado") — ver CLAUDE.md.
-  const handleToggleTax = async (prop: Property) => {
-    const taxExempt = !prop.taxExempt;
-    setIsSaving(true);
-    try {
-      await propertiesService.update(prop.id, { taxExempt });
-    } catch (error) {
-      console.error("Error updating tax:", error);
-      alert("Failed to update taxes.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const handleToggleTax = (prop: Property) =>
+    run(prop.id, () => propertiesService.update(prop.id, { taxExempt: !prop.taxExempt }), 'Failed to update taxes.');
 
-  const handleDelete = async (propertyId: string) => {
-    if (!window.confirm("Are you sure you want to completely delete this job?")) return;
-    setIsSaving(true);
-    try {
-      await propertiesService.delete(propertyId);
-    } catch (error) {
-      console.error("Error deleting property:", error);
-      alert("Failed to delete property.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  // ⭐ Borrar = mandar a la papelera con motivo obligatorio, junto con sus
+  //    pagos y servicios (antes se destruía con deleteDoc y la nómina quedaba
+  //    huérfana). Mismo flujo que Houses: features/houses/hooks/useHouseTrash.ts.
+  const houseTrash = useHouseTrash({
+    actor: currentUser,
+    module: 'Invoices',
+    labelOf: (h) => houseLogLabel(getClientName(h.client), h.address),
+    liveOf: (id) => properties.find((p) => p.id === id),
+  });
 
-  const getTeamName = (teamId?: string) => getRelationName(teams, teamId || '', 'Unassigned');
+  const getTeamName = (teamId?: string) => (teamsLive.loaded ? getRelationName(teams, teamId || '', 'Unassigned') : '…');
   const getTeamColor = (teamId?: string) => getRelationColor(teams, teamId || '') || '#94a3b8';
 
   // Filtro de scope (sólo lo que el usuario tiene permitido ver)
@@ -393,11 +339,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   //    listener global de la coleccion y le pasa la lista completa por props
   //    (visibleProperties, sin filtrar). Antes se bajaban los ~3,600 documentos
   //    una tercera vez.
-  const baseProps = properties;
-
   const invoiceProps = useMemo(
-    () => (baseProps || []).filter(p => invoiceStatusKeys.has(String(p.statusId || '').toLowerCase().trim())),
-    [baseProps, invoiceStatusKeys]
+    () => properties.filter(p => invoiceStatusKeys.has(String(p.statusId || '').toLowerCase().trim())),
+    [properties, invoiceStatusKeys]
   );
 
   // Conteos por status (badge de cada pill), en UNA pasada
@@ -428,7 +372,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   // qué vista se movieron). Las casas viejas que nunca recibieron la marca quedan
   // debajo, conservando el orden por Schedule Date DESCENDENTE de siempre.
   const filteredProperties = useMemo(() => {
-    const q = searchClient.toLowerCase();
+    const q = deferredSearch.toLowerCase();
     return invoiceProps.filter(prop => {
       if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
       if (q && !(searchTextByProp.get(prop.id) || '').includes(q)) return false;
@@ -446,7 +390,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
       }
       return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
     });
-  }, [invoiceProps, filterStatus, searchClient, range, searchTextByProp]);
+  }, [invoiceProps, filterStatus, deferredSearch, range, searchTextByProp]);
 
   const calcFinancials = jobFin.calc;
 
@@ -466,6 +410,26 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
   // Columnas de la tabla: "Notes" (oficina) solo con permiso
   const COLS = canSeeOfficeNotes ? 16 : 15;
 
+  // Encabezados de grupo, trabajos y "Show more" en una sola lista para la tabla
+  // y las tarjetas: así se dibujan por ventana (Year son cientos).
+  type InvoiceListItem =
+    | { kind: 'group' | 'more'; g: (typeof groups)[number]; open: boolean; shown: number }
+    | { kind: 'job'; prop: Property };
+  const listItems = useMemo(
+    () =>
+      groups.flatMap((g): InvoiceListItem[] => {
+        const open = !collapsed.has(g.key);
+        const shown = groupShown[g.key] ?? PAGE_SIZE;
+        if (!open) return [{ kind: 'group', g, open, shown }];
+        return [
+          { kind: 'group', g, open, shown },
+          ...g.items.slice(0, shown).map((prop): InvoiceListItem => ({ kind: 'job', prop })),
+          ...(g.items.length > shown ? [{ kind: 'more', g, open, shown } as const] : []),
+        ];
+      }),
+    [groups, collapsed, groupShown],
+  );
+
   // Celda de texto de una línea (Note / Notes / Issues): abre el editor
   const textCell = (prop: Property, field: TextField) => {
     const text = fieldText(prop, field);
@@ -484,7 +448,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     const f = calcFinancials(prop);
     const week = weekNumberOf(prop.scheduleDate);
     return (
-      <tr key={prop.id} onClick={() => openDetail(prop)} className="inv-row">
+      <tr key={prop.id} onClick={() => openDetail(prop)} className={`inv-row${pending.has(prop.id) ? ' is-pending' : ''}`}>
         <td className="inv-td inv-col-address" title={prop.address || ''}>
           <span className="inv-cell-ellipsis">{prop.address || '-'}</span>
         </td>
@@ -498,28 +462,28 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             {getTeamName(prop.teamId)}
           </span>
         </td>
-        <td className="inv-td right money money-start">{money(f.servicePrice)}</td>
+        <td className="inv-td right money money-start">{cash(f.servicePrice)}</td>
         <td className="inv-td right money" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             className={`inv-tax-btn${prop.taxExempt ? ' exempt' : ''}`}
-            disabled={isSaving || !canEdit}
+            disabled={!canEdit}
             onClick={() => handleToggleTax(prop)}
             title={prop.taxExempt ? 'Exento de impuestos — clic para cobrar 8.25%' : '8.25% Texas — clic para marcar exento'}
           >
-            {money(f.taxes)}
+            {cash(f.taxes)}
           </button>
         </td>
-        <td className="inv-td right money">{money(f.finalCost)}</td>
-        <td className="inv-td right money payroll">{money(f.payroll)}</td>
-        <td className={`inv-td right money profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>{money(f.profit)}</td>
-        <td className="inv-td right"><span className={`inv-mpill ${marginTone(f.margin)}`}>{pct(f.margin)}</span></td>
+        <td className="inv-td right money">{cash(f.finalCost)}</td>
+        <td className="inv-td right money payroll">{cash(f.payroll)}</td>
+        <td className={`inv-td right money profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>{cash(f.profit)}</td>
+        <td className="inv-td right">{jobFin.loading ? <span className="skel-line skel-money" /> : <span className={`inv-mpill ${marginTone(f.margin)}`}>{pct(f.margin)}</span>}</td>
         <td className="inv-td" onClick={(e) => e.stopPropagation()}>
           <div className="inv-status-cell">
             <InvoiceStatusPill
               currentStatus={prop.invoiceStatus || 'Pending'}
               onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
-              disabled={isSaving || (!isSuperAdmin && !canEdit)}
+              disabled={!isSuperAdmin && !canEdit}
             />
             {/* ⭐ Factura retenida por un QC que no pasó (RECALL con re-clean). */}
             {prop.invoiceHold && (
@@ -552,7 +516,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             )}
             {canDelete && (
               <button
-                onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+                onClick={(e) => { e.stopPropagation(); houseTrash.request(prop); }}
                 title="Delete Job"
                 className="inv-icon-btn delete"
               >
@@ -571,12 +535,12 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
     const officeNote = canSeeOfficeNotes ? fieldText(prop, 'officeNote') : '';
     const issues = fieldText(prop, 'issues');
     return (
-      <div key={prop.id} onClick={() => openDetail(prop)} className="inv-job-card">
+      <div key={prop.id} onClick={() => openDetail(prop)} className={`inv-job-card${pending.has(prop.id) ? ' is-pending' : ''}`}>
         {/* Título + profit */}
         <div className="inv-card-top-row">
           <span className="inv-card-client-name">{clientName}</span>
           <span className={`inv-card-profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>
-            {money(f.profit)} <span className="inv-card-margin">{pct(f.margin)}</span>
+            {cash(f.profit)} <span className="inv-card-margin">{jobFin.loading ? '' : pct(f.margin)}</span>
           </span>
         </div>
 
@@ -625,26 +589,26 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
             fullWidth
             currentStatus={prop.invoiceStatus || 'Pending'}
             onChange={(newSt: string) => handleStatusChange(prop.id, newSt)}
-            disabled={isSaving || (!isSuperAdmin && !canEdit)}
+            disabled={!isSuperAdmin && !canEdit}
           />
           <JobStatusPill
             fullWidth
             currentStatusId={prop.statusId}
             statuses={statuses}
-            onChange={(newId: string) => handleJobStatusChange(prop.id, newId)}
+            onChange={(newId: string) => handleJobStatusChange(prop, newId)}
             onRequestOpen={setStatusModal}
             modalTitle={getClientName(prop.client)}
             modalSubtitle={prop.address}
-            disabled={isSaving || (!isSuperAdmin && !canEdit)}
+            disabled={!isSuperAdmin && !canEdit}
           />
         </div>
 
         {/* Resumen financiero (mismas fórmulas que la hoja) */}
         <dl className="inv-card-fin-grid">
-          <div><dt>Service Price</dt><dd>{money(f.servicePrice)}</dd></div>
-          <div><dt>Taxes{prop.taxExempt ? ' (exento)' : ''}</dt><dd>{money(f.taxes)}</dd></div>
-          <div><dt>Final Cost</dt><dd>{money(f.finalCost)}</dd></div>
-          <div><dt>Payroll</dt><dd>{money(f.payroll)}</dd></div>
+          <div><dt>Service Price</dt><dd>{cash(f.servicePrice)}</dd></div>
+          <div><dt>Taxes{prop.taxExempt ? ' (exento)' : ''}</dt><dd>{cash(f.taxes)}</dd></div>
+          <div><dt>Final Cost</dt><dd>{cash(f.finalCost)}</dd></div>
+          <div><dt>Payroll</dt><dd>{cash(f.payroll)}</dd></div>
         </dl>
 
         {/* Acciones */}
@@ -668,13 +632,88 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           )}
           {canDelete && (
             <button
-              onClick={(e) => { e.stopPropagation(); handleDelete(prop.id); }}
+              onClick={(e) => { e.stopPropagation(); houseTrash.request(prop); }}
               className="inv-card-btn delete">
               <Trash2 size={16} /> Borrar
             </button>
           )}
         </div>
       </div>
+    );
+  };
+
+  const renderTableItem = (item: InvoiceListItem) => {
+    if (item.kind === 'job') return renderRow(item.prop);
+    const { g, open, shown } = item;
+    if (item.kind === 'more') {
+      return (
+        <tr key={`more:${g.key}`} className="inv-grp-more">
+          <td colSpan={COLS}>
+            <button
+              type="button"
+              className="inv-more-btn"
+              onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
+            >
+              Show more — {shown} of {g.items.length}
+            </button>
+          </td>
+        </tr>
+      );
+    }
+    const t = g.totals;
+    // Encabezado del grupo con SUBTOTALES alineados a sus columnas
+    return (
+      <tr key={`group:${g.key}`} className="inv-grp-row" onClick={() => toggleGroup(g.key)}>
+        {/* Nombre del grupo en la columna FIJA (Address): sigue
+            visible al desplazar la tabla hacia la derecha. */}
+        <td className="inv-group-first" title={g.detail ? `${g.label} · ${g.detail}` : g.label}>
+          <span className="inv-grp-title">
+            <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
+            {g.label}
+          </span>
+        </td>
+        <td colSpan={4}>
+          {g.detail && <span className="inv-grp-range">{g.detail}</span>}
+          <span className="inv-grp-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
+        </td>
+        <td className="right strong money-start">{cash(t.servicePrice)}</td>
+        <td className="right strong">{cash(t.taxes)}</td>
+        <td className="right strong">{cash(t.finalCost)}</td>
+        <td className="right strong">{cash(t.payroll)}</td>
+        <td className={`right strong ${t.profit >= 0 ? 'positive' : 'negative'}`}>{cash(t.profit)}</td>
+        <td className="right">{!jobFin.loading && <span className={`inv-mpill ${marginTone(t.margin)}`}>{pct(t.margin)}</span>}</td>
+        <td colSpan={COLS - 11}></td>
+      </tr>
+    );
+  };
+
+  const renderCardItem = (item: InvoiceListItem) => {
+    if (item.kind === 'job') return renderCard(item.prop);
+    const { g, open, shown } = item;
+    if (item.kind === 'more') {
+      return (
+        <button
+          key={`more:${g.key}`}
+          type="button"
+          className="inv-more-btn"
+          onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
+        >
+          Show more — {shown} of {g.items.length}
+        </button>
+      );
+    }
+    return (
+      <button key={`group:${g.key}`} type="button" className="inv-grp-card" onClick={() => toggleGroup(g.key)}>
+        <span className="inv-grp-title">
+          <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
+          {g.label}
+          {g.detail && <span className="inv-grp-range">{g.detail}</span>}
+          <span className="inv-grp-count">{g.items.length}</span>
+        </span>
+        <span className={`inv-grp-card-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>
+          {cash(g.totals.profit)}
+        </span>
+      </button>
     );
   };
 
@@ -705,15 +744,15 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           title: 'Financials',
           color: '#1d3fcf',
           tiles: [
-            { key: 'price', label: 'Service price', value: money(filteredTotals.servicePrice), sub: `${filteredProperties.length.toLocaleString('en-US')} ${filteredProperties.length === 1 ? 'job' : 'jobs'}` },
-            { key: 'tax', label: 'Taxes', value: money(filteredTotals.taxes), sub: '8.25% Texas' },
-            { key: 'final', label: 'Final cost', value: money(filteredTotals.finalCost), sub: 'Price − taxes' },
+            { key: 'price', label: 'Service price', value: cashText(filteredTotals.servicePrice), sub: `${filteredProperties.length.toLocaleString('en-US')} ${filteredProperties.length === 1 ? 'job' : 'jobs'}` },
+            { key: 'tax', label: 'Taxes', value: cashText(filteredTotals.taxes), sub: '8.25% Texas' },
+            { key: 'final', label: 'Final cost', value: cashText(filteredTotals.finalCost), sub: 'Price − taxes' },
             {
-              key: 'payroll', label: 'Payroll', value: money(filteredTotals.payroll),
+              key: 'payroll', label: 'Payroll', value: cashText(filteredTotals.payroll),
               sub: filteredTotals.finalCost > 0 ? `${((filteredTotals.payroll / filteredTotals.finalCost) * 100).toFixed(1)}% of final cost` : '—',
             },
             {
-              key: 'profit', label: 'Profit', value: money(filteredTotals.profit),
+              key: 'profit', label: 'Profit', value: cashText(filteredTotals.profit),
               tone: filteredTotals.profit < 0 ? 'bad' : 'good',
               highlight: filteredTotals.profit < 0 ? 'bad' : 'good',
               sub: `Margin ${pct(filteredTotals.margin)}`,
@@ -757,7 +796,9 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
         </label>
       </div>
 
-      {/* TABLA PRINCIPAL (escritorio) — mismas columnas y orden que la hoja "Operations" */}
+      {/* ⭐ Solo se dibuja una de las dos: tabla (escritorio) o tarjetas (móvil). */}
+      {!isPhone ? (
+      /* TABLA PRINCIPAL — mismas columnas y orden que la hoja "Operations" */
       <div className="inv-table-wrap">
         <table className="inv-table">
           <thead>
@@ -780,59 +821,21 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
               <th className="inv-th center">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {isLoading || jobFin.loading ? (
-              <tr><td colSpan={COLS} className="inv-empty-row">Loading financial data...</td></tr>
-            ) : invoiceProps.length === 0 ? (
-              <tr><td colSpan={COLS} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
-            ) : filteredProperties.length === 0 ? (
-              <tr><td colSpan={COLS} className="inv-empty-row">No jobs in this period. Use ← → or Today to move the period, or click "All".</td></tr>
-            ) : groups.map(g => {
-              const open = !collapsed.has(g.key);
-              const shown = groupShown[g.key] ?? PAGE_SIZE;
-              const t = g.totals;
-              return (
-                <Fragment key={g.key}>
-                  {/* Encabezado del grupo con SUBTOTALES alineados a sus columnas */}
-                  <tr className="inv-grp-row" onClick={() => toggleGroup(g.key)}>
-                    {/* Nombre del grupo en la columna FIJA (Address): sigue
-                        visible al desplazar la tabla hacia la derecha. */}
-                    <td className="inv-group-first" title={g.detail ? `${g.label} · ${g.detail}` : g.label}>
-                      <span className="inv-grp-title">
-                        <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
-                        {g.label}
-                      </span>
-                    </td>
-                    <td colSpan={4}>
-                      {g.detail && <span className="inv-grp-range">{g.detail}</span>}
-                      <span className="inv-grp-count">{g.items.length} {g.items.length === 1 ? 'job' : 'jobs'}</span>
-                    </td>
-                    <td className="right strong money-start">{money(t.servicePrice)}</td>
-                    <td className="right strong">{money(t.taxes)}</td>
-                    <td className="right strong">{money(t.finalCost)}</td>
-                    <td className="right strong">{money(t.payroll)}</td>
-                    <td className={`right strong ${t.profit >= 0 ? 'positive' : 'negative'}`}>{money(t.profit)}</td>
-                    <td className="right"><span className={`inv-mpill ${marginTone(t.margin)}`}>{pct(t.margin)}</span></td>
-                    <td colSpan={COLS - 11}></td>
-                  </tr>
-                  {open && g.items.slice(0, shown).map(renderRow)}
-                  {open && g.items.length > shown && (
-                    <tr className="inv-grp-more">
-                      <td colSpan={COLS}>
-                        <button
-                          type="button"
-                          className="inv-more-btn"
-                          onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
-                        >
-                          Show more — {shown} of {g.items.length}
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
+          {isLoading || invoiceProps.length === 0 || filteredProperties.length === 0 ? (
+            <tbody>
+              {isLoading ? (
+                Array.from({ length: 6 }, (_, i) => (
+                  <tr key={i}><td colSpan={COLS} className="inv-td"><div className="skel-line skel-row-main" /></td></tr>
+                ))
+              ) : invoiceProps.length === 0 ? (
+                <tr><td colSpan={COLS} className="inv-empty-row">No hay casas con status "Invoice" todavía.</td></tr>
+              ) : (
+                <tr><td colSpan={COLS} className="inv-empty-row">No jobs in this period. Use ← → or Today to move the period, or click "All".</td></tr>
+              )}
+            </tbody>
+          ) : (
+            <VirtualItems items={listItems} estimate={58} colSpan={COLS} renderItem={renderTableItem} />
+          )}
           {/* ⭐ TOTAL GENERAL del periodo, fijo al pie de la tabla */}
           {!isLoading && filteredProperties.length > 0 && (
             <tfoot>
@@ -841,57 +844,34 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 <td colSpan={4} className="muted">
                   {filteredProperties.length.toLocaleString('en-US')} {filteredProperties.length === 1 ? 'job' : 'jobs'}
                 </td>
-                <td className="right">{money(filteredTotals.servicePrice)}</td>
-                <td className="right">{money(filteredTotals.taxes)}</td>
-                <td className="right">{money(filteredTotals.finalCost)}</td>
-                <td className="right">{money(filteredTotals.payroll)}</td>
-                <td className={`right ${filteredTotals.profit >= 0 ? 'positive' : 'negative'}`}>{money(filteredTotals.profit)}</td>
-                <td className="right">{pct(filteredTotals.margin)}</td>
+                <td className="right">{cash(filteredTotals.servicePrice)}</td>
+                <td className="right">{cash(filteredTotals.taxes)}</td>
+                <td className="right">{cash(filteredTotals.finalCost)}</td>
+                <td className="right">{cash(filteredTotals.payroll)}</td>
+                <td className={`right ${filteredTotals.profit >= 0 ? 'positive' : 'negative'}`}>{cash(filteredTotals.profit)}</td>
+                <td className="right">{jobFin.loading ? '' : pct(filteredTotals.margin)}</td>
                 <td colSpan={COLS - 11}></td>
               </tr>
             </tfoot>
           )}
         </table>
       </div>
-
-      {/* ====== VISTA TARJETAS (MÓVIL) ====== */}
-      <div className="inv-cards-wrap">
-        {isLoading || jobFin.loading ? (
-          <div className="inv-empty-row">Loading financial data...</div>
-        ) : invoiceProps.length === 0 ? (
-          <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
-        ) : filteredProperties.length === 0 ? (
-          <div className="inv-empty-row">No jobs in this period.</div>
-        ) : groups.map(g => {
-          const open = !collapsed.has(g.key);
-          const shown = groupShown[g.key] ?? PAGE_SIZE;
-          return (
-            <Fragment key={g.key}>
-              <button type="button" className="inv-grp-card" onClick={() => toggleGroup(g.key)}>
-                <span className="inv-grp-title">
-                  <ChevronRight size={16} className={`inv-grp-chevron${open ? ' open' : ''}`} />
-                  {g.label}
-                  {g.detail && <span className="inv-grp-range">{g.detail}</span>}
-                  <span className="inv-grp-count">{g.items.length}</span>
-                </span>
-                <span className={`inv-grp-card-total ${g.totals.profit >= 0 ? 'positive' : 'negative'}`}>
-                  {money(g.totals.profit)}
-                </span>
-              </button>
-              {open && g.items.slice(0, shown).map(renderCard)}
-              {open && g.items.length > shown && (
-                <button
-                  type="button"
-                  className="inv-more-btn"
-                  onClick={() => setGroupShown(c => ({ ...c, [g.key]: shown + 100 }))}
-                >
-                  Show more — {shown} of {g.items.length}
-                </button>
-              )}
-            </Fragment>
-          );
-        })}
-      </div>
+      ) : (
+      /* ====== VISTA TARJETAS (MÓVIL) ====== */
+      isLoading || invoiceProps.length === 0 || filteredProperties.length === 0 ? (
+        <div className="inv-cards-wrap">
+          {isLoading ? (
+            Array.from({ length: 3 }, (_, i) => <div key={i} className="skel-card" />)
+          ) : invoiceProps.length === 0 ? (
+            <div className="inv-empty-row">No hay casas con status "Invoice" todavía.</div>
+          ) : (
+            <div className="inv-empty-row">No jobs in this period.</div>
+          )}
+        </div>
+      ) : (
+        <VirtualItems className="inv-cards-wrap" items={listItems} estimate={210} renderItem={renderCardItem} />
+      )
+      )}
 
       {/* ⭐ MODAL DE NOTA — ver y editar la nota de la casa sin abrir el detalle */}
       {noteHouse && (
@@ -910,7 +890,7 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
                 className="inv-note-textarea"
                 value={noteDraft}
                 onChange={e => setNoteDraft(e.target.value)}
-                disabled={!canEdit || isSavingNote}
+                disabled={!canEdit}
                 placeholder={canEdit ? `Escribe ${TEXT_FIELD_LABEL[noteField]} de esta casa...` : "Sin texto"}
                 rows={8}
               />
@@ -918,18 +898,22 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
 
             <footer className="inv-note-modal-footer">
               {canEdit && (
-                <button
-                  className="inv-btn-primary-modal"
-                  onClick={saveNote}
-                  disabled={isSavingNote}
-                >
-                  {isSavingNote ? 'Saving...' : 'Save'}
-                </button>
+                <button className="inv-btn-primary-modal" onClick={saveNote}>Save</button>
               )}
               <button className="inv-btn-outline-modal" onClick={() => setNoteHouse(null)}>Close</button>
             </footer>
           </div>
         </div>
+      )}
+
+      {/* ⭐ Borrar con motivo → papelera (mismo diálogo que Houses) */}
+      {houseTrash.target && (
+        <DeleteHouseDialog
+          label={houseTrash.label}
+          busy={houseTrash.busy}
+          onCancel={houseTrash.cancel}
+          onConfirm={(reason) => void houseTrash.confirm(reason)}
+        />
       )}
 
       {/* ⭐ MODAL CENTRAL DE CAMBIO DE ESTADO (mismo que Houses/QC) */}
@@ -938,26 +922,6 @@ export default function InvoicesView({ onOpenMenu, properties, setProperties, cu
           config={statusModal}
           statuses={statuses}
           onClose={() => setStatusModal(null)}
-        />
-      )}
-
-      {/* ⭐ EDICIÓN y FOTOS/PDF de la casa sin salir de Invoices: HousesView en modo
-          'modals-only' dibuja únicamente sus modales encima de esta vista
-          (formulario de edición o detalle abierto en el tab de fotos). */}
-      {editorMounted && (
-        <HousesView
-          renderMode="modals-only"
-          onOpenMenu={() => { /* sin página propia en modals-only */ }}
-          properties={baseProps}
-          setProperties={setProperties}
-          currentUser={currentUser}
-          activeRole={activeRole}
-          isSuperAdmin={isSuperAdmin}
-          houseToOpenEdit={houseToEdit}
-          clearHouseToOpenEdit={() => setHouseToEdit(null)}
-          houseToOpenDetail={houseToView}
-          clearHouseToOpenDetail={() => setHouseToView(null)}
-          detailInitialTab={detailTab ?? undefined}
         />
       )}
 

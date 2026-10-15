@@ -1,7 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import {
-  getAuth,
+  initializeAuth,
+  inMemoryPersistence,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut as firebaseSignOut
@@ -34,7 +35,9 @@ function getSecondaryAuth(): Auth {
   if (!secondaryApp) {
     secondaryApp = initializeApp(firebaseConfig, SECONDARY_APP_NAME);
   }
-  return getAuth(secondaryApp);
+  // initializeAuth y no getAuth: getAuth mete en el bundle de arranque el resolver
+  // de popups (y la descarga de apis.google.com). La sesión aquí es de usar y tirar.
+  return initializeAuth(secondaryApp, { persistence: inMemoryPersistence });
 }
 
 /**

@@ -22,19 +22,20 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { collection, onSnapshot, type DocumentData, type QueryDocumentSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { COLLECTIONS } from '../../lib/firebase/collections';
 import type {
-  Business, CategoryExpense, Customer, PaymentMethod, PayrollRecord, Priority, Product, Responsable, Role,
+  Business, CategoryExpense, Customer, TaskProject, PaymentMethod, PayrollRecord, Priority, Product, Responsable, Role,
   Service, Status, SystemUser, Task, Tax, Team, Place,
 } from '../../types/index';
 import { mapCustomerDoc } from '../../utils/customerDocs';
 import { incrementalMapper } from './incrementalSnapshot';
-import type { QcRecordLite } from '../../utils/qcDashboard';
+import type { QcRecordLite } from '../../types/index';
 
 /** Cuánto sigue abierto un listener después de que ninguna vista lo usa. */
 const KEEP_ALIVE_MS = 15 * 60 * 1000;
 
 /** Servicio cobrado de una casa (`billing_services`). */
-export interface BillingServiceDoc {
+interface BillingServiceDoc {
   id: string;
   propertyId: string;
   total: number;
@@ -51,31 +52,33 @@ interface Source<T> {
 const src = <T,>(path: string, map: (d: Doc) => T = withId<T>): Source<T> => ({ path, map });
 
 const SOURCES = {
-  statuses: src<Status>('settings_statuses'),
-  teams: src<Team>('settings_teams'),
-  priorities: src<Priority>('settings_priorities'),
-  services: src<Service>('settings_services'),
-  products: src<Product & { color?: string }>('settings_products'),
-  taxes: src<Tax>('settings_tax'),
-  places: src<Place>('settings_places'),
-  tasks: src<Task>('settings_tasks'),
-  roles: src<Role>('settings_roles'),
-  users: src<SystemUser>('system_users'),
-  customers: src<Customer>('customers', mapCustomerDoc),
-  qualityChecks: src<QcRecordLite>('quality_checks'),
-  billingServices: src<BillingServiceDoc>('billing_services'),
-  payroll: src<PayrollRecord>('payroll'),
+  statuses: src<Status>(COLLECTIONS.statuses),
+  teams: src<Team>(COLLECTIONS.teams),
+  priorities: src<Priority>(COLLECTIONS.priorities),
+  services: src<Service>(COLLECTIONS.services),
+  products: src<Product & { color?: string }>(COLLECTIONS.products),
+  taxes: src<Tax>(COLLECTIONS.taxes),
+  places: src<Place>(COLLECTIONS.places),
+  tasks: src<Task>(COLLECTIONS.tasks),
+  roles: src<Role>(COLLECTIONS.roles),
+  users: src<SystemUser>(COLLECTIONS.systemUsers),
+  customers: src<Customer>(COLLECTIONS.customers, mapCustomerDoc),
+  qualityChecks: src<QcRecordLite>(COLLECTIONS.qualityChecks),
+  billingServices: src<BillingServiceDoc>(COLLECTIONS.billingServices),
+  payroll: src<PayrollRecord>(COLLECTIONS.payroll),
+  // Proyectos del Task list (pocos; los usa toda la vista de tareas).
+  taskProjects: src<TaskProject>(COLLECTIONS.taskProjects),
   // Catálogos que solo usa Settings (el listener se abre al entrar ahí).
-  categories: src<CategoryExpense>('settings_categories'),
-  responsables: src<Responsable>('settings_responsables'),
-  paymentMethods: src<PaymentMethod>('settings_payment_methods'),
-  businesses: src<Business>('settings_businesses'),
+  categories: src<CategoryExpense>(COLLECTIONS.categories),
+  responsables: src<Responsable>(COLLECTIONS.responsables),
+  paymentMethods: src<PaymentMethod>(COLLECTIONS.paymentMethods),
+  businesses: src<Business>(COLLECTIONS.businesses),
 };
 
-export type LiveKey = keyof typeof SOURCES;
+type LiveKey = keyof typeof SOURCES;
 type ItemOf<K extends LiveKey> = (typeof SOURCES)[K] extends Source<infer T> ? T : never;
 
-export interface LiveSnapshot<T> {
+interface LiveSnapshot<T> {
   data: T[];
   /** true cuando llegó el primer resultado (o falló: no se bloquea la vista). */
   loaded: boolean;
