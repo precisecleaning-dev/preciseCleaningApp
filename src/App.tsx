@@ -4,8 +4,10 @@ import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
-// ⭐ Notificaciones / Ver como / Log Out arriba a la derecha (escritorio).
-import TopRightActions from './components/TopRightActions';
+// ⭐ Notificaciones / Ver como / Log Out: un solo componente (barra arriba en
+//    la computadora, pie del menú en el teléfono).
+import SessionActions from './shared/components/SessionActions';
+import { PHONE_QUERY, useMediaQuery } from './shared/hooks/useMediaQuery';
 // ⭐ Aviso de versión nueva a todos los usuarios conectados.
 import { useVersionCheck, reloadForUpdate } from './hooks/useVersionCheck';
 import { RefreshCw } from 'lucide-react';
@@ -43,17 +45,12 @@ const QCReportsTableView = lazy(() => import('./views/QCReportsTableView'));
 const QualityDashboardView = lazy(() => import('./views/QualityDashboardView'));
 const OwnerView = lazy(() => import('./views/OwnerView'));
 const ManagerView = lazy(() => import('./views/ManagerView'));
+const TaskListView = lazy(() => import('./features/ops/TaskListView'));
 // ⭐ Vista de historial de status por casa
 // ⭐ Modulo de empresa (logo, nombre, correo, direccion)
 const CompanySettingsView = lazy(() => import('./views/CompanySettingsView'));
 // ⭐ Configuracion de compresion/captura de fotos
 const PhotoSettingsView = lazy(() => import('./views/PhotoSettingsView'));
-// ⭐ Hoja de ruta para casas con QC pendiente
-// ⭐ TEMPORAL — migracion unica payroll_records → payroll (quitar al terminar)
-//    Export nombrado: lazy() necesita un default, por eso el .then().
-const MigrarPayroll = lazy(() =>
-  import('./views/MigrarPayroll').then(m => ({ default: m.MigrarPayroll }))
-);
 
 import type { Property, SystemUser } from './types/index';
 import './App.css';
@@ -62,11 +59,12 @@ import { auth, db } from './config/firebase';
 import { useLiveCollection, resetLiveCollections } from './shared/data/liveCollections';
 import { clearMemoryCache } from './shared/utils/memoryCache';
 import { subscribeProperties, useFullHistory } from './shared/data/propertiesWindow';
+import { canViewTaskList } from './features/ops/opsPermissions';
 import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import' | 'migrar_payroll';
+export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
@@ -77,7 +75,11 @@ const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
   'qc_reports_table', 'qc_dashboard', 'owner', 'manager',
 ]);
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import', 'migrar_payroll'];
+/** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
+const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
+  'calendar', 'invoices', 'payroll', 'qc_report', 'qc_dashboard', 'owner', 'manager',
+]);
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -132,6 +134,20 @@ export default function App() {
   // ⭐ Apertura externa en HousesView (desde Quality Check): detalle o formulario de edición
   const [houseToOpenDetail, setHouseToOpenDetail] = useState<Property | null>(null);
   const [houseToOpenEdit, setHouseToOpenEdit] = useState<Property | null>(null);
+  // Pestaña con la que abre el detalle ("media" = fotos y PDF, desde Invoices).
+  const [detailTab, setDetailTab] = useState<'media' | undefined>();
+  // El host de modales de Houses se monta la primera vez que se pide una casa:
+  // las vistas que nunca abren una no pagan el render de HousesView.
+  const [houseModalsUsed, setHouseModalsUsed] = useState(false);
+  const openHouseDetail = (house: Property, tab?: 'media') => {
+    setHouseModalsUsed(true);
+    setDetailTab(tab);
+    setHouseToOpenDetail(house);
+  };
+  const openHouseEdit = (house: Property) => {
+    setHouseModalsUsed(true);
+    setHouseToOpenEdit(house);
+  };
 
   // ⭐ Flags de "primer dato recibido". Sirven para NO montar las vistas hasta que
   //    properties, roles y el perfil tengan al menos su primer snapshot. Con la
@@ -272,6 +288,7 @@ export default function App() {
   // ⭐ true cuando /version.json trae un sello distinto al del bundle en
   //    memoria: hay versión nueva desplegada → banner + punto en la campana.
   const updateAvailable = useVersionCheck();
+  const isPhone = useMediaQuery(PHONE_QUERY);
   const [isViewAsModalOpen, setIsViewAsModalOpen] = useState(false);
 
   // Rol y usuario REALES (los de la sesion), antes de cualquier suplantacion.
@@ -300,6 +317,9 @@ export default function App() {
          p.module === 'View As User')?.canView;
 
   const exitViewAs = () => setViewAs(null);
+  const toggleViewAs = canUseViewAs
+    ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
+    : undefined;
 
   // ⭐ CUMPLIMIENTO ESTRICTO DE PERMISOS POR MÓDULO: el Sidebar oculta los items,
   //    pero el tab activo puede llegar por localStorage (última pestaña usada) o
@@ -311,14 +331,16 @@ export default function App() {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
       qc_report: ['Quality Check'], qc_reports_table: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
-      owner: ['Owner'], manager: ['Manager'],
+      owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'],
       payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
       data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
-      settings: ['Settings'], migrar_payroll: ['Settings'],
+      settings: ['Settings'],
     };
     const canViewModule = (m: string) =>
       !!activeRole.permissions?.find(p => p.module === m && p.canView);
+    // Task list: permiso propio con respaldo a Manager/Owner (opsPermissions.ts).
+    if (activeTab === 'task_list' && canViewTaskList(activeRole, false)) return;
     const mods = TAB_MODULE[activeTab];
     if (!mods || mods.some(canViewModule)) return; // sin mapeo o permitido: no tocar
     const order: TabOptions[] = ['houses', 'pipeline', 'invoices', 'calendar', 'qc_report',
@@ -329,8 +351,6 @@ export default function App() {
   }, [activeTab, activeRole, isSuperAdmin]);
   // ⭐ Data Import: SuperAdmin siempre; o cualquier rol con el permiso "Data Import" (casilla View en Roles).
   const canViewDataImport = isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === 'Data Import')?.canView;
-  // ⭐ TEMPORAL — permiso para la vista Migrar Payroll: misma regla que Settings en el Sidebar.
-  const canViewMigrarPayroll = isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === 'Settings')?.canView;
   // ⭐ SCOPE POR MÓDULO (Roles & Permissions → columna Scope): 'Own' significa que
   //    el rol solo ve SUS registros. Un registro es "propio" si el usuario está en
   //    assignedWorkers (ids de system_users) o comparte teamId — exactamente la
@@ -359,12 +379,6 @@ export default function App() {
     setCurrentSettingView('menu');
   }; 
 
-  // ⭐ Vistas Owner / Manager que este rol puede abrir (selector del encabezado).
-  const canViewHome = (m: 'Owner' | 'Manager') =>
-    isSuperAdmin || !!activeRole?.permissions?.find((p) => p.module === m && p.canView);
-  const homeTabs = ([['owner', 'Owner'], ['manager', 'Manager']] as const)
-    .filter(([, m]) => canViewHome(m))
-    .map(([t]) => t);
 
   const handleCheckHouse = (house: Property) => {
     setHouseToInspect(house);
@@ -403,10 +417,16 @@ export default function App() {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // ⭐ Sesión confirmada pero la data aún no llega en su primer snapshot:
-  //    mostramos "Cargando datos..." en vez de dejar que las vistas pinten 0.
+  // ⭐ Sesión confirmada pero roles y perfil aún no llegan (deciden el menú y
+  //    los permisos): se dibuja la forma de la app (barra lateral y esqueleto
+  //    de la vista) en vez de "Cargando datos..." a pantalla completa.
   if (!appDataReady) {
-    return <LoadingScreen text="Cargando datos..." />;
+    return (
+      <div className="app-container">
+        <aside className={`sidebar-container ${isSidebarOpen ? 'open' : 'closed'}`} aria-hidden="true" />
+        <main className="main-content"><ViewSkeleton /></main>
+      </div>
+    );
   }
 
   return (
@@ -425,21 +445,9 @@ export default function App() {
         </div>
       )}
 
-      {/* ⭐ Barra superior derecha (solo escritorio): Notificaciones, Ver
-          como otro usuario y Log Out. En móvil siguen en el menú lateral. */}
-      <TopRightActions
+      <Sidebar
         updateAvailable={updateAvailable}
-        onViewAsUser={canUseViewAs
-          ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
-          : undefined}
-        isViewingAsUser={!!viewAs}
-      />
-
-      <Sidebar 
-        updateAvailable={updateAvailable}
-        onViewAsUser={canUseViewAs
-          ? () => { if (viewAs) exitViewAs(); else setIsViewAsModalOpen(true); }
-          : undefined}
+        onViewAsUser={toggleViewAs}
         isViewingAsUser={!!viewAs}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
@@ -453,6 +461,14 @@ export default function App() {
       {/* ⭐ `key` por pestaña: fuerza un contenedor nuevo en cada navegacion, que
           es lo que permite reiniciar el scroll y animar la entrada. */}
       <main className="main-content" ref={mainRef}>
+        {/* ⭐ Notificaciones / Ver como / Log Out en su propia fila arriba a la
+            derecha (computadora): no flota encima de los encabezados de las
+            vistas. En el teléfono están en el pie del menú lateral. */}
+        {!isPhone && (
+          <div className="app-topbar">
+            <SessionActions variant="bar" updateAvailable={updateAvailable} onViewAsUser={toggleViewAs} isViewingAsUser={!!viewAs} />
+          </div>
+        )}
         {/* ⭐ Barra fija de modo inspeccion: sin algo asi es facil olvidar que se
             esta viendo como otra persona, confundirse por los botones que faltan
             y creer que la app tiene un error. */}
@@ -472,7 +488,6 @@ export default function App() {
         {activeTab === 'houses' && (
           <HousesView
             properties={visibleProperties}
-            setProperties={setProperties}
             onOpenMenu={toggleMenu}
             currentUser={effectiveUser}
             activeRole={activeRole}
@@ -488,7 +503,6 @@ export default function App() {
           <HousesView
             viewMode="board"
             properties={visibleProperties}
-            setProperties={setProperties}
             onOpenMenu={toggleMenu}
             currentUser={effectiveUser}
             activeRole={activeRole}
@@ -510,13 +524,14 @@ export default function App() {
         )}
 
         {activeTab === 'invoices' && (
-          <InvoicesView 
-            properties={visibleProperties} 
-            setProperties={setProperties} 
-            onOpenMenu={toggleMenu} 
+          <InvoicesView
+            properties={visibleProperties}
+            onOpenMenu={toggleMenu}
             currentUser={effectiveUser}
             activeRole={activeRole}
             isSuperAdmin={isSuperAdmin}
+            onOpenHouseDetail={openHouseDetail}
+            onOpenHouseEdit={openHouseEdit}
           />
         )}
 
@@ -526,44 +541,35 @@ export default function App() {
           <CalendarView
             properties={propertiesForModule('Calendar')}
             onOpenMenu={toggleMenu}
-            onCheckHouse={handleCheckHouse}
+            onOpenHouseDetail={openHouseDetail}
           />
         )}
-        
-        {/* ⭐ Payroll recibe contexto de usuario para poder abrir el formulario de
-            edición de casa (HousesView modals-only) con los permisos correctos */}
-        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} properties={visibleProperties} setProperties={setProperties} currentUser={effectiveUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} />}
+
+        {/* ⭐ TASK LIST — tareas, proyectos y top 3 de los gerentes (user_tasks, projects y user_priorities). */}
+        {activeTab === 'task_list' && (
+          <TaskListView
+            onOpenMenu={toggleMenu}
+            currentUser={effectiveUser}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
+
+        {activeTab === 'payroll' && <PayrollView onOpenMenu={toggleMenu} properties={visibleProperties} currentUser={effectiveUser} activeRole={activeRole} isSuperAdmin={isSuperAdmin} onOpenHouseEdit={openHouseEdit} />}
 
         {activeTab === 'qc_report' && (
-          <>
-            {/* ⭐ Hub con pestañas: Quality Check | Rutas | Reportes */}
-            <QualityCheckHub 
-              onOpenMenu={toggleMenu} 
-              properties={visibleProperties}
-              activeRole={activeRole}
-              isSuperAdmin={isSuperAdmin}
-              houseToInspect={houseToInspect}
-              clearHouseToInspect={() => setHouseToInspect(null)}
-              currentUser={effectiveUser}
-              onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
-              onOpenHouseEdit={(house) => setHouseToOpenEdit(house)}
-            />
-            {/* ⭐ Modales de HousesView montados ENCIMA de QC: el detalle y el
-                formulario se abren aquí mismo, sin sacar al usuario de la vista. */}
-            <HousesView
-              renderMode="modals-only"
-              properties={visibleProperties}
-              setProperties={setProperties}
-              onOpenMenu={toggleMenu}
-              currentUser={effectiveUser}
-              activeRole={activeRole}
-              isSuperAdmin={isSuperAdmin}
-              houseToOpenDetail={houseToOpenDetail}
-              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
-              houseToOpenEdit={houseToOpenEdit}
-              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
-            />
-          </>
+          // Hub con pestañas: Quality Check | Rutas | Reportes
+          <QualityCheckHub
+            onOpenMenu={toggleMenu}
+            properties={visibleProperties}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+            houseToInspect={houseToInspect}
+            clearHouseToInspect={() => setHouseToInspect(null)}
+            currentUser={effectiveUser}
+            onOpenHouseDetail={openHouseDetail}
+            onOpenHouseEdit={openHouseEdit}
+          />
         )}
 
         {/* ⭐ QUALITY CHECK REPORTS — inspecciones FINALIZADAS en formato tabla.
@@ -580,7 +586,7 @@ export default function App() {
         )}
 
         {/* ⭐ OWNER y MANAGER — páginas de inicio del dueño y del gerente. Quien
-            puede ver las dos cambia entre ellas con el selector del encabezado.
+            puede ver las dos cambia entre ellas con el menú lateral.
             El detalle / edición de una casa se abre aquí mismo. */}
         {(activeTab === 'owner' || activeTab === 'manager') && (
           <>
@@ -589,10 +595,10 @@ export default function App() {
                 onOpenMenu={toggleMenu}
                 properties={visibleProperties}
                 currentUser={effectiveUser}
-                available={homeTabs}
-                onSwitch={setActiveTab}
+                activeRole={activeRole}
+                isSuperAdmin={isSuperAdmin}
                 onNavigate={setActiveTab}
-                onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
+                onOpenHouseDetail={openHouseDetail}
               />
             ) : (
               <ManagerView
@@ -601,53 +607,45 @@ export default function App() {
                 currentUser={effectiveUser}
                 activeRole={activeRole}
                 isSuperAdmin={isSuperAdmin}
-                available={homeTabs}
-                onSwitch={setActiveTab}
                 onInspect={handleCheckHouse}
-                onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
-                onOpenHouseEdit={(house) => setHouseToOpenEdit(house)}
+                onOpenHouseDetail={openHouseDetail}
+                onOpenHouseEdit={openHouseEdit}
               />
             )}
-            <HousesView
-              renderMode="modals-only"
-              properties={visibleProperties}
-              setProperties={setProperties}
-              onOpenMenu={toggleMenu}
-              currentUser={effectiveUser}
-              activeRole={activeRole}
-              isSuperAdmin={isSuperAdmin}
-              houseToOpenDetail={houseToOpenDetail}
-              clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
-              houseToOpenEdit={houseToOpenEdit}
-              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
-            />
           </>
         )}
 
         {/* ⭐ QC DASHBOARD — vista nueva del lienzo. "Inspect" abre la inspección
             en Quality Check; el detalle de la casa se abre aquí mismo. */}
         {activeTab === 'qc_dashboard' && (
-          <>
-            <QualityDashboardView
-              onOpenMenu={toggleMenu}
-              properties={visibleProperties}
-              activeRole={activeRole}
-              isSuperAdmin={isSuperAdmin}
-              onInspect={handleCheckHouse}
-              onOpenHouseDetail={(house) => setHouseToOpenDetail(house)}
-            />
+          <QualityDashboardView
+            onOpenMenu={toggleMenu}
+            properties={visibleProperties}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+            onInspect={handleCheckHouse}
+            onOpenHouseDetail={openHouseDetail}
+          />
+        )}
+
+        {/* ⭐ Detalle y formulario de una casa ENCIMA de estas vistas: se abren
+            aquí mismo, sin sacar al usuario de donde está. */}
+        {houseModalsUsed && TABS_WITH_HOUSE_MODALS.has(activeTab) && (
+          <Suspense fallback={null}>
             <HousesView
               renderMode="modals-only"
               properties={visibleProperties}
-              setProperties={setProperties}
               onOpenMenu={toggleMenu}
               currentUser={effectiveUser}
               activeRole={activeRole}
               isSuperAdmin={isSuperAdmin}
               houseToOpenDetail={houseToOpenDetail}
               clearHouseToOpenDetail={() => setHouseToOpenDetail(null)}
+              detailInitialTab={detailTab}
+              houseToOpenEdit={houseToOpenEdit}
+              clearHouseToOpenEdit={() => setHouseToOpenEdit(null)}
             />
-          </>
+          </Suspense>
         )}
 
         {activeTab === 'customers' && <CustomersView onOpenMenu={toggleMenu} />}
@@ -672,11 +670,6 @@ export default function App() {
 
         {/* ⭐ DATA IMPORT — SuperAdmin o rol con permiso "Data Import" (el Sidebar usa la misma regla). */}
         {activeTab === 'data_import' && canViewDataImport && <DataImportView onOpenMenu={toggleMenu} />}
-
-        {/* ⭐ TEMPORAL — Migración única payroll_records → payroll. Visible con
-            permiso de Settings (misma regla que el item del Sidebar).
-            QUITAR este bloque, el import de arriba y el item del Sidebar al terminar. */}
-        {activeTab === 'migrar_payroll' && canViewMigrarPayroll && <MigrarPayroll />}
 
         {/* ⭐ QC ROUTE — hoja de ruta de casas con Quality Check pendiente */}
         </>)}

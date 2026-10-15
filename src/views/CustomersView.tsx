@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   Search, Plus, X, Edit2, Trash2, Mail, Phone, MapPin, StickyNote, Building2
@@ -31,10 +31,12 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     id: '', name: '', type: 'Residential', business: '', note: '', address: '', cityStateZip: '', email: '', phone: '', color: '#3b82f6'
   });
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (c.business && c.business.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // La caja responde al instante; el filtro de la lista va un paso atrás.
+  const deferredSearch = useDeferredValue(searchTerm);
+  const filteredCustomers = useMemo(() => {
+    const q = deferredSearch.toLowerCase();
+    return customers.filter(c => c.name.toLowerCase().includes(q) || (c.business && c.business.toLowerCase().includes(q)));
+  }, [customers, deferredSearch]);
 
   // ⭐ Clase del badge de tipo (Commercial / Residential / Private customer)
   const typeBadgeClass = (type?: string) => {

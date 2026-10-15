@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// =============================================================================
+// PROPUESTA de reglas de Storage — Precise Cleaning (auditoría H-01)
+// -----------------------------------------------------------------------------
+// NO está conectada a firebase.json. Ver security/README.md.
+//
+// Las fotos y archivos viven en carpetas por cliente y dirección
+// ({Cliente}/BeforePhotos, {Cliente}/NoteFiles, {Dirección}/QualityCheck/...)
+// y en user_tasks/** (adjuntos del Task list), así que la regla es una sola para todo el bucket:
+// solo usuarios activos de la lista (mismo espejo user_access que Firestore).
+//
+// · Las URLs de descarga con token (las que usan el PDF, WhatsApp y las
+//   miniaturas) siguen funcionando: no pasan por estas reglas.
+// · Leer Firestore desde Storage necesita el permiso entre servicios que la
+//   consola ofrece al publicar (se acepta una vez).
+// =============================================================================
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function accessDoc() {
+      return /databases/(default)/documents/user_access/$(request.auth.token.email.lower());
+    }
+    function active() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && firestore.exists(accessDoc())
+        && firestore.get(accessDoc()).data.active == true;
+    }
+    function has(module) {
+      return active()
+        && (firestore.get(accessDoc()).data.admin == true
+            || firestore.get(accessDoc()).data.m.get(module, {}).get('v', false) == true);
+    }
+
+    match /{allPaths=**} {
+      allow read: if active();
+      // 25 MB por archivo (las fotos ya se comprimen; los adjuntos del Task
+      // list se limitan a 20 MB en la app). `update` (subir encima de un
+      // archivo que ya existe) se deja para los reintentos de la cola de
+      // fotos sin conexión: la app siempre sube con nombre nuevo.
+      allow create, update: if active() && request.resource.size < 25 * 1024 * 1024;
+      // Hoy solo borran archivos Quality Check (reemplazar o quitar una foto
+      // de la inspección) y el Task list (quitar un adjunto).
+      allow delete: if has('Quality Check') || has('Task List');
+    }
+  }
+}

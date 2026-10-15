@@ -4,8 +4,7 @@ import {
   Route, Share2, Eye, X, CheckCircle2, Radio, MapPin,
   Loader2, Clock, Search, LocateFixed, Edit2, Trash2, Save, ArrowUp, ArrowDown
 } from 'lucide-react';
-import { db } from '../config/firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { qcRoutes, type QcRouteDoc } from '../features/quality-check/services/qcRoutes';
 import { shareRouteLink, liveDivIcon, type LiveUserPosition } from '../utils/liveRoute';
 import { type LatLng, type Leaflet, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -25,29 +24,7 @@ import MenuButton from '../shared/components/MenuButton';
 //  `?qcRoute=<id>` que el drawer (helpers en utils/liveRoute.ts).
 // ============================================================================
 
-interface RouteStop {
-  houseId: string;
-  client: string;
-  address: string;
-  lat: number | null;
-  lng: number | null;
-  legKm?: number;
-  etaMin?: number;
-  arrived?: boolean;
-  arrivedAt?: string | null;
-}
-
-interface QCRouteDoc {
-  id: string;
-  name?: string;
-  origin?: LatLng | null;
-  avgSpeed?: number;
-  stops?: RouteStop[];
-  createdBy?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  live?: Record<string, LiveUserPosition>;
-}
+type QCRouteDoc = QcRouteDoc;
 
 interface Props {
   onOpenMenu: () => void;
@@ -87,8 +64,7 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
   const openedFromLinkRef = useRef(false);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'qc_routes'), snap => {
-      const arr = snap.docs.map(d => ({ id: d.id, ...d.data() } as QCRouteDoc));
+    const unsub = qcRoutes.listen(arr => {
       arr.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setRoutes(arr);
       setLoading(false);
@@ -201,7 +177,7 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
   const handleDeleteRoute = async (r: QCRouteDoc) => {
     if (!window.confirm(`¿Eliminar la ruta "${r.name || 'Sin nombre'}"? Esta acción no se puede deshacer.`)) return;
     try {
-      await deleteDoc(doc(db, 'qc_routes', r.id));
+      await qcRoutes.remove(r.id);
       setDetail(prev => (prev?.id === r.id ? null : prev));
       setLiveView(prev => (prev?.id === r.id ? null : prev));
     } catch (e) {
@@ -219,7 +195,7 @@ export default function QCRoutesTableView({ onOpenMenu }: Props) {
     }
     setIsSavingEdit(true);
     try {
-      await updateDoc(doc(db, 'qc_routes', editRoute.id), {
+      await qcRoutes.update(editRoute.id, {
         name: editRoute.name || 'Ruta QC',
         stops: editRoute.stops,
       });

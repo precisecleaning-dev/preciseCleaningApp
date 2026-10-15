@@ -5,8 +5,7 @@ import {
   Maximize2, Minimize2, Radio, Share2, Copy, ListOrdered
 } from 'lucide-react';
 import type { SystemUser } from '../types/index';
-import { db } from '../config/firebase';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { qcRoutes } from '../features/quality-check/services/qcRoutes';
 import { escapeHtml } from '../utils/escapeHtml';
 import { type LatLng, type Leaflet, haversineKm, geocodeAddress, getCurrentPosition, ensureLeaflet, fetchOSRMRoute } from '../utils/routing';
 import { geocodeAddressForced } from '../utils/geocodeForce';
@@ -332,11 +331,10 @@ export default function QCRouteDrawer({ open, onClose, houses, onRemove, current
         createdAt: new Date().toISOString(),
       };
       if (savedRouteId) {
-        await updateDoc(doc(db, 'qc_routes', savedRouteId), { ...payload, updatedAt: new Date().toISOString() });
+        await qcRoutes.update(savedRouteId, { ...payload, updatedAt: new Date().toISOString() });
         alert('Ruta actualizada. También la verás en la vista QC Route.');
       } else {
-        const ref = await addDoc(collection(db, 'qc_routes'), payload);
-        setSavedRouteId(ref.id);
+        setSavedRouteId(await qcRoutes.create(payload));
         alert('Ruta guardada. También la verás en la vista QC Route.');
       }
     } catch (e) {

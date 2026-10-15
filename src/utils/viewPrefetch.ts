@@ -42,6 +42,7 @@ const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   qc_dashboard: () => import('../views/QualityDashboardView'),
   owner: () => import('../views/OwnerView'),
   manager: () => import('../views/ManagerView'),
+  task_list: () => import('../features/ops/TaskListView'),
   payroll: () => import('../views/PayrollView'),
   customers: () => import('../views/CustomersView'),
   activity_log: () => import('../views/ActivityLogView'),

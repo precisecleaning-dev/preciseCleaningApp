@@ -37,7 +37,6 @@ interface PipelineBoardViewProps {
   onOpenDetail: (p: Property) => void;
   onQuickStatusChange: (propertyId: string, newStatusId: string) => void;
   canEdit?: boolean;
-  isSaving?: boolean;
   /** Opcional: si tienes el monto facturado por propiedad, muéstralo y suma por columna */
   getAmount?: (p: Property) => number;
   /**
@@ -76,7 +75,7 @@ function StatusPill({ current, statuses, disabled, onOpen }: {
 
 export default function PipelineBoardView({
   properties, statuses, teams, priorities = [], getClientName,
-  onOpenDetail, onQuickStatusChange, canEdit, isSaving, getAmount,
+  onOpenDetail, onQuickStatusChange, canEdit, getAmount,
   showOfficeNote = false,
 }: PipelineBoardViewProps) {
 
@@ -213,7 +212,7 @@ export default function PipelineBoardView({
                         <StatusPill
                           current={p.statusId}
                           statuses={statuses}
-                          disabled={isSaving || !canEdit}
+                          disabled={!canEdit}
                           onOpen={() => setStatusModal({
                             currentId: p.statusId,
                             onSelect: (id) => onQuickStatusChange(p.id, id),

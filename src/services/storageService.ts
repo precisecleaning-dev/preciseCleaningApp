@@ -6,6 +6,8 @@ import { ref, deleteObject } from 'firebase/storage';
 //    concurrencia limitada a 3. Ver src/utils/photoUploader.ts.
 import { uploadBatchWithProgress } from '../utils/photoUploader';
 import type { UploadProgress } from '../utils/photoUploader';
+import { compressImage } from '../utils/imageCompression';
+import type { NoteAttachment } from '../types/index';
 
 
 /**
@@ -117,6 +119,35 @@ export const storageService = {
   /**
    * Elimina una foto por su URL de descarga.
    */
+  /**
+   * ⭐ Archivos adjuntos a un mensaje de las notas de la casa (Office, General,
+   *    Employee). Misma carpeta del cliente que las fotos:
+   *    {Cliente}/NoteFiles/{Dirección}_{único}.ext. Las imágenes se comprimen
+   *    antes de subir; los demás archivos (PDF, Word…) van tal cual.
+   */
+  async uploadNoteFiles(files: File[], clientName: string, address: string): Promise<NoteAttachment[]> {
+    const safeClient = sanitizeForPath(clientName);
+    const safeAddress = sanitizeForPath(address);
+    const prepared = await Promise.all(
+      // Si una imagen no se puede comprimir (formato raro, HEIC…), va la original.
+      files.map((f) => (f.type.startsWith('image/')
+        ? compressImage(f, { maxWidth: 1920, quality: 0.85, maxSizeMB: 1 }).catch(() => f)
+        : f)),
+    );
+    const tasks = prepared.map((file, index) => ({
+      file,
+      fullPath: `${safeClient}/NoteFiles/${uniqueFileName(safeAddress, file, index)}`,
+    }));
+    const urls = await uploadBatchWithProgress(tasks);
+    return tasks.map((t, i) => ({
+      name: files[i].name,
+      url: urls[i],
+      path: t.fullPath,
+      type: t.file.type || files[i].type || 'application/octet-stream',
+      size: t.file.size,
+    }));
+  },
+
   async deletePhotoByUrl(url: string): Promise<void> {
     try {
       const storageRef = ref(storage, url);

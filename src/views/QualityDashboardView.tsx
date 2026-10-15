@@ -12,7 +12,7 @@
 //      · panel lateral con el detalle de la inspección
 //    Las reglas viven en src/utils/qcDashboard.ts.
 // ============================================================================
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ChevronRight, Filter, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { Property, Role } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
@@ -90,6 +90,8 @@ export default function QualityDashboardView({
   const [teamFilter, setTeamFilter] = useState('all');
   const [inspectorFilter, setInspectorFilter] = useState('all');
   const [search, setSearch] = useState('');
+  // La caja responde al instante; el filtro va un paso atrás.
+  const deferredSearch = useDeferredValue(search);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const toggleGroup = (key: string) =>
@@ -165,7 +167,7 @@ export default function QualityDashboardView({
 
   // Team / Inspector / búsqueda aplican a todo (KPIs, tabla y paneles laterales)
   const scoped = useMemo(() => {
-    const q = norm(search);
+    const q = norm(deferredSearch);
     return rows.filter((r) => {
       if (teamFilter !== 'all' && String(r.prop.teamId || '') !== teamFilter) return false;
       if (inspectorFilter !== 'all' && r.inspector !== inspectorFilter) return false;
@@ -173,7 +175,7 @@ export default function QualityDashboardView({
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, teamFilter, inspectorFilter, search, customers]);
+  }, [rows, teamFilter, inspectorFilter, deferredSearch, customers]);
 
   const tabRows = scoped.filter((r) => tab === 'all' || r.result === tab);
   // Grupos por fecha, igual que el Overview (día en Day/Week/Custom, semana en

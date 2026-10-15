@@ -149,8 +149,16 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       try {
         allowed = await usersService.isEmailWhitelisted(email.trim());
       } catch (whitelistErr) {
-        console.error("No se pudo verificar la lista blanca (se permite el acceso):", whitelistErr);
-        allowed = true;
+        // ⭐ Con las Security Rules por rol (security/firestore.rules) un correo
+        //    que no está en la lista, o un usuario Inactive, no puede leer
+        //    system_users: eso es un "no autorizado", no una falla de red.
+        //    Con las reglas de hoy este código nunca llega aquí.
+        if ((whitelistErr as { code?: string } | null)?.code === "permission-denied") {
+          allowed = false;
+        } else {
+          console.error("No se pudo verificar la lista blanca (se permite el acceso):", whitelistErr);
+          allowed = true;
+        }
       }
 
       if (!allowed) {

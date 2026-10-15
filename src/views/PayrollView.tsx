@@ -6,7 +6,6 @@ import {
   Search, Wallet, ClipboardList, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
-import HousesView from './HousesView'; // ⭐ modo 'modals-only': edición de casa sin salir de Payroll
 import { db, auth } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
 import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore';
@@ -29,12 +28,11 @@ interface PayrollViewProps {
   // ⭐ Casas del listener global de App.tsx (antes esta vista abría un SEGUNDO
   //    listener sobre toda la colección `properties`).
   properties: Property[];
-  setProperties: React.Dispatch<React.SetStateAction<Property[]>>;
-  // ⭐ Contexto de usuario para el formulario de edición de casa (HousesView modals-only):
-  //    sin esto, canEdit de HousesView sería false y el formulario quedaría de solo lectura.
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  /** Formulario de la casa: el de Houses, abierto encima por App. */
+  onOpenHouseEdit: (house: Property) => void;
 }
 
 
@@ -129,7 +127,7 @@ const weekLabel = (mondayT: number): string => {
   return `${MESES[a.getMonth()]} ${a.getDate()} - ${MESES[b.getMonth()]} ${b.getDate()}`;
 };
 
-export default function PayrollView({ onOpenMenu, properties, setProperties, currentUser, activeRole, isSuperAdmin }: PayrollViewProps) {
+export default function PayrollView({ onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onOpenHouseEdit }: PayrollViewProps) {
   // ══════════════════════════════════════════════════════════════════════════
   // ⭐ ALCANCE POR ROL (scope del módulo Payroll en Roles & Permissions):
   //    · 'All'  → ve la nómina de TODOS los empleados y el filtro de empleado.
@@ -187,7 +185,9 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   const customersLive = useLiveCollection('customers');
   const customers = customersLive.data;
 
-  const isLoading = !payrollLive.loaded || !usersLive.loaded || !statusesLive.loaded || !customersLive.loaded;
+  // ⭐ Las filas se pintan en cuanto llega la nómina; cliente y empleado
+  //    muestran "…" hasta que llegan sus catálogos (nunca el id crudo).
+  const isLoading = !payrollLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
 
   // Estados de Modales
@@ -205,13 +205,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   // Casa abierta en el modal, mostrada EN VIVO (useLiveHouse).
   const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
   const selectedHouse = useLiveHouse(openedHouse, properties);
-  // ⭐ Casa a EDITAR desde el botón de la fila: monta HousesView en modo 'modals-only'.
-  //    IMPORTANTE: houseEditorMounted mantiene HousesView MONTADO una vez usado.
-  //    HousesView llama clearHouseToOpenEdit() apenas abre el formulario; si el montaje
-  //    dependiera de houseToEdit, se desmontaría en el mismo frame y el modal moriría
-  //    al instante (el bug de "el botón no hace nada").
-  const [houseToEdit, setHouseToEdit] = useState<Property | null>(null);
-  const [houseEditorMounted, setHouseEditorMounted] = useState(false);
 
   // Formulario temporal de edición
   const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
@@ -249,6 +242,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
   // ⭐ Resolver el nombre del cliente desde la colección customers (retrocompatible)
   const getClientName = (clientIdOrName?: string | null) => {
     if (!clientIdOrName) return 'Unknown';
+    if (!customersLive.loaded) return '…';
     return getRelationName(customers, clientIdOrName, String(clientIdOrName));
   };
 
@@ -749,7 +743,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
         </div>
         {/* ⭐ Corrección de fechas mal capturadas (solo alcance 'All') */}
         {canSeeAllPayroll && (
-          <PropertyDateFixTool properties={properties} setProperties={setProperties} getClientName={getClientName} />
+          <PropertyDateFixTool properties={properties} getClientName={getClientName} />
         )}
       </header>
 
@@ -894,7 +888,9 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell">Loading payroll data...</td></tr>
+              Array.from({ length: 6 }, (_, i) => (
+                <tr key={i}><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-td"><div className="skel-line skel-row-main" /></td></tr>
+              ))
             ) : records.length === 0 ? (
               // ⭐ Distinguir entre "BD vacía" y "filtros excluyen todo"
               <tr><td colSpan={selectedEmployee && assignView === 'pending' ? 6 : 5} className="pv-empty-cell">No payroll records in database yet. Register payments from the Houses view.</td></tr>
@@ -990,7 +986,7 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                     {/* ⭐ Muestra el Schedule Date de la casa (coherente con el filtro); cae a record.date si no hay */}
                     <td className="pv-td">{fmtDate(prop?.scheduleDate || record.date)}</td>
 
-                    <td className="pv-td strong">{empName(emp) || 'Unknown'}</td>
+                    <td className="pv-td strong">{usersLive.loaded ? empName(emp) || 'Unknown' : '…'}</td>
 
                     <td className="pv-td amount">${getPayrollTotal(record).toFixed(2)}</td>
 
@@ -1008,8 +1004,8 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
                             <Wallet size={14} /> Pagar
                           </button>
                         )}
-                        {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (HousesView modals-only) para rectificar información */}
-                        {prop && <button onClick={() => { setHouseEditorMounted(true); setHouseToEdit(prop); }} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
+                        {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (el de Houses) para rectificar información */}
+                        {prop && <button onClick={() => onOpenHouseEdit(prop)} className="pv-icon-btn edit" title="Editar casa"><Home size={16} /></button>}
                         <button onClick={() => handleOpenEditModal(record)} className="pv-icon-btn edit" title="Editar pago"><Edit2 size={16} /></button>
                         <button onClick={() => handleDeletePayroll(record.id as string)} className="pv-icon-btn delete" title="Eliminar"><Trash2 size={16} /></button>
                       </div>
@@ -1063,8 +1059,8 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
             </div>
           </div>
 
-          {isLoading ? (
-            <div className="pnw-empty">Cargando nóminas...</div>
+          {isLoading || !usersLive.loaded ? (
+            <div className="skel-card" />
           ) : weeks.length === 0 ? (
             <div className="pnw-empty">
               Aún no hay nóminas asignadas. Ve a la pestaña "Asignar nómina", elige un empleado, marca sus casas con el check y presiona "Pagar seleccionadas" — el pago aparecerá aquí agrupado por semana.
@@ -1648,23 +1644,6 @@ export default function PayrollView({ onOpenMenu, properties, setProperties, cur
       )}
 
       {/* ══════════ MODAL: REVISAR Y CORREGIR FECHAS ══════════ */}
-
-      {/* ⭐ EDICIÓN DE LA CASA sin salir de Payroll: HousesView en modo 'modals-only'
-          dibuja únicamente su formulario de edición encima de esta vista.
-          Se monta solo mientras hay una casa por editar (mismo patrón que Invoices). */}
-      {houseEditorMounted && (
-        <HousesView
-          renderMode="modals-only"
-          onOpenMenu={() => { /* sin página propia en modals-only */ }}
-          properties={properties}
-          setProperties={setProperties}
-          currentUser={currentUser}
-          activeRole={activeRole}
-          isSuperAdmin={isSuperAdmin}
-          houseToOpenEdit={houseToEdit}
-          clearHouseToOpenEdit={() => setHouseToEdit(null)}
-        />
-      )}
 
     </div>
   );

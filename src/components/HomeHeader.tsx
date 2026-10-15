@@ -1,22 +1,15 @@
-// ⭐ Encabezado de las vistas Owner y Manager: marca, saludo, fecha y el
-//    selector Owner / Manager (solo si el rol puede ver las dos vistas).
+// ⭐ Encabezado de las vistas Owner y Manager: marca, saludo y fecha. Entre
+//    Owner y Manager se cambia con el menú lateral (ya no hay selector arriba
+//    a la derecha, pedido del usuario 10/2026).
 import MenuButton from '../shared/components/MenuButton';
-
-export type HomeTab = 'owner' | 'manager';
 
 interface HomeHeaderProps {
   title: string;
   subtitle: string;
-  active: HomeTab;
-  /** Pestañas que el rol puede abrir; con menos de 2 no se dibuja el selector. */
-  available: HomeTab[];
-  onSwitch: (tab: HomeTab) => void;
   onOpenMenu: () => void;
 }
 
-const LABEL: Record<HomeTab, string> = { owner: 'Owner', manager: 'Manager' };
-
-export default function HomeHeader({ title, subtitle, active, available, onSwitch, onOpenMenu }: HomeHeaderProps) {
+export default function HomeHeader({ title, subtitle, onOpenMenu }: HomeHeaderProps) {
   return (
     <header className="hm-header">
       <div className="hm-header-left view-header-title-group">
@@ -27,22 +20,6 @@ export default function HomeHeader({ title, subtitle, active, available, onSwitc
           <p className="hm-subtitle">{subtitle}</p>
         </div>
       </div>
-      {available.length > 1 && (
-        <div className="hm-switch" role="tablist" aria-label="Vista">
-          {available.map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={active === t}
-              className={`hm-switch-btn${active === t ? ' on' : ''}`}
-              onClick={() => onSwitch(t)}
-            >
-              {LABEL[t]}
-            </button>
-          ))}
-        </div>
-      )}
     </header>
   );
 }

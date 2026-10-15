@@ -36,127 +36,6 @@
   flex-shrink: 0;
 }
 
-.inv-mt-4 {
-  margin-top: 4px;
-}
-
-.inv-label-icon-inline {
-  display: inline;
-  margin-right: 6px;
-  vertical-align: -2px;
-}
-
-/* ===================== Filtros ===================== */
-.inv-status-filters-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.inv-secondary-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.inv-filter-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #475569;
-  border-radius: 20px;
-  padding: 0 16px;
-  height: 40px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background-color 0.15s,
-    border-color 0.15s,
-    color 0.15s;
-}
-
-.inv-filter-pill:hover {
-  background: var(--pill-color-15, #f8fafc);
-  border-color: #cbd5e1;
-}
-
-.inv-filter-pill.active {
-  background: var(--pill-color-15, #eff6ff);
-  border-color: var(--pill-color, #3b82f6);
-  color: var(--pill-color, #1d4ed8);
-}
-
-.inv-filter-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--dot-color, #64748b);
-  flex-shrink: 0;
-}
-
-.inv-filter-count-badge {
-  background: #f1f5f9;
-  color: #64748b;
-  border-radius: 12px;
-  padding: 1px 9px;
-  font-size: 0.75rem;
-  font-weight: 800;
-}
-
-.inv-filter-count-badge.active {
-  background: var(--pill-color-20, #dbeafe);
-  color: var(--pill-color, #1d4ed8);
-}
-
-.inv-input-wrap {
-  position: relative;
-  flex: 1;
-  min-width: 220px;
-}
-
-.inv-input-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #9ca3af;
-  pointer-events: none;
-}
-
-.inv-input {
-  width: 100%;
-  box-sizing: border-box;
-  background-color: #ffffff;
-  padding: 10px 14px 10px 38px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  color: #111827;
-  outline: none;
-}
-
-.inv-input:focus {
-  border-color: #3b82f6;
-}
-
-.inv-label {
-  font-size: 0.78rem;
-  color: #6b7280;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  display: block;
-}
-
-/* ===================== Píldoras de estado ===================== */
 .inv-pill-wrap {
   position: relative;
   display: inline-block;
@@ -286,33 +165,6 @@
   color: #1d4ed8;
 }
 
-.inv-status-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #f1f5f9;
-  color: #475569;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.inv-dot-12 {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--dot-color, #64748b);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.inv-dot-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
 /* ===================== Tabla (escritorio) ===================== */
 .inv-table-wrap {
   background-color: #ffffff;
@@ -387,31 +239,6 @@
   color: #94a3b8;
 }
 
-.inv-client-name {
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.inv-client-address {
-  font-size: 0.8rem;
-  color: #64748b;
-  margin-top: 2px;
-}
-
-.inv-address-value {
-  color: #475569;
-}
-
-.inv-team-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.inv-search-cell {
-  min-width: 240px;
-}
-
 .inv-card-profit {
   font-weight: 800;
   color: #0f172a;
@@ -470,27 +297,6 @@
   border-color: #fecaca;
 }
 
-.inv-load-more-row {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-}
-
-.inv-load-more-btn {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
-  padding: 10px 22px;
-  border-radius: 20px;
-  font-weight: 700;
-  font-size: 0.86rem;
-  cursor: pointer;
-}
-
-.inv-load-more-btn:hover {
-  background: #f8fafc;
-}
-
 /* ===================== Tarjetas (móvil) ===================== */
 .inv-cards-wrap {
   display: none;
@@ -546,36 +352,6 @@
   flex-direction: column;
   gap: 8px;
   margin: 10px 0;
-}
-
-.inv-card-mini-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.inv-card-mini-box {
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 10px;
-  padding: 8px;
-  text-align: center;
-}
-
-.inv-card-mini-label {
-  font-size: 0.65rem;
-  font-weight: 800;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.inv-card-mini-value {
-  font-size: 0.9rem;
-  font-weight: 800;
-  color: #0f172a;
-  margin-top: 2px;
 }
 
 .inv-card-actions-row {
@@ -664,22 +440,6 @@
   padding: 4px;
 }
 
-.inv-modal-body {
-  padding: 22px 24px;
-  overflow-y: auto;
-}
-
-.inv-modal-footer {
-  padding: 16px 24px;
-  background-color: #f8fafc;
-  border-top: 1px solid #e5e7eb;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  border-radius: 0 0 16px 16px;
-  flex-shrink: 0;
-}
-
 .inv-btn-outline-modal {
   display: inline-flex;
   align-items: center;
@@ -731,159 +491,6 @@
   cursor: wait;
 }
 
-.inv-detail-banner {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  padding: 14px 18px;
-  margin-bottom: 18px;
-}
-
-.inv-detail-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inv-detail-label {
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.inv-detail-value {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: #0f172a;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Resumen financiero */
-.inv-fin-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin: 18px 0;
-}
-
-.inv-fin-summary-box {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px;
-  text-align: center;
-}
-
-.inv-fin-summary-label {
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.inv-fin-summary-value {
-  font-size: 1.35rem;
-  font-weight: 800;
-  margin-top: 4px;
-  color: #0f172a;
-}
-
-.inv-fin-summary-value.cost {
-  color: #1d4ed8;
-}
-
-.inv-fin-summary-value.payroll {
-  color: #b45309;
-}
-
-.inv-fin-summary-value.profit {
-  color: #15803d;
-}
-
-/* Notas */
-.inv-note-box {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-
-.inv-note-box.orange {
-  background: #fff7ed;
-  border-color: #fed7aa;
-}
-
-.inv-note {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.inv-note-icon {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: #94a3b8;
-}
-
-.inv-note-text {
-  font-size: 0.88rem;
-  color: #334155;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  margin: 6px 0 0 0;
-}
-
-/* Trabajadores asignados */
-.inv-workers-box {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-
-.inv-workers-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.inv-worker-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.inv-worker-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-  padding: 5px 12px;
-  border-radius: 14px;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.inv-workers-none-text {
-  color: #94a3b8;
-  font-style: italic;
-  font-size: 0.85rem;
-}
-
 /* ===================== Responsive ===================== */
 @media (max-width: 900px) {
   .inv-page {
@@ -898,331 +505,30 @@
     display: flex;
   }
 
-  .inv-fin-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .inv-secondary-filters {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .inv-input-wrap {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .inv-modal-footer {
-    flex-wrap: wrap;
-  }
-
-  .inv-modal-footer .inv-btn-outline-modal,
-  .inv-modal-footer .inv-btn-primary-modal {
-    flex: 1 1 45%;
-    justify-content: center;
-    min-height: 44px;
-  }
+  
 }
-
-/* ⭐ PAGOS DE EMPLEADOS en el detalle de la casa (ver y editar) */
-.inv-payroll-box {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-}
-
-.inv-payroll-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.inv-payroll-total-chip {
-  background: #ecfdf5;
-  color: #047857;
-  border: 1px solid #a7f3d0;
-  border-radius: 12px;
-  padding: 3px 12px;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.inv-payroll-empty {
-  color: #94a3b8;
-  font-style: italic;
-  font-size: 0.85rem;
-  padding: 10px 0;
-}
-
-.inv-payroll-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.inv-payroll-item {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.inv-payroll-item-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.inv-payroll-emp {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 0.88rem;
-}
-
-.inv-payroll-right {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.inv-payroll-status {
-  font-size: 0.7rem;
-  font-weight: 800;
-  padding: 2px 10px;
-  border-radius: 12px;
-  text-transform: uppercase;
-}
-
-.inv-payroll-status.pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.inv-payroll-status.paid {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.inv-payroll-amount {
-  font-weight: 800;
-  color: #0f766e;
-  font-size: 0.95rem;
-}
-
-.inv-payroll-edit-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  color: #2563eb;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.inv-payroll-edit-btn:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-.inv-payroll-breakdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: 7px;
-  font-size: 0.79rem;
-  color: #64748b;
-}
-
-.inv-payroll-breakdown .extra {
-  color: #047857;
-}
-
-.inv-payroll-breakdown .discount {
-  color: #b91c1c;
-}
-
-.inv-payroll-form {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed #cbd5e1;
-}
-
-.inv-payroll-form-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-.inv-payroll-form-wide {
-  grid-column: span 2;
-}
-
-.inv-payroll-label {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
-}
-
-.inv-payroll-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: #0f172a;
-  background: #ffffff;
-  outline: none;
-  font-family: inherit;
-}
-
-.inv-payroll-input:focus {
-  border-color: #3b82f6;
-}
-
-.inv-payroll-form-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.inv-payroll-new-total {
-  font-size: 0.85rem;
-  color: #334155;
-}
-
-.inv-payroll-form-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.inv-payroll-cancel {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.inv-payroll-cancel:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-
-.inv-payroll-save {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #10b981;
-  border: none;
-  color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.inv-payroll-save:hover:not(:disabled) {
-  background: #059669;
-}
-
-.inv-payroll-cancel:disabled,
-.inv-payroll-save:disabled {
-  opacity: 0.55;
-  cursor: wait;
-}
-
-@media (max-width: 700px) {
-  .inv-payroll-form-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .inv-payroll-form-wide {
-    grid-column: span 2;
-  }
-
-  .inv-payroll-form-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .inv-payroll-form-actions .inv-payroll-cancel,
-  .inv-payroll-form-actions .inv-payroll-save {
-    flex: 1;
-    justify-content: center;
-  }
-}
-
 
 /* ============================================================================
    ====== CAPA DE DISENO — Invoices ======
    Anclado a .inv-page (especificidad 0-2-0) para ganarle a las reglas de una
    sola clase de App.css / index.css sin banderas de prioridad.
-   Mismo lenguaje visual que Overview: gris #f7f9fc, tarjetas blancas de 16px,
+   Mismo lenguaje visual que Overview: fondo blanco, tarjetas blancas de 16px,
    bordes #e9eef5 y azul #1d4ed8. No cambia ningun nombre existente.
    ========================================================================== */
 
 /* ---------- 1. Lienzo y encabezado ---------- */
-.inv-page.invoices-view { background-color: #f7f9fc; padding: 24px; }
+.inv-page.invoices-view { padding: 24px; }
 .inv-page .inv-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
 .inv-page .inv-title { font-size: 1.75rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; line-height: 1.15; }
 .inv-page .inv-subtitle { font-size: 0.875rem; color: #64748b; font-weight: 500; margin-top: 5px; }
 /* El boton de menu quedaba como un recuadro blanco vacio encima del titulo */
 
-/* ---------- 2. Tarjetas de resumen ---------- */
-.inv-page .inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; margin-bottom: 18px; }
-.inv-page .inv-kpi-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-.inv-page .inv-kpi-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
-.inv-page .inv-kpi-value { font-size: 1.75rem; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; margin-top: 6px; line-height: 1.15; }
-.inv-page .inv-kpi-value.profit { color: #059669; }
-.inv-page .inv-kpi-value.profit.negative { color: #dc2626; }
-
-/* ---------- 3. Filtros dentro de una sola tarjeta ---------- */
-.inv-page .inv-filters-card { background-color: #ffffff; border: 1px solid #e9eef5; border-radius: 16px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-.inv-page .inv-filters-card .inv-status-filters-row { margin-bottom: 16px; gap: 8px; }
-.inv-page .inv-filters-card .inv-secondary-filters { margin-bottom: 0; gap: 14px; align-items: flex-end; }
-.inv-page .inv-filter-pill { border-radius: 999px; font-size: 0.82rem; font-weight: 600; padding: 7px 14px; }
-.inv-page .inv-label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
-.inv-page .inv-input { border-radius: 10px; border-color: #e2e8f0; font-size: 0.875rem; }
-.inv-page .inv-input:focus { border-color: #bfdbfe; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10); }
-.inv-page .inv-search-cell { flex: 1 1 260px; }
-
-/* ---------- 4. Tabla ---------- */
 .inv-page .inv-table-wrap { border: 1px solid #e9eef5; border-radius: 16px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
 .inv-page .inv-table { min-width: 1020px; }
 .inv-page .inv-th { padding: 14px 18px; font-size: 0.7rem; color: #94a3b8; letter-spacing: 0.07em; background-color: #fbfcfe; border-bottom: 1px solid #eef2f7; }
 .inv-page .inv-td { padding: 18px; font-size: 0.875rem; border-bottom: 1px solid #f4f7fa; }
 .inv-page .inv-row:hover { background-color: #f6f9fe; }
 .inv-page .inv-row:last-child .inv-td { border-bottom: none; }
-.inv-page .inv-client-name { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
-.inv-page .inv-client-address { font-size: 0.8rem; color: #64748b; margin-top: 3px; line-height: 1.45; }
 .inv-page .inv-td.strong { font-weight: 700; color: #0f172a; }
 .inv-page .inv-td.muted { color: #64748b; }
 
@@ -1236,16 +542,6 @@
 /* ---------- 5. Movil ---------- */
 @media (max-width: 900px) {
   .inv-page.invoices-view { padding: 16px; }
-  .inv-page .inv-kpi-grid { grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px; }
-  .inv-page .inv-kpi-card { padding: 14px 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .inv-page .inv-kpi-value { font-size: 1.4rem; margin-top: 0; }
-  .inv-page .inv-filters-card { padding: 14px; border-radius: 14px; margin-bottom: 14px; }
-  .inv-page .inv-filters-card .inv-status-filters-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-  .inv-page .inv-filters-card .inv-status-filters-row::-webkit-scrollbar { display: none; }
-  .inv-page .inv-filter-pill { flex-shrink: 0; }
-  .inv-page .inv-filters-card .inv-secondary-filters { flex-direction: column; align-items: stretch; gap: 12px; }
-  /* En columna, el flex-basis de 260px se volvía ALTO: dejaba un hueco en blanco */
-  .inv-page .inv-search-cell { min-width: 0; flex: 0 0 auto; }
   .inv-page .inv-title { font-size: 1.45rem; }
   .inv-page .inv-subtitle { font-size: 0.82rem; }
 }
@@ -1257,7 +553,6 @@
   .inv-page .inv-card-btn { height: 44px; border-radius: 12px; }
 }
 
-
 /* ============================================================================
    ====== NOTAS EN MODAL + FILAS COMPACTAS ======
    La nota salio de la celda de cliente (era lo que estiraba las filas) y ahora
@@ -1266,7 +561,6 @@
 
 /* ---------- Filas compactas ---------- */
 .inv-page .inv-td { padding: 14px 18px; }
-.inv-page .inv-client-address { margin-top: 2px; }
 .inv-page .inv-table td:last-child,
 .inv-page .inv-table th:last-child { width: 156px; }
 
@@ -1316,35 +610,12 @@
   .inv-note-modal .inv-note-textarea { min-height: 200px; }
 }
 
-
 /* ============================================================================
    ====== NOTA VISIBLE EN LA LISTA (sin romper el alto de la fila) ======
    La nota se ve de un vistazo, pero SIEMPRE en una sola linea truncada: el
    alto de la fila no cambia tenga la nota que tenga. El texto completo se ve
    en el tooltip del navegador o abriendo el modal con un clic.
    ========================================================================== */
-
-.inv-page .inv-note-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 4px;
-  max-width: 100%;
-  min-width: 0;
-  cursor: pointer;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  color: #94a3b8;
-}
-.inv-page .inv-note-line:hover { color: #d97706; }
-.inv-page .inv-note-line-icon { flex-shrink: 0; color: #d97706; }
-.inv-page .inv-note-line-text {
-  /* Una linea, sin saltos, con puntos suspensivos */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 
 /* La celda de cliente (3a columna: Invoice Status, Job Status, Client/Address)
    tiene que poder encoger para que el truncado funcione. */
@@ -1466,35 +737,6 @@
    ⭐ Presentación para gerencia
    ===================================================================== */
 
-/* KPIs: una sola fila de 5 en escritorio, en el orden de la hoja */
-@media (min-width: 1100px) {
-  .inv-page .inv-kpi-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-}
-.inv-page .inv-kpi-card { display: flex; flex-direction: column; min-width: 0; }
-.inv-page .inv-kpi-value {
-  font-size: clamp(1.25rem, 1.6vw, 1.6rem);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.inv-page .inv-kpi-sub {
-  margin-top: 6px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: #94a3b8;
-}
-.inv-page .inv-kpi-card.highlight {
-  border-color: #a7f3d0;
-  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
-}
-.inv-page .inv-kpi-card.highlight .inv-kpi-sub { color: #047857; }
-.inv-page .inv-kpi-card.highlight.negative {
-  border-color: #fecaca;
-  background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%);
-}
-.inv-page .inv-kpi-card.highlight.negative .inv-kpi-sub { color: #b91c1c; }
-
 /* Tabla tipo hoja de cálculo: encabezado y Address fijos al desplazar,
    total general fijo al pie. El scroll vive dentro de la tabla. */
 .inv-page .inv-table-wrap {
@@ -1571,7 +813,6 @@
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 .inv-page.inv-unified {
-  background-color: #f4f6fb;
   display: flex;
   flex-direction: column;
   gap: 20px;

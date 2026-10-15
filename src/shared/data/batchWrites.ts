@@ -23,6 +23,8 @@ const MAX_OPS = 500;
 
 /** Una operación que se agrega al batch (`b.set`, `b.update`, `b.delete`). */
 export type BatchOp = (batch: WriteBatch) => void;
+/** El batch de Firestore, para las vistas que reciben uno sin importar Firestore. */
+export type { WriteBatch };
 
 export interface ChunkResult<T> {
   ok: T[];

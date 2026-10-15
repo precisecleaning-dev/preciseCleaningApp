@@ -80,3 +80,28 @@ export function displayClientName(
   if (looksLikeOrphanId(key)) return `Cliente eliminado · ${key.slice(0, 8)}`;
   return key;
 }
+
+/** ⭐ Índice clave → nombre para resolver muchos clientes de una vez (listas de
+ *  miles de casas): misma regla que resolveCustomerName (id, id legacy o
+ *  nombre, sin mayúsculas; gana el primer cliente que tenga la clave). */
+export function customerNameIndex(list: Customer[]): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const c of list) {
+    const legacy = (c as Customer & { legacyId?: string }).legacyId;
+    for (const k of [c.id, legacy, c.name]) {
+      const key = String(k || '').toLowerCase().trim();
+      if (key && !index.has(key)) index.set(key, c.name);
+    }
+  }
+  return index;
+}
+
+/** displayClientName con un índice ya armado (customerNameIndex). */
+export function displayClientNameIn(index: Map<string, string>, idOrName?: string | null): string {
+  if (!idOrName) return 'Unknown';
+  const key = String(idOrName);
+  const resolved = index.get(key.toLowerCase().trim());
+  if (resolved) return resolved;
+  if (looksLikeOrphanId(key)) return `Cliente eliminado · ${key.slice(0, 8)}`;
+  return key;
+}

@@ -1,7 +1,7 @@
 // ⭐ Tabla unificada del Overview — diseño "Precise Cleaning – Unified Jobs
 //    View": operaciones, Quality Check, cobro, resumen automático y finanzas en
 //    una sola fila por trabajo, agrupada por periodo con subtotales.
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronRight, Pencil, Trash2, Sparkles, RotateCcw, PauseCircle } from 'lucide-react';
 import type { Property } from '../types/index';
 import { money, pct, marginTone, type JobFinancials } from '../utils/jobFinancials';
@@ -50,11 +50,15 @@ interface UnifiedJobsTableProps {
   onBillingChange?: (prop: Property, value: string) => void;
   /** ¿La casa estuvo alguna vez en Recall? */
   wasRecall?: (prop: Property) => boolean;
+  /** Casas con un guardado rápido en camino (se marcan, no se bloquean). */
+  pendingIds?: ReadonlySet<string>;
 }
 
-export default function UnifiedJobsTable({
+// ⭐ memo: con props estables (useStableCallback en HousesView) la tabla no se
+//    vuelve a dibujar cuando cambia algo que no le toca (p. ej. el formulario).
+export default memo(function UnifiedJobsTable({
   groups, loading, emptyText, renderStatus, onOpen, onOpenQc, onEdit, onDelete,
-  teams, onTeamChange, onBillingChange, wasRecall,
+  teams, onTeamChange, onBillingChange, wasRecall, pendingIds,
 }: UnifiedJobsTableProps) {
   // Grupos ABIERTOS por defecto (el periodo ya acota el volumen); se pliegan.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -121,7 +125,7 @@ export default function UnifiedJobsTable({
                     <td></td>
                   </tr>
                   {open && g.rows.slice(0, limit).map((r) => (
-                    <tr key={r.prop.id} className="ujt-row" onClick={() => onOpen(r.prop)}>
+                    <tr key={r.prop.id} className={`ujt-row${pendingIds?.has(r.prop.id) ? ' is-pending' : ''}`} onClick={() => onOpen(r.prop)}>
                       <td>
                         <div className="ujt-strong">{r.date}</div>
                         <div className="ujt-muted">{r.time}</div>
@@ -250,4 +254,4 @@ export default function UnifiedJobsTable({
       </div>
     </div>
   );
-}
+});

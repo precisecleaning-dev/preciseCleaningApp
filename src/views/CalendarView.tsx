@@ -1,26 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
-import {
-  ChevronLeft, ChevronRight, X, Edit2, Trash2,
-  Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag, Users, StickyNote, PenTool, Home, ClipboardCheck, MapPin
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Users, MapPin } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { Property, Customer } from '../types/index';
 import { getRelationName, getRelationColor } from '../utils/relations';
-import CustomSelect from '../components/CustomSelect';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
-import { formatDate, formatDateRange, todayIso } from '../utils/dateFormat';
-import DateInput from '../shared/components/DateInput';
-import './CalendarView.css';
-
-// --- FIREBASE SERVICES ---
-import { propertiesService } from '../services/propertiesService';
-import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
-import { changedFields } from '../features/houses/houseDiff';
+import { formatDate, formatDateRange } from '../utils/dateFormat';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import MenuButton from '../shared/components/MenuButton';
+import './CalendarView.css';
 
-// Settings Collections Map
-
+// El detalle y la edición de una casa los abre HousesView (modals-only) desde
+// App.tsx, igual que en Quality Check y Owner/Manager: un solo detalle y un
+// solo formulario en toda la app (decisión de Omar, 10/13/2026).
 
 // --- TIME CALCULATION HELPERS ---
 const START_HOUR = 6; // El calendario empieza a las 6 AM
@@ -35,13 +26,14 @@ const parseTimeToMinutes = (timeStr: string) => {
 
 interface CalendarViewProps {
   onOpenMenu: () => void;
-  onCheckHouse?: (house: Property) => void;
   properties: Property[];
+  /** Abre el detalle de la casa (HousesView en modo modals-only). */
+  onOpenHouseDetail: (house: Property) => void;
 }
 
 const NO_JOBS: Property[] = [];
 
-export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: CalendarViewProps) {
+export default function CalendarView({ onOpenMenu, properties, onOpenHouseDetail }: CalendarViewProps) {
 
   // --- FIREBASE STATES ---
   // `properties` viene de App.tsx (lista en tiempo real vía onSnapshot, compartida con
@@ -55,32 +47,13 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
     [statusesLive.data],
   );
   const teams = useLiveData('teams');
-  const priorities = useLiveData('priorities');
-  const services = useLiveData('services');
+  // Los clientes solo dan el nombre: el calendario se dibuja sin esperarlos.
   const customersLive = useLiveCollection('customers');
   const customersList = customersLive.data;
 
-  // --- UI STATES ---
-  const isLoading = !statusesLive.loaded || !customersLive.loaded;
-  const [isSaving, setIsSaving] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month'); // Selector de vistas, default Month para ver el arreglo
-
-  // --- MODAL STATES ---
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  // ⭐ Se guarda la casa que se abrió y se muestra su versión EN VIVO
-  //    (useLiveHouse): los cambios hechos en otra vista o equipo se ven sin
-  //    cerrar el detalle. `openedHouse` es además la base para guardar solo
-  //    los campos que cambiaron en el formulario.
-  const [openedHouse, setSelectedHouse] = useState<Property | null>(null);
-  const selectedHouse = useLiveHouse(openedHouse, properties);
   const [dayDetailDate, setDayDetailDate] = useState<Date | null>(null); // Modal "todos los trabajos del día"
-  
-  const [formData, setFormData] = useState<Property>({
-    id: '', statusId: '', invoiceStatus: 'Pending', receiveDate: '', scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: ''
-  });
-
 
   // --- CALENDAR LOGIC ---
   const prevTime = () => {
@@ -139,87 +112,6 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
   const headerTitle = headerTitleRaw.charAt(0).toUpperCase() + headerTitleRaw.slice(1);
   const weekDaysLabels = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-  // --- MODAL HANDLERS ---
-  const handleOpenForm = (house?: Property) => {
-    if (house) {
-      setFormData(house);
-    } else {
-      const defaultStatus = statuses.length > 0 ? statuses[0].id : '';
-      setFormData({ 
-        id: '', statusId: defaultStatus, invoiceStatus: 'Pending', receiveDate: todayIso(), 
-        scheduleDate: '', client: '', note: '', address: '', employeeNote: '', serviceId: '', 
-        rooms: '1', bathrooms: '1', priorityId: '', teamId: '', timeIn: '', timeOut: '' 
-      });
-    }
-    setSelectedHouse(house || null);
-    setIsDetailModalOpen(false);
-    setIsFormModalOpen(true);
-  };
-
-  const handleCloseForm = () => {
-    setIsFormModalOpen(false);
-    setSelectedHouse(null);
-  };
-
-  const handleCustomerSelect = (customerName: string) => {
-    const selectedCust = customersList.find(c => c.name === customerName);
-    if (selectedCust) {
-      setFormData({ ...formData, client: customerName, address: selectedCust.address || formData.address });
-    } else {
-      setFormData({ ...formData, client: customerName });
-    }
-  };
-
-  const handleSave = async () => {
-    if (!formData.client) return alert("Client is required.");
-    if (!formData.address) return alert("Address is required.");
-    
-    setIsSaving(true);
-    try {
-      if (openedHouse && openedHouse.id) {
-        const { id, ...dataToUpdate } = formData;
-        // ⭐ Solo lo que cambió desde que se abrió el formulario: lo que otra
-        //    persona guardó mientras tanto en los demás campos no se pisa.
-        await propertiesService.update(openedHouse.id, changedFields(openedHouse, dataToUpdate));
-      } else {
-        const { id, ...dataToAdd } = formData;
-        const completeData = {
-          ...dataToAdd,
-          description: `${formData.client} - ${formData.rooms} rooms`,
-          city: 'TBD', size: 'TBD'
-        };
-        await propertiesService.create(completeData);
-      }
-      handleCloseForm();
-    } catch (error) {
-      console.error("Error saving to Firebase:", error);
-      alert("Error trying to save property.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if(!selectedHouse) return;
-    const confirmDelete = window.confirm("Are you sure you want to completely delete this job?");
-    if (!confirmDelete) return;
-
-    setIsSaving(true);
-    try {
-      await propertiesService.delete(selectedHouse.id);
-      setIsDetailModalOpen(false);
-      setSelectedHouse(null);
-    } catch (error) {
-      console.error("Error deleting:", error);
-      alert("Error trying to delete property.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const invoiceOptions = [{ id: 'Needs Invoice', name: 'Needs Invoice' }, { id: 'Pending', name: 'Pending' }, { id: 'Paid', name: 'Paid' }];
-  const roomOptions = [1, 2, 3, 4, 5].map(n => ({ id: String(n), name: String(n) }));
-
   // ⭐ ¿Pantalla chica? La cuadricula de 7 columnas en un telefono de 360px da
   //    celdas de ~45px: no cabe ni la fecha, y obligaba a scroll horizontal.
   //    Por debajo de 48rem (768px) la vista de mes pasa a AGENDA vertical, que
@@ -269,6 +161,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
   // nada a quien usa la app.
   const getClientName = (idOrName?: string | null) => {
     if (!idOrName) return '-';
+    if (!customersLive.loaded) return '…';
     const cust = findCustomer(idOrName);
     if (cust?.name) return cust.name;
     const raw = String(idOrName).trim();
@@ -311,9 +204,8 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
   };
 
   const openJobDetail = (job: Property) => {
-    setSelectedHouse(job);
     setDayDetailDate(null);
-    setIsDetailModalOpen(true);
+    onOpenHouseDetail(job);
   };
 
   const renderEventBlocks = (date: Date) => {
@@ -380,7 +272,7 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
             '--event-border': `${statusColor}50`,
             '--event-color': statusColor
           } as CSSProperties}
-          onClick={(e) => { e.stopPropagation(); setSelectedHouse(job); setIsDetailModalOpen(true); }}
+          onClick={(e) => { e.stopPropagation(); openJobDetail(job); }}
         >
           <div className="event-title">{getClientName(job.client)}</div>
           {job.address && <div className="event-address">{job.address}</div>}
@@ -421,151 +313,147 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
 
       {/* CALENDAR RENDER */}
       <HistoryWindowNotice />
-      {isLoading ? (
-        <div className="cv-loading">Loading calendar data...</div>
-      ) : (
-        <div className="calendar-wrapper">
-          
-          {/* === VISTA DE MES — CUADRICULA (tablet / escritorio) === */}
-          {viewMode === 'month' && !isCompact && (
-            <div className="month-scroll-container">
-              <div className="month-grid-inner">
-                <div className="calendar-header-grid">
-                  {weekDaysLabels.map(day => <div key={day} className="calendar-header-cell">{day}</div>)}
-                </div>
-                <div className="calendar-body-grid">
-                  {calendarDays.map((date, index) => {
-                    if (!date) return <div key={`empty-${index}`} className="calendar-day-cell empty"></div>;
-                    return (
-                      <div key={date.toISOString()} className="calendar-day-cell">
-                        <div className="calendar-date-number">
-                          <span>{date.getDate()}</span>
-                        </div>
-                        {renderEventBlocks(date)}
+      <div className="calendar-wrapper">
+
+        {/* === VISTA DE MES — CUADRICULA (tablet / escritorio) === */}
+        {viewMode === 'month' && !isCompact && (
+          <div className="month-scroll-container">
+            <div className="month-grid-inner">
+              <div className="calendar-header-grid">
+                {weekDaysLabels.map(day => <div key={day} className="calendar-header-cell">{day}</div>)}
+              </div>
+              <div className="calendar-body-grid">
+                {calendarDays.map((date, index) => {
+                  if (!date) return <div key={`empty-${index}`} className="calendar-day-cell empty"></div>;
+                  return (
+                    <div key={date.toISOString()} className="calendar-day-cell">
+                      <div className="calendar-date-number">
+                        <span>{date.getDate()}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      {renderEventBlocks(date)}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* === VISTA DE MES — AGENDA (movil) ===
-              Solo se listan los dias CON trabajos: en un mes tipico eso reduce
-              31 bloques a 10-15, y cada trabajo se ve completo (hora, cliente y
-              direccion) sin scroll horizontal ni textos recortados. */}
-          {viewMode === 'month' && isCompact && (() => {
-            const daysWithJobs = calendarDays
-              .filter((d): d is Date => !!d)
-              .map(date => ({ date, jobs: getJobsForDate(date) }))
-              .filter(d => d.jobs.length > 0);
+        {/* === VISTA DE MES — AGENDA (movil) ===
+            Solo se listan los dias CON trabajos: en un mes tipico eso reduce
+            31 bloques a 10-15, y cada trabajo se ve completo (hora, cliente y
+            direccion) sin scroll horizontal ni textos recortados. */}
+        {viewMode === 'month' && isCompact && (() => {
+          const daysWithJobs = calendarDays
+            .filter((d): d is Date => !!d)
+            .map(date => ({ date, jobs: getJobsForDate(date) }))
+            .filter(d => d.jobs.length > 0);
 
-            if (daysWithJobs.length === 0) {
-              return (
-                <div className="cv-agenda-empty">
-                  No hay trabajos programados este mes.
-                </div>
-              );
-            }
-
-            const today = new Date();
-            const isToday = (d: Date) =>
-              d.getDate() === today.getDate() &&
-              d.getMonth() === today.getMonth() &&
-              d.getFullYear() === today.getFullYear();
-
+          if (daysWithJobs.length === 0) {
             return (
-              <div className="cv-agenda">
-                {daysWithJobs.map(({ date, jobs }) => (
-                  <section key={date.toISOString()} className="cv-agenda-day">
-                    <header className={`cv-agenda-daybar${isToday(date) ? ' today' : ''}`}>
-                      <span className="cv-agenda-daynum">{date.getDate()}</span>
-                      <span className="cv-agenda-dayname">
-                        {date.toLocaleDateString('es-ES', { weekday: 'long' })}
-                      </span>
-                      <span className="cv-agenda-daycount">
-                        {jobs.length} {jobs.length === 1 ? 'trabajo' : 'trabajos'}
-                      </span>
-                    </header>
-
-                    <div className="cv-agenda-jobs">
-                      {jobs.map(job => {
-                        const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
-                        return (
-                          <button
-                            key={job.id}
-                            type="button"
-                            className="cv-agenda-job"
-                            style={{ '--event-color': statusColor } as CSSProperties}
-                            onClick={() => openJobDetail(job)}
-                          >
-                            <span className="cv-agenda-time">
-                              <Clock size={13} /> {job.timeIn || '--:--'}
-                            </span>
-                            <span className="cv-agenda-info">
-                              <span className="cv-agenda-client">{getClientName(job.client)}</span>
-                              {job.address && (
-                                <span className="cv-agenda-address">
-                                  <MapPin size={12} /> {job.address}
-                                </span>
-                              )}
-                            </span>
-                            <ChevronRight size={16} className="cv-agenda-chevron" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
+              <div className="cv-agenda-empty">
+                No hay trabajos programados este mes.
               </div>
             );
-          })()}
+          }
 
-          {/* === VISTA DE SEMANA / DÍA (Estilo Google Calendar) === */}
-          {(viewMode === 'week' || viewMode === 'day') && (
-            <div className="week-scroll-container">
-              <div className={`week-grid-inner ${viewMode === 'week' ? 'week-view-active' : 'day-view-active'}`}>
-                
-                {/* Header de la semana/día */}
-                <div className="cv-week-header-row">
-                  {(viewMode === 'week' ? weekDaysDates : [currentDate]).map((date, i) => (
-                    <div key={i} className="cv-week-header-cell">
-                      <div className="cv-week-day-label">{weekDaysLabels[date.getDay()]}</div>
-                      <div className="cv-week-day-number">{date.getDate()}</div>
+          const today = new Date();
+          const isToday = (d: Date) =>
+            d.getDate() === today.getDate() &&
+            d.getMonth() === today.getMonth() &&
+            d.getFullYear() === today.getFullYear();
+
+          return (
+            <div className="cv-agenda">
+              {daysWithJobs.map(({ date, jobs }) => (
+                <section key={date.toISOString()} className="cv-agenda-day">
+                  <header className={`cv-agenda-daybar${isToday(date) ? ' today' : ''}`}>
+                    <span className="cv-agenda-daynum">{date.getDate()}</span>
+                    <span className="cv-agenda-dayname">
+                      {date.toLocaleDateString('es-ES', { weekday: 'long' })}
+                    </span>
+                    <span className="cv-agenda-daycount">
+                      {jobs.length} {jobs.length === 1 ? 'trabajo' : 'trabajos'}
+                    </span>
+                  </header>
+
+                  <div className="cv-agenda-jobs">
+                    {jobs.map(job => {
+                      const statusColor = getRelationColor(statuses, job.statusId) || '#cbd5e1';
+                      return (
+                        <button
+                          key={job.id}
+                          type="button"
+                          className="cv-agenda-job"
+                          style={{ '--event-color': statusColor } as CSSProperties}
+                          onClick={() => openJobDetail(job)}
+                        >
+                          <span className="cv-agenda-time">
+                            <Clock size={13} /> {job.timeIn || '--:--'}
+                          </span>
+                          <span className="cv-agenda-info">
+                            <span className="cv-agenda-client">{getClientName(job.client)}</span>
+                            {job.address && (
+                              <span className="cv-agenda-address">
+                                <MapPin size={12} /> {job.address}
+                              </span>
+                            )}
+                          </span>
+                          <ChevronRight size={16} className="cv-agenda-chevron" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* === VISTA DE SEMANA / DÍA (Estilo Google Calendar) === */}
+        {(viewMode === 'week' || viewMode === 'day') && (
+          <div className="week-scroll-container">
+            <div className={`week-grid-inner ${viewMode === 'week' ? 'week-view-active' : 'day-view-active'}`}>
+
+              {/* Header de la semana/día */}
+              <div className="cv-week-header-row">
+                {(viewMode === 'week' ? weekDaysDates : [currentDate]).map((date, i) => (
+                  <div key={i} className="cv-week-header-cell">
+                    <div className="cv-week-day-label">{weekDaysLabels[date.getDay()]}</div>
+                    <div className="cv-week-day-number">{date.getDate()}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Grid Horario */}
+              <div className="time-grid-container">
+                {/* Eje Y de Horas */}
+                <div className="time-axis">
+                  {hoursOfDay.map(h => (
+                    <div key={`h-${h}`} className="time-label">
+                      {h > 12 ? `${h-12} PM` : h === 12 ? '12 PM' : `${h} AM`}
                     </div>
                   ))}
                 </div>
 
-                {/* Grid Horario */}
-                <div className="time-grid-container">
-                  {/* Eje Y de Horas */}
-                  <div className="time-axis">
-                    {hoursOfDay.map(h => (
-                      <div key={`h-${h}`} className="time-label">
-                        {h > 12 ? `${h-12} PM` : h === 12 ? '12 PM' : `${h} AM`}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Columnas de Días */}
-                  <div className="day-columns-wrapper">
-                    {(viewMode === 'week' ? weekDaysDates : [currentDate]).map((date, i) => (
-                      <div key={`day-${i}`} className="day-column-time">
-                        {/* Líneas de fondo */}
-                        {hoursOfDay.map(h => <div key={`bg-${h}`} className="hour-grid-line"></div>)}
-                        {/* Eventos Posicionados */}
-                        {renderEventBlocks(date)}
-                      </div>
-                    ))}
-                  </div>
+                {/* Columnas de Días */}
+                <div className="day-columns-wrapper">
+                  {(viewMode === 'week' ? weekDaysDates : [currentDate]).map((date, i) => (
+                    <div key={`day-${i}`} className="day-column-time">
+                      {/* Líneas de fondo */}
+                      {hoursOfDay.map(h => <div key={`bg-${h}`} className="hour-grid-line"></div>)}
+                      {/* Eventos Posicionados */}
+                      {renderEventBlocks(date)}
+                    </div>
+                  ))}
                 </div>
-
               </div>
-            </div>
-          )}
 
-        </div>
-      )}
+            </div>
+          </div>
+        )}
+
+      </div>
 
       {/* --- DAY DETAIL MODAL (todos los trabajos del día) --- */}
       {dayDetailDate && (() => {
@@ -623,243 +511,6 @@ export default function CalendarView({ onOpenMenu, onCheckHouse, properties }: C
         );
       })()}
 
-      {/* --- FORM MODAL --- */}
-      {isFormModalOpen && (
-        <div className="cv-modal-overlay" onClick={handleCloseForm}>
-          <div className="cv-modal" onClick={e => e.stopPropagation()}>
-            <header className="cv-modal-header">
-              <h3 className="cv-modal-title">{selectedHouse ? 'Edit Property Details' : 'Register New Property'}</h3>
-              <button className="cv-modal-close" onClick={handleCloseForm}><X size={24} /></button>
-            </header>
-
-            <div className="cv-modal-body">
-              <div className="grid-3-cols">
-
-                <div>
-                  <label className="cv-label">Client <span className="cv-required">*</span></label>
-                  <CustomSelect
-                    options={customersList}
-                    value={formData.client}
-                    onChange={handleCustomerSelect}
-                    placeholder="Select Client..."
-                    icon={User}
-                    returnKey="name"
-                  />
-                </div>
-                <div>
-                  <label className="cv-label">Address <span className="cv-required">*</span></label>
-                  <div className="cv-input-wrap">
-                    <MapPin className="cv-input-icon" size={16} />
-                    <input type="text" className="cv-input" placeholder="Enter full address..." value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="cv-label">Status <span className="cv-required">*</span></label>
-                  <CustomSelect options={statuses} value={formData.statusId} onChange={(val: string) => setFormData({ ...formData, statusId: val })} placeholder="Select Status..." icon={Activity} />
-                </div>
-
-                <div>
-                  <label className="cv-label">Invoice Status</label>
-                  <CustomSelect options={invoiceOptions} value={formData.invoiceStatus} onChange={(val: string) => setFormData({ ...formData, invoiceStatus: val })} placeholder="Select Invoice Status..." icon={FileText} />
-                </div>
-                <div>
-                  <label className="cv-label">Services</label>
-                  <CustomSelect options={services} value={formData.serviceId} onChange={(val: string) => setFormData({ ...formData, serviceId: val })} placeholder="Select Service..." icon={Wrench} />
-                </div>
-                <div>
-                  <label className="cv-label">Priority</label>
-                  <CustomSelect options={priorities} value={formData.priorityId} onChange={(val: string) => setFormData({ ...formData, priorityId: val })} placeholder="Select Priority..." icon={Flag} />
-                </div>
-
-                <div>
-                  <label className="cv-label">Receive Date</label>
-                  <div className="cv-input-wrap">
-                    <CalendarDays className="cv-input-icon" size={16} />
-                    <DateInput className="cv-input" value={formData.receiveDate} onChange={iso => setFormData({ ...formData, receiveDate: iso })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="cv-label">Schedule Date</label>
-                  <div className="cv-input-wrap">
-                    <CalendarDays className="cv-input-icon" size={16} />
-                    <DateInput className="cv-input" value={formData.scheduleDate} onChange={iso => setFormData({ ...formData, scheduleDate: iso })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="cv-label">Team</label>
-                  <CustomSelect options={teams} value={formData.teamId} onChange={(val: string) => setFormData({ ...formData, teamId: val })} placeholder="Assign Team..." icon={Users} />
-                </div>
-
-                <div>
-                  <label className="cv-label">Time In</label>
-                  <div className="cv-input-wrap">
-                    <Clock className="cv-input-icon" size={16} />
-                    <input type="time" className="cv-input" value={formData.timeIn} onChange={e => setFormData({ ...formData, timeIn: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="cv-label">Time Out</label>
-                  <div className="cv-input-wrap">
-                    <Clock className="cv-input-icon" size={16} />
-                    <input type="time" className="cv-input" value={formData.timeOut} onChange={e => setFormData({ ...formData, timeOut: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <label className="cv-label">Rooms</label>
-                  <CustomSelect options={roomOptions} value={formData.rooms} onChange={(val: string) => setFormData({ ...formData, rooms: val })} placeholder="Rooms..." icon={Hash} />
-                </div>
-
-                <div>
-                  <label className="cv-label">Bathrooms</label>
-                  <CustomSelect options={roomOptions} value={formData.bathrooms} onChange={(val: string) => setFormData({ ...formData, bathrooms: val })} placeholder="Bathrooms..." icon={Hash} />
-                </div>
-
-                <div className="col-span-full">
-                  <label className="cv-label">Note</label>
-                  <div className="cv-input-wrap align-top">
-                    <StickyNote className="cv-input-icon textarea" size={16} />
-                    <textarea className="cv-input textarea" placeholder="General instructions or notes..." value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })}></textarea>
-                  </div>
-                </div>
-
-                <div className="col-span-full">
-                  <label className="cv-label">Employee's Note</label>
-                  <div className="cv-input-wrap align-top">
-                    <PenTool className="cv-input-icon textarea" size={16} />
-                    <textarea className="cv-input textarea" placeholder="Employee performance notes..." value={formData.employeeNote} onChange={e => setFormData({ ...formData, employeeNote: e.target.value })}></textarea>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            <footer className="cv-modal-footer">
-              <button className="cv-btn-outline" onClick={handleCloseForm} disabled={isSaving}>Cancel</button>
-              <button className="cv-btn-primary" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? 'Saving...' : 'Save Property'}
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
-
-      {/* --- DETAIL MODAL --- */}
-      {isDetailModalOpen && selectedHouse && (
-        <div className="cv-modal-overlay" onClick={() => setIsDetailModalOpen(false)}>
-          <div className="cv-modal" onClick={e => e.stopPropagation()}>
-            <header className="cv-modal-header">
-              <h3 className="cv-modal-title">Property Overview</h3>
-              <button className="cv-modal-close" onClick={() => setIsDetailModalOpen(false)}><X size={24} /></button>
-            </header>
-
-            <div className="cv-modal-body">
-              <dl className="cv-detail-banner">
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label blue"><Home size={14} /> PROPERTY ADDRESS</dt>
-                  <dd className="cv-address-value">{selectedHouse.address}</dd>
-                </div>
-              </dl>
-
-              <dl className="grid-3-cols">
-
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Activity size={14} /> STATUS</dt>
-                  <dd className="cv-dot-row">
-                    <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(statuses, selectedHouse.statusId) || '#ccc' } as CSSProperties}></span>
-                    <span className="cv-detail-value">{getRelationName(statuses, selectedHouse.statusId, 'UNASSIGNED')}</span>
-                  </dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><FileText size={14} /> INVOICE STATUS</dt>
-                  <dd className="cv-detail-value">{selectedHouse.invoiceStatus || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><User size={14} /> CLIENT</dt>
-                  <dd className="cv-detail-value">{getClientName(selectedHouse.client)}</dd>
-                </div>
-
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><CalendarDays size={14} /> RECEIVE DATE</dt>
-                  <dd className="cv-detail-value">{formatDate(selectedHouse.receiveDate) || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><CalendarDays size={14} /> SCHEDULE DATE</dt>
-                  <dd className="cv-detail-value">{formatDate(selectedHouse.scheduleDate) || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Wrench size={14} /> SERVICE</dt>
-                  <dd className="cv-detail-value">{getRelationName(services, selectedHouse.serviceId)}</dd>
-                </div>
-
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Clock size={14} /> TIME IN</dt>
-                  <dd className="cv-detail-value">{selectedHouse.timeIn || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Clock size={14} /> TIME OUT</dt>
-                  <dd className="cv-detail-value">{selectedHouse.timeOut || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Flag size={14} /> PRIORITY</dt>
-                  <dd className="cv-dot-row">
-                    {getRelationColor(priorities, selectedHouse.priorityId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(priorities, selectedHouse.priorityId) } as CSSProperties}></span>}
-                    <span className="cv-detail-value">{getRelationName(priorities, selectedHouse.priorityId)}</span>
-                  </dd>
-                </div>
-
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Hash size={14} /> ROOMS</dt>
-                  <dd className="cv-detail-value">{selectedHouse.rooms || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Hash size={14} /> BATHROOMS</dt>
-                  <dd className="cv-detail-value">{selectedHouse.bathrooms || '-'}</dd>
-                </div>
-                <div className="cv-detail-item">
-                  <dt className="cv-detail-label"><Users size={14} /> TEAM</dt>
-                  <dd className="cv-dot-row">
-                    {getRelationColor(teams, selectedHouse.teamId) && <span className="cv-dot-12" style={{ '--dot-color': getRelationColor(teams, selectedHouse.teamId) } as CSSProperties}></span>}
-                    <span className="cv-detail-value">{getRelationName(teams, selectedHouse.teamId, 'Unassigned')}</span>
-                  </dd>
-                </div>
-
-                <div className="col-span-full">
-                  <div className="cv-note-box">
-                    <dt className="cv-detail-label spaced"><StickyNote size={14} /> GENERAL NOTE</dt>
-                    <dd className="cv-detail-value small">{selectedHouse.note || 'No notes provided.'}</dd>
-                  </div>
-                </div>
-
-                <div className="col-span-full">
-                  <div className="cv-note-box orange">
-                    <dt className="cv-detail-label spaced orange"><PenTool size={14} /> EMPLOYEE'S NOTE</dt>
-                    <dd className="cv-detail-value small">{selectedHouse.employeeNote || 'No employee notes provided.'}</dd>
-                  </div>
-                </div>
-
-              </dl>
-            </div>
-
-            <footer className="cv-modal-footer between">
-              <button className="cv-btn-danger-light" onClick={handleDelete} disabled={isSaving}>
-                <Trash2 size={16} className="cv-icon-mr" /> {isSaving ? 'Deleting...' : 'Delete Property'}
-              </button>
-              <div className="cv-footer-actions">
-                <button className="cv-btn-outline" onClick={() => setIsDetailModalOpen(false)}>Close</button>
-
-                <button
-                  onClick={() => { setIsDetailModalOpen(false); onCheckHouse?.(selectedHouse); }}
-                  className="cv-btn-qc"
-                >
-                  <ClipboardCheck size={16} /> Quality Check
-                </button>
-
-                <button className="cv-btn-primary" onClick={() => handleOpenForm(selectedHouse)}><Edit2 size={16} /> Edit Details</button>
-              </div>
-            </footer>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

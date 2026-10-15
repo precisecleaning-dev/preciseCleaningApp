@@ -3,7 +3,7 @@
    Mismo lenguaje visual que Overview / Invoices / No Status.
    ========================================================================== */
 
-.al-page { padding: 24px; box-sizing: border-box; background-color: #f7f9fc; min-height: 100%; overflow-x: hidden; max-width: 100%; }
+.al-page { padding: 24px; box-sizing: border-box; min-height: 100%; overflow-x: hidden; max-width: 100%; }
 
 /* ---------- Encabezado ---------- */
 .al-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }

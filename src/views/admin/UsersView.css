@@ -2,7 +2,6 @@
 .spin-users { animation: spin-users 1s linear infinite; }
 @keyframes spin-users { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-
 @media (max-width: 768px) {
   .responsive-table thead { display: none; }
   .responsive-table tr { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; padding: 16px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }

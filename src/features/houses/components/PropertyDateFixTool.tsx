@@ -8,10 +8,10 @@
 //    cargan siempre hasta corregirlas: corregirlas también baja lecturas.
 // ============================================================================
 import { useMemo, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import { CalendarDays, Search, X } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
+import { COLLECTIONS } from '../../../lib/firebase/collections';
 import type { Property } from '../../../types/index';
 import { commitInChunks } from '../../../shared/data/batchWrites';
 import { formatDate } from '../../../utils/dateFormat';
@@ -65,13 +65,12 @@ const optionLabel = (iso: string): string => {
 
 interface PropertyDateFixToolProps {
   properties: Property[];
-  setProperties: Dispatch<SetStateAction<Property[]>>;
   getClientName: (idOrName?: string | null) => string;
   /** El Overview solo muestra el botón si hay fechas por corregir. */
   hideWhenClean?: boolean;
 }
 
-export default function PropertyDateFixTool({ properties, setProperties, getClientName, hideWhenClean = false }: PropertyDateFixToolProps) {
+export default function PropertyDateFixTool({ properties, getClientName, hideWhenClean = false }: PropertyDateFixToolProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dateFixTab, setDateFixTab] = useState<'ambiguous' | 'ddmm' | 'all'>('ambiguous');
   const [savingDateId, setSavingDateId] = useState<string | null>(null);
@@ -117,8 +116,7 @@ export default function PropertyDateFixTool({ properties, setProperties, getClie
     if (!iso) return;
     setSavingDateId(propertyId);
     try {
-      await updateDoc(doc(db, 'properties', propertyId), { scheduleDate: iso });
-      setProperties(prev => prev.map(pr => (pr.id === propertyId ? { ...pr, scheduleDate: iso } : pr)));
+      await updateDoc(doc(db, COLLECTIONS.properties, propertyId), { scheduleDate: iso });
     } catch (err) {
       console.error('Error corrigiendo la fecha:', err);
       const e = err as { code?: string; message?: string };
@@ -143,13 +141,8 @@ export default function PropertyDateFixTool({ properties, setProperties, getClie
     setBulkSaving(true);
     // ⭐ En batches de hasta 500 (un viaje al servidor por tanda, no uno por casa).
     const { ok, failed } = await commitInChunks(rows, (b, r) =>
-      b.update(doc(db, 'properties', r.id), { scheduleDate: r.iso }),
+      b.update(doc(db, COLLECTIONS.properties, r.id), { scheduleDate: r.iso }),
     );
-    const savedIso = new Map(ok.map(r => [r.id, r.iso]));
-    setProperties(prev => prev.map(pr => {
-      const iso = savedIso.get(pr.id);
-      return iso ? { ...pr, scheduleDate: iso } : pr;
-    }));
     setBulkSaving(false);
     alert(`Listo.\n\nCorregidas: ${ok.length}${failed.length ? `\nFallidas: ${failed.length} (revisa la consola)` : ''}`);
   };

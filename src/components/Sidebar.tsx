@@ -1,12 +1,12 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, LogOut, Bell, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ArrowLeftRight, ScrollText, Trash2, FileBarChart, Eye, Gauge, Briefcase, UserCog
+  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, FileBarChart, Gauge, Briefcase, UserCog, ListChecks
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Role, Permission } from '../types/index';
 import type { TabOptions } from '../App';
 import { prefetchHandlers } from '../utils/viewPrefetch';
-import { logout } from '../services/sessionService';
+import { canViewTaskList } from '../features/ops/opsPermissions';
 import './Sidebar.css';
 
 interface NavItemConfig {
@@ -18,10 +18,9 @@ interface NavItemConfig {
   onClick?: () => void;
 }
 
-import { useState } from 'react';
-// ⭐ Panel de notificaciones: versión nueva + actividad reciente.
-import NotificationsPanel from './NotificationsPanel';
 import { APP_VERSION } from '../hooks/useVersionCheck';
+import SessionActions from '../shared/components/SessionActions';
+import { PHONE_QUERY, useMediaQuery } from '../shared/hooks/useMediaQuery';
 
 interface SidebarProps {
   /** ⭐ Abre el selector "Ver como otro usuario". Si no se pasa, el boton no
@@ -45,8 +44,9 @@ export default function Sidebar({
   isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin,
   updateAvailable, onViewAsUser, isViewingAsUser = false,
 }: SidebarProps) {
-  // ⭐ Panel de notificaciones abierto/cerrado.
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  // Notificaciones / Ver como / Log Out van en el pie solo en el teléfono; en
+  // la computadora están en la barra de arriba (App).
+  const isPhone = useMediaQuery(PHONE_QUERY);
 
   // ⭐ Helper centralizado para chequear permisos por módulo.
   //    SuperAdmin siempre ve todo. Si no hay role cargado todavía, NO mostrar
@@ -87,12 +87,6 @@ export default function Sidebar({
   const canViewDataImport = canView('Data Import'); // ⭐ permiso propio (Roles > Data Import)
   const showAdminSection = canViewRoles || canViewUsers || canViewSettings || canViewDataImport || isSuperAdmin;
 
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to log out?')) {
-      await logout(); // cierra sesión, borra la caché local y recarga
-    }
-  };
-
   const handleNavClick = (tab: TabOptions) => {
     // ⭐ En movil el menu se cierra PRIMERO y el cambio de vista se aplica en el
     //    siguiente fotograma. Hacer las dos cosas en el mismo tick obligaba al
@@ -112,6 +106,9 @@ export default function Sidebar({
     //    propios "Owner" y "Manager" en Roles & Permissions.
     { tab: 'owner', label: 'Owner', icon: Briefcase, visible: canView('Owner') },
     { tab: 'manager', label: 'Manager', icon: UserCog, visible: canView('Manager') },
+    // ⭐ TASK LIST — tareas y proyectos de los gerentes. Permiso propio
+    //    "Task List"; sin declarar, lo ven quienes tienen Manager u Owner.
+    { tab: 'task_list', label: 'Task List', icon: ListChecks, visible: canViewTaskList(activeRole, isSuperAdmin) },
     // ⭐ HOUSES — check propio
     { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
     { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canViewOrLegacy('Pipeline', canView('Houses')) },
@@ -172,11 +169,6 @@ export default function Sidebar({
       tab: 'settings', label: 'Settings', icon: SettingsIcon, visible: canViewSettings,
       onClick: () => { onSettingsClick(); if (window.innerWidth <= 768) setIsSidebarOpen(false); },
     },
-    // ⭐ TEMPORAL — Migración única payroll_records → payroll. Visible para
-    //    cualquier rol con permiso de Settings (misma regla que Empresa/Fotos).
-    //    QUITAR este item (y el icono ArrowLeftRight del import) cuando la
-    //    migración esté hecha y verificada. Ver MigrarPayroll.tsx.
-    { tab: 'migrar_payroll', label: 'Migrar Payroll', icon: ArrowLeftRight, visible: canViewSettings },
   ];
 
   const renderNavItem = (item: NavItemConfig) => (
@@ -229,40 +221,14 @@ export default function Sidebar({
         </nav>
 
         <div className="sidebar-footer">
-          {/* ⭐ NOTIFICACIONES: versión nueva (punto rojo) + actividad reciente */}
-          <button
-            type="button"
-            className="sb-notif-btn"
-            onClick={() => setIsNotifOpen(true)}
-          >
-            <span className="sb-notif-icon-wrap">
-              <Bell size={18} />
-              {updateAvailable && <span className="sb-notif-dot" />}
-            </span>
-            {isSidebarOpen && "Notificaciones"}
-          </button>
-          {/* ⭐ VER COMO OTRO USUARIO — se muestra solo si App habilito la funcion
-              (permiso "View As User" en Roles & Permissions). Vive en el pie, junto
-              a Log Out, porque es una accion sobre la SESION, no una vista mas. */}
-          {onViewAsUser && (
-            <button
-              type="button"
-              className={`vau-sidebar-btn${isViewingAsUser ? ' active' : ''}`}
-              onClick={() => {
-                onViewAsUser();
-                if (window.innerWidth <= 768) setIsSidebarOpen(false);
-              }}
-            >
-              <Eye size={18} />
-              {isSidebarOpen && (isViewingAsUser ? 'Salir de la vista' : 'Ver como otro usuario')}
-            </button>
+          {isPhone && (
+            <SessionActions
+              variant="menu"
+              updateAvailable={updateAvailable}
+              isViewingAsUser={isViewingAsUser}
+              onViewAsUser={onViewAsUser ? () => { onViewAsUser(); setIsSidebarOpen(false); } : undefined}
+            />
           )}
-          <button
-            className="logout-btn"
-            onClick={handleLogout}
-          >
-            <LogOut size={18} /> {isSidebarOpen && "Log Out"}
-          </button>
           {/* ⭐ Versión del app (sello del build) + crédito */}
           {isSidebarOpen && (
             <div className="sb-version-box">
@@ -274,12 +240,6 @@ export default function Sidebar({
           )}
         </div>
       </aside>
-
-      <NotificationsPanel
-        open={isNotifOpen}
-        onClose={() => setIsNotifOpen(false)}
-        updateAvailable={!!updateAvailable}
-      />
     </>
   );
 }

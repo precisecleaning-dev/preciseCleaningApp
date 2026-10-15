@@ -1,7 +1,8 @@
 // src/utils/homeData.ts
 // ⭐ Datos y reglas compartidas por las vistas OWNER y MANAGER.
-//    · useHomeData: catálogos, último QC por casa, finanzas por trabajo,
-//      tareas de gerentes y reloj — todo en tiempo real.
+//    · useHomeData: catálogos, último QC por casa, finanzas por trabajo y
+//      reloj — todo en tiempo real. Las tareas son las del Task list
+//      (features/ops/hooks/useHomeTasks.ts).
 //    · Reglas puras (sin React): trabajos de hoy y su estado, casas que
 //      esperan inspección, casas en Recall y su re-clean, facturas sin cobrar.
 //    El "Your day in 30 seconds" se arma con REGLAS sobre estos datos (igual
@@ -16,7 +17,6 @@ import { isRecallText } from './recallStatus';
 import { isQualityCheckStatus } from './qcStatus';
 import { useJobFinancials } from './jobFinancials';
 import { failedAreas, latestByHouse } from './qcDashboard';
-import { managerTasksService, type ManagerTask } from '../services/managerTasksService';
 import { timeClockService, type ClockEntry } from '../services/timeClockService';
 import { subscribeCompanySettings, getCachedCompanySettings } from '../services/companyService';
 import { formatDate, formatTime } from './dateFormat';
@@ -108,7 +108,6 @@ export function useHomeData(properties: Property[]) {
   const users = useLiveData('users');
   const roles = useLiveData('roles');
   const qcRecords = useLiveData('qualityChecks');
-  const [tasks, setTasks] = useState<ManagerTask[]>([]);
   const [clock, setClock] = useState<ClockEntry[]>([]);
   const [companyAddress, setCompanyAddress] = useState(getCachedCompanySettings().address || '');
   const [now, setNow] = useState(() => new Date());
@@ -116,11 +115,10 @@ export function useHomeData(properties: Property[]) {
 
   useEffect(() => {
     const subs = [
-      managerTasksService.subscribe(setTasks),
       timeClockService.subscribeWeek(setClock),
       subscribeCompanySettings((c) => setCompanyAddress(c.address || '')),
     ];
-    // Reloj de la pantalla: saludo, "vencidas" y horas trabajadas se ponen al día solos.
+    // Reloj de la pantalla: saludo, trabajos atrasados y horas trabajadas se ponen al día solos.
     const tick = window.setInterval(() => setNow(new Date()), 60000);
     return () => { subs.forEach((u) => u()); window.clearInterval(tick); };
   }, []);
@@ -265,7 +263,7 @@ export function useHomeData(properties: Property[]) {
   }, [companyAddress]);
 
   return {
-    now, today, statuses, teams, customers, users, roles, places, latestQc, fin, tasks, clock, managers, cityState,
+    now, today, statuses, teams, customers, users, roles, places, latestQc, fin, clock, managers, cityState,
     statusOf, clientName, teamOf, typeName, todayJobs, waitingQc, recalls, unpaid,
   };
 }

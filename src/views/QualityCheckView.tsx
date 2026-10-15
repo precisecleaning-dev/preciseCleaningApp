@@ -2,37 +2,40 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 import {
-  ClipboardCheck, X, Camera, MapPin, CalendarDays, User, Users, Edit2, Trash2,
+  ClipboardCheck, X, Camera, MapPin, CalendarDays, Users, Edit2, Trash2,
   Printer, Loader2, Search, Check, Mail, AlertTriangle, Repeat, Send,
-  Clock, WifiOff, StickyNote,
+  WifiOff, StickyNote,
   Pencil, Undo2, Eraser, Circle as CircleShape, MoveUpRight, Route, Copy
 } from 'lucide-react';
-import type { Property, SystemUser, Place } from '../types/index';
+import type { Property, SystemUser, Place, QualityCheckRecord, QcFormData } from '../types/index';
 import { getRelationName } from '../utils/relations';
 // ⭐ Velocidad: pinta con el caché local de Firestore y refresca en 2º plano.
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
 import { useLiveCollection } from '../shared/data/liveCollections';
+import { useQcForHouses } from '../features/quality-check/useQcForHouses';
 import { getCompanySettings } from '../services/companyService';
 import { storageService } from '../services/storageService';
-import { propertiesService } from '../services/propertiesService';
 import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
 import { compressImage } from '../utils/imageCompression';
-import { statusHistoryService } from '../services/statusHistoryService';
-import { db } from '../config/firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import {
+  addStatusChange, afterStatusHistoryWrite, changeHouseStatus, houseLogLabel, logStatusChange, statusNameOf,
+} from '../features/houses/services/houseStatus';
+import { useHouseTrash } from '../features/houses/hooks/useHouseTrash';
+import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
+import type { WriteBatch } from '../shared/data/batchWrites';
+import { qualityChecks } from '../features/quality-check/services/qualityChecks';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
 import { isInvoiceStatus } from '../utils/invoiceEntry';
 import { computeQCScore } from '../utils/qcScore';
 import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
-import { qualityCheckAllowedStatuses, isRecallName } from '../utils/statusFilters';
+import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
 import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
-import { formatDate as formatDateMDY, formatTime, todayIso, dateSortValue } from '../utils/dateFormat';
-import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
+import { formatDate as formatDateMDY, formatTime, todayIso } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
-import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil, type QcFormData } from '../utils/qcReportPdf';
+import { exportQCReportPDF, collectPlacesWithData as collectPlacesWithDataUtil } from '../utils/qcReportPdf';
 import { prepareQCShare, type PreparedQCShare } from '../utils/shareQCReport';
 import ShareReportSheet from '../components/ShareReportSheet';
 import QCRouteDrawer, { type RouteDrawerHouse } from './QCRouteDrawer';
@@ -46,29 +49,8 @@ import {
 import './QualityCheckView.css';
 import MenuButton from '../shared/components/MenuButton';
 
-export interface QCRecord {
-  id?: string;
-  houseId: string;
-  date: string;
-  address: string;
-  client: string;
-  team?: string;
-  status: 'Finished' | 'Pending';
-  result?: 'passed' | 'failed' | null;
-  inspector?: string;
-  // ⭐ Tiempos de la inspección
-  checkInAt?: string | null;      // hora de entrada (ISO)
-  checkOutAt?: string | null;     // hora de salida (ISO) — se sella al guardar / mandar a recall
-  durationMinutes?: number | null; // minutos totales (salida - entrada)
-  selectedPlaces?: string[];
-  qcData?: QcFormData;
-  // ⭐ Panel nuevo (10/2026): ver features/quality-check/qcForm.ts
-  inspectorId?: string;
-  clientNotes?: string;
-  notifyManager?: boolean;
-  outcome?: 'invoice' | 'recall' | null;
-  reclean?: boolean;
-}
+/** Reporte de quality_checks (tipo único en types/index.ts). */
+export type QCRecord = QualityCheckRecord;
 
 // ⭐ Nombre de la base de datos local (IndexedDB) para la cola de fotos offline
 const OFFLINE_DB = 'pc_qc_offline';
@@ -147,9 +129,6 @@ interface QualityCheckViewProps {
   onOpenMenu: () => void;
   properties: Property[];
   houseToInspect: Property | null;
-  // ⭐ Edición pedida desde la pestaña Reportes del hub
-  reportToEdit?: QCRecord | null;
-  clearReportToEdit?: () => void;
   clearHouseToInspect: () => void;
   currentUser?: SystemUser | null;
   // ⭐ Permiso 'Office Notes': información interna que no debe ver el campo.
@@ -340,18 +319,12 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
 }
 
 
-export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit, reportToEdit, clearReportToEdit }: QualityCheckViewProps) {
+export default function QualityCheckView({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit }: QualityCheckViewProps) {
   // ⭐ Reportes de QC y catálogos del store compartido (un listener por
   //    colección para toda la app). Antes: getDocsCacheFirst de quality_checks
   //    y customers, que pintaba del caché pero SIEMPRE repetía la lectura
   //    completa en el servidor al abrir la vista, más 4 getDocs de catálogos.
   //    Guardar/borrar ya no toca la lista a mano: el listener la actualiza.
-  const qcLive = useLiveCollection('qualityChecks');
-  const qcList = useMemo(() => {
-    // QCRecord es el tipo completo de esta vista; el store guarda el documento tal cual.
-    const list = [...qcLive.data] as unknown as QCRecord[];
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [qcLive.data]);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   // ⭐ La casa abierta se muestra EN VIVO (useLiveHouse): notas, fotos y
   //    status que cambian en otra vista o equipo aparecen en el panel sin
@@ -364,7 +337,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Finished' | 'Recall'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Recall'>('All');
   const [tableSearch, setTableSearch] = useState('');
 
   // ⭐ Ruta de inspección (drawer lateral): ids de casas agregadas + apertura del panel
@@ -386,6 +359,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const teams = teamsLive.data;
   const customersList = customersLive.data;
   const statuses = statusesLive.data;
+  // ⭐ ¿La casa está en Recall? (por id o nombre del status)
+  const isRecallStatus = (house: Property): boolean => {
+    const sid = house.statusId;
+    const st = statuses.find((s) => String(s.id) === String(sid) || String(s.name) === String(sid));
+    return isRecallText(st?.name || sid);
+  };
+  // ⭐ Solo los reportes de las casas que esta pantalla muestra (en Quality
+  //    Check o Recall). Antes se bajaba la colección completa de quality_checks;
+  //    los terminados de otras casas se consultan en QC Reports y QC Dashboard.
+  const qcLive = useQcForHouses<QCRecord>(
+    properties.filter((h) => isQualityCheckStatus(h.statusId, statuses) || isRecallStatus(h)).map((h) => h.id),
+  );
+  const qcList = useMemo(
+    () => [...qcLive.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [qcLive.data],
+  );
   const isLoadingCatalogs = !placesLive.loaded || !tasksLive.loaded || !teamsLive.loaded
     || !customersLive.loaded || !statusesLive.loaded || !qcLive.loaded;
   const [isSaving, setIsSaving] = useState(false);
@@ -420,7 +409,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Exportar PDF
   const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const [exportingForQcId, setExportingForQcId] = useState<string | null>(null);
 
   // ⭐ Previews locales mientras las fotos se suben en segundo plano (UX instantáneo)
   const [pendingPhotos, setPendingPhotos] = useState<Record<string, { id: string; preview: string }[]>>({});
@@ -447,7 +435,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const [companySettings, setCompanySettings] = useState<CompanyConfig>({ name: '', address: '', logo: '', email: '', autoSend: true });
 
   const [qcData, setQcData] = useState<QcFormData>({});
-  const fullHistory = useFullHistory();
 
   // ⭐ Configuración de empresa (logo, correo, envío automático).
   useEffect(() => {
@@ -503,19 +490,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Añade una URL de foto ya subida al documento QC guardado (parchado post-subida).
-  const attachUrlToQcDoc = async (qcDocId: string, placeId: string, url: string) => {
-    const ref = doc(db, 'quality_checks', qcDocId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
-    const data = (snap.data() || {}) as { qcData?: QcFormData };
-    const qc = { ...(data.qcData || {}) };
-    const place = { ...(qc[placeId] || {}) };
-    const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
-    if (!photos.includes(url)) photos.push(url);
-    place.photos = photos;
-    qc[placeId] = place;
-    await updateDoc(ref, { qcData: qc });
-  };
+  const attachUrlToQcDoc = (qcDocId: string, placeId: string, url: string) =>
+    qualityChecks.patchPlacePhotos(qcDocId, placeId, (photos) => {
+      if (!photos.includes(url)) photos.push(url);
+      return photos;
+    });
 
   // ⭐ Guarda una foto en la cola offline (con su preview persistente).
   const queuePhoto = async (ctx: { id: string; houseId: string; placeId: string; placeName: string; address: string; blob: Blob }) => {
@@ -604,6 +583,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   const getClientName = (clientIdOrName?: string | null): string =>
     getRelationName(customersList, clientIdOrName, String(clientIdOrName || 'Unknown'));
 
+  // ⭐ Borrar la casa = mandarla a la papelera con motivo obligatorio, junto con
+  //    sus pagos y servicios (antes se destruía con deleteDoc y la nómina quedaba
+  //    huérfana). Mismo flujo que Houses: features/houses/hooks/useHouseTrash.ts.
+  const houseTrash = useHouseTrash({
+    actor: currentUser,
+    module: 'Quality Check',
+    labelOf: (h) => houseLogLabel(getClientName(h.client), h.address),
+    liveOf: (id) => propById.get(id),
+  });
+
   // ⭐ Ruta de inspección — agregar/quitar casas del drawer lateral
   const isHouseInRoute = (houseId: string): boolean => routeHouseIds.includes(houseId);
   const toggleRouteHouse = (house: Property) => {
@@ -666,18 +655,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   };
 
   // ⭐ Determina si una casa tiene estado "Recall" (resuelve id o nombre del status)
-  const isRecallStatus = (house: Property): boolean => {
-    const sid = house.statusId;
-    const st = statuses.find((s) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    return isRecallText(st?.name || sid);
-  };
-
-  // ⭐ Resuelve el nombre de un status a partir de id o nombre
-  const resolveStatusName = (idOrName?: string | null): string => {
-    if (!idOrName) return '';
-    return getRelationName(statuses, idOrName, String(idOrName));
-  };
-
   // ⭐ Info del status actual de una casa (para el chip): nombre + color
   const houseStatusInfo = (house: Property) => {
     const sid = house.statusId;
@@ -700,32 +677,23 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
   //    asi que no hace falta un estado intermedio de seleccion.
   const applyHouseStatusChange = async (newStatusId: string) => {
     if (!statusModalHouse || !newStatusId) return;
-    const house = statusModalHouse;
+    // Versión en vivo de la casa: el historial debe partir del status actual,
+    // no del que tenía cuando se abrió el modal.
+    const house = propById.get(statusModalHouse.id) ?? statusModalHouse;
     const prevStatusId = house.statusId;
     if (String(newStatusId) === String(prevStatusId)) { setStatusModalHouse(null); return; }
     setSavingStatus(true);
     try {
-      // ⭐ ¿El destino es el status "Invoice"? Resuelto por el helper compartido
-      //    (src/utils/invoiceEntry.ts), el mismo que usan Houses, Recalls y No Status.
-      const isInvoiceTarget = isInvoiceStatus(statuses, newStatusId);
-
-      // ⭐ Marca de ENVÍO A INVOICES desde QC: InvoicesView usa este timestamp
-      //    para poner estas casas DE PRIMERAS en su lista (más reciente arriba).
-      const updatePayload: Record<string, string> = { statusId: newStatusId };
-      if (isInvoiceTarget) updatePayload.sentToInvoiceAt = new Date().toISOString();
-
-      await updateDoc(doc(db, 'properties', house.id), updatePayload);
-      try {
-        await statusHistoryService.log({
-          propertyId: house.id,
-          fromStatusId: prevStatusId || null,
-          fromStatusName: resolveStatusName(prevStatusId) || null,
-          toStatusId: newStatusId,
-          toStatusName: resolveStatusName(newStatusId) || null,
-          changedBy: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown',
-          source: 'quality_check',
-        });
-      } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
+      // ⭐ Casa + status_history en un batch (todo o nada) y bitácora después.
+      //    Si el destino es "Invoice" se estampa sentToInvoiceAt para que la casa
+      //    quede ARRIBA en Invoices (features/houses/services/houseStatus.ts).
+      await changeHouseStatus(house, newStatusId, {
+        statuses,
+        actor: currentUser,
+        source: 'quality_check',
+        module: 'Quality Check',
+        label: houseLogLabel(getClientName(house.client), house.address),
+      });
 
       // ⭐ Misma sincronizacion que en Quality Check Reports, en sentido inverso:
       //    el estado de la casa manda sobre el resultado del reporte, para que
@@ -763,19 +731,11 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       const savedDocId = editingQcId || savedQcDocByHouse.current[selectedHouse.id] || '';
       if (savedDocId) {
         try {
-          const ref = doc(db, 'quality_checks', savedDocId);
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const data = (snap.data() || {}) as { qcData?: QcFormData };
-            const qc = { ...(data.qcData || {}) };
-            const place = { ...(qc[annotate.placeId] || {}) };
-            const photos = Array.isArray(place.photos) ? place.photos.slice() : [];
+          await qualityChecks.patchPlacePhotos(savedDocId, annotate.placeId, (photos) => {
             if (photos[annotate.index] !== undefined) photos[annotate.index] = newUrl;
             else photos.push(newUrl);
-            place.photos = photos;
-            qc[annotate.placeId] = place;
-            await updateDoc(ref, { qcData: qc });
-          }
+            return photos;
+          });
         } catch (e) { console.error('No se pudo parchar el reporte con la foto editada:', e); }
       }
 
@@ -791,53 +751,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
 
-  // ⭐ Clasifica un QC en uno de los tres grupos:
-  //    - Recall:   se presionó "RECALL" (result === 'failed')
-  //    - Finished: inspección terminada y guardada con "Guardar" (pasó)
-  //    - Pending:  llegó a Quality Check y aún no se completa la inspección
-  // ⭐ UNA SOLA FUENTE DE VERDAD: el ESTADO ACTUAL DE LA CASA.
-  //
-  //    Antes esto clasificaba por `qc.result`, mientras que Quality Check
-  //    Reports clasificaba por `properties.statusId`. Al mover una casa de
-  //    Recall a Quality Check desde Reports, el reporte conservaba
-  //    `result: 'failed'` y la misma casa salia como "Quality Check" en una
-  //    vista y "Recall" en la otra, para siempre.
-  //
-  //    Ahora manda el estado de la casa, que es el dato que el usuario ve y
-  //    edita. `result` se conserva como el resultado historico de esa
-  //    inspeccion y se usa solo de respaldo si la casa ya no existe.
-  //
-  //    Efecto util: los reportes YA desincronizados se corrigen solos al
-  //    cargar, sin migracion de datos.
-  const qcCategory = (qc: QCRecord): 'Pending' | 'Finished' | 'Recall' => {
-    if (qc.status !== 'Finished') return 'Pending';
-
-    const house = propById.get(qc.houseId);
-    if (house) {
-      const raw = String(house.statusId || '').trim();
-      const st = statuses.find(x => String(x.id) === raw || String(x.name) === raw);
-      const name = st?.name || raw;
-      if (name) return isRecallName(name) ? 'Recall' : 'Finished';
-    }
-
-    // La casa fue borrada o no tiene estado: se cae al resultado del reporte.
-    return qc.result === 'failed' ? 'Recall' : 'Finished';
-  };
-
-  // ⭐ Reúne las notas y daños capturados por área (para mostrarlos en la tarjeta del QC)
-  const collectNotesForCard = (qc: QCRecord): { area: string; notes: string; damage: string }[] => {
-    const data = (qc.qcData as QcFormData) || {};
-    const out: { area: string; notes: string; damage: string }[] = [];
-    places.forEach(p => {
-      const d = data[p.id];
-      if (!d) return;
-      const notes = (d.notes || '').trim();
-      const damage = (d.damage || '').trim();
-      if (notes || damage) out.push({ area: p.name, notes, damage });
-    });
-    return out;
-  };
-
   // ⭐ Fecha en formato MM/DD/YYYY (utils/dateFormat; '-' si no hay fecha)
   const formatDate = (dateString: string) => formatDateMDY(dateString) || '-';
 
@@ -847,26 +760,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '—';
     return formatTime(d);
-  };
-
-  // ⭐ Duración legible a partir de minutos
-  const fmtDuration = (mins?: number | null): string => {
-    if (mins == null || isNaN(Number(mins))) return '—';
-    const m = Math.max(0, Math.round(Number(mins)));
-    const h = Math.floor(m / 60);
-    const r = m % 60;
-    return h ? `${h}h ${r}m` : `${r}m`;
-  };
-
-  // ⭐ Duración de un registro (usa durationMinutes; si no, la calcula de los ISO)
-  const recordDuration = (qc: QCRecord): number | null => {
-    if (qc.durationMinutes != null) return Number(qc.durationMinutes);
-    if (qc.checkInAt && qc.checkOutAt) {
-      const a = new Date(qc.checkInAt).getTime();
-      const b = new Date(qc.checkOutAt).getTime();
-      if (!isNaN(a) && !isNaN(b) && b >= a) return Math.round((b - a) / 60000);
-    }
-    return null;
   };
 
   // ⭐ PENDING = casas en estado "Quality Check" que aún esperan inspección
@@ -894,48 +787,15 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
   );
 
-  // ⭐ SOLO registros de casas que SIGUEN en el flujo de calidad (estado
-  //    "Quality Check" o "Recall"). Cuando la casa se mueve a Invoice (o más
-  //    allá) desde Quality Check Reports, su reporte DESAPARECE de esta vista:
-  //    su lugar es Reports. Antes se quedaba aquí para siempre y el equipo
-  //    veía "casas que nunca desaparecen" aunque ya estuvieran facturadas.
-  //    Si la casa fue borrada, el registro se conserva como histórico visible.
-  //    Con la ventana de 12 meses, un registro viejo cuya casa no se cargó es
-  //    historial oculto, no una casa borrada (ver isHiddenByWindow).
-  const qcListInFlow = qcList.filter(qc => {
-    const house = propById.get(qc.houseId);
-    if (!house) return !isHiddenByWindow(fullHistory, false, dateSortValue(qc.date));
-    return isQualityCheckStatus(house.statusId, statuses) || isRecallStatus(house);
-  });
-
-  // ⭐ Registros para la TABLA inferior: Finished y Recall.
-  //    (Las Pending no se listan aquí: se muestran como tarjetas de "casas
-  //    pendientes". Así cada pestaña filtra exactamente lo que indica su nombre.)
-  //    ⭐ Las FINISHED antes solo existían en la pestaña "Reportes", asi que la
-  //    manager no podía revisar lo ya inspeccionado sin salir de esta vista. Ahora
-  //    se listan aqui con el mismo formato de tabla (sin ninguna columna de costos).
-  const filteredQcList = qcListInFlow.filter(qc => {
-    const cat = qcCategory(qc);
-    if (cat === 'Pending') return false; // las pendientes van como tarjetas de casa
-    // ⭐ Las tarjetas de registro en RECALL (las del botón "Correcciones
-    //    hechas") ya NO se muestran: duplicaban a las tarjetas de "Casas en
-    //    Recall" de arriba, que son las que mandan. El botón de correcciones
-    //    vive ahora en esas tarjetas de casa.
-    if (cat === 'Recall') return false;
-    if (statusFilter === 'Pending') return false; // en la pestaña Pending la tabla se oculta
-    // (Aquí `cat` solo puede ser 'Finished': Pending y Recall ya retornaron
-    //  arriba, por eso ya no hay comparaciones por pestaña — TS2367.)
-    return matchesSearch([qc.status, cat, qc.result === 'failed' ? 'did not pass recall' : '', formatDate(qc.date), qc.date, qc.address, qc.client, getClientName(qc.client), qc.team || getTeamNameForHouse(propById.get(qc.houseId)), qc.inspector || '']);
-  });
-
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
-  //    Pending = casas esperando inspección · Finished = registros de QC ·
-  //    Recall = casas actualmente en estado "Recall" (+ registros marcados RECALL).
+  //    Pending = casas esperando inspección · Recall = casas en estado "Recall".
+  //    ⭐ Las casas con su Quality Check TERMINADO ya no se muestran en esta
+  //    vista (pedido de Omar, 10/2026): sus reportes están en Quality Check
+  //    Reports (PDF y Email).
   //    ⭐ La pestaña Recall cuenta exactamente lo que muestra: las CASAS en
   //    estado Recall. Los registros reprobados ya no se listan como tarjetas
   //    (duplicaban a las casas), así que tampoco suman al total.
   const recallTotal = recallHouses.length;
-  const finishedTotal = qcListInFlow.filter(q => qcCategory(q) === 'Finished').length;
 
   // ⭐ Copia al portapapeles SOLO las direcciones de las casas EN QC (la sección
   //    "Casas pendientes de Quality Check"), sin recalls. Respeta el buscador.
@@ -952,19 +812,14 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     }
   };
   const groupCounts = {
-    All: pendingQCHouses.length + recallTotal + finishedTotal,
+    All: pendingQCHouses.length + recallTotal,
     Pending: pendingQCHouses.length,
-    Finished: finishedTotal,
     Recall: recallTotal,
   };
 
   // ⭐ ¿Mostrar cada bloque según la pestaña activa?
   const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
-  //  ⭐ En la pestaña Finished solo interesa la tabla de inspecciones terminadas.
   const showRecallBlock = statusFilter === 'All' || statusFilter === 'Recall';
-  // ⭐ En Recall la tabla ya no aplica (los registros Recall no se listan):
-  //    mostraría siempre "No hay registros" debajo de las tarjetas de casas.
-  const showRecordsTable = statusFilter !== 'Pending' && statusFilter !== 'Recall';
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -1055,16 +910,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     setIsFormModalOpen(true);
   };
 
-  // ⭐ La pestaña Reportes pide editar un registro: el hub cambia a esta pestaña y
-  //    entrega el QCRecord; aquí se abre el editor y se consume el disparador.
-  useEffect(() => {
-    if (reportToEdit) {
-      handleEditQC(reportToEdit);
-      clearReportToEdit?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportToEdit]);
-
   // ⭐ Cierre REAL del panel. No pregunta nada: lo usan "Save QC" (con resultado)
   //    y el cierre con confirmacion.
   const handleCloseForm = () => {
@@ -1120,47 +965,31 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
 
   // ⭐ Punto 7: marcar que las correcciones de un Recall ya fueron hechas.
   //    Queda registrado quién y cuándo; visible como chip verde en la fila/tarjeta.
-  type QCRecordCorr = QCRecord & { correctionsDoneAt?: string | null; correctionsDoneBy?: string | null };
   const handleCorrectionsDone = async (qc: QCRecord) => {
     if (!qc.id) return;
     if (!window.confirm('¿Marcar que las correcciones de este Recall ya fueron hechas?')) return;
     const by = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown';
     const at = new Date().toISOString();
     try {
-      await updateDoc(doc(db, 'quality_checks', qc.id as string), { correctionsDoneAt: at, correctionsDoneBy: by });
+      await qualityChecks.markCorrectionsDone(qc.id as string, at, by);
     } catch (e) {
       console.error('Error marcando correcciones:', e);
       alert('No se pudieron marcar las correcciones.');
     }
   };
 
-  // ⭐ Mueve la casa a otro status (con su registro en status_history) y, en la
-  //    misma escritura, aplica campos extra (retener o liberar la factura).
-  const moveHouseAfterQC = async (
-    house: Property, targetStatusId: string | null, extra: Record<string, unknown>, reason?: string,
-  ) => {
-    const prevStatusId = house.statusId;
-    const changes = String(prevStatusId) !== String(targetStatusId) && !!targetStatusId;
-    const payload: Record<string, unknown> = { ...extra };
-    if (changes) payload.statusId = targetStatusId;
-    if (Object.keys(payload).length === 0) return;
-    try {
-      await updateDoc(doc(db, 'properties', house.id), payload);
-    } catch (e) { console.error('No se pudo actualizar la casa después del QC:', e); return; }
-    if (!changes) return;
-    try {
-      await statusHistoryService.log({
-        propertyId: house.id,
-        fromStatusId: prevStatusId || null,
-        fromStatusName: resolveStatusName(prevStatusId) || null,
-        toStatusId: targetStatusId,
-        toStatusName: resolveStatusName(targetStatusId) || null,
-        changedBy: myName,
-        source: 'quality_check',
-        ...(reason ? { reason } : {}),
-      });
-    } catch (e) { console.error('No se pudo registrar el historial de status:', e); }
-  };
+  // ⭐ Agrega al batch del QC el movimiento de la casa (status + status_history)
+  //    y, en la misma escritura de la casa, los campos extra (retener o liberar
+  //    la factura). Devuelve true si el status cambió.
+  const addHouseMoveAfterQC = (
+    batch: WriteBatch, house: Property, targetStatusId: string | null, extra: Partial<Property>, reason?: string,
+  ): boolean =>
+    addStatusChange(batch, house, targetStatusId, {
+      statuses,
+      actor: currentUser,
+      source: 'quality_check',
+      ...(reason ? { reason } : {}),
+    }, extra);
 
   // ⭐ "Save QC". Sin resultado elegido guarda el avance y deja el panel
   //    abierto (lo que antes hacía "Done"). Con resultado TERMINA la inspección:
@@ -1264,27 +1093,22 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     };
 
     try {
-      let savedId = editingQcId || '';
-      if (editingQcId) {
-        await updateDoc(doc(db, 'quality_checks', editingQcId), recordData);
-      } else {
-        const docRef = await addDoc(collection(db, 'quality_checks'), recordData);
-        savedId = docRef.id;
-      }
-
-      // ⭐ Vincular este reporte a las fotos que quedaron en cola offline para esta
-      //    casa, así el uploader las adjunta al documento cuando vuelva la señal.
-      if (savedId) {
-        savedQcDocByHouse.current[selectedHouse.id] = savedId;
-        try { await offlineSetDocIdForHouse(selectedHouse.id, savedId); } catch (e) { console.error(e); }
-        processQueue();
-      }
+      // ⭐ TODO O NADA: el reporte, el status de la casa (con la factura
+      //    retenida o liberada en la misma escritura) y su status_history viajan
+      //    en UN batch. Antes eran escrituras sueltas: si fallaba la de la casa,
+      //    el aviso decía "La casa pasó a Recall" sin que hubiera pasado y la
+      //    factura quedaba sin retener. El id del reporte nuevo se genera aquí.
+      const { batch, id: savedId } = qualityChecks.saveBatch(editingQcId, recordData);
 
       // ⭐ Status de la casa y factura retenida, según el resultado.
+      const recallReason = 'No pasó Quality Check';
+      let movedTo: string | null = null;
       if (reclean) {
         const target = getRecallStatusId() || getQualityCheckStatusId();
-        await moveHouseAfterQC(selectedHouse, target,
-          { invoiceHold: true, invoiceHoldAt: nowIso, invoiceHoldBy: inspectorName }, 'No pasó Quality Check');
+        if (addHouseMoveAfterQC(batch, selectedHouse, target,
+          { invoiceHold: true, invoiceHoldAt: nowIso, invoiceHoldBy: inspectorName }, recallReason)) {
+          movedTo = target;
+        }
       } else if (isFinishing) {
         // La casa va a "Quality Check", salvo que ya esté en Invoice: aprobar el
         // QC nunca la regresa. Invoice libera la factura retenida (se mira la
@@ -1293,74 +1117,83 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         const fresh = propById.get(selectedHouse.id);
         const alreadyInvoiced = isInvoiceStatus(statuses, (fresh || selectedHouse).statusId);
         const releaseHold = outcome === 'invoice' && (!fresh || !!fresh.invoiceHold);
-        await moveHouseAfterQC(selectedHouse, alreadyInvoiced ? null : getQualityCheckStatusId(),
-          releaseHold ? { invoiceHold: false } : {});
-      }
-
-      // ⭐ ENVÍO AUTOMÁTICO al correo de la empresa cuando el QC queda Finished.
-      let emailNote = '';
-      // (Solo al terminar: corregir un reporte ya terminado no lo reenvía.)
-      if (isFinishing && companySettings.autoSend && branding.email) {
-        try {
-          const res = await sendQCByEmail(selectedHouse, qcDataWithNoNotes, inspectorName, recordDate, teamName);
-          if (res) emailNote = `\n${mailResultMessage(res, branding.email)}`;
-        } catch (e) {
-          console.error('No se pudo enviar el email automático:', e);
-          emailNote = '\n⚠️ No se pudo encolar el reporte por email. Revisa la consola.';
+        const target = alreadyInvoiced ? null : getQualityCheckStatusId();
+        if (addHouseMoveAfterQC(batch, selectedHouse, target, releaseHold ? { invoiceHold: false } : {})) {
+          movedTo = target;
         }
-      } else if (isFinishing && companySettings.autoSend && !branding.email) {
-        emailNote = '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").';
       }
+      // ⭐ NO se espera al servidor (H-07): el batch se aplica al instante en el
+      //    teléfono (Firestore lo muestra en todas las listas) y se sube solo,
+      //    también cuando vuelve la señal. Si el servidor lo rechaza, Firestore
+      //    deshace el cambio local y se avisa. El correo sale DESPUÉS de que el
+      //    servidor confirma, en segundo plano: el inspector ya no espera.
+      const label = houseLogLabel(getClientName(selectedHouse.client), selectedHouse.address);
+      const house = selectedHouse;
+      const sendEmail = isFinishing && companySettings.autoSend && !!branding.email;
+      batch.commit().then(
+        async () => {
+          if (movedTo) {
+            afterStatusHistoryWrite();
+            logStatusChange(house, movedTo, {
+              statuses, actor: currentUser, source: 'quality_check', module: 'Quality Check', label,
+              ...(reclean ? { reason: recallReason } : {}),
+            });
+          }
+          if (!sendEmail) return;
+          try {
+            const res = await sendQCByEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName);
+            if (res && (res.status === 'error' || res.status === 'no-extension')) alert(`Quality Check de ${label}:\n${mailResultMessage(res, branding.email)}`);
+          } catch (e) {
+            console.error('No se pudo enviar el email automático:', e);
+            alert(`Quality Check de ${label}: no se pudo encolar el reporte por email.`);
+          }
+        },
+        (error: unknown) => {
+          console.error('Error saving Quality Check:', error);
+          const code = (error as { code?: string } | null)?.code || 'desconocido';
+          alert(`No se guardó el Quality Check de ${label}: no se escribió nada (ni el reporte ni el status de la casa). Vuelve a abrirlo e inténtalo de nuevo.\n\nCódigo: ${code}`);
+        },
+      );
+
+      // ⭐ Vincular este reporte a las fotos que quedaron en cola offline para esta
+      //    casa, así el uploader las adjunta al documento cuando vuelva la señal.
+      savedQcDocByHouse.current[house.id] = savedId;
+      offlineSetDocIdForHouse(house.id, savedId).catch((e) => console.error(e)).finally(processQueue);
 
       // Un segundo "Save QC" ACTUALIZA este documento en vez de crear un duplicado.
-      if (!editingQcId && savedId) setEditingQcId(savedId);
+      if (!editingQcId) setEditingQcId(savedId);
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const movedName = movedTo ? statusNameOf(statuses, movedTo) : '';
+      const emailNote = isFinishing && companySettings.autoSend && !branding.email
+        ? '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").'
+        : '';
       alert((keepFinished
         ? '✅ Cambios guardados.'
         : forceFail
         ? (reclean
-          ? '⚠️ Quality Check marcado como RECALL. La casa pasó a Recall y la factura quedó retenida hasta que un QC pase.'
+          ? `⚠️ Quality Check marcado como RECALL. ${movedName ? `La casa pasó a ${movedName}` : 'La casa se quedó en su status actual'} y la factura quedó retenida hasta que un QC pase.`
           : '⚠️ Quality Check marcado como RECALL (sin re-clean).')
         : outcome === 'invoice'
           ? '✅ Quality Check aprobado.'
-          : '✅ Avance guardado. Elige Invoice o RECALL en "Result" para terminar la inspección.') + emailNote);
+          : '✅ Avance guardado. Elige Invoice o RECALL en "Result" para terminar la inspección.')
+        + (offline ? '\n\n📶 Sin señal: quedó guardado en este teléfono y se sube solo al volver la conexión.' : '')
+        + emailNote);
 
       if (isFinishing) {
-        const house = selectedHouse;
         handleCloseForm();
         if (qcExtras.notifyManager && canSeeOfficeNotes) {
           openNotifyManagerEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName, qcExtras.clientNotes);
         }
       }
     } catch (error) {
+      // Solo errores al ARMAR el batch (datos inválidos): no se escribió nada.
       console.error("Error saving Quality Check:", error);
-      alert("Error trying to save the record.");
+      alert('No se guardó el Quality Check: no se escribió nada. Inténtalo de nuevo.');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // ⭐ Eliminar la casa (misma acción que en HousesView).
-  const handleDeleteHouse = async (house: Property) => {
-    if (!window.confirm(`¿Eliminar la casa de ${getClientName(house.client)}? Esta acción no se puede deshacer.`)) return;
-    try {
-      await propertiesService.delete(house.id);
-    } catch (e) {
-      console.error('Error eliminando casa:', e);
-      alert('No se pudo eliminar la casa.');
-    }
-  };
-
-  const handleDeleteQC = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this Quality Check report? This cannot be undone.")) return;
-
-    try {
-      await deleteDoc(doc(db, 'quality_checks', id));
-    } catch (error) {
-      console.error("Error deleting Quality Check:", error);
-      alert("Error trying to delete the record.");
     }
   };
 
@@ -1628,20 +1461,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
     await buildAndExportQCPDF(selectedHouse, qcData, qcExtras.inspectorName || myName, qcExtras.date || undefined, setIsExportingPDF);
   };
 
-  const handleExportFromTable = async (qc: QCRecord) => {
-    // Si la propiedad no está en el listado, reconstruimos lo necesario desde el propio reporte.
-    const house = (propById.get(qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
-    const inspector = qc.inspector || 'Unknown';
-    const recordQcData = (qc.qcData as QcFormData) || {};
-
-    setExportingForQcId(qc.id as string);
-    try {
-      await buildAndExportQCPDF(house, recordQcData, inspector, qc.date, undefined, qc.team);
-    } finally {
-      setExportingForQcId(null);
-    }
-  };
-
   // ⭐ Resumen rápido (para el cuerpo del email)
   const qcSummary = (qcDataObj: QcFormData) => {
     let yes = 0, no = 0;
@@ -1686,14 +1505,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
       'Precise Cleaning',
     ].join('\r\n');
     return { subject, body };
-  };
-
-  const openEmailForQC = (qc: QCRecord) => {
-    const house = (propById.get(qc.houseId) || { id: qc.houseId, address: qc.address, client: qc.client }) as Property;
-    setEmailTo(branding.email || DEFAULT_EMAIL_TO);
-    setEmailCtx(buildEmail(house, (qc.qcData as QcFormData) || {}, qc.inspector || 'Unknown', qc.date, qc.team));
-    setEmailExport(() => () => handleExportFromTable(qc));
-    setEmailModalOpen(true);
   };
 
   const openEmailForCurrent = () => {
@@ -1855,7 +1666,6 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
         <div className="qc-status-pills">
           <button className={`qc-tab ${statusFilter === 'All' ? 'active' : ''}`} onClick={() => setStatusFilter('All')}>All ({groupCounts.All})</button>
           <button className={`qc-tab ${statusFilter === 'Pending' ? 'active' : ''}`} onClick={() => setStatusFilter('Pending')}>Pending ({groupCounts.Pending})</button>
-          <button className={`qc-tab qc-tab-finished ${statusFilter === 'Finished' ? 'active' : ''}`} onClick={() => setStatusFilter('Finished')}>Finished ({groupCounts.Finished})</button>
           <button className={`qc-tab qc-tab-recall ${statusFilter === 'Recall' ? 'active' : ''}`} onClick={() => setStatusFilter('Recall')}>Recall ({groupCounts.Recall})</button>
         </div>
       </div>
@@ -1981,7 +1791,7 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDeleteHouse(house)}
+                      onClick={() => houseTrash.request(house)}
                       className="qcv-house-foot-btn delete"
                     >
                       <Trash2 size={14} /> Eliminar
@@ -2113,88 +1923,13 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
                   <button type="button" onClick={() => onOpenHouseEdit?.(house)} className="qcv-house-foot-btn">
                     <Edit2 size={14} /> Editar
                   </button>
-                  <button type="button" onClick={() => handleDeleteHouse(house)} className="qcv-house-foot-btn delete">
+                  <button type="button" onClick={() => houseTrash.request(house)} className="qcv-house-foot-btn delete">
                     <Trash2 size={14} /> Eliminar
                   </button>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {showRecordsTable && (
-        <div className="qc-cards-wrap qcv-record-cards-wrap">
-          {filteredQcList.length === 0 ? (
-            <div className="qcv-record-empty">
-              No hay registros de Quality Check para mostrar.
-            </div>
-          ) : filteredQcList.map(qc => {
-            const cat = qcCategory(qc);
-            const badge = cat === 'Recall'
-              ? { bg: '#f3e8ff', fg: '#7c3aed', label: 'Recall' }
-              : { bg: '#dcfce7', fg: '#166534', label: 'Finished' };
-            const notes = collectNotesForCard(qc);
-            return (
-              <div key={qc.id} className="qcv-record-card">
-                <div className="qcv-record-card-top">
-                  <div>
-                    <div className="qcv-client-name">{getClientName(qc.client)}</div>
-                    <div className="qcv-client-address">{qc.address || '—'}</div>
-                  </div>
-                  <span className="qcv-badge card" style={{ '--badge-bg': badge.bg, '--badge-fg': badge.fg } as CSSProperties}>
-                    {cat === 'Recall' ? <Repeat size={11} /> : <Check size={11} />} {badge.label}
-                  </span>
-                </div>
-                <div className="qcv-record-meta-row">
-                  <span className="qcv-record-meta-item"><CalendarDays size={14} color="#94a3b8" /> {formatDate(qc.date)}</span>
-                  <span className="qcv-record-meta-item"><Users size={14} color="#94a3b8" /> {qc.team || getTeamNameForHouse(propById.get(qc.houseId))}</span>
-                  <span className="qcv-record-meta-item"><User size={14} color="#94a3b8" /> {qc.inspector || 'Unknown'}</span>
-                  <span className="qcv-record-meta-item"><Clock size={14} color="#94a3b8" /> {fmtDuration(recordDuration(qc))}</span>
-                </div>
-                {notes.length > 0 && (
-                  <div className="qcv-record-notes-box">
-                    <div className="qcv-record-notes-title">
-                      <StickyNote size={13} color="#94a3b8" /> Notas
-                    </div>
-                    {notes.map((n, i) => (
-                      <div key={i} className="qcv-record-note-line">
-                        <span className="qcv-note-area">{n.area}:</span>{' '}
-                        {n.notes && <span>{n.notes}</span>}
-                        {n.damage && <span className="qcv-note-damage">{n.notes ? ' · ' : ''}⚠ {n.damage}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* ⭐ Punto 7: Correcciones hechas (solo Recall) */}
-                {cat === 'Recall' && (
-                  (qc as QCRecordCorr).correctionsDoneAt ? (
-                    <div className="qcv-corr-chip" title={`Por ${(qc as QCRecordCorr).correctionsDoneBy || '—'}`}>
-                      <Check size={13} /> Correcciones hechas · {formatDate(((qc as QCRecordCorr).correctionsDoneAt as string).split('T')[0])}
-                    </div>
-                  ) : (
-                    <button onClick={() => handleCorrectionsDone(qc)} className="qcv-corr-btn full">
-                      <Check size={14} /> Correcciones hechas
-                    </button>
-                  )
-                )}
-                <div className="qcv-record-actions-row">
-                  <button onClick={() => handleExportFromTable(qc)} disabled={exportingForQcId === qc.id} className="qcv-record-action-btn">
-                    {exportingForQcId === qc.id ? <Loader2 size={15} className="spin-qc" /> : <Printer size={15} />} PDF
-                  </button>
-                  <button onClick={() => openEmailForQC(qc)} className="qcv-record-action-btn email">
-                    <Mail size={15} /> Email
-                  </button>
-                  <button onClick={() => handleEditQC(qc)} className="qcv-record-action-btn edit">
-                    <Edit2 size={15} /> Editar
-                  </button>
-                  <button onClick={() => qc.id && handleDeleteQC(qc.id)} className="qcv-record-action-btn delete">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
 
@@ -2315,6 +2050,16 @@ export default function QualityCheckView({ onOpenMenu, properties, houseToInspec
           prepared={shareReady}
           clientName={shareClient}
           onClose={() => setShareReady(null)}
+        />
+      )}
+
+      {/* ⭐ Borrar con motivo → papelera (mismo diálogo que Houses) */}
+      {houseTrash.target && (
+        <DeleteHouseDialog
+          label={houseTrash.label}
+          busy={houseTrash.busy}
+          onCancel={houseTrash.cancel}
+          onConfirm={(reason) => void houseTrash.confirm(reason)}
         />
       )}
 

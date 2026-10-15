@@ -52,7 +52,6 @@
   }
 }
 
-
 /* --- Esqueleto ----------------------------------------------------------- */
 
 .skel-page {
@@ -111,6 +110,10 @@
 }
 .skel-row-main { height: 0.85rem; width: min(70%, 20rem); }
 .skel-row-side { height: 0.85rem; width: 4.5rem; }
+/* Dinero que espera sus datos (Invoices, Payroll): ancho fijo, sin salto de layout. */
+.skel-money { display: inline-block; vertical-align: middle; height: 0.85rem; width: 4.5rem; }
+/* Fila o tarjeta con un guardado en camino (shared/hooks/usePendingById). */
+.is-pending { opacity: 0.6; transition: opacity 0.2s; }
 
 /* --- Accesibilidad ------------------------------------------------------- */
 

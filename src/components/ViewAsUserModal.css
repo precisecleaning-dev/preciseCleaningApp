@@ -231,41 +231,11 @@
 }
 .vau-banner-exit:hover { background-color: #92400e; color: #fef3c7; }
 
-/* --- Botón del menú lateral --- */
-
-.vau-sidebar-btn {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  width: 100%;
-  min-height: var(--touch-min, 3rem);
-  padding: 8px 16px;
-  margin-bottom: 6px;
-  border: none;
-  border-radius: 8px;
-  background-color: transparent;
-  color: #94a3b8;
-  font-size: 0.86rem;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-.vau-sidebar-btn:hover { background-color: rgba(255, 255, 255, 0.06); color: #ffffff; }
-.vau-sidebar-btn.active { background-color: rgba(251, 191, 36, 0.14); color: #fbbf24; }
-
 @media (max-width: 48rem) {
   .vau-overlay { padding: 0; align-items: flex-end; }
   .vau-modal {
     max-width: 100%;
     max-height: 92dvh;
     border-radius: var(--radius-xl, 2rem) var(--radius-xl, 2rem) 0 0;
-  }
-  .vau-sidebar-btn {
-    min-height: 54px;
-    margin: 3px 12px 8px;
-    width: auto;
-    border-radius: 14px;
-    font-size: 1.02rem;
-    padding: 14px 16px;
   }
 }
