@@ -18,7 +18,7 @@ export function useHouseCatalogs(rolesFallback: Role[] = []) {
   const products: ProductRecord[] = useLiveData('products'); // ⭐ settings_products (fuente de serviceId)
   const taxes = useLiveData('taxes');
   // ⭐ mapCustomerDoc ya lo aplica el store (id real + legacyId aparte).
-  const customersList = useLiveData('customers');
+  const { data: customersList, loaded: customersLoaded } = useLiveCollection('customers');
   const employees = useLiveData('users');
   const liveRoles = useLiveData('roles');
   const rolesList = liveRoles.length ? liveRoles : rolesFallback;
@@ -66,7 +66,7 @@ export function useHouseCatalogs(rolesFallback: Role[] = []) {
   };
 
   return {
-    statuses, statusesLoaded, teams, priorities, services, products, taxes, customersList, employees, rolesList,
+    statuses, statusesLoaded, teams, priorities, services, products, taxes, customersList, customersLoaded, employees, rolesList,
     statusIndex, findStatusOf, getClientName, getServiceName, isHiddenPipelineStatus, logLabel,
   };
 }

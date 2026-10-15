@@ -66,6 +66,7 @@
 
 /* ⭐ Badge para tipo "Private customer" */
 .cx-type-badge.private { background-color: #fdf4ff; color: #86198f; }
+.cx-type-badge.cavalry { background-color: #fffbeb; color: #92400e; }
 
 /* ⭐ Modal de DETALLE del cliente */
 .cx-detail-title-group { display: flex; align-items: center; gap: 12px; }

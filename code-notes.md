@@ -7,6 +7,28 @@ donde haya una opción más significativa).
 
 Ver `css-notes.md` para el historial de la limpieza de estilos inline (tarea previa, ya cerrada).
 
+## Empresas Normal y Cavalry, Fase 1 (2026-10-15, rama `empresa-cavalry`)
+
+- Customers: tipo "Cavalry" en el formulario y en el alta rápida desde la casa (badge ámbar).
+  Una casa es de Cavalry si su cliente tiene ese tipo (`shared/utils/businesses.ts`:
+  `cavalryClientKeys` resuelve el `client` por id, id legacy o nombre, con la misma regla que el
+  nombre del cliente).
+- Settings → Status: "Business" pasa de texto libre a casillas Normal / Cavalry (al menos una; la
+  última marcada no se puede quitar). Se guarda en el mismo campo `business` ("Normal", "Cavalry" o
+  "Normal, Cavalry"). Los códigos viejos de AppSheet (746d872a…) que nada usaba cuentan como Normal y
+  se reemplazan al guardar ese status. Teams, Priorities y Services siguen con texto libre.
+- Pipeline: pestañas Normal / Cavalry (`shared/components/BusinessTabs`, empresa elegida en
+  `shared/hooks/useBusiness`, una sola para toda la app y guardada en `pc.business`). Cada pestaña
+  muestra solo las casas de esa empresa, con los status de esa empresa como columnas y KPIs; el
+  número de la pestaña son las casas que salen en su tablero. Hasta que llegan los clientes el
+  tablero espera ("Loading metrics..."), para no pintar casas de Cavalry en Normal. Cambiar de
+  empresa quita el filtro de la tarjeta KPI. Una empresa sin status muestra un aviso.
+- Ojo: una casa cuyo status no es de su empresa no sale en ningún tablero (p. ej. una casa de
+  Cavalry en Recall mientras Recall solo sea Normal). El cambio de status desde el tablero ofrece
+  solo los status de esa empresa.
+- Pendiente (Fase 2): separar también Overview, Invoices, Calendar, Payroll, Quality Check, QC
+  Reports, QC Dashboard y Owner/Manager.
+
 ## Rendimiento: reporte final y guía (2026-10-15, rama `rendimiento`)
 
 - `docs/guia-del-codigo.md`: cómo funciona la app, datos, pantallas críticas, resultados antes/después

@@ -7,6 +7,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { COLLECTIONS } from "../../../lib/firebase/collections";
 import SearchableSelect from "./SearchableSelect";
+import { CAVALRY_CUSTOMER_TYPE } from "../../../shared/utils/businesses";
 
 interface CustomerQuickModalProps {
   /** Id del cliente creado y su dirección (vacía si no se capturó). */
@@ -80,6 +81,7 @@ export default function CustomerQuickModal({ onCreated, onClose }: CustomerQuick
                   { id: "Private customer", name: "Private customer" },
                   { id: "Residential", name: "Residential" },
                   { id: "Commercial", name: "Commercial" },
+                  { id: CAVALRY_CUSTOMER_TYPE, name: CAVALRY_CUSTOMER_TYPE },
                 ]}
                 value={customerForm.type}
                 onChange={(val: string) =>

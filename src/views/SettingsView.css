@@ -108,6 +108,10 @@
 .stv-form-group.spaced { margin-top: 8px; }
 .stv-label { font-size: 0.85rem; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 .stv-label.inline { margin: 0; cursor: pointer; }
+.stv-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.stv-fieldset legend { padding: 0; margin-bottom: 2px; }
+.stv-business-options { display: flex; flex-wrap: wrap; gap: 20px; }
+.stv-business-options .stv-form-group.checkbox-row { margin: 0; gap: 8px; }
 .stv-required-mark { color: #3b82f6; }
 .stv-input { background-color: #ffffff; padding: 10px 14px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.95rem; color: #111827; width: 100%; box-sizing: border-box; outline: none; transition: all 0.2s; }
 .stv-input.narrow { width: 120px; font-family: monospace; }

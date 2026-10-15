@@ -8,6 +8,7 @@ import type { Customer } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import './CustomersView.css';
 import MenuButton from '../shared/components/MenuButton';
+import { CAVALRY_CUSTOMER_TYPE } from '../shared/utils/businesses';
 
 interface CustomersViewProps {
   onOpenMenu: () => void;
@@ -38,11 +39,12 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.business && c.business.toLowerCase().includes(q)));
   }, [customers, deferredSearch]);
 
-  // ⭐ Clase del badge de tipo (Commercial / Residential / Private customer)
+  // ⭐ Clase del badge de tipo (Commercial / Residential / Private customer / Cavalry)
   const typeBadgeClass = (type?: string) => {
     const t = String(type || '').toLowerCase().trim();
     if (t === 'commercial') return 'commercial';
     if (t === 'private customer') return 'private';
+    if (type === CAVALRY_CUSTOMER_TYPE) return 'cavalry';
     return 'residential';
   };
 
@@ -315,6 +317,7 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                     <option value="Private customer">Private customer</option>
                     <option value="Residential">Residential</option>
                     <option value="Commercial">Commercial</option>
+                    <option value={CAVALRY_CUSTOMER_TYPE}>{CAVALRY_CUSTOMER_TYPE}</option>
                   </select>
                 </div>
                 <div>

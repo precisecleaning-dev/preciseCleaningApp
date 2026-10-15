@@ -38,6 +38,9 @@ import PropertyDateFixTool from "./PropertyDateFixTool";
 import MyHistoryModal from "./MyHistoryModal";
 import RepairClientsModal from "./RepairClientsModal";
 import VirtualItems from "../../../shared/components/VirtualItems";
+import BusinessTabs from "../../../shared/components/BusinessTabs";
+import { useBusiness } from "../../../shared/hooks/useBusiness";
+import { cavalryClientKeys, houseBusiness, statusInBusiness } from "../../../shared/utils/businesses";
 
 // ⭐ Valor del filtro para "casas sin status" (no choca con ningún nombre real)
 const NO_STATUS_FILTER = "__NO_STATUS__";
@@ -93,7 +96,7 @@ export default function HouseList({
   draftsCount, onOpenDrafts, onNewJob, onOpenDetail, onEdit, onDelete, onPhotosFromCard, onRequestStatus,
 }: HouseListProps) {
   const {
-    statuses, statusesLoaded, teams, priorities, services, customersList, statusIndex, findStatusOf,
+    statuses, statusesLoaded, teams, priorities, services, customersList, customersLoaded, statusIndex, findStatusOf,
     getClientName, isHiddenPipelineStatus, logLabel,
   } = useHouseCatalogs();
   const {
@@ -104,6 +107,17 @@ export default function HouseList({
   const allowedStatusKey = allowedStatusIds.join(",");
 
   const [activeFilter, setActiveFilter] = useState("All");
+  // Normal / Cavalry: la empresa de una casa sale del tipo de su cliente. Por
+  // ahora solo separa el tablero (Pipeline); sus columnas son los status de esa empresa.
+  const business = useBusiness();
+  const separateBusiness = viewMode === "board";
+  const cavalryKeys = useMemo(() => cavalryClientKeys(customersList), [customersList]);
+  // Al cambiar de empresa se quita el filtro de la tarjeta KPI: ese status puede no existir en la otra.
+  const [filterBusiness, setFilterBusiness] = useState(business);
+  if (filterBusiness !== business) {
+    setFilterBusiness(business);
+    setActiveFilter("All");
+  }
   const [houseFilter, setHouseFilter] = useState("All");
   const [invoiceFilter, setInvoiceFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -152,7 +166,7 @@ export default function HouseList({
   // ⭐ PERF: este componente solo se monta en la página completa de Houses;
   //    en modo 'modals-only' (encima de Quality Check, Payroll, Invoices,
   //    Owner/Manager…) no se filtran ni agrupan las ~3,600 casas.
-  const propertiesWithScope = useMemo(
+  const scopedProperties = useMemo(
     () =>
       properties.filter((prop) => {
         if (userScope !== "All") {
@@ -188,6 +202,29 @@ export default function HouseList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [properties, userScope, currentUser, isSuperAdmin, allowedStatusKey, statusIndex, statuses.length],
   );
+  const propertiesWithScope = useMemo(
+    () => (separateBusiness ? scopedProperties.filter((p) => houseBusiness(p, cavalryKeys) === business) : scopedProperties),
+    [scopedProperties, separateBusiness, cavalryKeys, business],
+  );
+  // Columnas del tablero: status visibles para el rol y de la empresa elegida.
+  // Sin clientes todavía no se sabe qué casa es de quién: el tablero espera.
+  const boardLoading = !statusesLoaded || !customersLoaded;
+  const boardStatuses = boardLoading
+    ? []
+    : statuses.filter((s) => isStatusVisibleForRole(s.id) && statusInBusiness(s, business));
+  // Casas de cada empresa en su tablero, para el conteo de las pestañas.
+  const businessCounts = useMemo(() => {
+    const counts = { Normal: 0, Cavalry: 0 };
+    if (!separateBusiness || boardLoading) return counts;
+    for (const p of scopedProperties) {
+      const st = findStatusOf(p);
+      const b = houseBusiness(p, cavalryKeys);
+      if (st && !isHiddenPipelineStatus(p, true) && isStatusVisibleForRole(st.id) && statusInBusiness(st, b)) counts[b] += 1;
+    }
+    return counts;
+    // findStatusOf e isHiddenPipelineStatus cambian con statusIndex; isStatusVisibleForRole, con el rol y formConfig
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [separateBusiness, boardLoading, scopedProperties, cavalryKeys, statusIndex, formConfig, currentUser?.roleId, isSuperAdmin]);
   // Casas por statusId (tarjetas KPI del tablero), en un solo recorrido.
   const statusCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -673,6 +710,8 @@ export default function HouseList({
         </div>
       </header>
 
+      {viewMode === "board" && <BusinessTabs counts={boardLoading ? undefined : businessCounts} />}
+
       <HistoryWindowNotice />
 
       {/* ⭐ Overview unificado: barra de periodo + bandas Operations y
@@ -833,11 +872,10 @@ export default function HouseList({
 
       {viewMode === "board" && isElementVisible("card_kpis") && (
         <div className="dash-grid hv-kpi-grid">
-          {isLoading ? (
+          {boardLoading ? (
             <div className="hv-loading-text">Loading metrics...</div>
           ) : (
-            statuses
-              .filter((s) => isStatusVisibleForRole(s.id))
+            boardStatuses
               .slice(0, 4)
               .map((status, index) => {
                 const Icon = kpiIcons[index % kpiIcons.length];
@@ -880,20 +918,26 @@ export default function HouseList({
       )}
 
       {viewMode === "board" ? (
-        /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
-           puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
-           no se pase siquiera al componente cuando no hay permiso. */
-        <PipelineBoardView
-          properties={boardProperties}
-          statuses={statuses.filter((s) => isStatusVisibleForRole(s.id))}
-          teams={teams}
-          priorities={priorities}
-          getClientName={getClientName}
-          onOpenDetail={onOpenDetail}
-          onQuickStatusChange={handleQuickStatusChange}
-          canEdit={!!canEdit}
-          showOfficeNote={canSeeOfficeNotes()}
-        />
+        !boardLoading && boardStatuses.length === 0 ? (
+          <p className="hv-board-empty">
+            Ningún status es de {business} todavía. Márcalos en Settings → Status.
+          </p>
+        ) : (
+          /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
+             puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
+             no se pase siquiera al componente cuando no hay permiso. */
+          <PipelineBoardView
+            properties={boardProperties}
+            statuses={boardStatuses}
+            teams={teams}
+            priorities={priorities}
+            getClientName={getClientName}
+            onOpenDetail={onOpenDetail}
+            onQuickStatusChange={handleQuickStatusChange}
+            canEdit={!!canEdit}
+            showOfficeNote={canSeeOfficeNotes()}
+          />
+        )
       ) : (
         <>
 

@@ -14,6 +14,7 @@ import { useLiveCollection } from '../shared/data/liveCollections';
 import CustomSelect from '../components/CustomSelect';
 import './SettingsView.css';
 import MenuButton from '../shared/components/MenuButton';
+import { BUSINESSES, statusBusinesses, type BusinessName } from '../shared/utils/businesses';
 
 const settingsOptions: SettingOption[] = [
   { id: 'category', label: 'Category Expenses', icon: Tags },
@@ -196,6 +197,15 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     }
   };
 
+  // Empresas del status en el formulario: al menos una (la última marcada no se quita).
+  const formStatusBusinesses = statusBusinesses(formData.business);
+  const toggleStatusBusiness = (business: BusinessName) => {
+    const next = formStatusBusinesses.includes(business)
+      ? formStatusBusinesses.filter((b) => b !== business)
+      : BUSINESSES.filter((b) => b === business || formStatusBusinesses.includes(b));
+    setFormData({ ...formData, business: next.join(', ') });
+  };
+
   const handleSave = async () => {
     if (currentSettingView === 'team_catalog') {
       if (!selectedItem) return;
@@ -236,7 +246,9 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
     try {
       // Campos según el catálogo que se edita (estructura dinámica a propósito).
       const dataToSave: Record<string, unknown> = { name: formData.name };
-      if (['team','priority','status','service'].includes(currentSettingView)) dataToSave.business = formData.business;
+      if (['team','priority','service'].includes(currentSettingView)) dataToSave.business = formData.business;
+      // Status: el código viejo de AppSheet se reemplaza por la empresa (Normal si no tenía).
+      if (currentSettingView === 'status') dataToSave.business = formStatusBusinesses.join(', ');
       if (['team','responsable','priority','status'].includes(currentSettingView)) dataToSave.color = formData.color;
       if (currentSettingView === 'status') {
         dataToSave.order = formData.order;
@@ -516,7 +528,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                       <tr key={status.id} onClick={() => handleOpenDetail(status)} className="stv-row">
                         <td data-label="Order" className="stv-td">{status.order}</td>
                         <td data-label="Name" className="stv-td strong">{status.name}</td>
-                        <td data-label="Business" className="stv-td muted">{status.business || '-'}</td>
+                        <td data-label="Business" className="stv-td muted">{statusBusinesses(status.business).join(', ')}</td>
                         <td data-label="In Dash?" className="stv-td center">
                           <span className={`stv-dash-badge${status.showInDashboard ? ' on' : ''}`}>
                             {status.showInDashboard ? 'Yes' : 'No'}
@@ -694,7 +706,24 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                     </div>
                   )}
 
-                  {(currentSettingView === 'team' || currentSettingView === 'priority' || currentSettingView === 'status' || currentSettingView === 'service') && (
+                  {currentSettingView === 'status' && (
+                    <fieldset className="stv-form-group stv-fieldset">
+                      <legend className="stv-label">Business <span className="stv-required-mark">*</span></legend>
+                      <div className="stv-business-options">
+                        {BUSINESSES.map((b) => {
+                          const checked = formStatusBusinesses.includes(b);
+                          return (
+                            <label key={b} className="stv-form-group checkbox-row">
+                              <input type="checkbox" className="stv-checkbox" checked={checked} disabled={checked && formStatusBusinesses.length === 1} onChange={() => toggleStatusBusiness(b)} />
+                              <span className="stv-label inline">{b}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  )}
+
+                  {(currentSettingView === 'team' || currentSettingView === 'priority' || currentSettingView === 'service') && (
                     <div className="stv-form-group">
                       <label className="stv-label">Business</label>
                       <input type="text" className="stv-input" value={formData.business} onChange={(e) => setFormData({ ...formData, business: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleSave()} />
@@ -833,7 +862,7 @@ export default function SettingsView({ currentSettingView, setCurrentSettingView
                   )}
 
                   {(currentSettingView === 'team' || currentSettingView === 'priority' || currentSettingView === 'status' || currentSettingView === 'service') && (
-                    <div className="stv-detail-item"><dt className="stv-detail-label">Business</dt><dd className="stv-detail-value">{selectedItem.business || 'N/A'}</dd></div>
+                    <div className="stv-detail-item"><dt className="stv-detail-label">Business</dt><dd className="stv-detail-value">{currentSettingView === 'status' ? statusBusinesses(selectedItem.business).join(', ') : (selectedItem.business || 'N/A')}</dd></div>
                   )}
 
                   {currentSettingView === 'status' && (

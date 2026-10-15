@@ -1,0 +1,31 @@
+/* Mismo aspecto que las pestañas del Task list (otl-tab), pero compartidas:
+   las usan todas las pantallas que separan Normal y Cavalry. */
+.biz-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.biz-tab {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #d5dbe6;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.biz-tab:hover { background: #f1f5f9; }
+.biz-tab.active { background: #0f172a; border-color: #0f172a; color: #fff; }
+.biz-tab.active:hover { background: #1e293b; }
+.biz-tab-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+.biz-tab.active .biz-tab-count { background: rgba(255, 255, 255, 0.2); color: #fff; }
