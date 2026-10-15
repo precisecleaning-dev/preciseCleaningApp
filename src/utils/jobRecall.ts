@@ -17,7 +17,7 @@
 //
 // ⭐ CACHÉ: el resultado se guarda en memoria RECALL_TTL_MS (shared/utils/
 //    memoryCache.ts), así ir y volver del Overview o del QC Dashboard no
-//    repite las consultas. `statusHistoryService.log` invalida la historia
+//    repite las consultas. cada cambio de status (features/houses/services/houseStatus.ts) invalida la historia
 //    al registrar un cambio de status; la colección `recalls` nadie la escribe
 //    desde la app.
 
@@ -32,7 +32,7 @@ import { isRecallText } from './recallStatus';
 /** Cuánto vive en memoria la historia de recall y la colección `recalls`. */
 const RECALL_TTL_MS = 5 * 60 * 1000;
 
-/** Prefijo de la caché de la historia de recall (lo invalida statusHistoryService). */
+/** Prefijo de la caché de la historia de recall (lo invalida houseStatus.ts al escribir historial). */
 export const RECALL_HISTORY_CACHE = 'recallHistory:';
 
 /** Documento de la colección opcional `recalls` (registros directos). */

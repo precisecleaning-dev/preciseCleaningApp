@@ -10,10 +10,11 @@
       (el canal que hace que Google nos avise de los cambios).
    4) renewcalendarwatch     (scheduled) : renueva el watch a diario (los canales
       de Google Calendar expiran; sin esto, dejan de llegar avisos).
-   5) onqualitycheckfinished (trigger)   : cuando un Quality Check queda
-      "Finished" (momento en que su PDF/reporte existe), envía un email con el
-      resumen a la cuenta configurada, usando la extensión Trigger Email
-      (colección "mail") que ya usa la app.
+   5) (quitada 10/2026) onqualitycheckfinished mandaba un resumen del QC;
+      ahora solo sale el reporte completo que manda la app (decisión de Omar).
+   6) syncuseraccessonuser / syncuseraccessonrole (triggers) y
+      rebuilduseraccess (callable, solo admin): mantienen user_access/{email},
+      el espejo de permisos que leen las Security Rules (userAccess.ts).
 
    AUTENTICACIÓN — OAuth de usuario con refresh token
    La cuenta account@precisecleaningtx.com autoriza la app UNA SOLA VEZ desde
@@ -28,7 +29,7 @@
    ============================================================================ */
 
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
@@ -38,6 +39,14 @@ import * as admin from "firebase-admin";
 //    que el despliegue falle con "Timeout after 10000" al analizar el código.
 import { auth as gauth, calendar, calendar_v3 } from "@googleapis/calendar";
 import * as crypto from "crypto";
+// ⭐ Permisos por usuario (espejo user_access/{email} para las reglas y
+//    verificación de rol en las funciones callable). Ver userAccess.ts.
+import { assertModuleAccess } from "./userAccess";
+export {
+  syncuseraccessonuser,
+  syncuseraccessonrole,
+  rebuilduseraccess,
+} from "./userAccess";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -341,6 +350,8 @@ export const calendardiagnostics = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
     }
+    // Solo usuarios activos con acceso a Houses (botón de prueba del detalle).
+    await assertModuleAccess(request.auth, "Houses", "v");
     const steps: { name: string; ok: boolean; detail: string }[] = [];
 
     // 1) Secretos presentes
@@ -424,6 +435,8 @@ export const synchousetocalendar = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
     }
+    // Solo usuarios activos con acceso a Houses (el botón Sync vive ahí).
+    await assertModuleAccess(request.auth, "Houses", "v");
     if (!houseId) {
       throw new HttpsError("invalid-argument", "Falta houseId.");
     }
@@ -865,6 +878,8 @@ export const setupcalendarwatch = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
     }
+    // Solo usuarios activos con acceso a Houses. Recomendado: solo Administrator.
+    await assertModuleAccess(request.auth, "Houses", "v");
     const url = process.env.CALENDAR_WEBHOOK_URL;
     if (!url) {
       throw new HttpsError(
@@ -961,108 +976,8 @@ export const renewcalendarwatch = onSchedule(
   },
 );
 
-// ===========================================================================
-// 5) onqualitycheckfinished — email automático del reporte QC
-//    Se dispara cuando un doc de quality_checks queda con status "Finished"
-//    (el momento en que su PDF/reporte existe). Usa la colección "mail" de la
-//    extensión Trigger Email que la app ya utiliza.
-// ===========================================================================
-export const onqualitycheckfinished = onDocumentWritten(
-  { document: "quality_checks/{qcId}", region: "us-central1" },
-  async (event) => {
-    const afterSnap = event.data?.after;
-    const beforeSnap = event.data?.before;
-    const after = afterSnap?.exists ? afterSnap.data() : null;
-    const before = beforeSnap?.exists ? beforeSnap.data() : null;
-    if (!after || !afterSnap) return; // borrado
-
-    // Solo cuando ACABA de quedar Finished (creado ya Finished, o transición)
-    const becameFinished =
-      after.status === "Finished" && (!before || before.status !== "Finished");
-    if (!becameFinished) return;
-
-    // Guardia anti-duplicados: si ya se envió, no repetir
-    if (after.reportEmailSentAt) return;
-
-    // Destinatario: .env o, en su defecto, el email de settings_company/main
-    let to = (process.env.QC_REPORT_EMAIL || "").trim();
-    if (!to) {
-      const companySnap = await db.doc("settings_company/main").get();
-      to = companySnap.exists
-        ? String(companySnap.data()?.email || "").trim()
-        : "";
-    }
-    if (!to) {
-      logger.warn(
-        "onqualitycheckfinished: sin destinatario (QC_REPORT_EMAIL ni settings_company/main.email).",
-      );
-      return;
-    }
-
-    // Nombre del cliente (after.client puede ser id de customers o el nombre)
-    let clientName = String(after.client || "Unknown Client");
-    if (after.client) {
-      const custSnap = await db
-        .doc(`customers/${after.client}`)
-        .get()
-        .catch(() => null);
-      if (custSnap && custSnap.exists) {
-        const c = custSnap.data() as {
-          name?: string;
-          firstName?: string;
-          lastName?: string;
-        };
-        clientName =
-          c.name ||
-          [c.firstName, c.lastName].filter(Boolean).join(" ") ||
-          clientName;
-      }
-    }
-
-    const failed = after.result === "failed";
-    const badge = failed ?
-      "<span style=\"background:#f3e8ff;color:#7c3aed;padding:4px 12px;border-radius:12px;font-weight:700;\">Recall</span>" :
-      "<span style=\"background:#dcfce7;color:#166534;padding:4px 12px;border-radius:12px;font-weight:700;\">Passed</span>";
-
-    // Texto libre (cliente, dirección, inspector…) escapado antes de ir al HTML.
-    const esc = (v: string): string => v
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    const row = (label: string, value?: string): string =>
-      `<tr><td style="padding:6px 12px;color:#64748b;font-size:13px;">${label}</td><td style="padding:6px 12px;color:#0f172a;font-weight:600;font-size:14px;">${value ? esc(String(value)) : "—"}</td></tr>`;
-    // Fecha en MM/DD/AAAA (regla del negocio); se guarda AAAA-MM-DD.
-    const mdy = (v?: string): string => {
-      const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-      return m ? `${m[2]}/${m[3]}/${m[1]}` : String(v || "");
-    };
-
-    const html = `
-      <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-        <h2 style="color:#0f172a;">Quality Check Report ${badge}</h2>
-        <table style="border-collapse:collapse;width:100%;background:#f8fafc;border-radius:12px;">
-          ${row("Cliente", clientName)}
-          ${row("Dirección", after.address)}
-          ${row("Equipo", after.team)}
-          ${row("Inspector", after.inspector)}
-          ${row("Fecha", mdy(after.date))}
-          ${row("Duración (min)", typeof after.durationMinutes === "number" ? String(after.durationMinutes) : "—")}
-        </table>
-        <p style="color:#64748b;font-size:13px;margin-top:16px;">
-          El PDF completo con áreas, tareas, notas y fotos está disponible en la app,
-          pestaña <b>Quality Check → Reportes</b>.
-        </p>
-      </div>`;
-
-    const subject = `Quality Check Report - ${clientName} (${after.date || ""})${failed ? " · RECALL" : ""}`;
-
-    await db.collection("mail").add({ to, message: { subject, html } });
-    await afterSnap.ref.update({ reportEmailSentAt: new Date().toISOString() });
-    logger.info(`Reporte QC enviado a ${to} (${clientName}, ${after.date})`);
-  },
-);
-
 // ============================================================================
-// 6) sendmailqueue — ENVÍO REAL DE CORREO
+// 5) sendmailqueue — ENVÍO REAL DE CORREO
 // ----------------------------------------------------------------------------
 // Reemplaza a la extensión "Trigger Email from Firestore".
 //

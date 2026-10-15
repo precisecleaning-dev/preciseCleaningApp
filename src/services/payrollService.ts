@@ -2,11 +2,8 @@ import { db } from '../config/firebase';
 import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, type WriteBatch } from 'firebase/firestore';
 import type { PayrollRecord } from '../types/index';
 
-// ⭐ UNIFICACIÓN DE COLECCIONES: antes este servicio escribía en 'payroll_records'
-//    mientras PayrollView leía 'payroll' — dos colecciones separadas, por eso los
-//    pagos del botón Pay de Houses nunca aparecían en Payroll. Ahora TODO el sistema
-//    usa una sola colección: 'payroll'. Los registros históricos de 'payroll_records'
-//    se migran una única vez con el componente MigrarPayroll (conservando IDs).
+// Todos los pagos viven en 'payroll' ('payroll_records' es la colección vieja,
+// ya migrada; solo la menciona la papelera para entradas antiguas).
 const COLLECTION_NAME = 'payroll';
 
 export const payrollService = {

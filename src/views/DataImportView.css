@@ -114,8 +114,6 @@ select.di-input { cursor: pointer; }
 .di-error-item { font-size: 0.75rem; color: #7f1d1d; padding: 4px 0; }
 .di-error-item:not(:last-child) { border-bottom: 1px solid #fecaca; }
 
-.di-mono { font-family: ui-monospace, Menlo, Monaco, Consolas, monospace; }
-
 /* Step 2: Mapping */
 .di-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
 .di-section-title { margin: 0 0 3px 0; font-size: 0.95rem; color: #0f172a; font-weight: 600; }

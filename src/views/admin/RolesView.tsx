@@ -29,6 +29,9 @@ const DEFAULT_MODULES = [
   //    es gerente: a esos usuarios el Owner les puede asignar tareas.
   'Owner',
   'Manager',
+  // ⭐ Task list de gerentes (tareas, proyectos y top 3). Sin declarar, la
+  //    vista la ven quienes tienen Manager u Owner (ver opsPermissions.ts).
+  'Task List',
   // --- Operacion diaria ---
   'Houses',
   'Pipeline',

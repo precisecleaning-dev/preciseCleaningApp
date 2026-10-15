@@ -146,16 +146,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.cv-loading {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-xl);
-  color: #64748b;
-  font-size: var(--fs-sm);
-}
-
 /* ---------------------------------------------------------------------------
    VISTA DE MES
    --------------------------------------------------------------------------- */
@@ -454,57 +444,12 @@
   flex-shrink: 0;
 }
 .cv-modal-footer.between { justify-content: space-between; align-items: center; }
-.cv-footer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-sm); }
-
-/* ---------------------------------------------------------------------------
-   FORMULARIO
-   --------------------------------------------------------------------------- */
-
-.cv-required { color: #3b82f6; }
-.cv-label {
-  display: block;
-  font-size: var(--fs-xs);
-  color: #64748b;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--sp-2xs);
-}
-.cv-input-wrap { position: relative; display: flex; align-items: center; width: 100%; }
-.cv-input-wrap.align-top { align-items: flex-start; }
-.cv-input-icon {
-  position: absolute;
-  left: var(--sp-sm);
-  color: #94a3b8;
-  pointer-events: none;
-}
-.cv-input-icon.textarea { top: var(--sp-sm); }
-
-.cv-input {
-  width: 100%;
-  min-height: var(--touch-min);
-  background-color: #ffffff;
-  padding: var(--sp-xs) var(--sp-sm) var(--sp-xs) clamp(2.3rem, 2rem + 1.2vw, 2.75rem);
-  border: 1px solid #e5e7eb;
-  border-radius: var(--radius-md);
-  /* max(1rem, ...) impide el zoom automatico de Safari iOS al enfocar. */
-  font-size: max(1rem, var(--fs-sm));
-  color: #0f172a;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.cv-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
-.cv-input.textarea { min-height: calc(var(--touch-min) * 2); resize: vertical; }
 
 /* ---------------------------------------------------------------------------
    BOTONES
    --------------------------------------------------------------------------- */
 
-.cv-btn-primary,
-.cv-btn-outline,
-.cv-btn-danger-light,
-.cv-btn-qc {
+.cv-btn-outline {
   min-height: var(--touch-comfortable);
   display: inline-flex;
   align-items: center;
@@ -516,25 +461,10 @@
   font-weight: 600;
   transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
 }
-.cv-btn-primary:active,
-.cv-btn-outline:active,
-.cv-btn-danger-light:active,
-.cv-btn-qc:active { transform: scale(0.98); }
-
-.cv-btn-primary { background-color: #3b82f6; color: #ffffff; border: none; box-shadow: var(--shadow-sm); }
-.cv-btn-primary:hover:not(:disabled) { background-color: #2563eb; }
-.cv-btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+.cv-btn-outline:active { transform: scale(0.98); }
 
 .cv-btn-outline { background-color: #ffffff; border: 1px solid #e5e7eb; color: #0f172a; }
 .cv-btn-outline:hover { background-color: #f8fafc; }
-
-.cv-btn-danger-light { background-color: #fef2f2; color: #ef4444; border: none; }
-.cv-btn-danger-light:hover { background-color: #fee2e2; }
-
-.cv-btn-qc { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-.cv-btn-qc:hover { background-color: #dbeafe; }
-
-.cv-icon-mr { margin-right: var(--sp-3xs); }
 
 /* ---------------------------------------------------------------------------
    PANEL DE DETALLE
@@ -542,44 +472,7 @@
 
 dl.grid-3-cols { margin: 0; }
 
-.cv-detail-banner {
-  margin: 0 0 var(--sp-lg);
-  border: 1px solid #bfdbfe;
-  border-radius: var(--radius-lg);
-  padding: var(--sp-md);
-  background-color: #eff6ff;
-  /* auto-fit: una columna en movil, varias en escritorio, sin media query. */
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--card-min), 1fr));
-  gap: var(--sp-md);
-}
-.cv-detail-item { display: flex; flex-direction: column; gap: var(--sp-3xs); min-width: 0; }
-.cv-detail-label {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3xs);
-  font-size: var(--fs-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #64748b;
-  font-weight: 700;
-}
-.cv-detail-label.blue { color: #1e40af; }
-.cv-detail-label.spaced { margin-bottom: var(--sp-2xs); }
-.cv-detail-label.orange { color: #c2410c; }
-.cv-address-value { margin: 0; font-size: var(--fs-md); color: #1e3a8a; font-weight: 600; }
-.cv-detail-value { margin: 0; font-size: var(--fs-sm); color: #0f172a; font-weight: 500; white-space: pre-wrap; }
-.cv-detail-value.small { font-size: var(--fs-xs); }
-.cv-dot-row { margin: 0; display: flex; align-items: center; gap: var(--sp-2xs); }
 .cv-dot-12 { width: 0.75rem; height: 0.75rem; border-radius: 50%; flex-shrink: 0; background-color: var(--dot-color); }
-.cv-note-box {
-  background-color: #f9fafb;
-  padding: var(--sp-md);
-  border-radius: var(--radius-md);
-  border: 1px solid #e5e7eb;
-  width: 100%;
-}
-.cv-note-box.orange { background-color: #fff7ed; border-color: #ffedd5; }
 
 /* ---------------------------------------------------------------------------
    MODAL DE DIA (lista de trabajos)
@@ -665,7 +558,6 @@ dl.grid-3-cols { margin: 0; }
   color: #64748b;
   white-space: nowrap;
 }
-
 
 /* ---------------------------------------------------------------------------
    AGENDA (vista de mes en movil)
@@ -809,11 +701,7 @@ dl.grid-3-cols { margin: 0; }
   }
   .cv-modal-footer { border-radius: 0; }
   /* Acciones a ancho completo: el objetivo mas facil de acertar con el pulgar. */
-  .cv-modal-footer .cv-btn-primary,
-  .cv-modal-footer .cv-btn-outline,
-  .cv-modal-footer .cv-btn-danger-light,
-  .cv-modal-footer .cv-btn-qc { flex: 1 1 100%; }
-  .cv-footer-actions { width: 100%; }
+  .cv-modal-footer .cv-btn-outline { flex: 1 1 100%; }
 }
 
 /* --- Movil chico --- */

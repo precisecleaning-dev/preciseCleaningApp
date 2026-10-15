@@ -4,7 +4,7 @@
 //    título de la vista: a la izquierda en computadora y a la derecha en el
 //    teléfono (regla de index.css). Estilo: clase global `.hamburger-btn`.
 //    No lo posiciones con `fixed` ni le pongas clases propias por vista: la
-//    esquina superior derecha de la computadora es de TopRightActions.
+//    fila de arriba a la derecha de la computadora es de SessionActions.
 import { Menu } from 'lucide-react';
 
 interface MenuButtonProps {

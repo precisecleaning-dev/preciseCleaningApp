@@ -5,37 +5,39 @@
 //        su acción (reglas automáticas sobre los datos reales, no IA)
 //      · Indicadores: ingresos del mes, facturas sin cobrar, trabajos de hoy,
 //        cola de QC, utilidad bruta del mes y payroll de la semana
-//      · Manager tasks: crear, asignar y seguir las tareas de los gerentes
+//      · Open tasks: las tareas pendientes del Task list (todas, o solo las
+//        propias si el Scope de Task List en Roles es "Own"). Aquí solo se
+//        ven y se marcan hechas; se crean y editan en el Task list
 //      · Today's time: el día por hora + quién está trabajando ahora
 //      · Finance: números del mes salidos de la app y facturas más viejas
 //    Banco y gastos no se muestran: la app no tiene esos datos (decisión del
 //    usuario, 10/2026). Las reglas viven en src/utils/homeData.ts.
 // ============================================================================
-import { useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Sparkles } from 'lucide-react';
-import type { Property, SystemUser } from '../types/index';
-import HomeHeader, { type HomeTab } from '../components/HomeHeader';
+import type { UserTask, Property, Role, SystemUser } from '../types/index';
+import HomeHeader from '../components/HomeHeader';
 import TaskChecklist from '../components/TaskChecklist';
 import {
   fullName, greeting, headerDate, moneyShort, useHomeData,
 } from '../utils/homeData';
-import { dueHasTime, isTaskOverdue, managerTasksService, type ManagerTask } from '../services/managerTasksService';
+import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
+import { sectionOf } from '../features/ops/opsDates';
+import UndoToast from '../features/ops/components/UndoToast';
 import { fmtClock, openEntryOf, weekHours, weekStart } from '../services/timeClockService';
-import { logActivity } from '../services/activityLogService';
 import { toDate } from '../utils/dateGrouping';
 import { pct } from '../utils/jobFinancials';
 import { todayIso } from '../utils/dateFormat';
-import DateInput from '../shared/components/DateInput';
 import './HomeViews.css';
 
 interface Props {
   onOpenMenu: () => void;
   properties: Property[];
   currentUser: SystemUser | null;
-  available: HomeTab[];
-  onSwitch: (tab: HomeTab) => void;
-  /** Ir a otra vista de la app (Invoices, Overview, QC Dashboard…). */
-  onNavigate: (tab: 'invoices' | 'houses' | 'qc_dashboard') => void;
+  activeRole: Role | null;
+  isSuperAdmin: boolean;
+  /** Ir a otra vista de la app (Invoices, Overview, QC Dashboard, Task list…). */
+  onNavigate: (tab: 'invoices' | 'houses' | 'qc_dashboard' | 'task_list') => void;
   onOpenHouseDetail: (p: Property) => void;
 }
 
@@ -49,25 +51,18 @@ interface TimelineItem {
 }
 
 export default function OwnerView({
-  onOpenMenu, properties, currentUser, available, onSwitch, onNavigate, onOpenHouseDetail,
+  onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onNavigate, onOpenHouseDetail,
 }: Props) {
   const d = useHomeData(properties);
+  const ht = useHomeTasks(currentUser, activeRole, isSuperAdmin);
   const tasksRef = useRef<HTMLElement | null>(null);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const [taskFilter, setTaskFilter] = useState('all');
-  const [newTitle, setNewTitle] = useState('');
-  const [newAssignee, setNewAssignee] = useState('');
-  // Vencimiento: fecha (MM/DD/AAAA en pantalla) + hora opcional. Sin hora se
-  // guarda a las 11:59 p. m., que la lista muestra como "sin hora".
-  const [newDueDate, setNewDueDate] = useState('');
-  const [newDueTime, setNewDueTime] = useState('');
-  const [saving, setSaving] = useState(false);
 
   const me = currentUser;
   const now = d.now;
   const today = d.today;
-  const firstName = (u: SystemUser) => u.firstName || fullName(u);
-  const assignee = newAssignee || d.managers[0]?.id || '';
+  const meId = me?.id || '';
 
   // ---- Periodos ----
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -108,61 +103,25 @@ export default function OwnerView({
   const noCrew = d.todayJobs.filter((j) => j.state === 'nocrew');
   const openRecalls = d.recalls.filter((r) => r.reclean === 'open');
 
-  // ---- Tareas de gerentes ----
-  const recentTasks = useMemo(() => {
-    const cutoff = now.getTime() - 2 * 86400000;
-    return d.tasks
-      .filter((t) => !t.done || new Date(t.doneAt || 0).getTime() > cutoff)
-      .sort((a, b) =>
-        Number(a.done) - Number(b.done)
-        || Number(isTaskOverdue(b, now)) - Number(isTaskOverdue(a, now))
-        || String(a.dueAt || '9').localeCompare(String(b.dueAt || '9')));
-  }, [d.tasks, now]);
-  const shownTasks = taskFilter === 'all' ? recentTasks : recentTasks.filter((t) => t.assigneeId === taskFilter);
-  const openTasks = d.tasks.filter((t) => !t.done);
-  const overdue = openTasks.filter((t) => isTaskOverdue(t, now));
+  // ---- Tareas pendientes (Task list) ----
+  const todayYmd = todayIso();
+  const openTasks = ht.tasks;
+  const shownTasks = taskFilter === 'all' ? openTasks : openTasks.filter((t) => t.assigneeUserId === taskFilter);
+  const overdue = openTasks.filter((t) => sectionOf(t.dueDate, todayYmd) === 'overdue');
+  const taskName = (t: UserTask) => (t.assigneeUserId === meId ? 'You' : t.assigneeUserName.split(' ')[0] || 'Someone');
   const overdueBy = useMemo(() => {
     const m = new Map<string, number>();
-    overdue.forEach((t) => m.set(t.assigneeName, (m.get(t.assigneeName) || 0) + 1));
+    overdue.forEach((t) => m.set(taskName(t), (m.get(taskName(t)) || 0) + 1));
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [overdue]);
-
-  const createTask = async (e: FormEvent) => {
-    e.preventDefault();
-    const title = newTitle.trim();
-    const target = d.managers.find((u) => u.id === assignee);
-    if (!title || !target || !me) return;
-    // Solo hora, sin fecha → vence hoy a esa hora. Sin hora → al final del día.
-    const dueDay = newDueDate || (newDueTime ? todayIso() : '');
-    setSaving(true);
-    try {
-      await managerTasksService.create({
-        title,
-        assigneeId: target.id,
-        assigneeName: firstName(target),
-        createdById: me.id,
-        createdByName: me.firstName || fullName(me),
-        dueAt: dueDay ? new Date(`${dueDay}T${newDueTime || '23:59'}`).toISOString() : '',
-      });
-      void logActivity({ action: 'create', module: 'Manager Tasks', user: me, targetLabel: title, detail: `Asignada a ${fullName(target)}` });
-      setNewTitle('');
-      setNewDueDate('');
-      setNewDueTime('');
-    } catch (err) {
-      console.error('Error creando la tarea:', err);
-      alert('No se pudo crear la tarea.');
-    } finally { setSaving(false); }
-  };
-  const toggleTask = async (t: ManagerTask) => {
-    if (!me) return;
-    try { await managerTasksService.setDone(t.id, !t.done, me.id); }
-    catch (err) { console.error(err); alert('No se pudo actualizar la tarea.'); }
-  };
-  const deleteTask = async (t: ManagerTask) => {
-    if (!window.confirm(`¿Borrar la tarea "${t.title}"?`)) return;
-    try { await managerTasksService.remove(t.id); }
-    catch (err) { console.error(err); alert('No se pudo borrar la tarea.'); }
-  };
+    // taskName solo depende de meId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overdue, meId]);
+  // Filtro por persona: quienes tienen tareas abiertas.
+  const assignees = useMemo(() => {
+    const m = new Map<string, string>();
+    openTasks.forEach((t) => m.set(t.assigneeUserId, t.assigneeUserId === meId ? 'Me' : t.assigneeUserName.split(' ')[0] || '—'));
+    return [...m.entries()].sort((a, b) => (a[0] === meId ? -1 : b[0] === meId ? 1 : a[1].localeCompare(b[1])));
+  }, [openTasks, meId]);
 
   // ---- Your day in 30 seconds ----
   const biggest = d.unpaid.filter((u) => u.days > 30).sort((a, b) => b.amount - a.amount)[0];
@@ -183,10 +142,13 @@ export default function OwnerView({
     },
     {
       tag: 'Team', tone: 'team',
-      text: overdue.length
-        ? `Managers have ${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}${overdueBy[0] && overdueBy.length > 1 ? `. ${overdueBy[0][0]} has ${overdueBy[0][1]} of them` : overdueBy[0] ? `, all ${overdueBy[0][0]}'s` : ''}.`
-        : `${openTasks.length} open manager task${openTasks.length === 1 ? '' : 's'}, none overdue.`,
-      link: 'Review tasks', onClick: () => tasksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      text: !ht.canView
+        ? 'Task List is off for your role (Roles & Permissions).'
+        : overdue.length
+          ? `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}${overdueBy[0] && overdueBy.length > 1 ? `. ${overdueBy[0][0]} ${overdueBy[0][0] === 'You' ? 'have' : 'has'} ${overdueBy[0][1]} of them` : overdueBy[0] ? `, all ${overdueBy[0][0] === 'You' ? 'yours' : `${overdueBy[0][0]}'s`}` : ''}.`
+          : `${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}, none overdue.`,
+      link: 'Review tasks',
+      onClick: () => (ht.canView ? tasksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : onNavigate('task_list')),
     },
     {
       tag: 'QC', tone: 'qc',
@@ -236,19 +198,20 @@ export default function OwnerView({
         tone: 'jobs',
       });
     });
-    d.tasks.forEach((t) => {
-      if (t.done || !t.dueAt) return;
-      const due = new Date(t.dueAt);
-      if (due.toDateString() !== now.toDateString()) return;
+    // Tareas que vencen hoy: con hora, en su lugar; sin hora, al final del día.
+    const ymd = todayIso();
+    ht.tasks.forEach((t) => {
+      if (t.dueDate !== ymd) return;
+      const m = /^(\d{1,2}):(\d{2})$/.exec(t.dueTime || '');
       items.push({
-        key: `t-${t.id}`, minutes: due.getHours() * 60 + due.getMinutes(),
-        time: dueHasTime(due) ? due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/i, '') : '',
-        title: t.title, sub: `${t.assigneeName} · task due`, tone: 'task',
+        key: `t-${t.id}`, minutes: m ? Number(m[1]) * 60 + Number(m[2]) : 24 * 60 - 1,
+        time: m ? `${Number(m[1]) % 12 || 12}:${m[2]}` : '',
+        title: t.title, sub: `${t.assigneeUserName.split(' ')[0]} · task due`, tone: 'task',
       });
     });
     return items.sort((a, b) => a.minutes - b.minutes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.todayJobs, d.tasks, now.getTime()]);
+  }, [d.todayJobs, ht.tasks, now.getTime()]);
 
   const started = d.todayJobs.filter((j) => j.state === 'progress' || j.state === 'done').length;
 
@@ -262,9 +225,6 @@ export default function OwnerView({
       <HomeHeader
         title={`${greeting(now)}, ${me?.firstName || 'there'}`}
         subtitle={[headerDate(now), d.cityState].filter(Boolean).join(' · ')}
-        active="owner"
-        available={available}
-        onSwitch={onSwitch}
         onOpenMenu={onOpenMenu}
       />
 
@@ -298,55 +258,35 @@ export default function OwnerView({
       </ul>
 
       <div className="hm-grid hm-grid-wide">
-        <section className="hm-card" aria-label="Manager tasks" ref={tasksRef}>
-          <div className="hm-card-head">
-            <h2 className="hm-card-title">Manager tasks</h2>
-            <span className="hm-muted">{openTasks.length} open · {overdue.length} overdue</span>
-          </div>
-          <div className="hm-chips" role="tablist" aria-label="Filtrar por gerente">
-            <button type="button" role="tab" aria-selected={taskFilter === 'all'} className={`hm-chip${taskFilter === 'all' ? ' on' : ''}`} onClick={() => setTaskFilter('all')}>All</button>
-            {d.managers.map((u) => (
-              <button key={u.id} type="button" role="tab" aria-selected={taskFilter === u.id} className={`hm-chip${taskFilter === u.id ? ' on' : ''}`} onClick={() => setTaskFilter(u.id)}>
-                {firstName(u)}
-              </button>
-            ))}
-          </div>
-          <TaskChecklist
-            tasks={shownTasks}
-            now={now}
-            meta="assignee"
-            canToggle={() => !!me}
-            onToggle={toggleTask}
-            onDelete={deleteTask}
-            emptyText={taskFilter === 'all' ? 'No manager tasks yet. Create the first one below.' : 'No tasks for this manager.'}
-          />
-          {d.managers.length === 0 ? (
-            <p className="hm-note">
-              Para asignar tareas, activa el módulo <strong>Manager</strong> (View) en el rol de tus gerentes en Roles &amp; Permissions.
-            </p>
-          ) : (
-            <form className="hm-newtask" onSubmit={createTask}>
-              <label className="hm-field grow">
-                <span className="hm-field-lbl">New task</span>
-                <input className="hm-input" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="e.g. Call Twin Creek about the broken curtain" maxLength={160} />
-              </label>
-              <label className="hm-field">
-                <span className="hm-field-lbl">Assign to</span>
-                <select className="hm-input" value={assignee} onChange={(e) => setNewAssignee(e.target.value)}>
-                  {d.managers.map((u) => <option key={u.id} value={u.id}>{fullName(u)}</option>)}
-                </select>
-              </label>
-              <label className="hm-field">
-                <span className="hm-field-lbl">Due</span>
-                <span className="hm-due-row">
-                  <DateInput className="hm-input" value={newDueDate} onChange={setNewDueDate} aria-label="Due date" />
-                  <input className="hm-input hm-due-time" type="time" value={newDueTime} onChange={(e) => setNewDueTime(e.target.value)} aria-label="Due time" />
-                </span>
-              </label>
-              <button type="submit" className="hm-btn primary big" disabled={saving || !newTitle.trim()}>Assign</button>
-            </form>
-          )}
-        </section>
+        {ht.canView && (
+          <section className="hm-card" aria-label="Open tasks" ref={tasksRef}>
+            <div className="hm-card-head">
+              <h2 className="hm-card-title">{ht.rights.seesAll ? 'Open tasks' : 'My open tasks'}</h2>
+              <span className="hm-muted">{ht.loaded ? `${openTasks.length} open · ${overdue.length} overdue` : '…'}</span>
+            </div>
+            {assignees.length > 1 && (
+              <div className="hm-chips" role="tablist" aria-label="Filtrar por persona">
+                <button type="button" role="tab" aria-selected={taskFilter === 'all'} className={`hm-chip${taskFilter === 'all' ? ' on' : ''}`} onClick={() => setTaskFilter('all')}>All</button>
+                {assignees.map(([id, name]) => (
+                  <button key={id} type="button" role="tab" aria-selected={taskFilter === id} className={`hm-chip${taskFilter === id ? ' on' : ''}`} onClick={() => setTaskFilter(id)}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <TaskChecklist
+              tasks={shownTasks}
+              today={todayYmd}
+              meId={meId}
+              showAssignee={ht.rights.seesAll}
+              busyId={ht.actions.busyId}
+              canComplete={!!me}
+              onComplete={ht.actions.complete}
+              emptyText={!ht.loaded ? 'Loading tasks…' : taskFilter === 'all' ? 'No open tasks.' : 'No open tasks for this person.'}
+            />
+            <button type="button" className="hm-more" onClick={() => onNavigate('task_list')}>Open Task List</button>
+          </section>
+        )}
 
         <section className="hm-card" aria-label="Today's time">
           <h2 className="hm-card-title">Today&apos;s time</h2>
@@ -384,6 +324,8 @@ export default function OwnerView({
           </div>
         </section>
       </div>
+
+      {ht.actions.undo && <UndoToast title={ht.actions.undo.task.title} onUndo={ht.actions.undoComplete} />}
 
       <h2 className="hm-section-title">Finance</h2>
       <div className="hm-grid hm-grid-half">

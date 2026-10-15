@@ -1,6 +1,7 @@
 // src/features/houses/serviceRecords.ts
 // Servicios cobrados de una casa (`billing_services`) tal como los maneja el
 // formulario de casas. Extraído de HousesView.tsx.
+import type { Customer, Tax } from "../../types/index";
 
 export interface ServiceRecord {
   id?: string;
@@ -48,3 +49,65 @@ export const computeServiceTotals = (f: ServiceRecord) => {
 
   return { subtotal, taxAmount, total, totalMinusTax };
 };
+
+// ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
+export const recordTotalMinusTax = (r: ServiceRecord): number => {
+  if (typeof r?.totalMinusTax === "number") return r.totalMinusTax;
+  const subtotal = Number(r?.subtotal) || 0;
+  const taxAmount = Number(r?.taxAmount) || 0;
+  if (r?.minusTax === "Yes" && r?.applyTax === "No")
+    return subtotal - taxAmount;
+  if (r?.applyTax === "Yes" && r?.minusTax === "No")
+    return subtotal + taxAmount;
+  return subtotal;
+};
+
+const DEFAULT_SERVICE_RECORD: ServiceRecord = {
+  propertyId: "",
+  serviceId: "",
+  quantity: 1,
+  price: 0,
+  subtotal: 0,
+  applyTax: "Yes",
+  minusTax: "No",
+  taxPercentage: 0,
+  taxAmount: 0,
+  total: 0,
+  totalMinusTax: 0,
+  notes: "",
+};
+
+/**
+ * Servicio NUEVO para el modal "Add Service" (detalle o formulario de casa).
+ * El impuesto inicial es el primero del catálogo y APPLY TAX sale del cliente.
+ */
+export function newServiceRecord(
+  propertyId: string,
+  clientRef: string | undefined,
+  taxes: Tax[],
+  customersList: Customer[],
+): ServiceRecord {
+  const defaultTax = taxes.length > 0 ? Number(taxes[0].percentage) : 0;
+  // ⭐ APPLY TAX inicial según el CLIENTE de la casa (campo "Apply Tax"
+  //    del módulo Customers). Es solo el VALOR INICIAL: en el formulario
+  //    del servicio se puede cambiar caso por caso. Sin cliente o sin
+  //    preferencia definida → "Yes" (comportamiento histórico).
+  const customer = customersList.find(
+    (c) =>
+      c.id === clientRef ||
+      (c as Customer & { legacyId?: string }).legacyId === clientRef ||
+      c.name === clientRef,
+  );
+  const clientApplyTax: "Yes" | "No" =
+    customer?.applyTax === "No" ? "No" : "Yes";
+  return {
+    ...DEFAULT_SERVICE_RECORD,
+    propertyId,
+    taxPercentage: defaultTax,
+    applyTax: clientApplyTax,
+    // minusTax NO se toca: es un control aparte en el formulario y su
+    // default es "No" (Apply Tax "No" del cliente = simplemente sin
+    // impuesto agregado, no impuesto restado).
+    minusTax: "No",
+  };
+}

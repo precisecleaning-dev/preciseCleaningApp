@@ -867,10 +867,6 @@ dl.pv-detail-banner {
 .pnw-detail-modal {
   max-width: 720px;
 }
-.pv-view-property-btn.pnw-sm {
-  padding: 7px 12px;
-  font-size: 0.8rem;
-}
 
 @media (max-width: 640px) {
   .pnw-toolbar-row.bottom {

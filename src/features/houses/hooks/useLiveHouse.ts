@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
+import { COLLECTIONS } from '../../../lib/firebase/collections';
 import type { PayrollRecord, Property } from '../../../types/index';
 import { dateSortValue } from '../../../utils/dateFormat';
 import type { ServiceRecord } from '../serviceRecords';
@@ -28,7 +29,7 @@ function useHouseDoc(id: string | null): Property | null {
   useEffect(() => {
     if (!id) return;
     return onSnapshot(
-      doc(db, 'properties', id),
+      doc(db, COLLECTIONS.properties, id),
       (snap) => setState({ id, house: snap.exists() ? ({ id: snap.id, ...snap.data() } as Property) : null }),
       (err) => console.error('Error escuchando la casa abierta:', err),
     );
@@ -76,12 +77,12 @@ export function useHouseRecords(houseId: string | null): HouseRecords {
   useEffect(() => {
     if (!houseId) return;
     const unsubServices = onSnapshot(
-      query(collection(db, 'billing_services'), where('propertyId', '==', houseId)),
+      query(collection(db, COLLECTIONS.billingServices), where('propertyId', '==', houseId)),
       (snap) => setServices({ id: houseId, list: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ServiceRecord) }),
       (err) => console.error('Error escuchando los servicios de la casa:', err),
     );
     const unsubPayroll = onSnapshot(
-      query(collection(db, 'payroll'), where('propertyId', '==', houseId)),
+      query(collection(db, COLLECTIONS.payroll), where('propertyId', '==', houseId)),
       (snap) => {
         const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PayrollRecord);
         list.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));

@@ -23,7 +23,6 @@
 .cx-header-actions.dashboard-actions-wrapper { display: flex; gap: 12px; align-items: center; }
 .cx-search-box.search-box-container { display: flex; align-items: center; background-color: white; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; flex: 1; min-width: 200px; }
 .cx-search-input { background-color: transparent; border: none; outline: none; padding: 10px; font-size: 0.9rem; width: 100%; color: #111827; }
-.cx-btn-filters { background-color: white; border: 1px solid #e5e7eb; border-radius: 20px; padding: 0 16px; height: 42px; display: flex; align-items: center; gap: 8px; color: #475569; font-weight: 600; }
 .cx-btn-add { display: flex; align-items: center; gap: 8px; background-color: #111827; color: white; border: none; padding: 0 20px; height: 42px; border-radius: 20px; font-weight: 600; cursor: pointer; font-size: 0.9rem; flex-shrink: 0; }
 
 /* Table */

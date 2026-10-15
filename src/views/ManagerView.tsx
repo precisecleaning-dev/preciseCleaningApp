@@ -4,7 +4,10 @@
 //      · "Your day in 30 seconds": lo primero que hay que atender, trabajos,
 //        tareas y QC (reglas automáticas sobre los datos reales)
 //      · My shift: reloj de entrada/salida y horas de la semana
-//      · My tasks: tareas que le asignó el Owner (las marca hechas aquí)
+//      · Manager tasks: tareas pendientes del Task list de los gerentes
+//        (usuarios cuyo rol tiene Manager → View). Con Scope "Own" en Task
+//        List, solo las propias ("My tasks"). Aquí solo se ven y se marcan
+//        hechas; se crean en el Task list.
 //      · Houses Today: trabajos de hoy por hora; si no tienen equipo se
 //        asigna ahí mismo
 //      · Quality check: casas que esperan inspección (Pass rápido o
@@ -18,18 +21,20 @@ import { addDoc, collection } from 'firebase/firestore';
 import { ChevronDown, ChevronRight, ClipboardCheck, RotateCcw, Sparkles } from 'lucide-react';
 import { db } from '../config/firebase';
 import type { Property, Role, SystemUser } from '../types/index';
-import HomeHeader, { type HomeTab } from '../components/HomeHeader';
+import HomeHeader from '../components/HomeHeader';
 import TaskChecklist from '../components/TaskChecklist';
 import {
   fullName, greeting, headerDate, startOfDay, TODAY_STATE_LABEL, useHomeData, type HomeJob,
 } from '../utils/homeData';
-import { isTaskOverdue, managerTasksService, type ManagerTask } from '../services/managerTasksService';
+import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
+import { sectionOf } from '../features/ops/opsDates';
+import UndoToast from '../features/ops/components/UndoToast';
 import { fmtClock, openEntryOf, timeClockService, weekHours } from '../services/timeClockService';
 import { propertiesService } from '../services/propertiesService';
 import { logActivity } from '../services/activityLogService';
 import { qcInfoFor } from '../utils/jobQuality';
 import { jobInsight } from '../utils/jobInsights';
-import { formatDate } from '../utils/dateFormat';
+import { formatDate, todayIso } from '../utils/dateFormat';
 import { groupByDate } from '../utils/dateGrouping';
 import './HomeViews.css';
 
@@ -39,8 +44,6 @@ interface Props {
   currentUser: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
-  available: HomeTab[];
-  onSwitch: (tab: HomeTab) => void;
   /** Abre la inspección completa en Quality Check. */
   onInspect?: (p: Property) => void;
   onOpenHouseDetail: (p: Property) => void;
@@ -53,10 +56,11 @@ const STATE_TONE: Record<string, string> = { done: 'good', progress: 'good', lat
 const JOBS_PAGE = 5;
 
 export default function ManagerView({
-  onOpenMenu, properties, currentUser, activeRole, isSuperAdmin = false, available, onSwitch,
+  onOpenMenu, properties, currentUser, activeRole, isSuperAdmin = false,
   onInspect, onOpenHouseDetail, onOpenHouseEdit,
 }: Props) {
   const d = useHomeData(properties);
+  const ht = useHomeTasks(currentUser, activeRole, isSuperAdmin);
   const [busy, setBusy] = useState<string | null>(null);
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(true);
@@ -82,24 +86,19 @@ export default function ManagerView({
     } finally { setBusy(null); }
   };
 
-  // ---- Tareas ----
-  const myTasks = useMemo(() => {
-    const twoDaysAgo = d.now.getTime() - 2 * 86400000;
-    return d.tasks
-      .filter((t) => me && t.assigneeId === me.id)
-      .filter((t) => !t.done || new Date(t.doneAt || 0).getTime() > twoDaysAgo)
-      .sort((a, b) =>
-        Number(a.done) - Number(b.done)
-        || Number(isTaskOverdue(b, d.now)) - Number(isTaskOverdue(a, d.now))
-        || String(a.dueAt || '9').localeCompare(String(b.dueAt || '9')));
-  }, [d.tasks, me, d.now]);
-  const openTasks = myTasks.filter((t) => !t.done);
-  const overdueTasks = openTasks.filter((t) => isTaskOverdue(t, d.now));
-  const toggleTask = async (t: ManagerTask) => {
-    if (!me) return;
-    try { await managerTasksService.setDone(t.id, !t.done, me.id); }
-    catch (e) { console.error('Error al marcar la tarea:', e); alert('No se pudo actualizar la tarea.'); }
-  };
+  // ---- Tareas pendientes (Task list) ----
+  // Scope "All": las de los gerentes (y las propias). "Own": solo las propias
+  // (el listener ya trae solo esas).
+  const meId = me?.id || '';
+  const todayYmd = todayIso();
+  const managerIds = useMemo(() => new Set(d.managers.map((u) => u.id)), [d.managers]);
+  const openTasks = useMemo(
+    () => (ht.rights.seesAll
+      ? ht.tasks.filter((t) => t.assigneeUserId === meId || managerIds.has(t.assigneeUserId))
+      : ht.tasks),
+    [ht.tasks, ht.rights.seesAll, managerIds, meId],
+  );
+  const overdueTasks = openTasks.filter((t) => sectionOf(t.dueDate, todayYmd) === 'overdue');
 
   // ---- Asignar equipo desde "Houses Today" ----
   const assignTeam = async (job: HomeJob, teamId: string) => {
@@ -160,7 +159,9 @@ export default function ManagerView({
     const j = noCrew[0];
     brief.push({ tag: 'First', tone: 'first', text: `The ${j.time ? `${j.time} ` : ''}${j.type.toLowerCase()} at ${j.client} has no crew. Assign it${j.time ? ` before ${j.time}` : ' today'}.` });
   } else if (overdueTasks.length) {
-    brief.push({ tag: 'First', tone: 'first', text: `“${overdueTasks[0].title}” is overdue${overdueTasks[0].createdByName ? ` — ${overdueTasks[0].createdByName} asked for it` : ''}.` });
+    const t = overdueTasks[0];
+    const asked = t.createdByUserId !== t.assigneeUserId ? t.createdByUserName.split(' ')[0] : '';
+    brief.push({ tag: 'First', tone: 'first', text: `“${t.title}” is overdue${asked ? ` — ${asked} asked for it` : ''}.` });
   } else if (openRecalls.length) {
     brief.push({ tag: 'First', tone: 'first', text: `${openRecalls[0].client} failed QC and the re-clean isn't scheduled yet.` });
   }
@@ -170,7 +171,7 @@ export default function ManagerView({
       ? 'No cleanings scheduled today.'
       : `You dispatch ${d.todayJobs.length} cleaning${d.todayJobs.length === 1 ? '' : 's'} today.${late.length ? ` ${late.length} crew${late.length === 1 ? ' is' : 's are'} late to start.` : ''}${noCrew.length ? ` ${noCrew.length} without a crew.` : ''}`,
   });
-  brief.push({
+  if (ht.canView) brief.push({
     tag: 'Tasks', tone: 'tasks',
     text: overdueTasks.length
       ? `${overdueTasks.length} task${overdueTasks.length === 1 ? ' is' : 's are'} overdue: ${overdueTasks.map((t) => t.title.toLowerCase()).slice(0, 2).join('; ')}.`
@@ -204,9 +205,6 @@ export default function ManagerView({
       <HomeHeader
         title={`${greeting(d.now)}, ${me?.firstName || 'there'}`}
         subtitle={headerDate(d.now)}
-        active="manager"
-        available={available}
-        onSwitch={onSwitch}
         onOpenMenu={onOpenMenu}
       />
 
@@ -243,20 +241,24 @@ export default function ManagerView({
       </div>
 
       <div className="hm-grid hm-grid-wide">
-        <section className="hm-card" aria-label="My tasks">
-          <div className="hm-card-head">
-            <h2 className="hm-card-title">My tasks</h2>
-            <span className="hm-muted">{openTasks.length} open</span>
-          </div>
-          <TaskChecklist
-            tasks={myTasks}
-            now={d.now}
-            meta="author"
-            canToggle={() => !!me}
-            onToggle={toggleTask}
-            emptyText="No tasks assigned to you. Enjoy the quiet."
-          />
-        </section>
+        {ht.canView && (
+          <section className="hm-card" aria-label={ht.rights.seesAll ? 'Manager tasks' : 'My tasks'}>
+            <div className="hm-card-head">
+              <h2 className="hm-card-title">{ht.rights.seesAll ? 'Manager tasks' : 'My tasks'}</h2>
+              <span className="hm-muted">{ht.loaded ? `${openTasks.length} open` : '…'}</span>
+            </div>
+            <TaskChecklist
+              tasks={openTasks}
+              today={todayYmd}
+              meId={meId}
+              showAssignee={ht.rights.seesAll}
+              busyId={ht.actions.busyId}
+              canComplete={!!me}
+              onComplete={ht.actions.complete}
+              emptyText={!ht.loaded ? 'Loading tasks…' : ht.rights.seesAll ? 'No open tasks for managers.' : 'No tasks assigned to you. Enjoy the quiet.'}
+            />
+          </section>
+        )}
 
         <section className="hm-card" aria-label="Houses today">
           <div className="hm-card-head">
@@ -353,6 +355,8 @@ export default function ManagerView({
           )}
         </section>
       </div>
+
+      {ht.actions.undo && <UndoToast title={ht.actions.undo.task.title} onUndo={ht.actions.undoComplete} />}
 
       <section className="hm-card hm-jobs" aria-label="All jobs today">
         <h2 className="hm-card-title hm-jobs-title">All jobs</h2>

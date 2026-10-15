@@ -1,0 +1,16 @@
+.ops-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--av-color, #2546d8);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.ops-avatar.xs { width: 20px; height: 20px; font-size: 9px; }
+.ops-avatar.sm { width: 28px; height: 28px; font-size: 11px; }
+.ops-avatar.md { width: 36px; height: 36px; font-size: 13px; }
+.ops-avatar.lg { width: 48px; height: 48px; font-size: 16px; }

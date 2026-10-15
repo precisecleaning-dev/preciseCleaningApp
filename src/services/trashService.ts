@@ -77,6 +77,9 @@ const stripUndefined = (obj: Record<string, unknown>): Record<string, unknown> =
 // ⭐ Las casas borradas antes de 10/2026 guardaron sus pagos como
 //    'payroll_records', una colección que ya no se usa (todo vive en
 //    'payroll'): si hay que restaurarlos, van a 'payroll'.
+/** Colecciones que la papelera sabe restaurar (la casa y sus relacionados). */
+const RESTORABLE = new Set(['properties', 'payroll', 'payroll_records', 'billing_services']);
+
 function restoreCollection(name: string): string {
   return name === 'payroll_records' ? 'payroll' : name;
 }
@@ -146,6 +149,14 @@ export const trashService = {
   /** Restaura ÍNTEGRAMENTE: documento principal con su MISMO id, más todos
    *  sus relacionados, y elimina el registro de la papelera. Atómico. */
   async restore(entry: TrashEntry): Promise<void> {
+    // ⭐ Solo lo que la app manda a la papelera (casas con sus pagos y
+    //    servicios). Una entrada con otra colección (p. ej. system_users) no
+    //    salió de la app: restaurarla podría dar permisos a alguien.
+    const unknown = [entry.collectionName, ...(entry.related || []).map((r) => r.collectionName)]
+      .filter((c) => !RESTORABLE.has(c));
+    if (entry.collectionName !== 'properties' || unknown.length > 0) {
+      throw new Error(`Esta entrada no se puede restaurar desde la app (${[...new Set(unknown)].join(', ') || entry.collectionName}).`);
+    }
     const batch = writeBatch(db);
     batch.set(doc(db, entry.collectionName, entry.originalId), entry.data);
     // Pagos de entradas viejas ('payroll_records'): nunca se borraron de

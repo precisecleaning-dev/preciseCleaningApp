@@ -222,15 +222,6 @@
   font-weight: 700;
   white-space: nowrap;
 }
-.ujt-pill.as-btn {
-  border: 0;
-  cursor: pointer;
-  font-family: inherit;
-}
-.ujt-pill.as-btn:hover {
-  filter: brightness(0.96);
-  text-decoration: underline;
-}
 .ujt-pill.good,
 .ujt-aitag.good { background: #ecfdf5; color: #047857; }
 .ujt-pill.warn,

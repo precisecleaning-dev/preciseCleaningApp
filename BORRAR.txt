@@ -1,2 +1,7 @@
 Borra estos archivos de tu proyecto (git rm):
+src/components/TopRightActions.css
+src/components/TopRightActions.tsx
+src/services/managerTasksService.ts
+src/views/MigrarPayroll.css
+src/views/MigrarPayroll.tsx
 vite-env.d.ts

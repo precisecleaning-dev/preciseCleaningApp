@@ -48,7 +48,9 @@
 
 /* Lista de mensajes con scroll vertical propio (siempre visible); el más
    reciente abajo. App.css pone en `.fade-in *` una barra casi transparente que
-   en Chrome anula ::-webkit-scrollbar: aquí se devuelve a `auto`. */
+   en Chrome anula ::-webkit-scrollbar: `.nt-box .nt-list` le gana (0-2-0) y la
+   devuelve a `auto`, también en la ventana grande (fuera de .fade-in).
+   La esquina inferior derecha se arrastra para hacerla más alta. */
 .nt-list {
   list-style: none;
   margin: 0;
@@ -57,17 +59,57 @@
   flex-direction: column;
   gap: 12px;
   height: 300px;
+  min-height: 160px;
+  max-height: 80vh;
+  resize: vertical;
   overflow-y: scroll;
-  background: #f6f7fb;
+  background: #ffffff;
 }
-.fade-in .nt-list { scrollbar-width: auto; scrollbar-color: auto; }
-.fade-in .nt-list::-webkit-scrollbar { width: 10px; }
-.fade-in .nt-list::-webkit-scrollbar-track { background: #eef1f6; }
-.fade-in .nt-list::-webkit-scrollbar-thumb { background: #b8c1d1; border-radius: 8px; border: 2px solid #eef1f6; }
-.fade-in .nt-list::-webkit-scrollbar-thumb:hover { background: #94a0b8; }
+.nt-box .nt-list { scrollbar-width: auto; scrollbar-color: auto; }
+.nt-box .nt-list::-webkit-scrollbar { width: 10px; }
+.nt-box .nt-list::-webkit-scrollbar-track { background: #eef1f6; }
+.nt-box .nt-list::-webkit-scrollbar-thumb { background: #b8c1d1; border-radius: 8px; border: 2px solid #eef1f6; }
+.nt-box .nt-list::-webkit-scrollbar-thumb:hover { background: #94a0b8; }
 @supports not selector(::-webkit-scrollbar) {
-  .fade-in .nt-list { scrollbar-color: #b8c1d1 #eef1f6; }
+  .nt-box .nt-list { scrollbar-color: #b8c1d1 #eef1f6; }
 }
+
+/* Botón para ampliar y ventana grande */
+.nt-head-side { display: inline-flex; align-items: center; gap: 6px; }
+.nt-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+}
+.nt-expand:hover { background: #f1f5f9; color: #0f172a; }
+.nt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+  background: rgba(15, 23, 42, 0.55);
+}
+.nt-box.expanded {
+  width: min(1100px, 100%);
+  height: 100%;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
+}
+.nt-box.expanded .nt-list { flex: 1; height: auto; max-height: none; resize: none; }
+.nt-box.expanded .nt-msg { max-width: 75%; }
+.nt-slot { min-width: 0; }
 .nt-empty {
   margin: auto;
   font-size: 13px;
@@ -233,3 +275,138 @@
   .nt-input { font-size: 16px; } /* iOS: evita el zoom al escribir */
   .nt-send { width: 44px; height: 44px; }
 }
+
+/* ---- Archivos y corrección de mensajes (10/2026) ---- */
+.nt-bubble-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nt-edit-btn {
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.nt-bubble:hover .nt-edit-btn,
+.nt-edit-btn:focus-visible { opacity: 1; }
+.nt-edit-btn:hover { background: rgba(15, 23, 42, 0.08); color: #0f172a; }
+@media (hover: none) {
+  .nt-edit-btn { opacity: 1; }
+}
+.nt-bubble.editing { width: 100%; max-width: 100%; }
+.nt-msg:has(.nt-bubble.editing) { max-width: 100%; width: 100%; }
+.nt-edit { display: flex; flex-direction: column; gap: 6px; }
+.nt-edit-input { height: auto; min-height: 64px; background: #ffffff; }
+.nt-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.nt-edit-cancel,
+.nt-edit-save {
+  min-height: 0;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nt-edit-cancel { border: 1px solid #d5dbe6; background: #ffffff; color: #334155; }
+.nt-edit-cancel:hover { background: #f1f5f9; }
+.nt-edit-save { border: 0; background: #1d3fcf; color: #ffffff; }
+.nt-edit-save:hover:not(:disabled) { background: #1734b0; }
+.nt-edit-save:disabled,
+.nt-edit-cancel:disabled { opacity: 0.55; cursor: default; }
+
+.nt-files { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.nt-file-link { display: block; color: inherit; text-decoration: none; }
+.nt-file-img {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  height: 110px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #e3e7ef;
+  background: #f1f5f9;
+}
+.nt-file-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 6px 9px;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+}
+.nt-file-link:hover .nt-file-name { text-decoration: underline; }
+.nt-file-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.nt-file-size { color: #64748b; white-space: nowrap; }
+
+.nt-pending {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid #eef0f5;
+  background: #ffffff;
+}
+.nt-pending + .nt-composer { border-top: 0; }
+.nt-pending-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 4px 3px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 600;
+}
+.nt-pending-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.nt-pending-remove {
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #1e3a8a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.nt-pending-remove:hover { background: rgba(30, 58, 138, 0.12); }
+
+.nt-attach {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  background: #f8f9fc;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.nt-attach:hover:not(:disabled) { background: #eef2ff; color: #1d3fcf; }
+.nt-attach:disabled { opacity: 0.55; cursor: default; }
+.nt-file-input { display: none; }

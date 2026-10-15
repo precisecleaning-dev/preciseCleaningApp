@@ -75,25 +75,11 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  background-color: #f7f9fc;
 }
 
-@media (max-width: 1024px) {
-  .left-col {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-  }
-  .main-columns {
-    overflow: visible;
-  }
-  .houses-view {
+@media (max-width: 1024px) {  .houses-view {
     height: auto !important;
     min-height: 100%;
-  }
-  .left-col > div {
-    height: auto !important;
   }
 }
 
@@ -103,48 +89,12 @@
   }
 }
 
-.filters-section {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  justify-content: space-between;
-  margin-top: 14px;
-}
-.tabs-container {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1;
-  min-width: 0;
-}
 .property-select-container {
   display: flex;
   align-items: center;
   gap: 8px;
   white-space: nowrap;
   position: relative;
-}
-
-.left-col {
-  flex: 1 1 0%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-@media (max-width: 1024px) {
-  .left-col {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-  }
-  .main-columns {
-    overflow: auto;
-  }
 }
 
 /* Por defecto (escritorio): tabla visible, tarjetas ocultas */
@@ -156,7 +106,6 @@
   padding: 14px;
   flex-direction: column;
   gap: 12px;
-  background-color: #f7f9fc;
 }
 
 @media (max-width: 768px) {
@@ -168,10 +117,6 @@
   }
   .search-box-container {
     height: 48px !important;
-  }
-  .filters-section {
-    flex-direction: column;
-    align-items: stretch;
   }
   .property-select-container {
     width: 100%;
@@ -256,10 +201,6 @@
     padding: 12px 18px !important;
     border-radius: 10px !important;
   }
-}
-
-.mobile-action-text {
-  display: none;
 }
 
 .dashboard-actions-wrapper {
@@ -512,15 +453,6 @@
   margin-top: 2px;
 }
 
-.main-columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  align-items: flex-start;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 .hv-panel-card {
   background-color: #ffffff;
   border-radius: 16px;
@@ -529,30 +461,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-.hv-table-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 22px 16px 22px;
-  border-bottom: 1px solid #f1f5f9;
-  flex-wrap: wrap;
-  gap: 12px;
-  flex-shrink: 0;
-  position: relative;
-}
-.hv-panel-title {
-  margin: 0;
-  font-size: 1.15rem;
-  color: #0f172a;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.hv-panel-date {
-  margin: 4px 0 0 0;
-  font-size: 0.8rem;
-  color: #94a3b8;
-  font-weight: 500;
 }
 
 .hv-btn-filters {
@@ -613,29 +521,6 @@
   margin-bottom: 6px;
   display: block;
 }
-.hv-pill-btn {
-  padding: 7px 16px;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  background-color: #f1f5f9;
-  color: #475569;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
-  white-space: nowrap;
-}
-.hv-pill-btn:hover:not(.active) {
-  background-color: #e2e8f0;
-  color: #1e293b;
-}
-.hv-pill-btn.active {
-  background-color: #1d4ed8;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.24);
-}
 .hv-filter-select {
   background-color: #ffffff;
   border: 1px solid #cbd5e1;
@@ -648,150 +533,6 @@
   transition: border-color 0.2s;
   padding: 8px 12px;
   cursor: pointer;
-}
-
-.hv-jobs-table-wrap {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-.hv-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.hv-th {
-  padding: 14px 22px;
-  text-align: left;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  border-bottom: 1px solid #eef2f7;
-  white-space: nowrap;
-}
-.hv-th.sticky {
-  position: sticky;
-  top: 0;
-  background-color: #fbfcfe;
-  z-index: 1;
-}
-.hv-th.right {
-  text-align: right;
-}
-.hv-th.w-100 {
-  width: 100px;
-}
-.hv-td {
-  padding: 16px 22px;
-  border-bottom: 1px solid #f4f7fa;
-  font-size: 0.875rem;
-  color: #0f172a;
-  vertical-align: middle;
-}
-.hv-td.muted {
-  color: #64748b;
-}
-.hv-td.strong {
-  font-weight: 600;
-  color: #1e293b;
-}
-.hv-td.right {
-  text-align: right;
-}
-.hv-empty-row {
-  text-align: center;
-  padding: 40px;
-  color: #6b7280;
-}
-.hv-empty-row.italic {
-  font-style: italic;
-}
-.hv-icon-inline {
-  display: inline;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-
-.hv-job-row {
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-.hv-job-row:hover {
-  background-color: #f6f9fe;
-}
-.hv-job-row.high-priority {
-  background-color: #fffafa;
-}
-.hv-job-row.high-priority .hv-td:first-child {
-  box-shadow: inset 3px 0 0 0 #ef4444;
-}
-.hv-job-row.high-priority:hover {
-  background-color: #f8fafc;
-}
-
-.hv-client-name-row {
-  font-weight: 600;
-  color: #0f172a;
-  font-size: 0.9rem;
-  margin-bottom: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.hv-badge-high {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background-color: #fef2f2;
-  color: #dc2626;
-  padding: 2px 6px;
-  border-radius: 8px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.hv-finished-icon {
-  display: flex;
-}
-.hv-client-address {
-  font-size: 0.775rem;
-  color: #94a3b8;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.hv-actions-cell-row {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  width: 100%;
-}
-.action-btn-edit,
-.action-btn-delete {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 7px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.18s ease;
-}
-.action-btn-edit:hover {
-  background-color: #eff6ff;
-}
-.action-btn-delete:hover {
-  background-color: #fef2f2;
-}
-.action-btn-edit {
-  color: #3b82f6;
-}
-.action-btn-delete {
-  color: #ef4444;
 }
 
 .hv-cards-empty {
@@ -2585,17 +2326,6 @@
 .hv-media-grid.no-mb {
   margin-bottom: 0;
 }
-.hv-note-box {
-  background-color: #f9fafb;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  width: 100%;
-}
-.hv-note-box.orange {
-  background-color: #fff7ed;
-  border-color: #ffedd5;
-}
 .hv-detail-label {
   display: flex;
   align-items: center;
@@ -2609,57 +2339,8 @@
 .hv-detail-label.orange {
   color: #c2410c;
 }
-.hv-note-box.office {
-  background-color: #eff6ff;
-  border-color: #bfdbfe;
-  border-left: 3px solid #2563eb;
-}
 .hv-detail-label.office {
   color: #1d4ed8;
-}
-.hv-note-box.office .hv-note-text {
-  color: #1e3a8a;
-}
-.hv-note-text {
-  font-size: 0.95rem;
-  color: #111827;
-  font-weight: 500;
-  margin-top: 4px;
-  white-space: pre-wrap;
-}
-/* ⭐ Notas EDITABLES desde el detalle (Notes & Photos) */
-.hv-note-input {
-  width: 100%;
-  min-height: 96px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #ffffff;
-  font-size: 0.95rem;
-  color: #111827;
-  font-weight: 500;
-  font-family: inherit;
-  line-height: 1.5;
-  resize: vertical;
-  box-sizing: border-box;
-}
-.hv-note-input:focus {
-  outline: none;
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
-}
-.hv-note-input.orange {
-  border-color: #fdba74;
-  background: #fffbf7;
-}
-.hv-note-input.orange:focus {
-  border-color: #fb923c;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
-}
-.hv-note-input.office {
-  border-color: #93c5fd;
-  background: #f8fbff;
 }
 .hv-save-notes-row {
   display: flex;
@@ -2744,11 +2425,6 @@
   background: #f0fdf4;
   color: #166534;
   border-color: #bbf7d0;
-}
-.hv-client-type-badge.private-customer {
-  background: #fdf4ff;
-  color: #86198f;
-  border-color: #f5d0fe;
 }
 
 /* ⭐ Botón "Mi historial" del header (casas asignadas al usuario) */
@@ -2895,14 +2571,6 @@
   border: 1px solid color-mix(in srgb, var(--hst-color) 30%, white);
 }
 
-/* ⭐ Sección DAMAGES del detalle (colección 'damages') */
-.hv-damages-card {
-  margin-top: 16px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-radius: 12px;
-  padding: 14px 16px;
-}
 .hv-damages-count {
   background: #ffedd5;
   color: #9a3412;
@@ -3766,10 +3434,6 @@
    Los botones Before/After Photos NO se tocan a proposito.
    ========================================================================== */
 
-/* ---------- 1. Lienzo ---------- */
-.houses-view.fade-in {
-  background-color: #f7f9fc;
-}
 
 /* ---------- 2. Encabezado de la vista ---------- */
 .houses-view .hv-header.main-header {
@@ -3907,50 +3571,6 @@
   border-radius: 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.houses-view .hv-table-header {
-  padding: 20px 22px 16px 22px;
-  border-bottom: 1px solid #f1f5f9;
-  position: relative;
-  gap: 12px;
-}
-.houses-view .hv-panel-title {
-  font-size: 1.15rem;
-  color: #0f172a;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.houses-view .hv-panel-date {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-/* ---------- 5. Chips de filtro y boton Filters ---------- */
-.houses-view .filters-section {
-  margin-top: 14px;
-  gap: 12px;
-}
-.houses-view .hv-pill-btn {
-  background-color: #f1f5f9;
-  color: #475569;
-  border-radius: 999px;
-  padding: 7px 16px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  border: none;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
-}
-.houses-view .hv-pill-btn:hover:not(.active) {
-  background-color: #e2e8f0;
-  color: #1e293b;
-}
-.houses-view .hv-pill-btn.active {
-  background-color: #1d4ed8;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.24);
-}
 .houses-view .hv-btn-filters {
   height: 38px;
   padding: 0 16px;
@@ -3971,90 +3591,6 @@
 
 /* (Filters ya no va anclado en absoluto: vive en .hv-jobs-toolbar junto a
    "Agrupar por", en el flujo normal del encabezado.) */
-
-/* ---------- 6. Tabla (escritorio) ---------- */
-.houses-view .hv-jobs-table-wrap {
-  background-color: #ffffff;
-}
-.houses-view .hv-th {
-  padding: 14px 22px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.07em;
-  border-bottom: 1px solid #eef2f7;
-}
-.houses-view .hv-th.sticky {
-  background-color: #fbfcfe;
-}
-.houses-view .hv-table thead tr {
-  box-shadow: inset 0 -1px 0 0 #eef2f7;
-}
-.houses-view .hv-td {
-  padding: 16px 22px;
-  font-size: 0.875rem;
-  color: #0f172a;
-  border-bottom: 1px solid #f4f7fa;
-}
-.houses-view .hv-td.muted {
-  color: #64748b;
-}
-.houses-view .hv-td.strong {
-  font-weight: 600;
-  color: #1e293b;
-}
-.houses-view .hv-job-row:hover {
-  background-color: #f6f9fe;
-}
-.houses-view .hv-job-row.high-priority .hv-td:first-child {
-  box-shadow: inset 3px 0 0 0 #ef4444;
-}
-.houses-view .hv-job-row:last-child .hv-td {
-  border-bottom: none;
-}
-.houses-view .hv-client-name-row {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 3px;
-}
-.houses-view .hv-client-address {
-  font-size: 0.775rem;
-  color: #94a3b8;
-}
-.houses-view .hv-icon-inline {
-  color: #94a3b8;
-}
-.houses-view .action-btn-edit,
-.houses-view .action-btn-delete {
-  padding: 7px;
-  border-radius: 9px;
-  transition: background-color 0.18s ease;
-}
-.houses-view .action-btn-edit:hover {
-  background-color: #eff6ff;
-}
-.houses-view .action-btn-delete:hover {
-  background-color: #fef2f2;
-}
-
-/* ---------- 8. Chips con scroll horizontal en pantallas medianas y chicas ---------- */
-@media (max-width: 900px) {
-  .houses-view .tabs-container {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    padding-bottom: 2px;
-  }
-  .houses-view .tabs-container::-webkit-scrollbar {
-    display: none;
-  }
-  .houses-view .hv-pill-btn {
-    flex-shrink: 0;
-  }
-}
 
 /* ---------- 9. MOVIL ---------- */
 @media (max-width: 768px) {
@@ -4113,18 +3649,11 @@
   .houses-view .hv-panel-card {
     border-radius: 14px;
   }
-  .houses-view .hv-table-header {
-    padding: 16px 16px 14px 16px;
-  }
-  .houses-view .hv-panel-title {
-    font-size: 1.05rem;
-  }
 
   /* Tarjetas de trabajos: mas compactas y con mejor jerarquia */
   .houses-view .jobs-cards-wrap {
     padding: 14px;
     gap: 12px;
-    background-color: #f7f9fc;
   }
   .houses-view .hv-job-card {
     padding: 16px;
@@ -4202,147 +3731,9 @@
     height: auto;
     min-height: 100%;
   }
-  .houses-view .main-columns {
-    overflow: visible;
-    align-items: stretch;
-  }
-  .houses-view .left-col {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-  }
-  .houses-view .left-col > div {
-    height: auto;
-  }
-  .houses-view .hv-jobs-table-wrap {
-    max-height: 62vh;
-  }
 }
 
-/* ---------- 2. Anchos de columna fijos: nada se parte en dos lineas ---------- */
-.houses-view .hv-table {
-  table-layout: fixed;
-}
-.houses-view .hv-table th,
-.houses-view .hv-table td {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.houses-view .hv-table th:nth-child(1),
-.houses-view .hv-table td:nth-child(1) {
-  width: 136px;
-  white-space: nowrap;
-}
-.houses-view .hv-table th:nth-child(3),
-.houses-view .hv-table td:nth-child(3) {
-  width: 104px;
-  white-space: nowrap;
-}
-.houses-view .hv-table th:nth-child(4),
-.houses-view .hv-table td:nth-child(4) {
-  width: 130px;
-  white-space: nowrap;
-}
-.houses-view .hv-table th:nth-child(5),
-.houses-view .hv-table td:nth-child(5) {
-  width: 132px;
-  white-space: nowrap;
-}
-.houses-view .hv-table th:nth-child(6),
-.houses-view .hv-table td:nth-child(6) {
-  width: 256px;
-}
-.houses-view .hv-table th:nth-child(7),
-.houses-view .hv-table td:nth-child(7) {
-  width: 120px;
-}
-
-/* La celda de cliente ocupa el resto y trunca con elipsis */
-.houses-view .hv-table td:nth-child(2) {
-  min-width: 0;
-}
-.houses-view .mobile-client-cell {
-  min-width: 0;
-}
-.houses-view .hv-client-name-row {
-  flex-wrap: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
-.houses-view .hv-client-address {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
-
-/* ⭐ Densidad de gerencia: filas mas compactas para ver mas trabajos por
-   pantalla (antes 18px arriba/abajo). */
-.houses-view .hv-td {
-  padding: 11px 22px;
-}
-.houses-view .hv-th {
-  padding: 13px 22px;
-}
-.houses-view .hv-jobs-table-wrap {
-  overflow-x: hidden;
-}
-
-/* La pildora de status dentro de la tabla no fuerza ancho extra */
-.houses-view .hv-table .hv-statuspill {
-  max-width: 100%;
-  font-size: 0.78rem;
-  padding: 6px 12px;
-  font-weight: 600;
-}
-/* Sin Active Teams la columna Status tiene espacio: el nombre completo cabe */
-.houses-view .hv-table .hv-statuspill-text {
-  max-width: 136px;
-}
-
-/* ---------- 3. Boton "Load more" ---------- */
-.houses-view .hv-loadmore-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-  border-top: 1px solid #f4f7fa;
-  background-color: #fbfcfe;
-}
-.houses-view .hv-btn-loadmore {
-  height: 40px;
-  padding: 0 22px;
-  border-radius: 999px;
-  border: 1px solid #e2e8f0;
-  background-color: #ffffff;
-  color: #334155;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease;
-}
-.houses-view .hv-btn-loadmore:hover {
-  background-color: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-/* ---------- 5. MOVIL: tarjetas mas compactas y legibles ---------- */
 @media (max-width: 768px) {
-  .houses-view .hv-loadmore-wrap {
-    padding: 14px;
-    background-color: transparent;
-    border-top: none;
-  }
-  .houses-view .hv-btn-loadmore {
-    width: 100%;
-    height: 46px;
-  }
-
   /* La pildora de status de la tarjeta ocupaba mucho alto */
   .houses-view .hv-job-card .hv-statuspill.full {
     padding: 11px 14px;
@@ -4362,27 +3753,6 @@
   .houses-view .hv-card-actions-row {
     border-top: 1px solid #f1f5f9;
   }
-}
-
-/* ---------- Aviso de casas sin status (Overview) ---------- */
-.houses-view .hv-nostatus-banner {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  margin-bottom: 4px;
-  border: 1px solid #fde68a;
-  background-color: #fffbeb;
-  border-radius: 12px;
-  color: #92400e;
-  font-size: 0.85rem;
-  font-weight: 500;
-  line-height: 1.45;
-}
-.houses-view .hv-nostatus-banner-icon {
-  color: #d97706;
-  flex-shrink: 0;
 }
 
 /* ============================================================================
@@ -4436,13 +3806,6 @@
   border: 1px solid rgba(0, 0, 0, 0.15);
   display: inline-block;
   flex-shrink: 0;
-}
-.hv-gcal-guest-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 .hv-gcal-warnings {
   background: #fffbeb;
@@ -4578,9 +3941,6 @@
 /* ⭐ Selector del reparador de clientes */
 .hv-repair-select { min-width: 190px; padding: 8px 10px; }
 
-/* ⭐ Firma de la ultima nota */
-.hv-note-meta { font-size: 0.76rem; color: #64748b; align-self: center; }
-
 /* ⭐ Historial de notas por seccion */
 .hv-notehist-section { margin-bottom: 16px; }
 .hv-notehist-title { margin: 0 0 8px; font-size: 0.85rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -4597,7 +3957,6 @@
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 .houses-view.hv-unified-page {
-  background-color: #f4f6fb;
   gap: 20px;
 }
 
@@ -4606,8 +3965,7 @@
 .houses-view.hv-unified-page > * {
   flex-shrink: 0;
 }
-.houses-view.hv-unified-page .hv-header.main-header,
-.houses-view.hv-unified-page .hv-nostatus-banner {
+.houses-view.hv-unified-page .hv-header.main-header {
   margin-bottom: 0;
 }
 

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { ClipboardCheck, Route } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Property, SystemUser } from '../types/index';
-import QualityCheckView, { type QCRecord } from './QualityCheckView';
+import QualityCheckView from './QualityCheckView';
 import QCRoutesTableView from './QCRoutesTableView';
 import './QualityCheckHub.css';
 
@@ -45,9 +45,6 @@ export default function QualityCheckHub(props: Props) {
   const [tab, setTab] = useState<HubTab>(() =>
     new URLSearchParams(window.location.search).get('qcRoute') ? 'routes' : 'inspections');
 
-  // ⭐ "Editar" desde la pestaña Reportes: brinca a Quality Check con el registro
-  const [reportToEdit, setReportToEdit] = useState<QCRecord | null>(null);
-
   const tabBtn = (key: HubTab, label: string, Icon: LucideIcon, activeColor: string) => {
     const active = tab === key;
     return (
@@ -88,8 +85,6 @@ export default function QualityCheckHub(props: Props) {
           isSuperAdmin={props.isSuperAdmin}
           onOpenHouseDetail={props.onOpenHouseDetail}
           onOpenHouseEdit={props.onOpenHouseEdit}
-          reportToEdit={reportToEdit}
-          clearReportToEdit={() => setReportToEdit(null)}
         />
       )}
       {tab === 'routes' && <QCRoutesTableView onOpenMenu={props.onOpenMenu} />}

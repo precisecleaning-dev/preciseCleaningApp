@@ -1,7 +1,5 @@
 import { db } from '../config/firebase';
-import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
-import { invalidate } from '../shared/utils/memoryCache';
-import { RECALL_HISTORY_CACHE } from '../utils/jobRecall';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 export interface StatusHistoryEntry {
   id?: string;
@@ -20,23 +18,9 @@ export interface StatusHistoryEntry {
 
 const COL = 'status_history';
 
+// Las ESCRITURAS de status_history van en el mismo batch que la casa:
+// features/houses/services/houseStatus.ts. Aquí solo queda la lectura.
 export const statusHistoryService = {
-  async log(entry: Omit<StatusHistoryEntry, 'id' | 'changedAt'> & { changedAt?: string }): Promise<string | null> {
-    const data: StatusHistoryEntry = { changedAt: new Date().toISOString(), ...entry } as StatusHistoryEntry;
-    if (!data.propertyId || !data.toStatusId) return null;
-    if (data.fromStatusId && String(data.fromStatusId).toLowerCase().trim() === String(data.toStatusId).toLowerCase().trim()) {
-      return null;
-    }
-    try {
-      const ref = await addDoc(collection(db, COL), { ...data });
-      invalidate(RECALL_HISTORY_CACHE); // la marca "Recall" se recalcula en la próxima visita
-      return ref.id;
-    } catch (e) {
-      console.error('Error logging status history:', e);
-      return null;
-    }
-  },
-
   async getByProperty(propertyId: string): Promise<StatusHistoryEntry[]> {
     try {
       const q = query(collection(db, COL), where('propertyId', '==', propertyId));

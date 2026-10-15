@@ -40,6 +40,27 @@ export interface SystemUser {
 // 2. CORE BUSINESS LOGIC (Properties/Jobs)
 // ==========================================
 
+/** Archivo adjunto a un mensaje de nota (el archivo vive en Storage). */
+export interface NoteAttachment {
+  name: string; //                      nombre del archivo que se muestra
+  url: string; //                       URL de descarga
+  path: string; //                      ruta en Storage (para borrarlo)
+  type: string; //                      tipo MIME: image/jpeg, application/pdf…
+  size: number; //                      tamaño en bytes
+}
+
+/** Un mensaje de las notas de la casa (Office, General, Employee). */
+export interface NoteHistoryEntry {
+  field: 'note' | 'officeNote' | 'employeeNote';
+  text: string;
+  user: string; //                      email de quien escribió
+  at: string; //                        ISO de cuando se escribió
+  action: 'created' | 'edited'; //      'edited' = entrada vieja con el TEXTO COMPLETO de la nota
+  attachments?: NoteAttachment[]; //    archivos del mensaje
+  editedAt?: string; //                 ISO de la última corrección del mensaje
+  editedBy?: string; //                 email de quien lo corrigió
+}
+
 export interface Property {
   id: string;
   statusId: string;
@@ -51,13 +72,7 @@ export interface Property {
   /** ⭐ HISTORIAL DE NOTAS: cada creación/edición de note/officeNote/
    *  employeeNote agrega una entrada con autor, fecha-hora, acción y el
    *  texto que quedó — trazabilidad completa de quién escribió qué. */
-  notesHistory?: {
-    field: 'note' | 'officeNote' | 'employeeNote';
-    text: string;
-    user: string;
-    at: string;
-    action: 'created' | 'edited';
-  }[];
+  notesHistory?: NoteHistoryEntry[];
   address: string;
   employeeNote: string;
   /**
@@ -130,6 +145,9 @@ export interface Property {
   //    · áreas del Quality Check marcadas para esta casa (ids de settings_places;
   //      sin marcar = todas).
   qcPlaces?: string[];
+  //    · Unit/Apto, aparte de la dirección (se busca y el mapa recibe la
+  //      dirección limpia).
+  unit?: string;
   //    · factura RETENIDA por un Quality Check que no pasó (RECALL con
   //      "Create re-clean job"). Se libera cuando un QC de la casa pasa.
   invoiceHold?: boolean;
@@ -210,3 +228,112 @@ export interface PayrollRecord {
   totalAmount: number;
   status?: 'Pending' | 'Paid'; // <-- ESTO ES NUEVO
 }
+// ==========================================
+// 5. QUALITY CHECK (colección quality_checks)
+// ==========================================
+// ⭐ Antes cada pieza declaraba su propia versión del reporte (QCRecord en
+//    QualityCheckView, QcRecordLite en qcDashboard, QcDoc en jobQuality,
+//    QCStatusLike en qcStatus, campos extra en QCReportsTableView).
+
+// ⭐ Datos del formulario de Quality Check (`qcData`): un objeto por área
+//    (placeId → { tasks, photos, notes, damage, score, corrections, … }) cuya
+//    forma depende de la configuración de áreas y tareas. Excepción documentada
+//    en CLAUDE.md: este alias es el único `any` aceptado para esos datos.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type QcFormData = Record<string, any>;
+
+/** Lo que el tablero y los resúmenes leen de cada área de `qcData`. */
+export interface QcPlaceData {
+  tasks?: Record<string, string>;
+  notes?: string;
+  damage?: string;
+  corrections?: string;
+  photos?: string[];
+}
+
+/** quality_checks/{qcId} — Reporte de inspección de una casa. */
+export interface QualityCheckRecord {
+  id?: string;
+  houseId: string;
+  date: string;
+  address: string;
+  client: string;
+  team?: string;
+  status: 'Finished' | 'Pending';
+  result?: 'passed' | 'failed' | null;
+  inspector?: string;
+  inspectorId?: string;
+  // ⭐ Tiempos de la inspección
+  checkInAt?: string | null; //      hora de entrada (ISO)
+  checkOutAt?: string | null; //     hora de salida (ISO) — se sella al guardar / mandar a recall
+  durationMinutes?: number | null; // minutos totales (salida - entrada)
+  selectedPlaces?: string[];
+  qcData?: QcFormData;
+  // ⭐ Panel nuevo (10/2026): ver features/quality-check/qcForm.ts
+  clientNotes?: string;
+  notifyManager?: boolean;
+  outcome?: 'invoice' | 'recall' | null;
+  reclean?: boolean;
+  // ⭐ Resultado (%) guardado al cerrar la inspección. Los registros
+  //    anteriores no lo tienen: se recalcula al vuelo desde qcData.
+  passRate?: number | null;
+  passRateAnswered?: number | null;
+  // Sello de creación (demora entre crear el registro y abrir la inspección).
+  createdAt?: string | null;
+  // Correcciones de un Recall marcadas como hechas (quién y cuándo).
+  correctionsDoneAt?: string | null;
+  correctionsDoneBy?: string | null;
+  // Registros de prueba (no cuentan en los indicadores).
+  isTestRecord?: boolean;
+}
+
+/** Lo mínimo para saber qué casas tienen QC pendiente o terminado. */
+export type QcStatusRecord = Pick<QualityCheckRecord, 'houseId' | 'date' | 'status' | 'result'>;
+
+/**
+ * Lectura liviana del store compartido (tablero de QC, Overview, Houses):
+ * cualquier campo puede faltar en documentos viejos, menos id y houseId.
+ */
+export interface QcRecordLite {
+  id: string;
+  houseId: string;
+  date?: string;
+  createdAt?: string;
+  status?: string;
+  result?: string | null;
+  inspector?: string;
+  team?: string;
+  client?: string;
+  address?: string;
+  passRate?: number | null;
+  passRateAnswered?: number | null;
+  qcData?: Record<string, QcPlaceData>;
+  isTestRecord?: boolean;
+}
+
+// ==========================================
+// 6. TASK LIST (user_tasks, task_projects, user_priorities)
+// ==========================================
+// Modelo del diagrama "Task list — diagrama entidad-relación". También son las
+// tareas de las vistas Owner y Manager (la vieja `manager_tasks` ya no se usa).
+// Todo campo que guarda un usuario termina en UserId / UserName. Fechas como
+// TEXTO: días AAAA-MM-DD y fecha + hora ISO; en pantalla SIEMPRE MM/DD/AAAA y
+// h:mm AM/PM.
+// Cada colección tiene su archivo de tipos (y su service en src/services):
+//   user_tasks    → ./userTasks.ts     (services/userTasksService.ts)
+//   task_projects → ./taskProjects.ts  (services/taskProjectsService.ts)
+
+/** Día sin hora: "2026-10-13" (AAAA-MM-DD). */
+export type YmdDate = string;
+/** Fecha y hora ISO: "2026-10-13T15:04:05.000Z". */
+export type IsoDateTime = string;
+
+/** user_priorities/{userId} — Top 3 de proyectos de cada gerente. */
+export interface OpsPriorities {
+  id: string; //                        PK · FK = id del gerente en system_users
+  projectIds: string[]; //              FK → task_projects (máximo 3, en orden)
+  updatedAt: IsoDateTime; //            última vez que cambió el top 3
+}
+
+export * from './userTasks';
+export * from './taskProjects';

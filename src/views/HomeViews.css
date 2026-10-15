@@ -1,6 +1,6 @@
 /* =====================================================================
    ⭐ Vistas OWNER y MANAGER — diseño que pasó el usuario (10/2026).
-   Mismo lenguaje visual que el Overview: fondo #f4f6fb, tarjetas blancas
+   Mismo lenguaje visual que el Overview: fondo blanco, tarjetas blancas
    con borde fino, letra Plus Jakarta Sans y pastillas de color.
    ===================================================================== */
 /* App.css fija `* { font-family: system-ui }`: la letra se aplica a todo. */
@@ -13,7 +13,6 @@
   flex-direction: column;
   gap: 18px;
   color: #0f172a;
-  background: #f4f6fb;
   min-width: 0;
   width: 100%;
   max-width: 1680px;
@@ -33,7 +32,6 @@
 .hm-page .strong { font-weight: 700; }
 .hm-muted { color: #5b6475; font-size: 12px; }
 .hm-empty { margin: 0; padding: 18px 4px; font-size: 13px; color: #94a3b8; text-align: center; }
-.hm-note { margin: 12px 0 0; font-size: 12.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 12px; }
 
 /* ---- Encabezado ---- */
 .hm-header {
@@ -61,30 +59,6 @@
   line-height: 1.15;
 }
 .hm-subtitle { margin: 4px 0 0; font-size: 13.5px; font-weight: 500; color: #64748b; }
-.hm-switch {
-  display: inline-flex;
-  padding: 4px;
-  gap: 2px;
-  background: #e8ecf3;
-  border-radius: 12px;
-}
-.hm-switch-btn {
-  height: 34px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 600;
-  color: #475569;
-  cursor: pointer;
-}
-.hm-switch-btn:hover { color: #0f172a; }
-.hm-switch-btn.on {
-  background: #ffffff;
-  color: #0f172a;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-}
 
 /* ---- Rejillas ---- */
 .hm-grid { display: grid; gap: 18px; align-items: start; grid-template-columns: minmax(0, 1fr); }
@@ -267,7 +241,6 @@
 .hm-task-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .hm-task-title { font-size: 13.5px; font-weight: 600; color: #0f172a; overflow-wrap: anywhere; }
 .hm-task-sub { font-size: 12px; color: #5b6475; }
-.hm-task.done .hm-task-title { text-decoration: line-through; color: #94a3b8; }
 .hm-tag {
   flex-shrink: 0;
   max-width: 120px;
@@ -283,21 +256,6 @@
 }
 .hm-due { flex-shrink: 0; width: 84px; text-align: right; font-size: 12.5px; font-weight: 700; color: #334155; white-space: nowrap; }
 .hm-due.overdue { color: #c2410c; }
-.hm-due.done { color: #64748b; font-weight: 600; }
-.hm-task-del {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: #94a3b8;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.hm-task-del:hover { background: #fef2f2; color: #b91c1c; }
 
 .hm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .hm-chip {
@@ -314,35 +272,6 @@
 .hm-chip:hover { border-color: #c7d2fe; }
 .hm-chip.on { background: #0f172a; border-color: #0f172a; color: #ffffff; }
 
-.hm-newtask {
-  margin-top: 16px;
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  background: #f8f9fc;
-  border: 1px solid #e3e7ef;
-  border-radius: 14px;
-  padding: 14px;
-}
-.hm-field { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
-.hm-field.grow { flex: 1 1 240px; }
-.hm-field-lbl { font-size: 12.5px; font-weight: 600; color: #334155; }
-/* Vencimiento de tarea: fecha MM/DD/AAAA + hora opcional */
-.hm-due-row { display: flex; gap: 8px; }
-.hm-due-row .hm-due-time { flex: 0 0 120px; width: 120px; }
-.hm-input {
-  height: 40px;
-  border: 1px solid #d8dee9;
-  border-radius: 10px;
-  padding: 0 12px;
-  background: #ffffff;
-  font-size: 14px;
-  color: #0f172a;
-  box-sizing: border-box;
-}
-.hm-input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
-
 /* ---- Botones ---- */
 .hm-btn {
   height: 34px;
@@ -357,9 +286,6 @@
   white-space: nowrap;
 }
 .hm-btn:disabled { opacity: 0.55; cursor: default; }
-.hm-btn.primary { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; }
-.hm-btn.primary:hover:not(:disabled) { background: #1e40af; }
-.hm-btn.big { height: 40px; padding: 0 20px; font-size: 13.5px; }
 .hm-btn.pass { border-color: #16a34a; color: #15803d; }
 .hm-btn.pass:hover:not(:disabled) { background: #f0fdf4; }
 .hm-btn.fail { border-color: #dc2626; color: #b91c1c; }
@@ -703,9 +629,6 @@
   .hm-qc-row { flex-wrap: wrap; }
   .hm-qc-main { flex-basis: 100%; }
   .hm-due { width: auto; }
-  .hm-input { font-size: 16px; } /* iOS: evita el zoom al escribir */
-  .hm-field { flex: 1 1 100%; }
-  .hm-newtask .hm-btn.big { width: 100%; }
   .hm-jobs-title { padding: 16px 16px 12px; }
   .hm-jobs-group { padding: 12px 16px; }
 }
@@ -721,6 +644,4 @@
   .hm-qc-main { flex-basis: 100%; }
   .hm-onclock-row { flex-wrap: wrap; }
   .hm-jobs-group { flex-wrap: wrap; }
-  .hm-field { flex: 1 1 100%; }
-  .hm-newtask .hm-btn.big { width: 100%; }
 }

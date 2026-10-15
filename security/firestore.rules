@@ -1,0 +1,360 @@
+rules_version = '2';
+
+// =============================================================================
+// PROPUESTA de Security Rules de Firestore — Precise Cleaning (auditoría H-01)
+// -----------------------------------------------------------------------------
+// NO está conectada a firebase.json a propósito: un `firebase deploy` no la
+// publica. Antes de usarla lee security/README.md (orden de activación y
+// decisiones que cambian lo que ve algún rol).
+//
+// Modelo: las mismas reglas que ya aplica la app, ahora en el servidor.
+//   · Los permisos salen de user_access/{email}, un espejo por usuario que
+//     mantienen las Cloud Functions (functions/src/userAccess.ts). Las reglas
+//     no pueden leer settings_roles directamente (la lista de permisos es un
+//     arreglo de objetos) ni encontrar system_users por uid (sus ids no son el
+//     uid de Auth).
+//   · "Ver" un módulo permite trabajar en él, como en la app de hoy. Solo
+//     Houses (editar, borrar, agregar) y Task List (proyectos) distinguen más.
+//   · Costo: ~1 lectura extra por petición (el get de user_access se cobra una
+//     vez por petición; una consulta o un listener es UNA petición).
+// =============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------- quién es
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function accessPath() {
+      return /databases/$(database)/documents/user_access/$(myEmail());
+    }
+    function acc() {
+      return get(accessPath()).data;
+    }
+    // Usuario de la lista (system_users), con rol y no "Inactive".
+    function active() {
+      return signedIn() && exists(accessPath()) && acc().active == true;
+    }
+    function isAdmin() {
+      return active() && acc().admin == true;
+    }
+    // right: 'v' ver · 'a' agregar · 'e' editar · 'd' borrar
+    function canDo(module, right) {
+      return active()
+        && (acc().admin == true || acc().m.get(module, {}).get(right, false) == true);
+    }
+    function has(module) {
+      return canDo(module, 'v');
+    }
+    // Task List con Scope "All" (o admin): ve las tareas de todos.
+    function taskScopeAll() {
+      return acc().admin == true || acc().m.get('Task List', {}).get('o', false) != true;
+    }
+    // Tarea propia: asignada a mí, creada por mí o esperando mi OK.
+    function myTask(task) {
+      return task.assigneeUserId == acc().userId
+        || task.createdByUserId == acc().userId
+        || task.approval.approverUserId == acc().userId;
+    }
+    // Puede ver dinero (Payroll, Invoices, Owner/Manager o Houses sin ocultar
+    // "financial"). Lo calcula userAccess.ts.
+    function fin() {
+      return active() && (acc().admin == true || acc().get('fin', false) == true);
+    }
+    // Data Import escribe en las colecciones de negocio (no en usuarios ni roles).
+    function importer() {
+      return has('Data Import');
+    }
+
+    // ------------------------------------------------------------- utilidades
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    function onlyChanges(keys) {
+      return changed().hasOnly(keys);
+    }
+    function newEmail() {
+      return request.resource.data.get('email', '').lower();
+    }
+    function oldEmail() {
+      return resource.data.get('email', '').lower();
+    }
+    function rolePath(roleId) {
+      return /databases/$(database)/documents/settings_roles/$(roleId);
+    }
+    // ¿Ese id de rol es el rol "Administrator"? (vacío o inexistente: no)
+    function isAdminRole(roleId) {
+      return roleId is string && roleId != '' && exists(rolePath(roleId))
+        && get(rolePath(roleId)).data.get('name', '') == 'Administrator';
+    }
+
+    // ===================================================== permisos (espejo)
+    match /user_access/{email} {
+      allow read: if signedIn() && (email == myEmail() || isAdmin());
+      allow write: if false; // solo las Cloud Functions (Admin SDK)
+    }
+
+    // ================================================== usuarios y roles
+    match /system_users/{userId} {
+      // Todos los usuarios activos ven nombres, equipos y asignaciones.
+      allow read: if active();
+      // Quien no es Administrator: no crea administradores, no toca a un
+      // administrador, no cambia su propio rol y no pone SU correo en otro
+      // usuario (el espejo user_access sale del correo: sería darse otro rol).
+      allow create: if has('System Users')
+        && (isAdmin()
+            || (!isAdminRole(request.resource.data.get('roleId', ''))
+                && newEmail() != myEmail()));
+      allow update: if
+        (has('System Users')
+          && (isAdmin()
+              || (!isAdminRole(resource.data.get('roleId', ''))
+                  && (!('email' in changed()) || newEmail() != myEmail())
+                  && (!('roleId' in changed())
+                      || (oldEmail() != myEmail()
+                          && newEmail() != myEmail()
+                          && !isAdminRole(request.resource.data.get('roleId', '')))))))
+        // Settings → asignar equipo a un empleado (SettingsView).
+        || (has('Settings') && onlyChanges(['teamId']));
+      allow delete: if has('System Users')
+        && (isAdmin() || !isAdminRole(resource.data.get('roleId', '')));
+    }
+
+    match /settings_roles/{roleId} {
+      allow read: if active();
+      allow create: if has('Roles & Permissions')
+        && (isAdmin() || request.resource.data.get('name', '') != 'Administrator');
+      // Sin ser Administrator tampoco se edita el rol propio (sería darse
+      // permisos a uno mismo). Ver D-8 en el README.
+      allow update: if has('Roles & Permissions')
+        && (isAdmin()
+            || (roleId != acc().roleId
+                && resource.data.get('name', '') != 'Administrator'
+                && request.resource.data.get('name', '') != 'Administrator'));
+      allow delete: if has('Roles & Permissions')
+        && (isAdmin() || resource.data.get('name', '') != 'Administrator');
+    }
+
+    // ============================================================ catálogos
+    function isCatalog(col) {
+      return col in [
+        'settings_statuses', 'settings_teams', 'settings_priorities',
+        'settings_services', 'settings_products', 'settings_tax',
+        'settings_places', 'settings_tasks', 'settings_categories',
+        'settings_responsables', 'settings_payment_methods', 'settings_businesses'
+      ];
+    }
+    match /{col}/{docId} {
+      allow read: if isCatalog(col) && active();
+      allow write: if isCatalog(col) && (has('Settings') || importer());
+    }
+
+    match /settings_company/{docId} {
+      allow read: if active();
+      allow write: if has('Company Settings') || importer();
+    }
+
+    match /app_settings/{docId} {
+      allow read: if active();
+      // photo_config (Settings / Photo Settings); houses_form_config (botón de
+      // configurar campos del formulario de Houses: editar Roles & Permissions).
+      // gcal_sync lo escriben solo las funciones.
+      allow write: if docId != 'gcal_sync'
+        && (has('Settings') || has('Photo Settings')
+            || (docId == 'houses_form_config' && canDo('Roles & Permissions', 'e')));
+    }
+
+    match /customers/{customerId} {
+      allow read: if active();
+      // Houses: "nuevo cliente" desde el formulario de la casa.
+      allow create: if has('Customers') || canDo('Houses', 'a') || canDo('Houses', 'e') || importer();
+      allow update: if has('Customers') || importer();
+      allow delete: if has('Customers');
+    }
+
+    // ================================================================ casas
+    // Campos que el equipo de campo escribe desde el detalle con solo "ver"
+    // Houses: Start/Finish, notas, fotos.
+    function fieldKeys() {
+      return [
+        'employeeStartedAt', 'employeeStartedBy', 'employeeStartedById',
+        'employeeFinishedAt', 'employeeFinishedBy', 'employeeFinishedById',
+        'notesHistory', 'note', 'employeeNote',
+        'beforePhotos', 'afterPhotos', 'beforePhotosExcluded', 'afterPhotosExcluded'
+      ];
+    }
+    // El historial de notas solo crece o se corrige (nunca se vacía).
+    function notesKept() {
+      return request.resource.data.get('notesHistory', []).size()
+        >= resource.data.get('notesHistory', []).size();
+    }
+    // Quality Check mueve la casa (status, sello de Invoice, factura retenida).
+    function qcKeys() {
+      return ['statusId', 'sentToInvoiceAt', 'invoiceHold', 'invoiceHoldAt', 'invoiceHoldBy'];
+    }
+
+    match /properties/{houseId} {
+      allow read: if active();
+      allow create: if canDo('Houses', 'a')
+        || has('Calendar')          // Calendar no distingue permisos (hoy crea)
+        || has('Recycle Bin')       // restaurar desde la papelera
+        || importer();
+      // "Agregar" en Houses también actualiza: el alta escribe la casa en dos
+      // pasos (crear y luego completar con fotos, sello de Invoice…). D-9.
+      allow update: if canDo('Houses', 'e') || canDo('Houses', 'a')
+        || has('Calendar')          // Calendar no distingue permisos (hoy edita)
+        || importer()
+        || (has('Quality Check') && onlyChanges(qcKeys()))
+        || (has('Payroll') && onlyChanges(['scheduleDate']))       // Revisar fechas
+        || (has('Houses') && onlyChanges(fieldKeys()) && notesKept())
+        || (has('Office Notes') && onlyChanges(['officeNote', 'notesHistory']) && notesKept());
+      // Borrar = mandar a la papelera (batch con trash): pide borrar en Houses.
+      allow delete: if canDo('Houses', 'd');
+    }
+
+    match /billing_services/{serviceId} {
+      allow read: if fin();
+      allow create: if canDo('Houses', 'e') || canDo('Houses', 'a') || has('Recycle Bin') || importer();
+      allow update: if canDo('Houses', 'e') || importer();
+      allow delete: if canDo('Houses', 'e') || canDo('Houses', 'd');
+    }
+
+    match /payroll/{payId} {
+      allow read: if fin();
+      allow create: if has('Payroll') || canDo('Houses', 'e') || canDo('Houses', 'a') || has('Recycle Bin') || importer();
+      allow update: if has('Payroll') || canDo('Houses', 'e') || importer();
+      allow delete: if has('Payroll') || canDo('Houses', 'e') || canDo('Houses', 'd');
+    }
+
+    // Historial de status: se agrega, nunca se edita ni se borra.
+    match /status_history/{entryId} {
+      allow read: if active();
+      allow create: if active();
+      allow update, delete: if false;
+    }
+
+    match /checklists/{checklistId} {
+      allow read: if active();
+      allow create, update: if has('Houses') || has('Checklist');
+      allow delete: if false;
+    }
+
+    match /damages/{damageId} {
+      allow read: if active();
+      allow write: if has('Houses');
+    }
+
+    // Colección vieja: solo lectura.
+    match /recalls/{recallId} {
+      allow read: if active();
+      allow write: if false;
+    }
+
+    // ======================================================== Quality Check
+    match /quality_checks/{qcId} {
+      allow read: if active();
+      // Manager → "Pass" rápido exige editar Quality Check (ya incluido).
+      allow create, update: if has('Quality Check') || importer();
+      allow delete: if has('Quality Check');
+    }
+
+    match /qc_routes/{routeId} {
+      allow read, write: if has('Quality Check');
+    }
+
+    // Cola de correo (la despacha sendmailqueue). Solo al correo de la empresa:
+    // así nadie la usa para mandar correos a terceros desde nuestro SMTP.
+    match /mail/{mailId} {
+      allow read: if active();
+      allow create: if active()
+        && request.resource.data.keys().hasOnly(['to', 'message'])
+        && request.resource.data.to is string
+        && request.resource.data.to.lower()
+           == get(/databases/$(database)/documents/settings_company/main).data.get('email', '-').lower();
+      allow update, delete: if false;
+    }
+
+    // ====================================================== bitácora y papelera
+    match /activity_logs/{logId} {
+      // La campana de notificaciones muestra las últimas 15 a todos.
+      allow read: if active();
+      allow create: if active();
+      allow update, delete: if false;
+    }
+
+    match /trash/{trashId} {
+      allow read: if has('Recycle Bin');
+      // Solo casas, y solo en el mismo batch que borra la casa: así nadie
+      // fabrica una entrada (p. ej. un usuario con rol de admin) para que un
+      // administrador la "restaure".
+      allow create: if canDo('Houses', 'd')
+        && request.resource.data.collectionName == 'properties'
+        && request.resource.data.originalId is string
+        && exists(/databases/$(database)/documents/properties/$(request.resource.data.originalId))
+        && !existsAfter(/databases/$(database)/documents/properties/$(request.resource.data.originalId));
+      allow update: if false;
+      allow delete: if has('Recycle Bin');
+    }
+
+    // ========================================================== Owner/Manager
+    match /time_clock/{entryId} {
+      allow read: if has('Owner') || has('Manager');
+      // Cada quien marca su propia entrada y salida (admin: cualquiera).
+      allow create: if (has('Owner') || has('Manager'))
+        && (isAdmin() || request.resource.data.userId == acc().userId);
+      allow update: if (has('Owner') || has('Manager'))
+        && (isAdmin() || resource.data.userId == acc().userId)
+        && resource.data.get('outAt', null) == null
+        && onlyChanges(['outAt']);
+      allow delete: if false;
+    }
+
+    // ============================================================= Task list
+    // (antes ops_tasks, ops_projects y ops_priorities; comentarios dentro de
+    // cada tarea y de cada proyecto)
+    // Los comentarios van dentro de cada tarea (comments[]).
+    // Scope de Task List en Roles: "Own" solo ve y cambia sus tareas (las que
+    // tiene asignadas, las que creó y las que esperan su OK). Las consultas de
+    // la app con "Own" siempre filtran por assigneeUserId, createdByUserId
+    // (pestaña "Assigned by") o approval.approverUserId, así que las reglas
+    // las pueden comprobar. Quién la asignó y cuándo (createdBy*, createdAt)
+    // no se cambia nunca. A quién está asignada (assignee*) solo lo cambia
+    // quien la asignó, o alguien con Edit si la tarea no es suya
+    // (opsPermissions.canReassignTask).
+    match /user_tasks/{taskId} {
+      allow read, delete: if has('Task List') && (taskScopeAll() || myTask(resource.data));
+      allow update: if has('Task List') && (taskScopeAll() || myTask(resource.data))
+        && !changed().hasAny(['createdByUserId', 'createdByUserName', 'createdAt'])
+        && (!changed().hasAny(['assigneeUserId', 'assigneeUserName'])
+          || resource.data.createdByUserId == acc().userId
+          || (canDo('Task List', 'e') && resource.data.assigneeUserId != acc().userId));
+      allow create: if has('Task List');
+    }
+
+    match /task_projects/{projectId} {
+      allow read: if has('Task List');
+      // Los contadores (taskCount, doneCount, openMinutes) viajan en el batch
+      // de cada tarea, y comentar es para todos: cualquiera con Task List los
+      // ajusta. Lo demás del proyecto, solo quien tiene Edit.
+      allow update: if canDo('Task List', 'e')
+        || (has('Task List') && onlyChanges(['taskCount', 'doneCount', 'openMinutes', 'comments']));
+      allow create: if canDo('Task List', 'e');
+      allow delete: if canDo('Task List', 'd');
+    }
+
+    match /user_priorities/{userId} {
+      allow read, write: if has('Task List');
+    }
+
+    // Avisos: hoy solo los escribe Data Import (ninguna pantalla los lee).
+    match /notice_board/{noticeId} {
+      allow read: if active();
+      allow write: if importer();
+    }
+
+    // Cualquier otra colección: cerrada.
+  }
+}
