@@ -58,6 +58,34 @@ src/
   const userList = getUsers();
   ```
 
+- Escribir JavaScript moderno, ES8 (ES2017) o posterior; el proyecto compila con `target: ES2022`, así que todo esto es válido:
+  - `async` / `await` con `try/catch` en vez de cadenas `.then().catch()`. La función de `useEffect` no puede ser `async` (debe devolver el cleanup): declara una función async adentro y llámala.
+  - `Object.entries` / `Object.values` para recorrer objetos, en vez de `Object.keys` + `obj[key]`.
+  - `array.includes(x)` en vez de `array.indexOf(x) !== -1`.
+  - Spread de objetos `{ ...obj, campo }` en vez de `Object.assign`.
+  - Optional chaining `a?.b` y nullish `valor ?? 'default'` en vez de cadenas de `&&` o `||` (`||` también reemplaza `0` y `''`, `??` solo `null`/`undefined`).
+  ```tsx
+  // Mal
+  const loadTasks = () => {
+    tasksService.getAll().then((tasks) => {
+      const pending = tasks.filter((task) => openStatuses.indexOf(task.status) !== -1);
+      setTasks(pending);
+      setOwner(user && user.profile && user.profile.name || 'Unassigned');
+    }).catch((error) => console.error(error));
+  };
+
+  // Bien
+  const loadTasks = async () => {
+    try {
+      const tasks = await tasksService.getAll();
+      setTasks(tasks.filter((task) => openStatuses.includes(task.status)));
+      setOwner(user?.profile?.name ?? 'Unassigned');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  ```
+
 - Antes de escribir código nuevo, verificar si la lógica ya existe o puede reutilizarse en otros módulos. Si aplica a más de un lugar, extraerla a un archivo propio y exportarla en vez de duplicarla.
 
 - Diseñar el frontend pensando en componentes de React, no en HTML plano: dividir la UI en componentes con sus propios `props`, estado local (`useState`) y lógica encapsulada en hooks cuando corresponda, en vez de escribir bloques grandes de markup sin estructurar.
