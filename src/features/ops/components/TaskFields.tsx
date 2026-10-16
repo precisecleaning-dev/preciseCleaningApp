@@ -3,7 +3,9 @@
 // asignó (solo lectura), personas y proyecto. Cada cambio sale por `onPatch`
 // (el panel de editar lo guarda al instante; el de crear lo junta hasta "Add task").
 import type { CSSProperties } from 'react';
-import type { Priority, RepeatFreq, TaskProject, UserTask } from '../../../types/index';
+import type {
+  AssignableUser, Priority, RepeatFreq, TaskAssignee, TaskProject, UserTask,
+} from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
 import TimeInput from '../../../shared/components/TimeInput';
 import { formatDate } from '../../../utils/dateFormat';
@@ -12,7 +14,6 @@ import { lateLabel, ymdToDate } from '../opsDates';
 import {
   DURATION_OPTIONS, REPEAT_OPTIONS, repeatValue, WEEKDAY_LETTERS, WEEKDAY_NAMES,
 } from '../opsOptions';
-import type { PersonOption } from '../opsPermissions';
 import AssigneePicker from './AssigneePicker';
 import OpsAvatar from './OpsAvatar';
 
@@ -20,7 +21,7 @@ interface TaskFieldsProps {
   task: Pick<UserTask,
     'status' | 'dueDate' | 'dueTime' | 'durationMinutes' | 'repeat' | 'priorityId' | 'assigneeUserIds'
     | 'assigneeUserNames' | 'projectId' | 'projectTitle' | 'createdByUserId' | 'createdByUserName' | 'createdAt'>;
-  people: PersonOption[];
+  people: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
   me: { id: string; name: string };
@@ -53,7 +54,7 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
     if (iso === '' || /^\d{4}-\d{2}-\d{2}$/.test(iso)) onPatch({ dueDate: iso });
   };
 
-  const handleAssigneesChange = (assignees: Pick<PersonOption, 'id' | 'name'>[]) => {
+  const handleAssigneesChange = (assignees: TaskAssignee[]) => {
     onPatch({
       assigneeUserIds: assignees.map((person) => person.id),
       assigneeUserNames: assignees.map((person) => person.name),
@@ -174,11 +175,11 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
             <OpsAvatar id={firstAssignee.id} name={firstAssignee.name} size="sm" />
             {canReassign ? (
               <AssigneePicker
-                selected={assignees}
-                people={people}
-                meId={me.id}
-                ariaLabel="Assignee"
-                onChange={handleAssigneesChange}
+                assignees={assignees}
+                assignableUsers={people}
+                currentUserId={me.id}
+                label="Assignee"
+                onAssigneesChange={handleAssigneesChange}
               />
             ) : (
               // Se la asignó otra persona: no la puede pasar a alguien más.

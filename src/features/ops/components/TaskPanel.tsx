@@ -4,9 +4,10 @@
 // campo). El marco (panel lateral en computadora y pantalla completa en el
 // teléfono) es TaskDrawer.
 import { CheckCircle2, RotateCcw, Trash2 } from 'lucide-react';
-import type { UserTaskApproval, TaskAttachment, TaskProject, UserTask, TaskComment, Priority } from '../../../types/index';
+import type {
+  AssignableUser, UserTaskApproval, TaskAttachment, TaskProject, UserTask, TaskComment, Priority,
+} from '../../../types/index';
 import type { TaskPatch } from '../../../services/userTasksService';
-import type { PersonOption } from '../opsPermissions';
 import TaskApproval from './TaskApproval';
 import TaskAttachments from './TaskAttachments';
 import TaskComments from './TaskComments';
@@ -16,7 +17,7 @@ import TaskFields from './TaskFields';
 interface TaskPanelProps {
   task: UserTask;
   comments: TaskComment[];
-  people: PersonOption[];
+  people: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
   me: { id: string; name: string };
@@ -34,9 +35,9 @@ interface TaskPanelProps {
   onAttach: (files: File[]) => void;
   onRemoveAttachment: (attachment: TaskAttachment) => void;
   /** Quienes pueden dar el visto bueno y el que se propone por defecto. */
-  approvers: PersonOption[];
+  approvers: AssignableUser[];
   defaultApproverId: string;
-  onSendApproval: (approver: PersonOption) => void;
+  onSendApproval: (approver: AssignableUser) => void;
   onDecideApproval: (decision: 'approved' | 'changes', note: string) => void;
   onSetApproval: (approval: UserTaskApproval | null) => void;
 }

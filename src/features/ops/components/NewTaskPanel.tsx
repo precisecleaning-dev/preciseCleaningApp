@@ -5,22 +5,21 @@
 // bueno "por enviar" (se envía después desde el panel de la tarea).
 import { useRef, useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import type { Priority, TaskProject } from '../../../types/index';
+import type { AssignableUser, Priority, TaskAssignee, TaskProject } from '../../../types/index';
 import { draftApproval, type TaskInput, type TaskPatch } from '../../../services/userTasksService';
 import { todayIso } from '../../../utils/dateFormat';
-import type { PersonOption } from '../opsPermissions';
 import TaskDrawer from './TaskDrawer';
 import TaskFields from './TaskFields';
 
 interface NewTaskPanelProps {
-  people: PersonOption[];
+  people: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
   me: { id: string; name: string };
   /** A quién va la tarea al abrir el panel (la persona que se está mirando). */
-  defaultAssignee: Pick<PersonOption, 'id' | 'name'>;
+  defaultAssignee: TaskAssignee;
   /** Quienes pueden dar el visto bueno (sin uno mismo). */
-  approvers: PersonOption[];
+  approvers: AssignableUser[];
   onClose: () => void;
   onCreate: (input: TaskInput) => Promise<boolean>;
 }

@@ -1,5 +1,3 @@
-/* Selector de varias personas (AssigneePicker.tsx). El botón usa .otp-input
-   (TaskPanel.css) para verse igual que los demás campos del panel. */
 .oap {
   flex: 1 1 auto;
   max-width: 100%;

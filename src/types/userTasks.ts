@@ -101,3 +101,13 @@ export interface LegacyTaskAssignee {
 export type StoredUserTask = Omit<UserTask, 'id' | 'assigneeUserIds' | 'assigneeUserNames'>
   & Partial<Pick<UserTask, 'assigneeUserIds' | 'assigneeUserNames'>>
   & LegacyTaskAssignee;
+
+/** Persona a la que se le puede asignar una tarea. */
+export interface AssignableUser {
+  id: string;
+  name: string;
+  /** "Me" para quien está usando la app. */
+  label: string;
+}
+
+export type TaskAssignee = Pick<AssignableUser, 'id' | 'name'>;

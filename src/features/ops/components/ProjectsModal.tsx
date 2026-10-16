@@ -2,17 +2,16 @@
 // que no tienen tareas; los demás se archivan).
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Pencil, Trash2, X } from 'lucide-react';
-import type { TaskProject, TaskProjectStatus, Team } from '../../../types/index';
+import type { AssignableUser, TaskProject, TaskProjectStatus, Team } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
 import { formatDate } from '../../../utils/dateFormat';
 import { PROJECT_COLORS, colorFor, projectHex } from '../opsOptions';
 import type { ProjectInput } from '../../../services/taskProjectsService';
-import type { PersonOption } from '../opsPermissions';
 import './OpsModals.css';
 
 interface ProjectsModalProps {
   projects: TaskProject[];
-  people: PersonOption[];
+  people: AssignableUser[];
   /** Equipos de Settings (settings_teams) para `teamId`. */
   teams: Team[];
   defaultOwnerId: string;

@@ -4,20 +4,19 @@
 // comentarios de la tarea.
 import { useState } from 'react';
 import { Check, RotateCcw, Send, X } from 'lucide-react';
-import type { UserTaskApproval } from '../../../types/index';
+import type { AssignableUser, UserTaskApproval } from '../../../types/index';
 import { formatDate, formatTime } from '../../../utils/dateFormat';
-import type { PersonOption } from '../opsPermissions';
 
 interface TaskApprovalProps {
   approval: UserTaskApproval | null;
   /** Personas que pueden dar el OK (sin quien está usando la app). */
-  approvers: PersonOption[];
+  approvers: AssignableUser[];
   defaultApproverId: string;
   meId: string;
   /** ¿Puede enviar, cancelar o quitar el requisito? (quien edita la tarea). */
   canManage: boolean;
   busy: boolean;
-  onSend: (approver: PersonOption) => void;
+  onSend: (approver: AssignableUser) => void;
   onDecide: (decision: 'approved' | 'changes', note: string) => void;
   onSetApproval: (approval: UserTaskApproval | null) => void;
 }

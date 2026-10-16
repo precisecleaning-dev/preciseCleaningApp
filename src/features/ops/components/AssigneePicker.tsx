@@ -4,53 +4,55 @@
 // tocar fuera o con Escape (sin cerrar el panel de la tarea).
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
+import type { AssignableUser, TaskAssignee } from '../../../types/index';
 import { namesSummary } from '../opsOptions';
-import type { PersonOption } from '../opsPermissions';
 import OpsAvatar from './OpsAvatar';
 import './AssigneePicker.css';
 
-type PickedPerson = Pick<PersonOption, 'id' | 'name'>;
-
 interface AssigneePickerProps {
   /** Personas asignadas (id y nombre guardado), en orden. */
-  selected: PickedPerson[];
-  /** A quiénes se les puede asignar (PersonOption de assignablePeople). */
-  people: PersonOption[];
-  meId: string;
-  ariaLabel: string;
-  onChange: (selected: PickedPerson[]) => void;
+  assignees: TaskAssignee[];
+  /** A quiénes se les puede asignar (AssignableUser de assignablePeople). */
+  assignableUsers: AssignableUser[];
+  currentUserId: string;
+  label: string;
+  onAssigneesChange: (assignees: TaskAssignee[]) => void;
 }
 
-const firstName = (name: string) => name.split(' ')[0] || name;
+const getFirstName = (name: string) => name.split(' ')[0] || name;
 
-const AssigneePicker = ({ selected, people, meId, ariaLabel, onChange }: AssigneePickerProps) => {
+const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAssigneesChange }: AssigneePickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   // Tocar fuera del selector lo cierra.
   useEffect(() => {
     if (!isOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false);
+      if (!pickerRef.current?.contains(event.target as Node)) setIsOpen(false);
     };
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isOpen]);
 
-  const selectedIds = new Set(selected.map((person) => person.id));
+  const selectedIds = new Set(assignees.map((person) => person.id));
   // Las personas guardadas que ya no están en la lista (p. ej. inactivas) se
   // siguen mostrando para poder quitarlas.
-  const missingPeople = selected.filter((person) => !people.some((option) => option.id === person.id));
-  const options: PickedPerson[] = [...people, ...missingPeople];
-  const labelOf = (person: PickedPerson) => (person.id === meId ? `Me (${firstName(person.name)})` : person.name);
-  const summary = namesSummary(selected.map((person) => (person.id === meId ? 'Me' : firstName(person.name))), 3);
+  const unlistedAssignees = assignees.filter((person) => !assignableUsers.some((option) => option.id === person.id));
+  const options: TaskAssignee[] = [...assignableUsers, ...unlistedAssignees];
+  const getOptionLabel = (person: TaskAssignee) =>
+    (person.id === currentUserId ? `Me (${getFirstName(person.name)})` : person.name);
+  const assigneesSummary = namesSummary(
+    assignees.map((person) => (person.id === currentUserId ? 'Me' : getFirstName(person.name))),
+    3,
+  );
 
-  const handleTogglePerson = (person: PickedPerson) => {
-    const nextIds = new Set(selectedIds);
-    if (nextIds.has(person.id)) nextIds.delete(person.id);
-    else nextIds.add(person.id);
-    if (nextIds.size === 0) return; // al menos una persona
-    onChange(options.filter((option) => nextIds.has(option.id)).map(({ id, name }) => ({ id, name })));
+  const handleToggleAssignee = (person: TaskAssignee) => {
+    const nextSelectedIds = new Set(selectedIds);
+    if (nextSelectedIds.has(person.id)) nextSelectedIds.delete(person.id);
+    else nextSelectedIds.add(person.id);
+    if (nextSelectedIds.size === 0) return; // al menos una persona
+    onAssigneesChange(options.filter((option) => nextSelectedIds.has(option.id)).map(({ id, name }) => ({ id, name })));
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,20 +62,20 @@ const AssigneePicker = ({ selected, people, meId, ariaLabel, onChange }: Assigne
   };
 
   return (
-    <div ref={rootRef} className="oap" onKeyDown={handleKeyDown}>
+    <div ref={pickerRef} className="oap" onKeyDown={handleKeyDown}>
       <button
         type="button"
         className="oap-trigger otp-input"
         aria-haspopup="true"
         aria-expanded={isOpen}
-        aria-label={`${ariaLabel}: ${summary || 'nobody'}`}
-        onClick={() => setIsOpen((open) => !open)}
+        aria-label={`${label}: ${assigneesSummary || 'nobody'}`}
+        onClick={() => setIsOpen((wasOpen) => !wasOpen)}
       >
-        <span className="oap-summary">{summary || 'Choose people'}</span>
+        <span className="oap-summary">{assigneesSummary || 'Choose people'}</span>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {isOpen && (
-        <ul className="oap-menu" role="group" aria-label={ariaLabel}>
+        <ul className="oap-menu" role="group" aria-label={label}>
           {options.map((person) => {
             const isChecked = selectedIds.has(person.id);
             return (
@@ -83,10 +85,10 @@ const AssigneePicker = ({ selected, people, meId, ariaLabel, onChange }: Assigne
                     type="checkbox"
                     checked={isChecked}
                     disabled={isChecked && selectedIds.size === 1}
-                    onChange={() => handleTogglePerson(person)}
+                    onChange={() => handleToggleAssignee(person)}
                   />
                   <OpsAvatar id={person.id} name={person.name} size="xs" />
-                  <span className="oap-name">{labelOf(person)}</span>
+                  <span className="oap-name">{getOptionLabel(person)}</span>
                 </label>
               </li>
             );

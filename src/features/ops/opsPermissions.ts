@@ -16,7 +16,7 @@
 //   Rige también en Owner y Manager. Un rol que no declara el módulo ve todas,
 //   como antes. Las reglas propuestas (security/) aplican lo mismo.
 // ============================================================================
-import type { Permission, Role, SystemUser, UserTask } from '../../types/index';
+import type { AssignableUser, Permission, Role, SystemUser, UserTask } from '../../types/index';
 
 const TASK_LIST_MODULE = 'Task List';
 
@@ -76,17 +76,9 @@ export function canReassignTask(
   return rights.canEdit && !isAssignee(task, meId);
 }
 
-/** Persona a la que se le puede asignar una tarea. */
-export interface PersonOption {
-  id: string;
-  name: string;
-  /** "Me" para quien está usando la app. */
-  label: string;
-}
-
 /** "Assign to": usuarios activos de system_users cuyo rol puede abrir Task
  *  List (más uno mismo), con "Me" primero y los demás por nombre. */
-export function assignablePeople(users: SystemUser[], roles: Role[], meId: string, meName: string): PersonOption[] {
+export function assignablePeople(users: SystemUser[], roles: Role[], meId: string, meName: string): AssignableUser[] {
   const list = users
     .filter((u) => u.id === meId || isTaskListUser(u, roles))
     .map((u) => ({ id: u.id, name: userName(u), label: u.id === meId ? 'Me' : userName(u) }));
