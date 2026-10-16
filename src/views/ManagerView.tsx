@@ -28,6 +28,7 @@ import {
 } from '../utils/homeData';
 import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
 import { sectionOf } from '../features/ops/opsDates';
+import { isOnlyAssignee } from '../features/ops/opsPermissions';
 import UndoToast from '../features/ops/components/UndoToast';
 import { fmtClock, openEntryOf, timeClockService, weekHours } from '../services/timeClockService';
 import { propertiesService } from '../services/propertiesService';
@@ -94,7 +95,7 @@ export default function ManagerView({
   const managerIds = useMemo(() => new Set(d.managers.map((u) => u.id)), [d.managers]);
   const openTasks = useMemo(
     () => (ht.rights.seesAll
-      ? ht.tasks.filter((t) => t.assigneeUserId === meId || managerIds.has(t.assigneeUserId))
+      ? ht.tasks.filter((t) => t.assignees.some((assignee) => assignee.userId === meId || managerIds.has(assignee.userId)))
       : ht.tasks),
     [ht.tasks, ht.rights.seesAll, managerIds, meId],
   );
@@ -160,7 +161,7 @@ export default function ManagerView({
     brief.push({ tag: 'First', tone: 'first', text: `The ${j.time ? `${j.time} ` : ''}${j.type.toLowerCase()} at ${j.client} has no crew. Assign it${j.time ? ` before ${j.time}` : ' today'}.` });
   } else if (overdueTasks.length) {
     const t = overdueTasks[0];
-    const asked = t.createdByUserId !== t.assigneeUserId ? t.createdByUserName.split(' ')[0] : '';
+    const asked = isOnlyAssignee(t, t.createdByUserId) ? '' : t.createdByUserName.split(' ')[0];
     brief.push({ tag: 'First', tone: 'first', text: `“${t.title}” is overdue${asked ? ` — ${asked} asked for it` : ''}.` });
   } else if (openRecalls.length) {
     brief.push({ tag: 'First', tone: 'first', text: `${openRecalls[0].client} failed QC and the re-clean isn't scheduled yet.` });

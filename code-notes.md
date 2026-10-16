@@ -2661,3 +2661,33 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   de layout que lo impida (ninguna hasta ahora — CSS Grid/Flexbox funcionan igual en `<ul>`).
 - **`key` en listas:** preferir un identificador único de dato (id, url) sobre combinaciones
   con índice de array, salvo que el dato no tenga identificador único garantizado.
+
+## Task list: varias personas por tarea, hora libre, "N/A" y botón "Add Task" (2026-10-16, rama `tareas-varias-personas`)
+
+Pedido de Omar: "Assign to"/"Assignee" como lista (una tarea la pueden hacer varias personas),
+"How long" con opción de no aplica, "Time" como campo de hora (8:00 AM, 5:00 PM), y quitar el
+top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre el panel lateral.
+- **`assignees: { userId, userName }[]` en vez de `assigneeUserId` / `assigneeUserName`** (review del PR:
+  antes eran dos listas paralelas, ids y nombres, que se podían desincronizar). `assigneeUserIds` se
+  guarda solo para la consulta `array-contains` y lo arma `assigneeFields` en `userTasksService`
+  (converter al crear y `update`); no escribirlo a mano en otro lado.
+  Sin migración (decisión de Omar): el converter de `userTasksService` lee el formato viejo como
+  lista, y `update` borra los campos viejos (`deleteField`) SOLO cuando cambian las personas. No
+  convertirlo en cada escritura: la regla de reasignar rechazaría que la persona asignada cambie,
+  p. ej., la fecha de una tarea vieja (el update tocaría campos assignee*).
+- **Dos listeners por persona mientras queden tareas viejas abiertas** (`useOpsData.ts`):
+  `assigneeUserIds array-contains` + `assigneeUserId ==` (`LEGACY_ASSIGNEE_FIELD`), juntados por id.
+  Cuando ya no quede ninguna tarea abierta con `assigneeUserId`, se puede quitar la segunda consulta
+  (y el campo del converter). `getAll` ya no filtra por persona.
+- Reglas propuestas: `myTask` acepta los dos formatos; reasignar revisa los 4 campos assignee*.
+  Pruebas actualizadas en security/tests (no se pudieron correr: el emulador no se descarga aquí).
+- "Assigned by me" muestra también las tareas que uno comparte con otras personas (antes solo las
+  de otros); "From X" no sale si la tarea es solo de quien la asignó (`isOnlyAssignee`).
+- "How long": opción `N/A` = `durationMinutes: 0` (la fila no muestra duración; no suma minutos al
+  proyecto). "Time": `shared/components/TimeInput` (h:mm AM/PM en cualquier navegador, como
+  DateInput; guarda "HH:mm"). `formatHm` se movió de `opsDates.ts` a `utils/dateFormat.ts`.
+- Crear: `NewTaskPanel` (borrador local, se guarda con "Add task"); comparte `TaskDrawer` (marco) y
+  `TaskFields` (campos) con `TaskPanel`. Si elige quién aprueba, la tarea nace con el visto bueno
+  "por enviar" (`draftApproval`), como la casilla "Needs OK" de antes.
+- **Pendiente:** el top 3 (`user_priorities`) ya no tiene pantalla, pero siguen `usePriorities`,
+  `savePriorities`, `prioritiesService`, el tipo `OpsPriorities` y su regla. Decidir si se borran.

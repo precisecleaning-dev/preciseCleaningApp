@@ -25,28 +25,28 @@ export default function TaskComments({ comments, me, onAdd }: TaskCommentsProps)
   };
 
   return (
-    <section className="otp-section" aria-label="Comments">
-      <h3 className="otp-section-title">Comments · {comments.length}</h3>
+    <section className="task-panel-section" aria-label="Comments">
+      <h3 className="task-panel-section-title">Comments · {comments.length}</h3>
       {comments.length > 0 && (
-        <ol className="otp-comments">
+        <ol className="task-panel-comments">
           {comments.map((c) => (
-            <li key={`${c.userId}-${c.createdAt}`} className="otp-comment">
+            <li key={`${c.userId}-${c.createdAt}`} className="task-panel-comment">
               <OpsAvatar id={c.userId} name={c.userName} size="sm" />
-              <div className="otp-comment-body">
-                <p className="otp-comment-head">
-                  <span className="otp-comment-author">{c.userName}</span>
-                  <span className="otp-comment-date">{formatDate(c.createdAt)} · {formatTime(c.createdAt)}</span>
+              <div className="task-panel-comment-body">
+                <p className="task-panel-comment-head">
+                  <span className="task-panel-comment-author">{c.userName}</span>
+                  <span className="task-panel-comment-date">{formatDate(c.createdAt)} · {formatTime(c.createdAt)}</span>
                 </p>
-                <p className="otp-comment-text">{c.text}</p>
+                <p className="task-panel-comment-text">{c.text}</p>
               </div>
             </li>
           ))}
         </ol>
       )}
-      <div className="otp-composer">
+      <div className="task-panel-composer">
         <OpsAvatar id={me.id} name={me.name} size="sm" />
         <textarea
-          className="otp-composer-input"
+          className="task-panel-composer-input"
           rows={2}
           value={text}
           placeholder="Add a comment…"
@@ -54,8 +54,8 @@ export default function TaskComments({ comments, me, onAdd }: TaskCommentsProps)
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) post(); }}
         />
-        <button type="button" className="otp-post" onClick={post} disabled={!text.trim() || posting}>
-          {posting ? <Loader2 size={14} className="otp-spin" /> : 'Post'}
+        <button type="button" className="task-panel-post" onClick={post} disabled={!text.trim() || posting}>
+          {posting ? <Loader2 size={14} className="task-panel-spin" /> : 'Post'}
         </button>
       </div>
     </section>

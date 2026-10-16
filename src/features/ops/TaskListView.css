@@ -48,6 +48,30 @@
 }
 .otl-btn:hover { background: #f1f5f9; }
 
+/* ---- Barra sobre la lista: pestañas y botón "Add Task" ---- */
+.otl-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.otl-add-btn {
+  align-items: center;
+  background: #2546d8;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 40px;
+  padding: 0 16px;
+}
+.otl-add-btn:hover { background: #1d3bb8; }
+
 /* ---- Pestañas "Assigned to" / "Assigned by" ---- */
 .otl-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .otl-tab {
@@ -114,4 +138,5 @@
   .otl-title { font-size: 20px; }
   .otl-head-actions { width: 100%; }
   .otl-select { flex: 1 1 auto; max-width: none; }
+  .otl-add-btn { justify-content: center; width: 100%; }
 }

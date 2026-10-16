@@ -133,7 +133,7 @@ Firestore guarda documentos (fichas) dentro de colecciones.
 | `payroll` | Pagos al personal por casa | `propertyId`, `employeeId`, `date`, `totalAmount`, `status` (Pending/Paid) | `src/types/index.ts:218` |
 | `quality_checks` | Reportes de QC | `houseId`, `date`, `status`, `result`, `passRate`, `qcData` (por área) | `src/types/index.ts:255` |
 | `status_history` | Cada cambio de estado de una casa | `propertyId`, estado anterior y nuevo, `changedAt` | `src/services/statusHistoryService.ts:4` |
-| `user_tasks` | Tareas internas | `assigneeUserId`, `projectId`, `status`, `dueDate`, `approval` | `src/types/userTasks.ts:67` |
+| `user_tasks` | Tareas internas | `assignees` (una o varias personas; `assigneeUserIds` solo para consultar), `projectId`, `status`, `dueDate`, `approval` | `src/types/userTasks.ts:67` |
 | `task_projects` | Proyectos de tareas | `ownerUserId`, `taskCount`, `doneCount`, `openMinutes` | `src/types/taskProjects.ts:17` |
 | `system_users` | Usuarios | `email`, `roleId`, `status`, `teamId` | `src/types/index.ts:24` |
 | `settings_roles` | Roles y permisos por módulo | `permissions[]`: ver, agregar, editar, borrar y alcance | `src/types/index.ts:17` |
@@ -157,7 +157,7 @@ properties ◄── billing_services.propertyId
            ◄── quality_checks.houseId ─────► system_users (inspectorId)
            ◄── status_history.propertyId, damages.houseId, checklists.houseId
 system_users.roleId ──► settings_roles
-user_tasks.projectId ──► task_projects      user_tasks.assigneeUserId ──► system_users
+user_tasks.projectId ──► task_projects      user_tasks.assignees[].userId ──► system_users
 ```
 
 Ojo: `properties.client` puede guardar tres cosas: el id del cliente, un id viejo de AppSheet o el nombre. Lo resuelve `src/utils/customerDocs.ts:40-82`.
@@ -301,10 +301,10 @@ Cómo leer las cifras de esta sección:
 
 - Del store: usuarios, roles, prioridades, equipos y proyectos (`TaskListView.tsx:51-55`).
 - De `user_tasks`, solo consultas filtradas:
-  - abiertas de una persona (`useOpsData.ts:36-38`);
+  - abiertas de una persona (`assigneeUserIds` array-contains, más el formato viejo `assigneeUserId` mientras queden tareas de antes);
   - creadas por alguien;
   - cola de aprobación (`:67`).
-- Prioridades del usuario: un documento (`:94-95`).
+- Prioridades del usuario (`user_priorities`): sin pantalla desde 10/2026; el hook y el service siguen en el código.
 - **No usa casas.**
 
 **Lecturas:** ~100. Antes eran ~3,700, porque al iniciar sesión se abría el listener de casas en cualquier pantalla. Ahora se abre solo en las que lo usan (`src/App.tsx:196-200`).

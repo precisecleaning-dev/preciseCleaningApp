@@ -15,7 +15,7 @@
 // ============================================================================
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Sparkles } from 'lucide-react';
-import type { UserTask, Property, Role, SystemUser } from '../types/index';
+import type { TaskAssignee, Property, Role, SystemUser } from '../types/index';
 import HomeHeader from '../components/HomeHeader';
 import TaskChecklist from '../components/TaskChecklist';
 import {
@@ -23,6 +23,8 @@ import {
 } from '../utils/homeData';
 import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
 import { sectionOf } from '../features/ops/opsDates';
+import { namesSummary } from '../features/ops/opsOptions';
+import { isAssignee } from '../features/ops/opsPermissions';
 import UndoToast from '../features/ops/components/UndoToast';
 import { fmtClock, openEntryOf, weekHours, weekStart } from '../services/timeClockService';
 import { toDate } from '../utils/dateGrouping';
@@ -106,20 +108,28 @@ export default function OwnerView({
   // ---- Tareas pendientes (Task list) ----
   const todayYmd = todayIso();
   const openTasks = ht.tasks;
-  const shownTasks = taskFilter === 'all' ? openTasks : openTasks.filter((t) => t.assigneeUserId === taskFilter);
+  const shownTasks = taskFilter === 'all' ? openTasks : openTasks.filter((t) => isAssignee(t, taskFilter));
   const overdue = openTasks.filter((t) => sectionOf(t.dueDate, todayYmd) === 'overdue');
-  const taskName = (t: UserTask) => (t.assigneeUserId === meId ? 'You' : t.assigneeUserName.split(' ')[0] || 'Someone');
+  /** Nombre corto de una persona de la tarea ("You" si es uno mismo). */
+  const assigneeShortName = (assignee: TaskAssignee) =>
+    (assignee.userId === meId ? 'You' : assignee.userName.split(' ')[0] || 'Someone');
+  // Atrasadas por persona: una tarea de varias personas cuenta para cada una.
   const overdueBy = useMemo(() => {
     const m = new Map<string, number>();
-    overdue.forEach((t) => m.set(taskName(t), (m.get(taskName(t)) || 0) + 1));
+    overdue.forEach((t) => t.assignees.forEach((assignee) => {
+      const name = assigneeShortName(assignee);
+      m.set(name, (m.get(name) || 0) + 1);
+    }));
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-    // taskName solo depende de meId
+    // assigneeShortName solo depende de meId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overdue, meId]);
   // Filtro por persona: quienes tienen tareas abiertas.
   const assignees = useMemo(() => {
     const m = new Map<string, string>();
-    openTasks.forEach((t) => m.set(t.assigneeUserId, t.assigneeUserId === meId ? 'Me' : t.assigneeUserName.split(' ')[0] || '—'));
+    openTasks.forEach((t) => t.assignees.forEach((assignee) => {
+      m.set(assignee.userId, assignee.userId === meId ? 'Me' : assignee.userName.split(' ')[0] || '—');
+    }));
     return [...m.entries()].sort((a, b) => (a[0] === meId ? -1 : b[0] === meId ? 1 : a[1].localeCompare(b[1])));
   }, [openTasks, meId]);
 
@@ -206,7 +216,7 @@ export default function OwnerView({
       items.push({
         key: `t-${t.id}`, minutes: m ? Number(m[1]) * 60 + Number(m[2]) : 24 * 60 - 1,
         time: m ? `${Number(m[1]) % 12 || 12}:${m[2]}` : '',
-        title: t.title, sub: `${t.assigneeUserName.split(' ')[0]} · task due`, tone: 'task',
+        title: t.title, sub: `${namesSummary(t.assignees.map((assignee) => assignee.userName.split(' ')[0]))} · task due`, tone: 'task',
       });
     });
     return items.sort((a, b) => a.minutes - b.minutes);

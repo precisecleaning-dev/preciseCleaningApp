@@ -15,17 +15,17 @@ interface TaskAttachmentsProps {
 export default function TaskAttachments({ attachments, canRemove, uploading, onAttach, onRemove }: TaskAttachmentsProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   return (
-    <section className="otp-section" aria-label="Attachments">
-      <div className="otp-section-head">
-        <h3 className="otp-section-title">Attachments · {attachments.length}</h3>
-        <button type="button" className="otp-attach-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-          {uploading ? <Loader2 size={14} className="otp-spin" /> : <Paperclip size={14} />} Attach file
+    <section className="task-panel-section" aria-label="Attachments">
+      <div className="task-panel-section-head">
+        <h3 className="task-panel-section-title">Attachments · {attachments.length}</h3>
+        <button type="button" className="task-panel-attach-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? <Loader2 size={14} className="task-panel-spin" /> : <Paperclip size={14} />} Attach file
         </button>
         <input
           ref={fileRef}
           type="file"
           multiple
-          className="otp-file-input"
+          className="task-panel-file-input"
           onChange={(e) => {
             const files = Array.from(e.target.files || []);
             e.target.value = '';
@@ -34,22 +34,22 @@ export default function TaskAttachments({ attachments, canRemove, uploading, onA
         />
       </div>
       {attachments.length > 0 && (
-        <ul className="otp-files">
+        <ul className="task-panel-files">
           {attachments.map((a) => (
-            <li key={a.path} className="otp-file">
-              <a className="otp-file-link" href={a.url} target="_blank" rel="noopener noreferrer">
+            <li key={a.path} className="task-panel-file">
+              <a className="task-panel-file-link" href={a.url} target="_blank" rel="noopener noreferrer">
                 {a.type.startsWith('image/') ? (
-                  <img className="otp-thumb" src={a.url} alt="" width={40} height={40} loading="lazy" />
+                  <img className="task-panel-thumb" src={a.url} alt="" width={40} height={40} loading="lazy" />
                 ) : (
-                  <span className="otp-thumb icon"><FileText size={18} /></span>
+                  <span className="icon task-panel-thumb"><FileText size={18} /></span>
                 )}
-                <span className="otp-file-text">
-                  <span className="otp-file-name">{a.name}</span>
-                  <span className="otp-file-meta">{formatBytes(a.size)} · {fileKind(a.type)}</span>
+                <span className="task-panel-file-text">
+                  <span className="task-panel-file-name">{a.name}</span>
+                  <span className="task-panel-file-meta">{formatBytes(a.size)} · {fileKind(a.type)}</span>
                 </span>
               </a>
               {canRemove && (
-                <button type="button" className="otp-file-remove" onClick={() => onRemove(a)} aria-label={`Remove ${a.name}`}>
+                <button type="button" className="task-panel-file-remove" onClick={() => onRemove(a)} aria-label={`Remove ${a.name}`}>
                   <X size={14} />
                 </button>
               )}
