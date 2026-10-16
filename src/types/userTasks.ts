@@ -57,6 +57,12 @@ export interface TaskAttachment {
 /** Elemento de `comments[]` de una tarea o de un proyecto (sin archivos). Se
  *  identifica por autor + hora (no tiene id propio). `createdAt` es texto ISO:
  *  dentro de un arreglo Firestore no acepta serverTimestamp(). */
+/** Elemento de `assignees[]`: una de las personas asignadas a la tarea. */
+export interface TaskAssignee {
+  userId: string; //                    FK → system_users: persona asignada
+  userName: string; //                  copia de su nombre
+}
+
 export interface TaskComment {
   userId: string; //                    FK → system_users: quién comentó
   userName: string; //                  copia del nombre de quien comentó
@@ -68,8 +74,7 @@ export interface TaskComment {
 export interface UserTask {
   id: string; //                        PK · id del documento
   title: string; //                     qué hay que hacer
-  assigneeUserIds: string[]; //         FK → system_users: a quiénes se asignó (una o varias personas)
-  assigneeUserNames: string[]; //       copia de sus nombres, en el mismo orden que assigneeUserIds
+  assignees: TaskAssignee[]; //         a quiénes se asignó (una o varias personas)
   dueDate: YmdDate; //                  día en que vence ('' = sin fecha)
   dueTime: string; //                   hora "HH:mm" (24 h) o "" si no tiene hora
   durationMinutes: number; //           duración estimada en minutos (2 h = 120; 0 = no aplica)
@@ -89,17 +94,20 @@ export interface UserTask {
 }
 
 /** Formato viejo de la persona asignada (hasta 10/2026 una tarea tenía una
- *  sola). Solo se lee: el service lo pasa a assigneeUserIds / assigneeUserNames
- *  y lo borra la próxima vez que se cambian las personas de esa tarea. */
+ *  sola). Solo se lee: el service lo pasa a `assignees` y lo borra la próxima
+ *  vez que se cambian las personas de esa tarea. */
 export interface LegacyTaskAssignee {
   assigneeUserId?: string; //           FK → system_users: la única persona asignada
   assigneeUserName?: string; //         copia de su nombre
 }
 
-/** Cómo está guardada una tarea en Firestore: sin `id` (es el del documento)
- *  y, si es vieja, con la persona en el formato de antes. */
-export type StoredUserTask = Omit<UserTask, 'id' | 'assigneeUserIds' | 'assigneeUserNames'>
-  & Partial<Pick<UserTask, 'assigneeUserIds' | 'assigneeUserNames'>>
+/** Cómo está guardada una tarea en Firestore: sin `id` (es el del documento),
+ *  con `assigneeUserIds` (los ids de `assignees`, solo para la consulta
+ *  array-contains; lo arma el service) y, si es vieja, con la persona en el
+ *  formato de antes. */
+export type StoredUserTask = Omit<UserTask, 'id' | 'assignees'>
+  & Partial<Pick<UserTask, 'assignees'>>
+  & { assigneeUserIds?: string[] }
   & LegacyTaskAssignee;
 
 /** Persona a la que se le puede asignar una tarea. */
@@ -109,5 +117,3 @@ export interface AssignableUser {
   /** "Me" para quien está usando la app. */
   label: string;
 }
-
-export type TaskAssignee = Pick<AssignableUser, 'id' | 'name'>;

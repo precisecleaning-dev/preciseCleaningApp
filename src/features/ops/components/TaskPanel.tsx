@@ -59,11 +59,11 @@ export default function TaskPanel(props: TaskPanelProps) {
   const footer = (
     <>
       {canDelete && (
-        <button type="button" className="otp-btn danger" onClick={onDelete} disabled={busy}>
+        <button type="button" className="danger task-panel-btn" onClick={onDelete} disabled={busy}>
           <Trash2 size={15} /> Delete
         </button>
       )}
-      <button type="button" className={`otp-btn ${isDone ? 'ghost' : 'primary'}`} onClick={onToggleDone} disabled={busy}>
+      <button type="button" className={`task-panel-btn ${isDone ? 'ghost' : 'primary'}`} onClick={onToggleDone} disabled={busy}>
         {isDone ? <><RotateCcw size={15} /> Reopen</> : <><CheckCircle2 size={15} /> Mark done</>}
       </button>
     </>
@@ -78,7 +78,7 @@ export default function TaskPanel(props: TaskPanelProps) {
     >
       <input
         key={`${task.id}:${task.title}`}
-        className={`otp-title${isDone ? ' done' : ''}`}
+        className={`task-panel-title${isDone ? ' done' : ''}`}
         defaultValue={task.title}
         disabled={!canEdit}
         aria-label="Task title"

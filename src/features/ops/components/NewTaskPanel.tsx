@@ -3,7 +3,7 @@
 // TaskFields), pero no guarda nada hasta "Add task": los cambios se juntan en
 // un borrador. Si alguien tiene que dar el OK, la tarea se crea con el visto
 // bueno "por enviar" (se envía después desde el panel de la tarea).
-import { useRef, useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type { AssignableUser, Priority, TaskAssignee, TaskProject } from '../../../types/index';
 import { draftApproval, type TaskInput, type TaskPatch } from '../../../services/userTasksService';
@@ -30,8 +30,7 @@ const NewTaskPanel = ({
   const titleRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<Omit<TaskInput, 'approval'>>(() => ({
     title: '',
-    assigneeUserIds: [defaultAssignee.id],
-    assigneeUserNames: [defaultAssignee.name],
+    assignees: [defaultAssignee],
     dueDate: todayIso(),
     dueTime: '',
     durationMinutes: 30,
@@ -50,13 +49,23 @@ const NewTaskPanel = ({
     if (!title || isSaving) return;
     setIsSaving(true);
     const approver = approvers.find((person) => person.id === approverId);
-    const wasCreated = await onCreate({
-      ...draft,
-      title,
-      approval: approver ? draftApproval(approver.id, approver.name) : null,
-    });
-    setIsSaving(false);
-    if (wasCreated) onClose();
+    try {
+      // onCreate (useTaskActions.add) avisa con un alert si no se pudo guardar.
+      const wasCreated = await onCreate({
+        ...draft,
+        title,
+        approval: approver ? draftApproval(approver.id, approver.name) : null,
+      });
+      if (wasCreated) onClose();
+    } catch (error) {
+      console.error('No se pudo agregar la tarea:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') void handleCreate();
   };
 
   // TaskFields muestra "Assigned by": quien crea la tarea, sin fecha todavía.
@@ -71,11 +80,11 @@ const NewTaskPanel = ({
 
   const footer = (
     <>
-      <button type="button" className="otp-btn ghost" onClick={onClose} disabled={isSaving}>
+      <button type="button" className="ghost task-panel-btn" onClick={onClose} disabled={isSaving}>
         Cancel
       </button>
-      <button type="button" className="otp-btn primary" onClick={handleCreate} disabled={!canCreate}>
-        {isSaving ? <Loader2 size={15} className="otp-spin" /> : <Plus size={15} />} Add task
+      <button type="button" className="primary task-panel-btn" onClick={handleCreate} disabled={!canCreate}>
+        {isSaving ? <Loader2 size={15} className="task-panel-spin" /> : <Plus size={15} />} Add task
       </button>
     </>
   );
@@ -84,13 +93,13 @@ const NewTaskPanel = ({
     <TaskDrawer kicker="New task" ariaLabel="New task" initialFocusRef={titleRef} footer={footer} onClose={onClose}>
       <input
         ref={titleRef}
-        className="otp-title"
+        className="task-panel-title"
         value={draft.title}
         placeholder="What needs to get done?"
         aria-label="Task title"
         maxLength={200}
         onChange={(e) => handlePatch({ title: e.target.value })}
-        onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+        onKeyDown={handleTitleKeyDown}
       />
 
       <TaskFields
@@ -104,12 +113,12 @@ const NewTaskPanel = ({
         onPatch={handlePatch}
       />
 
-      <section className="otp-approval" aria-label="Approval">
-        <p className="otp-approval-title">Approval</p>
-        <p className="otp-approval-hint">Who needs to OK this before it&apos;s done? (e.g. a social media post)</p>
-        <label className="otp-approval-for">
+      <section className="task-panel-approval" aria-label="Approval">
+        <p className="task-panel-approval-title">Approval</p>
+        <p className="task-panel-approval-hint">Who needs to OK this before it&apos;s done? (e.g. a social media post)</p>
+        <label className="task-panel-approval-for">
           <span>For</span>
-          <select className="otp-input slim" value={approverId} onChange={(e) => setApproverId(e.target.value)}
+          <select className="slim task-panel-input" value={approverId} onChange={(e) => setApproverId(e.target.value)}
             aria-label="Who approves">
             <option value="">No approval needed</option>
             {approvers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}

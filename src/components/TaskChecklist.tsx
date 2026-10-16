@@ -25,7 +25,7 @@ const firstName = (name: string) => name.split(' ')[0] || name;
 
 /** "Me, Sandy +1": nombres cortos de las personas de la tarea. */
 const assigneesText = (task: UserTask, meId: string): string =>
-  namesSummary(task.assigneeUserIds.map((id, index) => (id === meId ? 'Me' : firstName(task.assigneeUserNames[index] ?? ''))));
+  namesSummary(task.assignees.map((assignee) => (assignee.userId === meId ? 'Me' : firstName(assignee.userName))));
 
 /** Vencimiento corto: "Overdue", "Today 2 PM", "Fri", "10/24/2026" o "—". */
 function dueText(task: UserTask, today: string): { text: string; tone: 'overdue' | 'today' | 'later' } {

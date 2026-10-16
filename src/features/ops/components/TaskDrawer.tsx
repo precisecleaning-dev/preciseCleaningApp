@@ -2,7 +2,7 @@
 // lateral en computadora y pantalla completa en el teléfono, encabezado con el
 // botón de cerrar, cuerpo con scroll y pie con las acciones. El foco entra al
 // abrirlo (al campo `initialFocusRef` o al panel) y vuelve a donde estaba al
-// cerrarlo; Escape lo cierra. Estilos en TaskPanel.css (clases .otp).
+// cerrarlo; Escape lo cierra. Estilos en TaskPanel.css (clases .task-panel).
 import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { X } from 'lucide-react';
 import './TaskPanel.css';
@@ -33,10 +33,10 @@ const TaskDrawer = ({ kicker, ariaLabel, initialFocusRef, footer, children, onCl
   };
 
   return (
-    <div className="otp-overlay" onClick={onClose}>
+    <div className="task-panel-overlay" onClick={onClose}>
       <aside
         ref={rootRef}
-        className="otp"
+        className="task-panel"
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
@@ -44,14 +44,14 @@ const TaskDrawer = ({ kicker, ariaLabel, initialFocusRef, footer, children, onCl
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <header className="otp-head">
-          <p className="otp-kicker">{kicker}</p>
-          <button type="button" className="otp-icon-btn" onClick={onClose} aria-label="Close task">
+        <header className="task-panel-head">
+          <p className="task-panel-kicker">{kicker}</p>
+          <button type="button" className="task-panel-icon-btn" onClick={onClose} aria-label="Close task">
             <X size={18} />
           </button>
         </header>
-        <div className="otp-body">{children}</div>
-        <footer className="otp-foot">{footer}</footer>
+        <div className="task-panel-body">{children}</div>
+        <footer className="task-panel-foot">{footer}</footer>
       </aside>
     </div>
   );

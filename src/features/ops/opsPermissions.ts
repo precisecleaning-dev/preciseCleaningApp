@@ -16,7 +16,7 @@
 //   Rige también en Owner y Manager. Un rol que no declara el módulo ve todas,
 //   como antes. Las reglas propuestas (security/) aplican lo mismo.
 // ============================================================================
-import type { AssignableUser, Permission, Role, SystemUser, UserTask } from '../../types/index';
+import type { AssignableUser, Permission, Role, SystemUser, TaskAssignee, UserTask } from '../../types/index';
 
 const TASK_LIST_MODULE = 'Task List';
 
@@ -58,23 +58,26 @@ function isTaskListUser(user: SystemUser, roles: Role[]): boolean {
 }
 
 /** ¿`userId` es una de las personas asignadas a la tarea? */
-export const isAssignee = (task: Pick<UserTask, 'assigneeUserIds'>, userId: string): boolean =>
-  task.assigneeUserIds.includes(userId);
+export const isAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
+  task.assignees.some((assignee) => assignee.userId === userId);
 
 /** ¿La tarea es solo de `userId`? (p. ej. alguien que se la asignó a sí mismo). */
-export const isOnlyAssignee = (task: Pick<UserTask, 'assigneeUserIds'>, userId: string): boolean =>
-  task.assigneeUserIds.length === 1 && task.assigneeUserIds[0] === userId;
+export const isOnlyAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
+  task.assignees.length === 1 && task.assignees[0].userId === userId;
 
 /** ¿Puede cambiar a quiénes está asignada la tarea? Quien la asignó, sí. A
  *  quien se la asignó otra persona, no (aunque su rol tenga Edit). Con Edit
  *  también se pueden reasignar las tareas de los demás. Las reglas propuestas
  *  aplican lo mismo. */
 export function canReassignTask(
-  task: Pick<UserTask, 'createdByUserId' | 'assigneeUserIds'>, meId: string, rights: TaskListRights,
+  task: Pick<UserTask, 'createdByUserId' | 'assignees'>, meId: string, rights: TaskListRights,
 ): boolean {
   if (task.createdByUserId === meId) return true;
   return rights.canEdit && !isAssignee(task, meId);
 }
+
+/** Un usuario de la lista de "Assign to" como persona asignada de una tarea. */
+export const toTaskAssignee = (user: AssignableUser): TaskAssignee => ({ userId: user.id, userName: user.name });
 
 /** "Assign to": usuarios activos de system_users cuyo rol puede abrir Task
  *  List (más uno mismo), con "Me" primero y los demás por nombre. */

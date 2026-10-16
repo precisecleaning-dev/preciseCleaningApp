@@ -255,13 +255,16 @@ describe('Task list y reloj', () => {
   test('tareas con Scope "Own": solo las propias', async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
-      await setDoc(doc(db, 'user_tasks', 'mine'), { assigneeUserIds: ['u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null });
-      await setDoc(doc(db, 'user_tasks', 'shared'), { assigneeUserIds: ['u-sandy', 'u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null });
-      await setDoc(doc(db, 'user_tasks', 'other'), { assigneeUserIds: ['u-sandy'], createdByUserId: 'u-owner', status: 'open', approval: null });
+      await setDoc(doc(db, 'user_tasks', 'mine'), { assignees: [{ userId: 'u-emp', userName: 'Emp' }], assigneeUserIds: ['u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null });
+      await setDoc(doc(db, 'user_tasks', 'shared'), {
+        assignees: [{ userId: 'u-sandy', userName: 'Sandy' }, { userId: 'u-emp', userName: 'Emp' }],
+        assigneeUserIds: ['u-sandy', 'u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null,
+      });
+      await setDoc(doc(db, 'user_tasks', 'other'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-owner', status: 'open', approval: null });
       // Formato de antes: una sola persona en assigneeUserId.
       await setDoc(doc(db, 'user_tasks', 'legacy'), { assigneeUserId: 'u-emp', createdByUserId: 'u-owner', status: 'open', approval: null });
       await setDoc(doc(db, 'user_tasks', 'toApprove'), {
-        assigneeUserIds: ['u-sandy'], createdByUserId: 'u-sandy', status: 'open',
+        assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-sandy', status: 'open',
         approval: { approverUserId: 'u-emp', status: 'pending' },
       });
     });
@@ -284,17 +287,20 @@ describe('Task list y reloj', () => {
     // Quién la asignó no se edita (ni siquiera con Scope All).
     await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { createdByUserId: 'u-emp' }));
     await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { createdByUserName: 'Sandy' }));
-    await assertSucceeds(setDoc(doc(emp, 'user_tasks', 'new'), { assigneeUserIds: ['u-sandy'], createdByUserId: 'u-emp', status: 'open' }));
+    await assertSucceeds(setDoc(doc(emp, 'user_tasks', 'new'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-emp', status: 'open' }));
     // Reasignar: no la que me asignó otra persona; sí la que asigné yo.
-    await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { assigneeUserIds: ['u-sandy'], assigneeUserNames: ['Sandy'] }));
-    await assertFails(updateDoc(doc(emp, 'user_tasks', 'legacy'), { assigneeUserIds: ['u-sandy'], assigneeUserId: deleteField() }));
-    await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'new'), { assigneeUserIds: ['u-owner', 'u-sandy'], assigneeUserNames: ['Owner', 'Sandy'] }));
+    await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'] }));
+    await assertFails(updateDoc(doc(emp, 'user_tasks', 'legacy'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], assigneeUserId: deleteField() }));
+    await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'new'), {
+      assignees: [{ userId: 'u-owner', userName: 'Owner' }, { userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-owner', 'u-sandy'],
+    }));
     // Con Edit: la que le asignaron a él (sola o con más personas), no; la de otra persona, sí.
-    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { assigneeUserIds: ['u-owner'] }));
-    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'shared'), { assigneeUserIds: ['u-sandy'] }));
-    await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'mine'), { assigneeUserIds: ['u-owner'] }));
+    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'] }));
+    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'shared'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'] }));
+    await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'mine'), { assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'] }));
     await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'legacy'), {
-      assigneeUserIds: ['u-owner'], assigneeUserNames: ['Owner'], assigneeUserId: deleteField(), assigneeUserName: deleteField(),
+      assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'],
+      assigneeUserId: deleteField(), assigneeUserName: deleteField(),
     }));
     // Scope "All": las de todos.
     await assertSucceeds(getDocs(query(collection(as('sandy@precise.test'), 'user_tasks'), where('status', '==', 'open'))));

@@ -54,7 +54,8 @@ service cloud.firestore {
       return acc().admin == true || acc().m.get('Task List', {}).get('o', false) != true;
     }
     // Tarea propia: asignada a mí (sola o con más personas), creada por mí o
-    // esperando mi OK. Las tareas nuevas guardan la lista assigneeUserIds; las
+    // esperando mi OK. Las tareas nuevas guardan assignees y sus ids en
+    // assigneeUserIds (para array-contains); las
     // de antes, una sola persona en assigneeUserId (la app lee las dos). Un
     // campo que falta da error y el || sigue con la siguiente condición.
     function myTask(task) {
@@ -338,7 +339,7 @@ service cloud.firestore {
       allow read, delete: if has('Task List') && (taskScopeAll() || myTask(resource.data));
       allow update: if has('Task List') && (taskScopeAll() || myTask(resource.data))
         && !changed().hasAny(['createdByUserId', 'createdByUserName', 'createdAt'])
-        && (!changed().hasAny(['assigneeUserIds', 'assigneeUserNames', 'assigneeUserId', 'assigneeUserName'])
+        && (!changed().hasAny(['assignees', 'assigneeUserIds', 'assigneeUserId', 'assigneeUserName'])
           || resource.data.createdByUserId == acc().userId
           || (canDo('Task List', 'e') && !assignedToMe(resource.data)));
       allow create: if has('Task List');

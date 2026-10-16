@@ -6,11 +6,12 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { AssignableUser, TaskAssignee } from '../../../types/index';
 import { namesSummary } from '../opsOptions';
+import { toTaskAssignee } from '../opsPermissions';
 import OpsAvatar from './OpsAvatar';
 import './AssigneePicker.css';
 
 interface AssigneePickerProps {
-  /** Personas asignadas (id y nombre guardado), en orden. */
+  /** Personas asignadas, en orden. */
   assignees: TaskAssignee[];
   /** A quiénes se les puede asignar (AssignableUser de assignablePeople). */
   assignableUsers: AssignableUser[];
@@ -35,24 +36,24 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isOpen]);
 
-  const selectedIds = new Set(assignees.map((person) => person.id));
+  const selectedIds = new Set(assignees.map((assignee) => assignee.userId));
   // Las personas guardadas que ya no están en la lista (p. ej. inactivas) se
   // siguen mostrando para poder quitarlas.
-  const unlistedAssignees = assignees.filter((person) => !assignableUsers.some((option) => option.id === person.id));
-  const options: TaskAssignee[] = [...assignableUsers, ...unlistedAssignees];
-  const getOptionLabel = (person: TaskAssignee) =>
-    (person.id === currentUserId ? `Me (${getFirstName(person.name)})` : person.name);
+  const unlistedAssignees = assignees.filter((assignee) => !assignableUsers.some((user) => user.id === assignee.userId));
+  const options: TaskAssignee[] = [...assignableUsers.map(toTaskAssignee), ...unlistedAssignees];
+  const getOptionLabel = (assignee: TaskAssignee) =>
+    (assignee.userId === currentUserId ? `Me (${getFirstName(assignee.userName)})` : assignee.userName);
   const assigneesSummary = namesSummary(
-    assignees.map((person) => (person.id === currentUserId ? 'Me' : getFirstName(person.name))),
+    assignees.map((assignee) => (assignee.userId === currentUserId ? 'Me' : getFirstName(assignee.userName))),
     3,
   );
 
-  const handleToggleAssignee = (person: TaskAssignee) => {
+  const handleToggleAssignee = (assignee: TaskAssignee) => {
     const nextSelectedIds = new Set(selectedIds);
-    if (nextSelectedIds.has(person.id)) nextSelectedIds.delete(person.id);
-    else nextSelectedIds.add(person.id);
+    if (nextSelectedIds.has(assignee.userId)) nextSelectedIds.delete(assignee.userId);
+    else nextSelectedIds.add(assignee.userId);
     if (nextSelectedIds.size === 0) return; // al menos una persona
-    onAssigneesChange(options.filter((option) => nextSelectedIds.has(option.id)).map(({ id, name }) => ({ id, name })));
+    onAssigneesChange(options.filter((option) => nextSelectedIds.has(option.userId)));
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -62,33 +63,33 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
   };
 
   return (
-    <div ref={pickerRef} className="oap" onKeyDown={handleKeyDown}>
+    <div ref={pickerRef} className="assignee-picker" onKeyDown={handleKeyDown}>
       <button
         type="button"
-        className="oap-trigger otp-input"
+        className="assignee-picker-trigger task-panel-input"
         aria-haspopup="true"
         aria-expanded={isOpen}
         aria-label={`${label}: ${assigneesSummary || 'nobody'}`}
         onClick={() => setIsOpen((wasOpen) => !wasOpen)}
       >
-        <span className="oap-summary">{assigneesSummary || 'Choose people'}</span>
+        <span className="assignee-picker-summary">{assigneesSummary || 'Choose people'}</span>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {isOpen && (
-        <ul className="oap-menu" role="group" aria-label={label}>
-          {options.map((person) => {
-            const isChecked = selectedIds.has(person.id);
+        <ul className="assignee-picker-menu" role="group" aria-label={label}>
+          {options.map((assignee) => {
+            const isChecked = selectedIds.has(assignee.userId);
             return (
-              <li key={person.id}>
-                <label className={`oap-option${isChecked ? ' checked' : ''}`}>
+              <li key={assignee.userId}>
+                <label className={`assignee-picker-option${isChecked ? ' checked' : ''}`}>
                   <input
                     type="checkbox"
                     checked={isChecked}
                     disabled={isChecked && selectedIds.size === 1}
-                    onChange={() => handleToggleAssignee(person)}
+                    onChange={() => handleToggleAssignee(assignee)}
                   />
-                  <OpsAvatar id={person.id} name={person.name} size="xs" />
-                  <span className="oap-name">{getOptionLabel(person)}</span>
+                  <OpsAvatar id={assignee.userId} name={assignee.userName} size="xs" />
+                  <span className="assignee-picker-name">{getOptionLabel(assignee)}</span>
                 </label>
               </li>
             );

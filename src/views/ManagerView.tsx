@@ -95,7 +95,7 @@ export default function ManagerView({
   const managerIds = useMemo(() => new Set(d.managers.map((u) => u.id)), [d.managers]);
   const openTasks = useMemo(
     () => (ht.rights.seesAll
-      ? ht.tasks.filter((t) => t.assigneeUserIds.some((id) => id === meId || managerIds.has(id)))
+      ? ht.tasks.filter((t) => t.assignees.some((assignee) => assignee.userId === meId || managerIds.has(assignee.userId)))
       : ht.tasks),
     [ht.tasks, ht.rights.seesAll, managerIds, meId],
   );

@@ -2667,7 +2667,10 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
 Pedido de Omar: "Assign to"/"Assignee" como lista (una tarea la pueden hacer varias personas),
 "How long" con opción de no aplica, "Time" como campo de hora (8:00 AM, 5:00 PM), y quitar el
 top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre el panel lateral.
-- **`assigneeUserIds` / `assigneeUserNames` (listas) en vez de `assigneeUserId` / `assigneeUserName`.**
+- **`assignees: { userId, userName }[]` en vez de `assigneeUserId` / `assigneeUserName`** (review del PR:
+  antes eran dos listas paralelas, ids y nombres, que se podían desincronizar). `assigneeUserIds` se
+  guarda solo para la consulta `array-contains` y lo arma `assigneeFields` en `userTasksService`
+  (converter al crear y `update`); no escribirlo a mano en otro lado.
   Sin migración (decisión de Omar): el converter de `userTasksService` lee el formato viejo como
   lista, y `update` borra los campos viejos (`deleteField`) SOLO cuando cambian las personas. No
   convertirlo en cada escritura: la regla de reasignar rechazaría que la persona asignada cambie,

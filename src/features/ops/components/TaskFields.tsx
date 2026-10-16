@@ -19,8 +19,8 @@ import OpsAvatar from './OpsAvatar';
 
 interface TaskFieldsProps {
   task: Pick<UserTask,
-    'status' | 'dueDate' | 'dueTime' | 'durationMinutes' | 'repeat' | 'priorityId' | 'assigneeUserIds'
-    | 'assigneeUserNames' | 'projectId' | 'projectTitle' | 'createdByUserId' | 'createdByUserName' | 'createdAt'>;
+    'status' | 'dueDate' | 'dueTime' | 'durationMinutes' | 'repeat' | 'priorityId' | 'assignees'
+    | 'projectId' | 'projectTitle' | 'createdByUserId' | 'createdByUserName' | 'createdAt'>;
   people: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
@@ -54,12 +54,7 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
     if (iso === '' || /^\d{4}-\d{2}-\d{2}$/.test(iso)) onPatch({ dueDate: iso });
   };
 
-  const handleAssigneesChange = (assignees: TaskAssignee[]) => {
-    onPatch({
-      assigneeUserIds: assignees.map((person) => person.id),
-      assigneeUserNames: assignees.map((person) => person.name),
-    });
-  };
+  const handleAssigneesChange = (assignees: TaskAssignee[]) => onPatch({ assignees });
 
   const handleProjectChange = (projectId: string) => {
     const project = projects.find((option) => option.id === projectId);
@@ -73,37 +68,36 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
   const assignedByName = task.createdByUserId === me.id
     ? `Me (${firstName(task.createdByUserName || me.name)})`
     : task.createdByUserName || '—';
-  const assignees = task.assigneeUserIds.map((id, index) => ({ id, name: task.assigneeUserNames[index] ?? '' }));
-  const assigneeNames = assignees
-    .map((person) => (person.id === me.id ? `Me (${firstName(person.name || me.name)})` : person.name))
+  const assigneeNames = task.assignees
+    .map((assignee) => (assignee.userId === me.id ? `Me (${firstName(assignee.userName || me.name)})` : assignee.userName))
     .join(', ') || '—';
-  const firstAssignee = assignees[0] ?? { id: '', name: '' };
+  const firstAssignee = task.assignees[0] ?? { userId: '', userName: '' };
 
   return (
     <>
-      <section className="otp-schedule" aria-label="Schedule">
-        <p className="otp-lbl">Schedule <span className="otp-optional">(optional)</span></p>
-        <div className="otp-schedule-grid">
-          <label className="otp-field">
-            <span className="otp-field-lbl">Repeat</span>
-            <select className="otp-input" value={repeatValue(task.repeat)} disabled={!canEdit}
+      <section className="task-panel-schedule" aria-label="Schedule">
+        <p className="task-panel-lbl">Schedule <span className="task-panel-optional">(optional)</span></p>
+        <div className="task-panel-schedule-grid">
+          <label className="task-panel-field">
+            <span className="task-panel-field-lbl">Repeat</span>
+            <select className="task-panel-input" value={repeatValue(task.repeat)} disabled={!canEdit}
               onChange={(e) => handleRepeatChange(e.target.value as '' | RepeatFreq)}>
               {REPEAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
-          <label className="otp-field">
-            <span className="otp-field-lbl">Time</span>
+          <label className="task-panel-field">
+            <span className="task-panel-field-lbl">Time</span>
             <TimeInput
-              className="otp-input"
+              className="task-panel-input"
               value={task.dueTime}
               disabled={!canEdit}
               aria-label="Time"
               onChange={(hm) => onPatch({ dueTime: hm })}
             />
           </label>
-          <label className="otp-field">
-            <span className="otp-field-lbl">How long</span>
-            <select className="otp-input" value={task.durationMinutes} disabled={!canEdit}
+          <label className="task-panel-field">
+            <span className="task-panel-field-lbl">How long</span>
+            <select className="task-panel-input" value={task.durationMinutes} disabled={!canEdit}
               onChange={(e) => onPatch({ durationMinutes: Number(e.target.value) })}>
               {!knownDuration && <option value={task.durationMinutes}>{task.durationMinutes} min</option>}
               {DURATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -111,14 +105,14 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
           </label>
         </div>
         {task.repeat?.freq === 'weekly' && (
-          <div className="otp-days" role="group" aria-label="Repeat on">
+          <div className="task-panel-days" role="group" aria-label="Repeat on">
             {WEEKDAY_LETTERS.map((letter, day) => {
               const isOn = !!task.repeat?.days?.includes(day);
               return (
                 <button
                   key={WEEKDAY_NAMES[day]}
                   type="button"
-                  className={`otp-day${isOn ? ' on' : ''}`}
+                  className={`task-panel-day${isOn ? ' on' : ''}`}
                   aria-pressed={isOn}
                   aria-label={WEEKDAY_NAMES[day]}
                   disabled={!canEdit}
@@ -132,28 +126,28 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
         )}
       </section>
 
-      <dl className="otp-props">
-        <div className="otp-prop">
+      <dl className="task-panel-props">
+        <div className="task-panel-prop">
           <dt>Due date</dt>
-          <dd className="otp-due">
-            <span className="otp-date-wrap">
+          <dd className="task-panel-due">
+            <span className="task-panel-date-wrap">
               <DateInput
-                className="otp-input"
+                className="task-panel-input"
                 value={task.dueDate}
                 disabled={!canEdit}
                 aria-label="Due date"
                 onChange={handleDueDateChange}
               />
             </span>
-            {late && <span className="otp-late">{late}</span>}
+            {late && <span className="task-panel-late">{late}</span>}
           </dd>
         </div>
-        <div className="otp-prop">
+        <div className="task-panel-prop">
           <dt>Priority</dt>
-          <dd className="otp-with-dot">
-            <span className={`otp-dot${priority ? '' : ' none'}`}
+          <dd className="task-panel-with-dot">
+            <span className={`task-panel-dot${priority ? '' : ' none'}`}
               style={{ '--dot-color': priority?.color || '#cbd5e1' } as CSSProperties} />
-            <select className="otp-input slim" value={task.priorityId ?? ''} disabled={!canEdit}
+            <select className="slim task-panel-input" value={task.priorityId ?? ''} disabled={!canEdit}
               onChange={(e) => onPatch({ priorityId: e.target.value || null })}>
               <option value="">None</option>
               {priorities.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
@@ -161,21 +155,21 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
           </dd>
         </div>
         {/* Quién la asignó y cuándo: dato de la tarea, no se edita. */}
-        <div className="otp-prop">
+        <div className="task-panel-prop">
           <dt>Assigned by</dt>
-          <dd className="otp-with-dot">
+          <dd className="task-panel-with-dot">
             <OpsAvatar id={task.createdByUserId} name={task.createdByUserName} size="sm" />
-            <span className="otp-readonly">{assignedByName}</span>
-            {task.createdAt && <span className="otp-readonly-sub">{formatDate(task.createdAt)}</span>}
+            <span className="task-panel-readonly">{assignedByName}</span>
+            {task.createdAt && <span className="task-panel-readonly-sub">{formatDate(task.createdAt)}</span>}
           </dd>
         </div>
-        <div className="otp-prop">
+        <div className="task-panel-prop">
           <dt>Assignee</dt>
-          <dd className="otp-with-dot">
-            <OpsAvatar id={firstAssignee.id} name={firstAssignee.name} size="sm" />
+          <dd className="task-panel-with-dot">
+            <OpsAvatar id={firstAssignee.userId} name={firstAssignee.userName} size="sm" />
             {canReassign ? (
               <AssigneePicker
-                assignees={assignees}
+                assignees={task.assignees}
                 assignableUsers={people}
                 currentUserId={me.id}
                 label="Assignee"
@@ -183,14 +177,14 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
               />
             ) : (
               // Se la asignó otra persona: no la puede pasar a alguien más.
-              <span className="otp-readonly">{assigneeNames}</span>
+              <span className="task-panel-readonly">{assigneeNames}</span>
             )}
           </dd>
         </div>
-        <div className="otp-prop">
+        <div className="task-panel-prop">
           <dt>Project</dt>
           <dd>
-            <select className="otp-input slim" value={task.projectId ?? ''} disabled={!canEdit}
+            <select className="slim task-panel-input" value={task.projectId ?? ''} disabled={!canEdit}
               onChange={(e) => handleProjectChange(e.target.value)}>
               <option value="">No project</option>
               {!knownProject && <option value={task.projectId ?? ''}>{task.projectTitle || '—'}</option>}

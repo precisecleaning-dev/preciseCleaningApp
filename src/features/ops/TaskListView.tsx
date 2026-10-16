@@ -30,7 +30,7 @@ import TaskSections from './components/TaskSections';
 import { EVERYONE, useApprovalQueue, useCreatedTasks, useOpenTasks, useOpsTask } from './hooks/useOpsData';
 import { useTaskActions } from './hooks/useTaskActions';
 import {
-  assignablePeople, canReassignTask, isAssignee, isOnlyAssignee, taskListRights, userName,
+  assignablePeople, canReassignTask, isAssignee, isOnlyAssignee, taskListRights, toTaskAssignee, userName,
 } from './opsPermissions';
 import { namesSummary, projectHex } from './opsOptions';
 import TaskRow from './components/TaskRow';
@@ -101,7 +101,7 @@ export default function TaskListView({ onOpenMenu, currentUser, activeRole, isSu
   // las que comparte con otras personas salen en las dos).
   const created = useCreatedTasks(!everyone && viewing ? viewing : null);
   const assignedBy = useMemo(
-    () => created.tasks.filter((t) => t.assigneeUserIds.some((id) => id !== viewing)),
+    () => created.tasks.filter((t) => t.assignees.some((assignee) => assignee.userId !== viewing)),
     [created.tasks, viewing],
   );
   // Con "Everyone" no hay pestañas: se ven todas las abiertas.
@@ -117,14 +117,15 @@ export default function TaskListView({ onOpenMenu, currentUser, activeRole, isSu
   const viewedName = everyone ? 'Everyone' : userName(viewedUser) || meName;
   const viewedRole = everyone ? 'All managers' : roles.find((r) => r.id === viewedUser?.roleId)?.name || '';
   // La tarea nueva va para la persona que se está mirando (con "Everyone", para uno mismo).
-  const newTaskAssignee = people.find((p) => p.id === (everyone ? meId : viewing)) ?? { id: meId, name: meName };
+  const newTaskUser = people.find((p) => p.id === (everyone ? meId : viewing));
+  const newTaskAssignee = newTaskUser ? toTaskAssignee(newTaskUser) : { userId: meId, userName: meName };
 
   /** "Me, Sandy +1": las personas de la tarea, con su nombre en vivo si existe. */
   const personLabel = (t: UserTask) => {
-    const names = t.assigneeUserIds.map((id, index) => {
-      if (id === meId) return 'Me';
-      const user = users.find((x) => x.id === id);
-      return firstName(user ? userName(user) : t.assigneeUserNames[index] ?? '');
+    const names = t.assignees.map((assignee) => {
+      if (assignee.userId === meId) return 'Me';
+      const user = users.find((x) => x.id === assignee.userId);
+      return firstName(user ? userName(user) : assignee.userName);
     });
     return namesSummary(names);
   };
@@ -281,7 +282,7 @@ export default function TaskListView({ onOpenMenu, currentUser, activeRole, isSu
 
       {isNewTaskOpen && (
         <NewTaskPanel
-          key={newTaskAssignee.id}
+          key={newTaskAssignee.userId}
           people={people}
           projects={activeProjects}
           priorities={priorityCatalog}

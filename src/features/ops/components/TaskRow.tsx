@@ -52,9 +52,7 @@ export default function TaskRow({
   const section = sectionOf(task.dueDate, today);
   const attachments = task.attachments?.length || 0;
   const commentCount = task.comments?.length || 0;
-  const shownAssignees = task.assigneeUserIds
-    .slice(0, MAX_AVATARS)
-    .map((id, index) => ({ id, name: task.assigneeUserNames[index] ?? '' }));
+  const shownAssignees = task.assignees.slice(0, MAX_AVATARS);
   return (
     <li className={`ops-row${ROW_TONE[section]}${selected ? ' selected' : ''}`}>
       <button
@@ -71,7 +69,9 @@ export default function TaskRow({
         <span className="ops-row-meta">
           <span className="ops-meta-person">
             <span className="ops-avatars">
-              {shownAssignees.map((person) => <OpsAvatar key={person.id} id={person.id} name={person.name} size="xs" />)}
+              {shownAssignees.map((assignee) => (
+                <OpsAvatar key={assignee.userId} id={assignee.userId} name={assignee.userName} size="xs" />
+              ))}
             </span>
             {assigneeLabel}
           </span>
