@@ -68,6 +68,9 @@
   color: #5b6475;
 }
 .ops-meta-person { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: #334155; }
+/* Varias personas: avatares encimados. */
+.ops-avatars { display: inline-flex; }
+.ops-avatars > * + * { box-shadow: 0 0 0 2px #fff; margin-left: -6px; }
 .ops-meta-from { color: #5b6475; }
 .ops-meta-due { font-weight: 600; }
 .ops-meta-due.late { color: #dc2626; }

@@ -86,6 +86,15 @@ export function formatTime(value: unknown): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
+// Hora guardada como "HH:mm" (24 h, sin fecha) → h:mm AM/PM: "14:30" → "2:30 PM".
+// Sin valor o con otro formato → ''. (La usan TimeInput y el Task list.)
+export function formatHm(hm: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
+  if (!match) return '';
+  const hours = Number(match[1]);
+  return `${hours % 12 || 12}:${match[2]} ${hours < 12 ? 'AM' : 'PM'}`;
+}
+
 // Fecha para nombres de archivo: MM-DD-YYYY (las barras no se permiten).
 export function formatDateForFile(value: unknown): string {
   return formatDate(value).replace(/\//g, '-');

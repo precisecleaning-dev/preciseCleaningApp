@@ -1,9 +1,11 @@
 // ⭐ Tareas pendientes del Task list con casilla (vistas Owner y Manager).
 //    Aquí solo se ven y se marcan hechas (salen de la lista); crear, editar y
-//    borrar es en el Task list. Con varias personas se muestra a quién está
+//    borrar es en el Task list. Con varias personas se muestra a quiénes está
 //    asignada.
 import type { UserTask } from '../types/index';
 import { addDays, sectionOf, ymdToDate } from '../features/ops/opsDates';
+import { namesSummary } from '../features/ops/opsOptions';
+import { isOnlyAssignee } from '../features/ops/opsPermissions';
 import { formatDate } from '../utils/dateFormat';
 
 interface TaskChecklistProps {
@@ -11,7 +13,7 @@ interface TaskChecklistProps {
   /** Hoy, AAAA-MM-DD. */
   today: string;
   meId: string;
-  /** Etiqueta con la persona asignada (cuando la lista es de varias). */
+  /** Etiqueta con las personas asignadas (cuando la lista es de varias). */
   showAssignee: boolean;
   busyId: string | null;
   canComplete: boolean;
@@ -20,6 +22,10 @@ interface TaskChecklistProps {
 }
 
 const firstName = (name: string) => name.split(' ')[0] || name;
+
+/** "Me, Sandy +1": nombres cortos de las personas de la tarea. */
+const assigneesText = (t: UserTask, meId: string): string =>
+  namesSummary(t.assigneeUserIds.map((id, index) => (id === meId ? 'Me' : firstName(t.assigneeUserNames[index] ?? ''))));
 
 /** "14:30" → "2:30 PM"; "14:00" → "2 PM". */
 function shortTime(hm: string): string {
@@ -50,7 +56,7 @@ export default function TaskChecklist({
     <ul className="hm-tasks">
       {tasks.map((t) => {
         const due = dueText(t, today);
-        const fromOther = !!t.createdByUserId && t.createdByUserId !== t.assigneeUserId;
+        const fromOther = !!t.createdByUserId && !isOnlyAssignee(t, t.createdByUserId);
         return (
           <li key={t.id} className="hm-task">
             <label className="hm-task-main">
@@ -68,7 +74,7 @@ export default function TaskChecklist({
               </span>
             </label>
             {showAssignee && (
-              <span className="hm-tag">{t.assigneeUserId === meId ? 'Me' : firstName(t.assigneeUserName)}</span>
+              <span className="hm-tag">{assigneesText(t, meId)}</span>
             )}
             <span className={`hm-due ${due.tone}`}>{due.text}</span>
           </li>

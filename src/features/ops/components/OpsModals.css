@@ -1,7 +1,6 @@
-/* Modales del Task list: Projects y top 3. La base (.modal-overlay-centered,
+/* Modales del Task list: Projects. La base (.modal-overlay-centered,
    .modal-50) es global (index.css). */
 .opm, .opm * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
-.opm.narrow { max-width: 460px; }
 .opm-head {
   display: flex;
   align-items: center;
@@ -28,7 +27,6 @@
 .opm-close:hover { background: #f1f5f9; }
 .opm-body { padding: 16px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 .opm-body > * { flex-shrink: 0; } /* con poco alto, scroll en vez de encoger los bloques */
-.opm-hint { margin: 0; font-size: 13px; color: #5b6475; }
 .opm-empty { margin: 0; font-size: 13px; color: #94a3b8; }
 
 .opm-form {
@@ -128,22 +126,6 @@
 .opm-icon:hover { background: #f1f5f9; }
 .opm-icon.danger { color: #b91c1c; }
 .opm-icon.danger:hover { background: #fef2f2; border-color: #fecaca; }
-
-.opm-slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.opm-slot { display: flex; align-items: center; gap: 10px; }
-.opm-slot-num {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #1e3a8a;
-  color: #fff;
-  font-weight: 800;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
 
 @media (max-width: 640px) {
   .opm-two { grid-template-columns: 1fr; }

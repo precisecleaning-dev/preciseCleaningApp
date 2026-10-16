@@ -6,7 +6,7 @@
 // La semana va de lunes a domingo (igual que utils/periods.ts).
 // ============================================================================
 import type { Repeat, YmdDate } from '../../types/index';
-import { formatDate, todayIso } from '../../utils/dateFormat';
+import { formatDate, formatHm, todayIso } from '../../utils/dateFormat';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -56,14 +56,6 @@ export function sectionOf(dueDate: YmdDate, today: YmdDate = todayIso()): TaskSe
   if (dueDate === today) return 'today';
   if (dueDate <= endOfWeek(today)) return 'week';
   return 'later';
-}
-
-/** "14:30" → "2:30 PM". */
-export function formatHm(hm: string): string {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  if (!m) return '';
-  const h = Number(m[1]);
-  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 /** Etiqueta corta del vencimiento para la fila de la lista. */

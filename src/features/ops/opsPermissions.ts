@@ -16,7 +16,7 @@
 //   Rige también en Owner y Manager. Un rol que no declara el módulo ve todas,
 //   como antes. Las reglas propuestas (security/) aplican lo mismo.
 // ============================================================================
-import type { Permission, Role, SystemUser } from '../../types/index';
+import type { Permission, Role, SystemUser, UserTask } from '../../types/index';
 
 const TASK_LIST_MODULE = 'Task List';
 
@@ -57,15 +57,23 @@ function isTaskListUser(user: SystemUser, roles: Role[]): boolean {
   return role.name === 'Administrator' || canViewTaskList(role, false);
 }
 
-/** ¿Puede cambiar a quién está asignada la tarea? Quien la asignó, sí. A quien
- *  se la asignó otra persona, no (aunque su rol tenga Edit). Con Edit también
- *  se pueden reasignar las tareas de los demás. Las reglas propuestas aplican
- *  lo mismo. */
+/** ¿`userId` es una de las personas asignadas a la tarea? */
+export const isAssignee = (task: Pick<UserTask, 'assigneeUserIds'>, userId: string): boolean =>
+  task.assigneeUserIds.includes(userId);
+
+/** ¿La tarea es solo de `userId`? (p. ej. alguien que se la asignó a sí mismo). */
+export const isOnlyAssignee = (task: Pick<UserTask, 'assigneeUserIds'>, userId: string): boolean =>
+  task.assigneeUserIds.length === 1 && task.assigneeUserIds[0] === userId;
+
+/** ¿Puede cambiar a quiénes está asignada la tarea? Quien la asignó, sí. A
+ *  quien se la asignó otra persona, no (aunque su rol tenga Edit). Con Edit
+ *  también se pueden reasignar las tareas de los demás. Las reglas propuestas
+ *  aplican lo mismo. */
 export function canReassignTask(
-  task: { createdByUserId: string; assigneeUserId: string }, meId: string, rights: TaskListRights,
+  task: Pick<UserTask, 'createdByUserId' | 'assigneeUserIds'>, meId: string, rights: TaskListRights,
 ): boolean {
   if (task.createdByUserId === meId) return true;
-  return rights.canEdit && task.assigneeUserId !== meId;
+  return rights.canEdit && !isAssignee(task, meId);
 }
 
 /** Persona a la que se le puede asignar una tarea. */

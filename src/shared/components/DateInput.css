@@ -1,4 +1,5 @@
-/* Campo de fecha MM/DD/AAAA (DateInput.tsx). El campo de texto conserva la
+/* Campo de fecha MM/DD/AAAA (DateInput.tsx) y de hora h:mm AM/PM
+   (TimeInput.tsx, mismo armado con un reloj). El campo de texto conserva la
    clase de cada vista; aquí solo se reserva lugar para el botón de calendario.
    Se apilan con grid (sin `position`) para que el ícono absoluto que muchas
    vistas ponen a la izquierda del campo siga pintándose ENCIMA del input. */

@@ -53,11 +53,20 @@ service cloud.firestore {
     function taskScopeAll() {
       return acc().admin == true || acc().m.get('Task List', {}).get('o', false) != true;
     }
-    // Tarea propia: asignada a mí, creada por mí o esperando mi OK.
+    // Tarea propia: asignada a mí (sola o con más personas), creada por mí o
+    // esperando mi OK. Las tareas nuevas guardan la lista assigneeUserIds; las
+    // de antes, una sola persona en assigneeUserId (la app lee las dos). Un
+    // campo que falta da error y el || sigue con la siguiente condición.
     function myTask(task) {
-      return task.assigneeUserId == acc().userId
+      return acc().userId in task.assigneeUserIds
+        || task.assigneeUserId == acc().userId
         || task.createdByUserId == acc().userId
         || task.approval.approverUserId == acc().userId;
+    }
+    // ¿La tarea está asignada a mí? (en cualquiera de los dos formatos)
+    function assignedToMe(task) {
+      return acc().userId in task.get('assigneeUserIds', [])
+        || task.get('assigneeUserId', '') == acc().userId;
     }
     // Puede ver dinero (Payroll, Invoices, Owner/Manager o Houses sin ocultar
     // "financial"). Lo calcula userAccess.ts.
@@ -318,19 +327,20 @@ service cloud.firestore {
     // Los comentarios van dentro de cada tarea (comments[]).
     // Scope de Task List en Roles: "Own" solo ve y cambia sus tareas (las que
     // tiene asignadas, las que creó y las que esperan su OK). Las consultas de
-    // la app con "Own" siempre filtran por assigneeUserId, createdByUserId
-    // (pestaña "Assigned by") o approval.approverUserId, así que las reglas
-    // las pueden comprobar. Quién la asignó y cuándo (createdBy*, createdAt)
-    // no se cambia nunca. A quién está asignada (assignee*) solo lo cambia
+    // la app con "Own" siempre filtran por assigneeUserIds (array-contains),
+    // assigneeUserId (tareas de antes), createdByUserId (pestaña "Assigned
+    // by") o approval.approverUserId, así que las reglas las pueden comprobar.
+    // Quién la asignó y cuándo (createdBy*, createdAt) no se cambia nunca. A
+    // quiénes está asignada (assignee*, en los dos formatos) solo lo cambia
     // quien la asignó, o alguien con Edit si la tarea no es suya
     // (opsPermissions.canReassignTask).
     match /user_tasks/{taskId} {
       allow read, delete: if has('Task List') && (taskScopeAll() || myTask(resource.data));
       allow update: if has('Task List') && (taskScopeAll() || myTask(resource.data))
         && !changed().hasAny(['createdByUserId', 'createdByUserName', 'createdAt'])
-        && (!changed().hasAny(['assigneeUserId', 'assigneeUserName'])
+        && (!changed().hasAny(['assigneeUserIds', 'assigneeUserNames', 'assigneeUserId', 'assigneeUserName'])
           || resource.data.createdByUserId == acc().userId
-          || (canDo('Task List', 'e') && resource.data.assigneeUserId != acc().userId));
+          || (canDo('Task List', 'e') && !assignedToMe(resource.data)));
       allow create: if has('Task List');
     }
 

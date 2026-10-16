@@ -1,5 +1,5 @@
 // Fila de una tarea en la lista: casilla para marcarla hecha, título y datos
-// (persona, quién la asignó, vencimiento, repetición, duración, proyecto,
+// (personas, quién la asignó, vencimiento, repetición, duración, proyecto,
 // comentarios, archivos).
 import type { CSSProperties } from 'react';
 import { BadgeCheck, Check, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
@@ -11,7 +11,7 @@ import './TaskRow.css';
 interface TaskRowProps {
   task: UserTask;
   today: string;
-  /** Nombre que se muestra de la persona asignada ("Me" si es quien mira). */
+  /** Nombres de las personas asignadas ("Me, Sandy +1"; "Me" es quien mira). */
   assigneeLabel: string;
   /** Quién la asignó ("From Omar"); null si se la asignó la misma persona o
    *  si es quien se está mirando (pestaña "Assigned by"). */
@@ -25,6 +25,9 @@ interface TaskRowProps {
   onOpen: (task: UserTask) => void;
   onComplete: (task: UserTask) => void;
 }
+
+/** Avatares que se ven en la fila (el resto lo cuenta la etiqueta: "+2"). */
+const MAX_AVATARS = 3;
 
 const ROW_TONE: Record<TaskSection, string> = {
   overdue: ' overdue',
@@ -49,6 +52,9 @@ export default function TaskRow({
   const section = sectionOf(task.dueDate, today);
   const attachments = task.attachments?.length || 0;
   const commentCount = task.comments?.length || 0;
+  const shownAssignees = task.assigneeUserIds
+    .slice(0, MAX_AVATARS)
+    .map((id, index) => ({ id, name: task.assigneeUserNames[index] ?? '' }));
   return (
     <li className={`ops-row${ROW_TONE[section]}${selected ? ' selected' : ''}`}>
       <button
@@ -64,7 +70,9 @@ export default function TaskRow({
         <span className="ops-row-title">{task.title}</span>
         <span className="ops-row-meta">
           <span className="ops-meta-person">
-            <OpsAvatar id={task.assigneeUserId} name={task.assigneeUserName} size="xs" />
+            <span className="ops-avatars">
+              {shownAssignees.map((person) => <OpsAvatar key={person.id} id={person.id} name={person.name} size="xs" />)}
+            </span>
             {assigneeLabel}
           </span>
           {assignedByLabel && <span className="ops-meta-from">From {assignedByLabel}</span>}

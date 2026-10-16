@@ -14,18 +14,25 @@
 // Lecturas: la lista en pantalla usa listeners filtrados (features/ops/hooks/
 // useOpsData.ts). getAll/getOne son lecturas únicas; getAll sin filtros trae
 // TODA la colección (también las hechas, que crecen sin fin): pásale filtros.
+//
+// Personas asignadas: una tarea puede tener varias (assigneeUserIds /
+// assigneeUserNames). Las tareas de antes guardan una sola (assigneeUserId /
+// assigneeUserName): el converter las lee como lista y `update` borra el
+// formato viejo cuando se cambian las personas. Mientras queden tareas viejas,
+// la lista de una persona escucha los dos formatos (useOpsData.ts).
 // ============================================================================
 import {
-  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where, writeBatch,
-  type CollectionReference, type DocumentReference, type QueryConstraint, type UpdateData,
+  arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where, writeBatch,
+  type CollectionReference, type DocumentReference, type FirestoreDataConverter, type QueryConstraint,
+  type QueryDocumentSnapshot, type UpdateData, type WithFieldValue,
 } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db } from '../config/firebase';
 import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
-import { typedConverter, type NewDoc } from '../lib/firebase/typedConverter';
+import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  Repeat, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  Repeat, StoredUserTask, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
@@ -36,11 +43,36 @@ export type { KnownProjects } from './taskProjectsService';
 // ---------------------------------------------------------------------------
 // Referencias tipadas (la colección se tipa una sola vez, aquí)
 // ---------------------------------------------------------------------------
-export const userTasksCol: CollectionReference<UserTask> =
-  collection(db, COLLECTIONS.userTasks).withConverter(typedConverter<UserTask>());
+/** Como typedConverter (el id es el del documento), y además lee la persona
+ *  del formato viejo (assigneeUserId) como lista: el resto de la app solo ve
+ *  assigneeUserIds / assigneeUserNames. */
+const userTaskConverter: FirestoreDataConverter<UserTask, StoredUserTask> = {
+  toFirestore(task: WithFieldValue<UserTask>): WithFieldValue<StoredUserTask> {
+    const { id: _id, ...data } = task;
+    return data;
+  },
+  fromFirestore(snap: QueryDocumentSnapshot): UserTask {
+    const { assigneeUserId, assigneeUserName, ...data } = snap.data() as StoredUserTask;
+    return {
+      ...data,
+      id: snap.id,
+      assigneeUserIds: data.assigneeUserIds ?? (assigneeUserId ? [assigneeUserId] : []),
+      assigneeUserNames: data.assigneeUserNames ?? (assigneeUserId ? [assigneeUserName ?? ''] : []),
+    };
+  },
+};
 
-export const userTaskRef = (taskId: string): DocumentReference<UserTask> =>
-  doc(db, COLLECTIONS.userTasks, taskId).withConverter(typedConverter<UserTask>());
+export const userTasksCol: CollectionReference<UserTask, StoredUserTask> =
+  collection(db, COLLECTIONS.userTasks).withConverter(userTaskConverter);
+
+export const userTaskRef = (taskId: string): DocumentReference<UserTask, StoredUserTask> =>
+  doc(db, COLLECTIONS.userTasks, taskId).withConverter(userTaskConverter);
+
+/** Campo de la persona en el formato viejo (para escuchar las tareas de antes). */
+export const LEGACY_ASSIGNEE_FIELD = 'assigneeUserId';
+
+/** Borra la persona del formato viejo (va junto con las listas nuevas). */
+const DROP_LEGACY_ASSIGNEE = { assigneeUserId: deleteField(), assigneeUserName: deleteField() };
 
 /** Carpeta de Storage de los adjuntos de una tarea. La hora va delante para
  *  que dos archivos con el mismo nombre no se pisen. */
@@ -59,8 +91,8 @@ export interface Actor {
 /** Campos para crear una tarea (el resto los pone el service). */
 export interface TaskInput {
   title: string;
-  assigneeUserId: string;
-  assigneeUserName: string;
+  assigneeUserIds: string[];
+  assigneeUserNames: string[];
   dueDate: YmdDate;
   dueTime: string;
   durationMinutes: number;
@@ -74,11 +106,12 @@ export interface TaskInput {
 /** Campos que se editan desde el panel de la tarea. Quién la asignó
  *  (createdBy*) y cuándo (createdAt) no se editan nunca. */
 export type TaskPatch = Partial<Pick<UserTask,
-  'title' | 'assigneeUserId' | 'assigneeUserName' | 'dueDate' | 'dueTime' | 'durationMinutes'
+  'title' | 'assigneeUserIds' | 'assigneeUserNames' | 'dueDate' | 'dueTime' | 'durationMinutes'
   | 'priorityId' | 'projectId' | 'projectTitle' | 'repeat'>>;
 
-/** Filtros de igualdad para getAll (sin índice compuesto). */
-type UserTaskFilters = Partial<Pick<UserTask, 'status' | 'assigneeUserId' | 'createdByUserId' | 'projectId'>>;
+/** Filtros de igualdad para getAll (sin índice compuesto). Por persona
+ *  asignada no hay: es una lista (ver useOpsData.ts). */
+type UserTaskFilters = Partial<Pick<UserTask, 'status' | 'createdByUserId' | 'projectId'>>;
 
 // ---------------------------------------------------------------------------
 // Ayudas internas
@@ -156,10 +189,12 @@ export const userTasksService = {
   },
 
   /** Guarda solo los campos cambiados y ajusta los contadores si cambió el
-   *  proyecto o la duración. `task` es la versión en vivo. */
+   *  proyecto o la duración. `task` es la versión en vivo. Si cambian las
+   *  personas, borra también el formato viejo (una sola persona). */
   async update(task: UserTask, patch: TaskPatch, known: KnownProjects): Promise<void> {
     const batch = writeBatch(db);
-    batch.update(userTaskRef(task.id), patch as UpdateData<UserTask>);
+    const changes = patch.assigneeUserIds ? { ...patch, ...DROP_LEGACY_ASSIGNEE } : patch;
+    batch.update(userTaskRef(task.id), changes as UpdateData<StoredUserTask>);
     const before = contribution(task);
     const after = contribution({ status: task.status, durationMinutes: patch.durationMinutes ?? task.durationMinutes });
     const nextProject = patch.projectId !== undefined ? patch.projectId : task.projectId;
@@ -183,7 +218,7 @@ export const userTasksService = {
   },
 
   /** Tareas que cumplen los filtros (igualdades). Lectura única con getDocs.
-   *  Ej.: getAll({ assigneeUserId: id, status: 'open' }). Sin filtros trae toda
+   *  Ej.: getAll({ createdByUserId: id, status: 'open' }). Sin filtros trae toda
    *  la colección: evítalo (cada documento es una lectura). */
   async getAll(filters: UserTaskFilters = {}): Promise<UserTask[]> {
     const constraints: QueryConstraint[] = Object.entries(filters)
@@ -211,8 +246,8 @@ export const userTasksService = {
       nextId = nextRef.id;
       const input: TaskInput = {
         title: task.title,
-        assigneeUserId: task.assigneeUserId,
-        assigneeUserName: task.assigneeUserName,
+        assigneeUserIds: task.assigneeUserIds,
+        assigneeUserNames: task.assigneeUserNames,
         dueDate: nextOccurrence(task.repeat, task.dueDate),
         dueTime: task.dueTime,
         durationMinutes: task.durationMinutes,

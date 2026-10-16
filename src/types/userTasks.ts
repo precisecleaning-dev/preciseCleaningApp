@@ -5,7 +5,8 @@
 // Se importan desde '../types/index' (index.ts los reexporta).
 //
 // Fechas como TEXTO: días AAAA-MM-DD (YmdDate) y fecha + hora ISO
-// (IsoDateTime). Todo campo que guarda un usuario termina en UserId / UserName.
+// (IsoDateTime). Todo campo que guarda un usuario termina en UserId / UserName
+// (UserIds / UserNames si guarda varios, como las personas asignadas).
 // ============================================================================
 import type { IsoDateTime, YmdDate } from './index';
 
@@ -67,11 +68,11 @@ export interface TaskComment {
 export interface UserTask {
   id: string; //                        PK · id del documento
   title: string; //                     qué hay que hacer
-  assigneeUserId: string; //            FK → system_users: a quién se asignó
-  assigneeUserName: string; //          copia del nombre del asignado
+  assigneeUserIds: string[]; //         FK → system_users: a quiénes se asignó (una o varias personas)
+  assigneeUserNames: string[]; //       copia de sus nombres, en el mismo orden que assigneeUserIds
   dueDate: YmdDate; //                  día en que vence ('' = sin fecha)
   dueTime: string; //                   hora "HH:mm" (24 h) o "" si no tiene hora
-  durationMinutes: number; //           duración estimada en minutos (2 h = 120)
+  durationMinutes: number; //           duración estimada en minutos (2 h = 120; 0 = no aplica)
   priorityId: string | null; //         FK → settings_priorities (High, Medium…)
   projectId: string | null; //          FK → task_projects (null = "No project")
   projectTitle: string | null; //       copia del título del proyecto
@@ -86,3 +87,17 @@ export interface UserTask {
   createdByUserName: string; //         copia del nombre de quien la asignó
   createdAt: IsoDateTime; //            cuándo se creó
 }
+
+/** Formato viejo de la persona asignada (hasta 10/2026 una tarea tenía una
+ *  sola). Solo se lee: el service lo pasa a assigneeUserIds / assigneeUserNames
+ *  y lo borra la próxima vez que se cambian las personas de esa tarea. */
+export interface LegacyTaskAssignee {
+  assigneeUserId?: string; //           FK → system_users: la única persona asignada
+  assigneeUserName?: string; //         copia de su nombre
+}
+
+/** Cómo está guardada una tarea en Firestore: sin `id` (es el del documento)
+ *  y, si es vieja, con la persona en el formato de antes. */
+export type StoredUserTask = Omit<UserTask, 'id' | 'assigneeUserIds' | 'assigneeUserNames'>
+  & Partial<Pick<UserTask, 'assigneeUserIds' | 'assigneeUserNames'>>
+  & LegacyTaskAssignee;

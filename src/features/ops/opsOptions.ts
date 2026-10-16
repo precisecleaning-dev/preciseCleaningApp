@@ -2,25 +2,16 @@
 // Opciones de los selectores del Task list y colores derivados (sin campos
 // nuevos en Firestore: el color de un proyecto o de un avatar sale de su id).
 import type { Repeat, RepeatFreq } from '../../types/index';
-import { formatHm, formatMinutes } from './opsDates';
+import { formatMinutes } from './opsDates';
 
-export const DURATION_OPTIONS = [5, 10, 15, 30, 45, 60, 90, 120, 180, 240].map((m) => ({
-  value: m,
-  label: formatMinutes(m),
-}));
-
-/** Horas cada 15 min de 5:00 AM a 10:00 PM ("" = sin hora). */
-export const TIME_OPTIONS: { value: string; label: string }[] = (() => {
-  const out = [{ value: '', label: 'No time' }];
-  for (let h = 5; h <= 22; h += 1) {
-    for (const m of [0, 15, 30, 45]) {
-      if (h === 22 && m > 0) break;
-      const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      out.push({ value, label: formatHm(value) });
-    }
-  }
-  return out;
-})();
+/** "How long": 0 = no aplica (la fila no muestra duración ni suma minutos al proyecto). */
+export const DURATION_OPTIONS = [
+  { value: 0, label: 'N/A' },
+  ...[5, 10, 15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => ({
+    value: minutes,
+    label: formatMinutes(minutes),
+  })),
+];
 
 export const REPEAT_OPTIONS: { value: '' | RepeatFreq; label: string }[] = [
   { value: '', label: 'Does not repeat' },
@@ -57,6 +48,12 @@ function hash(text: string): number {
 
 /** Color estable para un id (proyectos y avatares). */
 export const colorFor = (id: string): string => PALETTE[hash(id || '?') % PALETTE.length];
+
+/** Nombres cortos de varias personas: "Me, Sandy" o "Me, Sandy +2". */
+export function namesSummary(names: string[], maxShown = 2): string {
+  const shown = names.slice(0, maxShown).join(', ');
+  return names.length > maxShown ? `${shown} +${names.length - maxShown}` : shown;
+}
 
 /** "Sandy Martinez" → "SM"; "sandy@x.com" → "SA". */
 export function initials(name: string): string {
