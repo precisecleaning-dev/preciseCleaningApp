@@ -18,3 +18,10 @@ export const sortPlacesByOrder = (places: Place[]): Place[] => [...places].sort(
 
 /** ¿La tarea sigue en el checklist? (no está archivada) */
 export const isActiveTask = (task: Task): boolean => task.archived !== true;
+
+// "Edit checklist" en Quality Check: ids para usePendingById mientras se guarda
+// un cambio (los botones de ese elemento se deshabilitan hasta que termina).
+/** Cambio de orden de las áreas: uno a la vez (el intercambio usa la lista completa). */
+export const CHECKLIST_ORDER_PENDING_ID = 'checklist-order';
+/** "+ Add task" de un área. Renombrar y quitar usan el id de la tarea. */
+export const addTaskPendingId = (sectionId: string): string => `add-task:${sectionId}`;

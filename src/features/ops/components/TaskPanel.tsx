@@ -6,7 +6,7 @@
 import type { FocusEvent, KeyboardEvent } from 'react';
 import { CheckCircle2, RotateCcw, Trash2 } from 'lucide-react';
 import type {
-  ApprovalDecision, AssignableUser, UserTaskApproval, TaskAttachment, TaskProject, UserTask, TaskComment, Priority,
+  Actor, ApprovalDecision, AssignableUser, UserTaskApproval, TaskAttachment, TaskProject, UserTask, TaskComment, Priority,
 } from '../../../types/index';
 import { MAX_TITLE_LENGTH, type TaskPatch } from '../../../services/userTasksService';
 import TaskApproval from './TaskApproval';
@@ -38,8 +38,8 @@ interface TaskPanelProps {
   /** Quienes pueden dar el visto bueno y el que se propone por defecto. */
   approvers: AssignableUser[];
   defaultApproverUserId: string;
-  onSendApproval: (approver: AssignableUser) => void;
-  onDecideApproval: (decision: ApprovalDecision, note: string) => void;
+  onSendApproval: (approver: Actor) => void;
+  onDecideApproval: (decision: ApprovalDecision, note: string) => Promise<boolean>;
   onSetApproval: (approval: UserTaskApproval | null) => void;
 }
 
@@ -113,13 +113,13 @@ export default function TaskPanel(props: TaskPanelProps) {
         key={`${task.id}:${task.approval?.status ?? 'none'}`}
         approval={task.approval ?? null}
         approvers={approvers}
-        defaultApproverId={defaultApproverUserId}
-        meId={currentUser.id}
-        canManage={canEdit && !isDone}
-        busy={isBusy}
-        onSend={onSendApproval}
-        onDecide={onDecideApproval}
-        onSetApproval={onSetApproval}
+        defaultApproverUserId={defaultApproverUserId}
+        currentUserId={currentUser.id}
+        canManageApproval={canEdit && !isDone}
+        isBusy={isBusy}
+        onSendForApproval={onSendApproval}
+        onDecideApproval={onDecideApproval}
+        onApprovalChange={onSetApproval}
       />
       <TaskAttachments
         attachments={task.attachments ?? []}

@@ -14,13 +14,15 @@
 //   · el top 3 de una persona (un documento);
 //   · las tareas que esperan el visto bueno de una persona.
 // Cada hook devuelve también `error`: si el listener falla (reglas, permisos
-// del rol, sin red), la vista muestra que no se pudieron cargar en vez de una
-// lista vacía.
+// del rol) o no hay red y el caché no tiene nada, la vista muestra que no se
+// pudieron cargar en vez de una lista vacía. Sin red Firestore NO da error:
+// responde desde el caché persistente (fromCache); por eso se escucha también
+// la metadata (includeMetadataChanges) y el error se quita solo al volver la red.
 // Los proyectos son pocos y los usa toda la vista: van por el store compartido
 // (useLiveData('taskProjects')).
 // ============================================================================
 import { useEffect, useState } from 'react';
-import { onSnapshot, query, where, type Query } from 'firebase/firestore';
+import { onSnapshot, query, where, type Query, type SnapshotMetadata } from 'firebase/firestore';
 import type { StoredUserTask, UserPriorities, UserTask } from '../../../types/index';
 import { LEGACY_ASSIGNEE_FIELD, userTaskRef, userTasksCol } from '../../../services/userTasksService';
 import { prioritiesRef } from '../services/prioritiesService';
@@ -29,6 +31,12 @@ export const ALL_USERS = '__all__';
 
 const EMPTY_TASKS: UserTask[] = [];
 const EMPTY_PROJECT_IDS: string[] = [];
+
+/** Sin red y el dato salió del caché: "vacío" no es confiable (puede no estar en caché). */
+const OFFLINE_LOAD_ERROR = new Error('Sin conexión: no se pudieron cargar las tareas.');
+const isOfflineCacheOnly = (metadata: SnapshotMetadata) =>
+  metadata.fromCache && typeof navigator !== 'undefined' && !navigator.onLine;
+const WITH_METADATA = { includeMetadataChanges: true } as const;
 
 /** Resultado de un listener junto con la clave (persona o tarea) a la que
  *  pertenece: si la clave cambia, el resultado viejo no se muestra. */
@@ -64,6 +72,7 @@ function useOpenTasksByRelation(
     if (!userId) return;
     const queries = buildOpenTaskQueries(relation, userId);
     const resultsByQuery: (UserTask[] | null)[] = queries.map(() => null);
+    const isOfflineCacheByQuery: boolean[] = queries.map(() => false);
     let firstError: Error | null = null;
     const publishMergedTasks = () => {
       if (resultsByQuery.includes(null)) return;
@@ -71,12 +80,17 @@ function useOpenTasksByRelation(
       resultsByQuery.flat().forEach((task) => {
         if (task && !tasksById.has(task.id)) tasksById.set(task.id, task);
       });
-      setKeyedTasks({ key: `${relation}:${userId}`, value: [...tasksById.values()], error: firstError });
+      const mergedTasks = [...tasksById.values()];
+      const isOfflineWithoutTasks = mergedTasks.length === 0 && isOfflineCacheByQuery.every(Boolean);
+      const error = firstError ?? (isOfflineWithoutTasks ? OFFLINE_LOAD_ERROR : null);
+      setKeyedTasks({ key: `${relation}:${userId}`, value: mergedTasks, error });
     };
     const unsubscribers = queries.map((taskQuery, index) => onSnapshot(
       taskQuery,
+      WITH_METADATA,
       (snapshot) => {
         resultsByQuery[index] = snapshot.docs.map((taskDoc) => taskDoc.data());
+        isOfflineCacheByQuery[index] = isOfflineCacheOnly(snapshot.metadata);
         publishMergedTasks();
       },
       (error) => {
@@ -127,14 +141,23 @@ export function useApprovalQueue(userId: string | null): { tasks: UserTask[]; er
 }
 
 /** Una tarea en vivo (la del panel). `task` es null mientras carga (`loaded` en
- *  false) o si se borró (`loaded` en true). */
+ *  false) o si se borró (`loaded` en true). Sin red y sin la tarea en caché es
+ *  un error, no "borrada". */
 export function useLiveTask(taskId: string | null): { task: UserTask | null; loaded: boolean; error: Error | null } {
   const [keyedTask, setKeyedTask] = useState<KeyedState<UserTask | null> | null>(null);
   useEffect(() => {
     if (!taskId) return;
     return onSnapshot(
       userTaskRef(taskId),
-      (snapshot) => setKeyedTask({ key: taskId, value: snapshot.exists() ? snapshot.data() : null, error: null }),
+      WITH_METADATA,
+      (snapshot) => {
+        const isMissingOffline = !snapshot.exists() && isOfflineCacheOnly(snapshot.metadata);
+        setKeyedTask({
+          key: taskId,
+          value: snapshot.exists() ? snapshot.data() : null,
+          error: isMissingOffline ? OFFLINE_LOAD_ERROR : null,
+        });
+      },
       (error) => {
         console.error('Error escuchando la tarea:', error);
         setKeyedTask({ key: taskId, value: null, error });

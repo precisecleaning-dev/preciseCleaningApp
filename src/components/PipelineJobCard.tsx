@@ -6,61 +6,65 @@ import type { CSSProperties } from 'react';
 import { AlertTriangle, Briefcase, CalendarDays, CheckCircle, MapPin, StickyNote, Users } from 'lucide-react';
 import type { Property, Status } from '../types/index';
 import { formatDate } from '../utils/dateFormat';
+import { money } from '../utils/jobFinancials';
 import PipelineStatusPill from './PipelineStatusPill';
 
 interface PipelineJobCardProps {
-  house: Property;
+  property: Property;
   clientName: string;
   teamName: string;
   teamColor: string;
   isHighPriority: boolean;
   /** Nota de oficina visible (permiso "Office Notes" + Configure Fields). */
-  showOfficeNote: boolean;
+  isOfficeNoteVisible: boolean;
   /** Monto de la casa; null = no se muestra. */
-  amount: number | null;
+  propertyAmount: number | null;
   statuses: Status[];
   canChangeStatus: boolean;
-  onOpenDetail: (house: Property) => void;
-  onRequestStatusChange: (house: Property) => void;
+  onOpenPropertyDetail: (property: Property) => void;
+  onRequestStatusChange: (property: Property) => void;
 }
 
 const PipelineJobCard = ({
-  house, clientName, teamName, teamColor, isHighPriority, showOfficeNote, amount, statuses, canChangeStatus,
-  onOpenDetail, onRequestStatusChange,
+  property, clientName, teamName, teamColor, isHighPriority, isOfficeNoteVisible, propertyAmount, statuses,
+  canChangeStatus, onOpenPropertyDetail, onRequestStatusChange,
 }: PipelineJobCardProps) => {
   // Nota general (NO la del empleado): la de la app (note) o la importada de AppSheet (generalNotes).
-  const generalNote = house.note || house.generalNotes;
-  const teamAvatarStyle = { '--team-bg': `${teamColor}20`, '--team-color': teamColor } as CSSProperties;
+  const generalNote = property.note || property.generalNotes;
+  // El fondo del avatar sale del mismo color en el CSS (color-mix).
+  const teamAvatarStyle = { '--team-color': teamColor } as CSSProperties;
+
+  const handleOpenPropertyDetail = () => onOpenPropertyDetail(property);
 
   return (
-    <div onClick={() => onOpenDetail(house)} className="pb-job-card">
+    <div onClick={handleOpenPropertyDetail} className="pb-job-card">
       <div className="pb-job-top-row">
         <span className="pb-job-name">{clientName}</span>
         <div className="pb-job-flags">
-          {house.employeeFinishedBy && <CheckCircle size={15} color="#10b981" />}
-          {isHighPriority && <AlertTriangle size={15} color="#dc2626" />}
+          {property.employeeFinishedBy && <CheckCircle size={15} className="finished pb-job-flag" />}
+          {isHighPriority && <AlertTriangle size={15} className="high pb-job-flag" />}
         </div>
       </div>
 
-      {house.address && (
+      {property.address && (
         <div className="pb-job-meta-row">
           <MapPin size={12} className="pb-shrink-0" />
-          <span className="pb-job-meta-text">{house.address}</span>
+          <span className="pb-job-meta-text">{property.address}</span>
         </div>
       )}
 
       <div className="pb-job-meta-row">
         <CalendarDays size={12} className="pb-shrink-0" />
-        <span>{house.scheduleDate ? formatDate(house.scheduleDate) : 'Sin fecha'}</span>
+        <span>{property.scheduleDate ? formatDate(property.scheduleDate) : 'No date'}</span>
       </div>
 
       {/* Notas de oficina en azul y con etiqueta: van primero, son de coordinación. */}
-      {showOfficeNote && house.officeNote && (
+      {isOfficeNoteVisible && property.officeNote && (
         <div className="office pb-job-note">
           <Briefcase size={12} className="office pb-job-note-icon" />
           <span className="pb-job-note-body">
             <span className="pb-job-note-label">Office</span>
-            <span className="pb-job-note-text">{house.officeNote}</span>
+            <span className="pb-job-note-text">{property.officeNote}</span>
           </span>
         </div>
       )}
@@ -72,7 +76,7 @@ const PipelineJobCard = ({
         </div>
       )}
 
-      {amount !== null && <div className="pb-job-amount">${amount.toFixed(2)}</div>}
+      {propertyAmount !== null && <div className="pb-job-amount">{money(propertyAmount)}</div>}
 
       <div className="pb-job-team-row">
         <span className="pb-job-team-avatar" style={teamAvatarStyle}>
@@ -82,10 +86,10 @@ const PipelineJobCard = ({
       </div>
 
       <PipelineStatusPill
-        currentStatusId={house.statusId}
+        currentStatusId={property.statusId}
         statuses={statuses}
         isDisabled={!canChangeStatus}
-        onRequestStatusChange={() => onRequestStatusChange(house)}
+        onRequestStatusChange={() => onRequestStatusChange(property)}
       />
     </div>
   );

@@ -5,16 +5,18 @@ import { MAX_CHECKLIST_TASK_NAME_LENGTH } from '../../../services/settingsTasksS
 
 interface QcAddTaskFormProps {
   sectionName: string;
+  /** Se está guardando la tarea anterior: el botón espera (evita duplicados). */
+  isAdding: boolean;
   onAddTask: (taskName: string) => void;
 }
 
-const QcAddTaskForm = ({ sectionName, onAddTask }: QcAddTaskFormProps) => {
+const QcAddTaskForm = ({ sectionName, isAdding, onAddTask }: QcAddTaskFormProps) => {
   const [newTaskName, setNewTaskName] = useState('');
   const trimmedTaskName = newTaskName.trim();
 
   const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!trimmedTaskName) return;
+    if (!trimmedTaskName || isAdding) return;
     onAddTask(trimmedTaskName);
     setNewTaskName('');
   };
@@ -29,8 +31,8 @@ const QcAddTaskForm = ({ sectionName, onAddTask }: QcAddTaskFormProps) => {
         aria-label={`New task for ${sectionName}`}
         onChange={(event) => setNewTaskName(event.target.value)}
       />
-      <button type="submit" className="qcl-add-btn" disabled={!trimmedTaskName}>
-        <Plus size={14} /> Add task
+      <button type="submit" className="qcl-add-btn" disabled={!trimmedTaskName || isAdding}>
+        <Plus size={14} /> {isAdding ? 'Adding…' : 'Add task'}
       </button>
     </form>
   );

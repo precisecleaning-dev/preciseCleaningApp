@@ -33,7 +33,7 @@ import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  ApprovalDecision, Repeat, StoredUserTask, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  Actor, ApprovalDecision, Repeat, StoredUserTask, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
@@ -93,12 +93,6 @@ const taskFilePath = (taskId: string, fileName: string) =>
 // ---------------------------------------------------------------------------
 // Tipos de entrada
 // ---------------------------------------------------------------------------
-/** Quién hace el cambio. */
-export interface Actor {
-  id: string;
-  name: string;
-}
-
 /** Campos para crear una tarea (el resto los pone el service). */
 export interface TaskInput {
   title: string;

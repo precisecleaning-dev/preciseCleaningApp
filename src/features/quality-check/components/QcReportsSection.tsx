@@ -1,18 +1,21 @@
 // Reportes de Quality Check ya FINALIZADOS: barra de periodo (fecha de la
 // inspección) con las pestañas por estado actual de la casa y el buscador,
-// tabla en escritorio o tarjetas en el teléfono (se dibuja solo una, useMediaQuery) y envío por WhatsApp, email o PDF. Desde
-// aquí una casa solo se mueve a Quality Check, Recall o Invoice.
+// tabla en escritorio o tarjetas en el teléfono (se dibuja solo una,
+// useMediaQuery) y envío por WhatsApp, email o PDF. Desde aquí una casa solo
+// se mueve a Quality Check, Recall o Invoice.
 // SIN columnas de dinero: es para la manager de calidad, no para facturación.
 // Lee la colección completa `qualityChecks` del store compartido: quien la monta
 // paga esas lecturas (por eso Quality Check la abre solo bajo demanda).
 import { useDeferredValue, useMemo, useState } from 'react';
-import type { Customer, Property, QcReportRow, QcReportTab, Role, SystemUser } from '../../../types/index';
+import type { Property, QcReportRow, QcReportTab, Role, SystemUser } from '../../../types/index';
 import { useLiveCollection, useLiveData } from '../../../shared/data/liveCollections';
 import { isHiddenByWindow, useFullHistory } from '../../../shared/data/propertiesWindow';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
 import { useStoredPeriod } from '../../../shared/hooks/useStoredPeriod';
 import PeriodBar from '../../../components/PeriodBar';
 import { inPeriod, periodRange } from '../../../utils/periods';
+import { displayClientName } from '../../../utils/customerDocs';
+import { getRelationName } from '../../../utils/relations';
 import ShareReportSheet from '../../../components/ShareReportSheet';
 import StatusChangeModal from '../../../components/StatusChangeModal';
 import type { QCPdfPlace, QCPdfTask } from '../../../utils/qcReportPdf';
@@ -37,14 +40,14 @@ interface QcReportsSectionProps {
 const REPORT_CARDS_QUERY = '(max-width: 900px)';
 
 const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = false }: QcReportsSectionProps) => {
-  const { data: qualityChecksData, loaded: areReportsLoaded } = useLiveCollection('qualityChecks');
-  const reports = qualityChecksData as unknown as QcReportRow[];
+  const { data: qualityCheckDocs, loaded: areReportsLoaded } = useLiveCollection('qualityChecks');
+  const allReports = qualityCheckDocs as unknown as QcReportRow[];
   const customers = useLiveData('customers');
   const statuses = useLiveData('statuses');
   const teams = useLiveData('teams');
   const places: QCPdfPlace[] = useLiveData('places');
   const tasks: QCPdfTask[] = useLiveData('tasks');
-  const showReportCards = useMediaQuery(REPORT_CARDS_QUERY);
+  const isCardLayout = useMediaQuery(REPORT_CARDS_QUERY);
 
   const [searchText, setSearchText] = useState('');
   // La caja responde al instante; el filtro de la tabla va un paso atrás.
@@ -55,41 +58,37 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
   const [selectedTab, setSelectedTab] = useState<QcReportTab>('quality_check');
 
   // Cambiar el status de la casa: mismo permiso que Invoices (módulo "Quality Check").
-  const canChangeHouseStatus = isSuperAdmin
+  const canChangePropertyStatus = isSuperAdmin
     || !!activeRole?.permissions?.find((permission) => permission.module === 'Quality Check')?.canEdit;
 
-  const getClientName = (clientIdOrName?: string): string => {
-    if (!clientIdOrName) return 'Unknown Client';
-    const customer = customers.find((candidate) => candidate.id === clientIdOrName) as
-      (Customer & { name?: string; firstName?: string; lastName?: string }) | undefined;
-    if (!customer) return clientIdOrName;
-    return customer.name || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || clientIdOrName;
-  };
-  const getTeamName = (teamId?: string | null): string =>
-    (teamId ? teams.find((team) => team.id === teamId)?.name ?? 'Unassigned' : 'Unassigned');
+  // Nombres con las utilidades del proyecto: un cliente borrado sale como
+  // "Cliente eliminado · xxxx" (nunca el id crudo) y el equipo se resuelve por
+  // id o nombre, sin mayúsculas ni espacios de más.
+  const getClientName = (clientIdOrName?: string): string => displayClientName(customers, clientIdOrName);
+  const getTeamName = (teamId?: string | null): string => getRelationName(teams, teamId, 'Unassigned');
 
-  const housesById = useMemo(() => new Map(properties.map((house) => [house.id, house] as const)), [properties]);
-  const getHouseForReport = (report: QcReportRow): Property | undefined => housesById.get(report.houseId);
+  const propertiesById = useMemo(() => new Map(properties.map((property) => [property.id, property] as const)), [properties]);
+  const getPropertyForReport = (report: QcReportRow): Property | undefined => propertiesById.get(report.houseId);
   const getReportTeamName = (report: QcReportRow): string =>
-    report.team || getTeamName(getHouseForReport(report)?.teamId);
+    report.team || getTeamName(getPropertyForReport(report)?.teamId);
 
   const reportActions = useQcReportActions({
-    statuses, places, tasks, currentUser, getClientName, getTeamName, getHouseForReport,
+    statuses, places, tasks, currentUser, getClientName, getTeamName, getPropertyForReport,
   });
 
   // Solo FINALIZADOS, del más reciente al más viejo. Con la ventana de 12 meses,
   // un reporte viejo cuya casa no se cargó es historial oculto, no una casa borrada.
   const hasFullHistory = useFullHistory();
-  const loadedHouseIds = useMemo(() => new Set(properties.map((house) => house.id)), [properties]);
-  const finishedReports = useMemo(() => reports
+  const loadedPropertyIds = useMemo(() => new Set(properties.map((property) => property.id)), [properties]);
+  const finishedReports = useMemo(() => allReports
     .filter((report) => report.status === 'Finished')
-    .filter((report) => !isHiddenByWindow(hasFullHistory, loadedHouseIds.has(report.houseId), getReportTimeMs(report)))
+    .filter((report) => !isHiddenByWindow(hasFullHistory, loadedPropertyIds.has(report.houseId), getReportTimeMs(report)))
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport)),
-  [reports, hasFullHistory, loadedHouseIds]);
+  [allReports, hasFullHistory, loadedPropertyIds]);
 
   const tabByReportId = useMemo(
-    () => new Map(finishedReports.map((report) => [report.id, getReportTab(housesById.get(report.houseId), statuses)] as const)),
-    [finishedReports, housesById, statuses],
+    () => new Map(finishedReports.map((report) => [report.id, getReportTab(propertiesById.get(report.houseId), statuses)] as const)),
+    [finishedReports, propertiesById, statuses],
   );
 
   const reportCountByTab = useMemo(() => {
@@ -109,7 +108,7 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
 
   const emptyMessage = (() => {
     if (!areReportsLoaded) return 'Cargando reportes de calidad...';
-    if (showReportCards && visibleReports.length === 0) return 'No hay reportes para mostrar con estos filtros.';
+    if (isCardLayout && visibleReports.length === 0) return 'No hay reportes para mostrar con estos filtros.';
     if (finishedReports.length === 0) {
       return 'Todavía no hay inspecciones finalizadas. Al terminar una inspección en Quality Check aparecerá aquí.';
     }
@@ -135,9 +134,9 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
 
   const renderStatusPill = (report: QcReportRow) => (
     <QcReportStatusPill
-      house={getHouseForReport(report)}
+      house={getPropertyForReport(report)}
       statuses={statuses}
-      isDisabled={reportActions.isSavingStatus || !canChangeHouseStatus}
+      isDisabled={reportActions.isSavingStatus || !canChangePropertyStatus}
       onChangeStatus={(house) => reportActions.openStatusModal(report, house)}
     />
   );
@@ -156,7 +155,7 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
         </PeriodBar>
       </div>
 
-      {showReportCards ? (
+      {isCardLayout ? (
         <div className="qcrs-cards-wrap">
           {emptyMessage !== null && <div className="qcrs-card-empty">{emptyMessage}</div>}
           {emptyMessage === null && visibleReports.map((report) => (

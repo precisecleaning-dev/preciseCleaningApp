@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Priority, Property, Status, Team } from '../types/index';
 import { dateSortValue } from '../utils/dateFormat';
-import { getRelationColor, getRelationName } from '../utils/relations';
+import { getRelationColor, getRelationName, matchesRelation } from '../utils/relations';
 import StatusChangeModal, { type StatusModalConfig } from './StatusChangeModal';
 import PipelineColumn from './PipelineColumn';
 import PipelineJobCard from './PipelineJobCard';
@@ -25,74 +25,76 @@ interface PipelineBoardViewProps {
   teams: Team[];
   priorities?: Priority[];
   getClientName: (idOrName?: string | null) => string;
-  onOpenDetail: (house: Property) => void;
-  onQuickStatusChange: (propertyId: string, newStatusId: string) => void;
-  canEdit?: boolean;
+  onOpenPropertyDetail: (property: Property) => void;
+  onStatusChange: (propertyId: string, statusId: string) => void;
+  canChangeStatus?: boolean;
   /** Opcional: monto facturado por casa; se muestra en la tarjeta y se suma por columna. */
-  getAmount?: (house: Property) => number;
+  getPropertyAmount?: (property: Property) => number;
   /** Mostrar las NOTAS DE OFICINA en la tarjeta. Lo decide HouseList (permiso
    *  "Office Notes" + Configure Fields); el tablero solo obedece. */
-  showOfficeNote?: boolean;
+  isOfficeNoteVisible?: boolean;
 }
 
 const DEFAULT_TEAM_COLOR = '#64748b';
 
 /** Más reciente primero: scheduleDate o, si no tiene, receiveDate. */
-const compareByDateDescending = (firstHouse: Property, secondHouse: Property) =>
-  dateSortValue(secondHouse.scheduleDate || secondHouse.receiveDate)
-  - dateSortValue(firstHouse.scheduleDate || firstHouse.receiveDate);
+const compareByDateDescending = (firstProperty: Property, secondProperty: Property) =>
+  dateSortValue(secondProperty.scheduleDate || secondProperty.receiveDate)
+  - dateSortValue(firstProperty.scheduleDate || firstProperty.receiveDate);
 
 const PipelineBoardView = ({
   properties, statuses, teams, priorities = [], getClientName,
-  onOpenDetail, onQuickStatusChange, canEdit = false, getAmount,
-  showOfficeNote = false,
+  onOpenPropertyDetail, onStatusChange, canChangeStatus = false, getPropertyAmount,
+  isOfficeNoteVisible = false,
 }: PipelineBoardViewProps) => {
   // Modal central de cambio de estado (null = cerrado)
-  const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
+  const [statusModalConfig, setStatusModalConfig] = useState<StatusModalConfig | null>(null);
 
   // Columnas = todos los status menos "Invoice" (igual que la tabla). Las casas
   // SIN status no salen: viven en su propio módulo ("No Status").
-  const boardColumns = statuses.filter((status) => status.name?.toLowerCase() !== 'invoice');
+  const columnStatuses = statuses.filter((status) => status.name?.toLowerCase() !== 'invoice');
 
-  const getHousesForStatus = (status: Status) => properties
-    .filter((house) => house.statusId === status.id || house.statusId === status.name)
+  // Id o nombre (casas viejas), sin mayúsculas ni espacios de más: la misma regla
+  // que la pastilla y los conteos de HouseList, para que ninguna casa "desaparezca".
+  const getPropertiesForStatus = (status: Status) => properties
+    .filter((property) => matchesRelation(status, property.statusId))
     .sort(compareByDateDescending);
 
-  const isHighPriority = (house: Property) => {
-    const housePriority = priorities.find((priority) => priority.id === house.priorityId || priority.name === house.priorityId);
-    return housePriority?.name?.toLowerCase() === 'high' || String(house.priorityId).toLowerCase() === 'high';
+  const isHighPriority = (property: Property) => {
+    const propertyPriority = priorities.find((priority) => priority.id === property.priorityId || priority.name === property.priorityId);
+    return propertyPriority?.name?.toLowerCase() === 'high' || String(property.priorityId).toLowerCase() === 'high';
   };
 
-  const handleRequestStatusChange = (house: Property) => setStatusModal({
-    currentId: house.statusId,
-    onSelect: (newStatusId) => onQuickStatusChange(house.id, newStatusId),
-    title: getClientName(house.client),
-    subtitle: house.address,
+  const handleRequestStatusChange = (property: Property) => setStatusModalConfig({
+    currentId: property.statusId,
+    onSelect: (statusId) => onStatusChange(property.id, statusId),
+    title: getClientName(property.client),
+    subtitle: property.address,
   });
 
   return (
     <div className="pipeline-board-wrap">
       <div className="pipeline-board">
-        {boardColumns.map((status) => {
-          const columnHouses = getHousesForStatus(status);
-          const columnTotal = getAmount
-            ? columnHouses.reduce((totalAmount, house) => totalAmount + (getAmount(house) || 0), 0)
+        {columnStatuses.map((status) => {
+          const columnProperties = getPropertiesForStatus(status);
+          const columnTotalAmount = getPropertyAmount
+            ? columnProperties.reduce((runningTotal, property) => runningTotal + (getPropertyAmount(property) || 0), 0)
             : null;
           return (
-            <PipelineColumn key={status.id} status={status} jobCount={columnHouses.length} totalAmount={columnTotal}>
-              {columnHouses.map((house) => (
+            <PipelineColumn key={status.id} status={status} jobCount={columnProperties.length} totalAmount={columnTotalAmount}>
+              {columnProperties.map((property) => (
                 <PipelineJobCard
-                  key={house.id}
-                  house={house}
-                  clientName={getClientName(house.client)}
-                  teamName={getRelationName(teams, house.teamId, 'Unassigned')}
-                  teamColor={getRelationColor(teams, house.teamId) || DEFAULT_TEAM_COLOR}
-                  isHighPriority={isHighPriority(house)}
-                  showOfficeNote={showOfficeNote}
-                  amount={getAmount ? getAmount(house) || 0 : null}
+                  key={property.id}
+                  property={property}
+                  clientName={getClientName(property.client)}
+                  teamName={getRelationName(teams, property.teamId, 'Unassigned')}
+                  teamColor={getRelationColor(teams, property.teamId) ?? DEFAULT_TEAM_COLOR}
+                  isHighPriority={isHighPriority(property)}
+                  isOfficeNoteVisible={isOfficeNoteVisible}
+                  propertyAmount={getPropertyAmount ? getPropertyAmount(property) || 0 : null}
                   statuses={statuses}
-                  canChangeStatus={canEdit}
-                  onOpenDetail={onOpenDetail}
+                  canChangeStatus={canChangeStatus}
+                  onOpenPropertyDetail={onOpenPropertyDetail}
                   onRequestStatusChange={handleRequestStatusChange}
                 />
               ))}
@@ -102,11 +104,11 @@ const PipelineBoardView = ({
       </div>
 
       {/* Modal central de cambio de estado */}
-      {statusModal && (
+      {statusModalConfig && (
         <StatusChangeModal
-          config={statusModal}
+          config={statusModalConfig}
           statuses={statuses}
-          onClose={() => setStatusModal(null)}
+          onClose={() => setStatusModalConfig(null)}
         />
       )}
     </div>

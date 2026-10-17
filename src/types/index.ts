@@ -311,6 +311,25 @@ export type QcReportRow = QualityCheckRecord & { id: string };
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
 export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
 
+// Checklist del empleado de una casa (colección checklists): tareas marcadas
+// por id (solo las marcadas, con `true`) y notas. Lo lee useHouseChecklist.
+export interface ChecklistRecord {
+  id?: string;
+  checked: Record<string, boolean>;
+  notes?: string;
+  date?: string;
+  inspector?: string;
+}
+
+/** Último checklist de una casa en vivo. `isLoaded` distingue "todavía no
+ *  llega" de "no tiene checklist" (los dos traen checklist = null). */
+export interface HouseChecklistState {
+  checklist: ChecklistRecord | null;
+  isLoaded: boolean;
+  /** El listener falló (permisos, red): no se puede guardar sin pisar datos. */
+  hasLoadError: boolean;
+}
+
 /** Pestaña de la tabla de reportes: el estado ACTUAL de la casa, no el resultado. */
 export type QcReportTab = 'quality_check' | 'invoice' | 'recall';
 

@@ -2,9 +2,9 @@
 // Acciones del Task list con su aviso de error, el estado "guardando" y el
 // "Undo" de unos segundos después de marcar una tarea hecha.
 import { useEffect, useRef, useState } from 'react';
-import type { ApprovalDecision, UserTaskApproval, TaskAttachment, TaskProject, TaskProjectStatus, UserTask } from '../../../types/index';
+import type { Actor, ApprovalDecision, UserTaskApproval, TaskAttachment, TaskProject, TaskProjectStatus, UserTask } from '../../../types/index';
 import {
-  userTasksService, type Actor, type KnownProjects, type TaskInput, type TaskPatch,
+  userTasksService, type KnownProjects, type TaskInput, type TaskPatch,
 } from '../../../services/userTasksService';
 import { taskProjectsService, type ProjectInput } from '../../../services/taskProjectsService';
 import { setPriorities } from '../services/prioritiesService';
@@ -40,7 +40,17 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
   const inFlight = useRef(new Set<string>());
 
   type Result<T> = { ok: true; value: T } | { ok: false };
+  // ⭐ Sin red no se escribe: con el caché persistente de Firestore la escritura
+  //    no falla, queda en espera, y el botón se quedaba girando sin aviso hasta
+  //    que volviera la señal. Se avisa y la vista conserva lo escrito.
+  const isOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+  const warnOffline = (what: string) => alert(`${what}: sin conexión. Inténtalo cuando vuelva la señal.`);
+
   const run = async <T,>(id: string, what: string, job: () => Promise<T>): Promise<Result<T>> => {
+    if (isOffline()) {
+      warnOffline(what);
+      return { ok: false };
+    }
     if (inFlight.current.has(id)) return { ok: false };
     inFlight.current.add(id);
     setBusyId(id);
@@ -97,6 +107,10 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
       (await run(taskId, 'No se pudo publicar el comentario', () => userTasksService.addComment(taskId, text, actor))).ok,
 
     attach: async (taskId: string, files: File[]) => {
+      if (isOffline()) {
+        warnOffline('No se pudo subir el archivo');
+        return;
+      }
       setUploading(true);
       try {
         for (const file of files) await userTasksService.addAttachment(taskId, file);

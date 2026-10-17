@@ -19,7 +19,8 @@ import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { getCompanySettings } from '../services/companyService';
 import { getRelationName } from '../utils/relations';
 import { formatDate } from '../utils/dateFormat';
-import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
+import { inPeriod, periodRange } from '../utils/periods';
+import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { isRecallText } from '../utils/recallStatus';
 import { groupByDate } from '../utils/dateGrouping';
 import { useRecallHouses } from '../utils/jobRecall';
@@ -81,9 +82,7 @@ export default function QualityDashboardView({
   const loading = !recordsLoaded;
   const [branding, setBranding] = useState<QCPdfBranding>({ name: 'Precise Cleaning' });
 
-  const PERIOD_KEY = 'pc.qcdash.period';
-  const [period, setPeriodState] = useState<PeriodState>(() => loadPeriod(PERIOD_KEY, 'week'));
-  const setPeriod = (p: PeriodState) => { setPeriodState(p); savePeriod(PERIOD_KEY, p); };
+  const [period, setPeriod] = useStoredPeriod('pc.qcdash.period', 'week');
   const range = useMemo(() => periodRange(period), [period]);
 
   const [tab, setTab] = useState<Tab>('all');
@@ -360,7 +359,7 @@ export default function QualityDashboardView({
       <PeriodBar
         period={period}
         onChange={setPeriod}
-        extra={
+        trailingActions={
           <div className="qd-filters">
             <button
               type="button"

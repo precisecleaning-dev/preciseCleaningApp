@@ -1,9 +1,10 @@
 // Pastilla con el status de un trabajo en el tablero (Pipeline). Al tocarla
 // pide abrir el modal central para cambiarlo (StatusChangeModal), igual que en
 // la tabla y el detalle de Houses. Sirve igual para Normal y Cavalry.
-import type { CSSProperties, MouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Status } from '../types/index';
+import { getRelationColor, getRelationName } from '../utils/relations';
 
 interface PipelineStatusPillProps {
   /** Id (o nombre, en casas viejas) del status actual. */
@@ -13,15 +14,18 @@ interface PipelineStatusPillProps {
   onRequestStatusChange: () => void;
 }
 
-const PipelineStatusPill = ({ currentStatusId, statuses, isDisabled, onRequestStatusChange }: PipelineStatusPillProps) => {
-  const normalizedStatusId = String(currentStatusId ?? '').toLowerCase().trim();
-  const currentStatus = statuses.find((status) => String(status.id).toLowerCase().trim() === normalizedStatusId
-    || String(status.name).toLowerCase().trim() === normalizedStatusId);
-  const statusDotStyle = { '--dot-color': currentStatus?.color || '#64748b' } as CSSProperties;
+const DEFAULT_STATUS_COLOR = '#64748b';
 
-  const handleRequestStatusChange = (event: MouseEvent) => {
+const PipelineStatusPill = ({ currentStatusId, statuses, isDisabled, onRequestStatusChange }: PipelineStatusPillProps) => {
+  // getRelationName/Color comparan sin mayúsculas y sin espacios de más (casas viejas).
+  const currentStatusName = getRelationName(statuses, currentStatusId, 'Unassigned');
+  const currentStatusColor = getRelationColor(statuses, currentStatusId) ?? DEFAULT_STATUS_COLOR;
+  const statusDotStyle = { '--dot-color': currentStatusColor } as CSSProperties;
+
+  // Un botón disabled no dispara onClick: aquí solo falta que el clic no abra la tarjeta.
+  const handleRequestStatusChange = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (!isDisabled) onRequestStatusChange();
+    onRequestStatusChange();
   };
 
   return (
@@ -29,13 +33,13 @@ const PipelineStatusPill = ({ currentStatusId, statuses, isDisabled, onRequestSt
       className="pb-status-pill"
       onClick={handleRequestStatusChange}
       disabled={isDisabled}
-      title={isDisabled ? undefined : 'Cambiar estado'}
+      title={isDisabled ? undefined : 'Change status'}
     >
       <span className="pb-status-pill-label">
         <span className="pb-status-dot" style={statusDotStyle} />
-        <span className="pb-status-pill-name">{currentStatus?.name || 'Unassigned'}</span>
+        <span className="pb-status-pill-name">{currentStatusName}</span>
       </span>
-      <ChevronDown size={15} color="#94a3b8" className="pb-shrink-0" />
+      <ChevronDown size={15} className="pb-status-pill-chevron" />
     </button>
   );
 };

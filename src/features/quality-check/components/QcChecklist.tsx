@@ -7,6 +7,7 @@
 import { useState, type ReactNode } from 'react';
 import { Check, Pencil } from 'lucide-react';
 import type { QcAnswer, QcSection, QcSectionTask } from '../qcForm';
+import { addTaskPendingId, CHECKLIST_ORDER_PENDING_ID } from '../../../utils/qcCatalog';
 import QcChecklistSection from './QcChecklistSection';
 import './QcChecklist.css';
 
@@ -20,6 +21,8 @@ interface QcChecklistProps {
   canAddTasks: boolean;
   canEditTasks: boolean;
   canRemoveTasks: boolean;
+  /** Áreas o tareas que se están guardando (usePendingById de Quality Check). */
+  pendingChecklistIds: ReadonlySet<string>;
   onMoveSection: (section: QcSection, positionOffset: -1 | 1) => void;
   onAddTask: (section: QcSection, taskName: string) => void;
   onRenameTask: (section: QcSection, task: QcSectionTask, name: string) => void;
@@ -27,9 +30,10 @@ interface QcChecklistProps {
 }
 
 const QcChecklist = ({
-  sections, answers, onAnswer, renderSectionPhotos, canAddTasks, canEditTasks, canRemoveTasks, onMoveSection,
-  onAddTask, onRenameTask, onRemoveTask,
+  sections, answers, onAnswer, renderSectionPhotos, canAddTasks, canEditTasks, canRemoveTasks, pendingChecklistIds,
+  onMoveSection, onAddTask, onRenameTask, onRemoveTask,
 }: QcChecklistProps) => {
+  const isReorderingSections = pendingChecklistIds.has(CHECKLIST_ORDER_PENDING_ID);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<ReadonlySet<string>>(() => new Set());
   const [isEditingChecklist, setIsEditingChecklist] = useState(false);
 
@@ -87,6 +91,9 @@ const QcChecklist = ({
           canRemoveTasks={canRemoveTasks}
           isFirstSection={sectionIndex === 0}
           isLastSection={sectionIndex === sections.length - 1}
+          isReorderingSections={isReorderingSections}
+          isAddingTask={pendingChecklistIds.has(addTaskPendingId(section.id))}
+          pendingTaskIds={pendingChecklistIds}
           photos={renderSectionPhotos(section)}
           onToggleCollapsed={handleToggleCollapsed}
           onAnswer={onAnswer}

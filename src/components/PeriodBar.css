@@ -128,7 +128,7 @@
   color: #0f172a;
 }
 
-.pb-seg-btn.on {
+.pb-seg-btn.selected {
   background: #ffffff;
   color: #1d3fcf;
   font-weight: 700;

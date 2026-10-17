@@ -5,8 +5,16 @@ import { useMemo } from 'react';
 import type { Product, Property, Role, Status } from '../../../types/index';
 import { useLiveCollection, useLiveData } from '../../../shared/data/liveCollections';
 import { customerNameIndex, displayClientNameIn } from '../../../utils/customerDocs';
+import { normalizeRelationKey } from '../../../utils/relations';
 
 /** Productos (settings_products): el tipo canónico Product + el color opcional. */
+/** Status de un id-o-nombre guardado: primero la clave exacta y, si no, la
+ *  normalizada (sin mayúsculas ni espacios de más, igual que utils/relations). */
+export const findStatusInIndex = (statusIndex: Map<string, Status>, statusIdOrName?: string | null): Status | undefined => {
+  if (!statusIdOrName) return undefined;
+  return statusIndex.get(String(statusIdOrName)) ?? statusIndex.get(normalizeRelationKey(statusIdOrName));
+};
+
 export type ProductRecord = Product & { color?: string };
 
 export function useHouseCatalogs(rolesFallback: Role[] = []) {
@@ -24,15 +32,24 @@ export function useHouseCatalogs(rolesFallback: Role[] = []) {
   const rolesList = liveRoles.length ? liveRoles : rolesFallback;
 
   // ⭐ PERF: índice de statuses por id y por nombre (antes statuses.find() por fila).
+  //    Lleva las claves exactas (HouseForm las busca así) y, además, las
+  //    normalizadas de relations.ts: una casa vieja con "quality check " (otras
+  //    mayúsculas o espacios) resuelve su status igual que en la pastilla, en
+  //    vez de desaparecer de la lista y del tablero.
   const statusIndex = useMemo(() => {
     const index = new Map<string, Status>();
-    statuses.forEach((s) => {
-      index.set(String(s.id), s);
-      index.set(String(s.name), s);
+    statuses.forEach((status) => {
+      index.set(String(status.id), status);
+      index.set(String(status.name), status);
+    });
+    statuses.forEach((status) => {
+      [normalizeRelationKey(status.id), normalizeRelationKey(status.name)].forEach((relationKey) => {
+        if (!index.has(relationKey)) index.set(relationKey, status);
+      });
     });
     return index;
   }, [statuses]);
-  const findStatusOf = (p: { statusId?: string | null }): Status | undefined => statusIndex.get(String(p.statusId ?? ''));
+  const findStatusOf = (p: { statusId?: string | null }): Status | undefined => findStatusInIndex(statusIndex, p.statusId);
 
   // ⭐ PERF: índice de clientes armado una vez por lista (antes, una búsqueda
   //    en la lista de clientes por cada fila). Un cliente BORRADO sale como

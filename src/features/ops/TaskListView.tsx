@@ -413,8 +413,8 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
           onRemoveAttachment={(attachment) => actions.removeFile(openedTask.id, attachment)}
           approvers={approvers}
           defaultApproverUserId={defaultApproverUserId}
-          onSendApproval={(approver) => actions.sendForApproval(openedTask, { id: approver.id, name: approver.name })}
-          onDecideApproval={(decision, note) => actions.decide(openedTask, decision, note)}
+          onSendApproval={(approver) => actions.sendForApproval(openedTask, approver)}
+          onDecideApproval={async (decision, note) => (await actions.decide(openedTask, decision, note)).ok}
           onSetApproval={(approval) => actions.setApproval(openedTask, approval)}
         />
       )}

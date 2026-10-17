@@ -17,6 +17,12 @@ interface QcChecklistSectionProps {
   canRemoveTasks: boolean;
   isFirstSection: boolean;
   isLastSection: boolean;
+  /** Se está guardando un cambio de orden: las flechas esperan. */
+  isReorderingSections: boolean;
+  /** Se está guardando una tarea nueva en esta área. */
+  isAddingTask: boolean;
+  /** Tareas que se están guardando (renombrar o quitar). */
+  pendingTaskIds: ReadonlySet<string>;
   photos: ReactNode;
   onToggleCollapsed: (section: QcSection) => void;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
@@ -28,7 +34,7 @@ interface QcChecklistSectionProps {
 
 const QcChecklistSection = ({
   section, sectionAnswers, isCollapsed, isEditingChecklist, canAddTasks, canEditTasks, canRemoveTasks,
-  isFirstSection, isLastSection, photos, onToggleCollapsed, onAnswer, onMoveSection, onAddTask, onRenameTask,
+  isFirstSection, isLastSection, isReorderingSections, isAddingTask, pendingTaskIds, photos, onToggleCollapsed, onAnswer, onMoveSection, onAddTask, onRenameTask,
   onRemoveTask,
 }: QcChecklistSectionProps) => {
   const passedCount = section.tasks.filter((task) => sectionAnswers[task.id] === 'Yes').length;
@@ -60,7 +66,7 @@ const QcChecklistSection = ({
               type="button"
               className="qcl-icon-btn"
               aria-label={`Move ${section.name} up`}
-              disabled={isFirstSection}
+              disabled={isFirstSection || isReorderingSections}
               onClick={() => onMoveSection(section, -1)}
             >
               <ArrowUp size={15} />
@@ -69,7 +75,7 @@ const QcChecklistSection = ({
               type="button"
               className="qcl-icon-btn"
               aria-label={`Move ${section.name} down`}
-              disabled={isLastSection}
+              disabled={isLastSection || isReorderingSections}
               onClick={() => onMoveSection(section, 1)}
             >
               <ArrowDown size={15} />
@@ -89,6 +95,7 @@ const QcChecklistSection = ({
                 isEditingChecklist={isEditingChecklist}
                 canRenameTask={canEditTasks}
                 canRemoveTask={canRemoveTasks}
+                isSaving={pendingTaskIds.has(task.id)}
                 onAnswer={(answeredTask, value) => onAnswer(section.id, answeredTask.id, value)}
                 onRenameTask={(renamedTask, name) => onRenameTask(section, renamedTask, name)}
                 onRemoveTask={(removedTask) => onRemoveTask(section, removedTask)}
@@ -96,7 +103,11 @@ const QcChecklistSection = ({
             ))}
           </ul>
           {isEditingChecklist && canAddTasks && (
-            <QcAddTaskForm sectionName={section.name} onAddTask={(taskName) => onAddTask(section, taskName)} />
+            <QcAddTaskForm
+              sectionName={section.name}
+              isAdding={isAddingTask}
+              onAddTask={(taskName) => onAddTask(section, taskName)}
+            />
           )}
           <div className="qcl-photos" aria-label={`Photos · ${section.name}`}>
             <span className="qcl-photos-lbl">Photos · {section.name}</span>

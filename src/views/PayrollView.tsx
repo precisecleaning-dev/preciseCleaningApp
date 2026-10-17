@@ -1047,7 +1047,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
               period={payrollWeekPeriod}
               onChange={setPayrollWeekPeriod}
               allowedKinds={['week']}
-              extra={selectedWeek && (
+              trailingActions={selectedWeek && (
                 <span className={`pnw-week-state${selectedWeek.isPaid ? ' paid' : ''}`}>{selectedWeek.paymentStatusLabel}</span>
               )}
             >

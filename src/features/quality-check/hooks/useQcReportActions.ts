@@ -27,11 +27,11 @@ interface QcReportActionsInput {
   currentUser?: SystemUser | null;
   getClientName: (clientIdOrName?: string) => string;
   getTeamName: (teamId?: string | null) => string;
-  getHouseForReport: (report: QcReportRow) => Property | undefined;
+  getPropertyForReport: (report: QcReportRow) => Property | undefined;
 }
 
 export function useQcReportActions({
-  statuses, places, tasks, currentUser, getClientName, getTeamName, getHouseForReport,
+  statuses, places, tasks, currentUser, getClientName, getTeamName, getPropertyForReport,
 }: QcReportActionsInput) {
   const [branding, setBranding] = useState<QCPdfBranding>({ name: 'Precise Cleaning' });
   const [exportingReportId, setExportingReportId] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export function useQcReportActions({
   const getPdfInput = (report: QcReportRow) => ({
     house: { address: report.address || '' },
     clientName: getClientName(report.client),
-    teamName: report.team || getTeamName(getHouseForReport(report)?.teamId) || '—',
+    teamName: report.team || getTeamName(getPropertyForReport(report)?.teamId) || '—',
     qcData: report.qcData || {},
     inspectorName: report.inspector || 'Unknown',
     recordDate: report.date,
@@ -165,7 +165,7 @@ export function useQcReportActions({
         address: report.address || '',
         date: report.date,
         inspectorName: report.inspector || 'Unknown',
-        teamName: report.team || getTeamName(getHouseForReport(report)?.teamId),
+        teamName: report.team || getTeamName(getPropertyForReport(report)?.teamId),
         passRate: reportScore.hasData ? reportScore.passRate : null,
         failed: report.result === 'failed',
       });

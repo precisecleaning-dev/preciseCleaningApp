@@ -121,6 +121,12 @@ export type StoredUserTask = Omit<UserTask, 'id' | 'assignees' | 'approval'>
   & LegacyTaskAssignee;
 
 /** Persona a la que se le puede asignar una tarea. */
+/** Quién hace un cambio o a quién se le pide algo (id + nombre del usuario). */
+export interface Actor {
+  id: string;
+  name: string;
+}
+
 export interface AssignableUser {
   id: string;
   name: string;

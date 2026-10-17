@@ -42,8 +42,10 @@ import QCRouteDrawer, { type RouteDrawerHouse } from './QCRouteDrawer';
 import QcCheckDrawer from '../features/quality-check/components/QcCheckDrawer';
 import QcHouseCard from '../features/quality-check/components/QcHouseCard';
 import QcHouseFilters from '../features/quality-check/components/QcHouseFilters';
+import QcOutOfPeriodNotice from '../features/quality-check/components/QcOutOfPeriodNotice';
 import PeriodBar from '../components/PeriodBar';
 import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
+import { usePendingById } from '../shared/hooks/usePendingById';
 import { inPeriod, periodRange } from '../utils/periods';
 import QcReportsBlock from '../features/quality-check/components/QcReportsBlock';
 import QcPhotoGrid, { type QcPhotoItem } from '../features/quality-check/components/QcPhotoGrid';
@@ -55,7 +57,7 @@ import {
 import { settingsPlacesService } from '../services/settingsPlacesService';
 import { settingsTasksService } from '../services/settingsTasksService';
 import { logActivity } from '../services/activityLogService';
-import { isActiveTask, sortPlacesByOrder } from '../utils/qcCatalog';
+import { addTaskPendingId, CHECKLIST_ORDER_PENDING_ID, isActiveTask, sortPlacesByOrder } from '../utils/qcCatalog';
 import './QualityCheckView.css';
 import MenuButton from '../shared/components/MenuButton';
 
@@ -348,12 +350,16 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
-  const [statusFilter, setStatusFilter] = useState<QcHouseGroup>('All');
+  const [selectedHouseGroup, setSelectedHouseGroup] = useState<QcHouseGroup>('All');
   // ⭐ Periodo de las casas pendientes y en Recall (por Schedule Date). Arranca
-  //    en "Year" para no esconder pendientes viejas; se recuerda por navegador.
+  //    en "Year" (el año calendario) y se recuerda por navegador; las que quedan
+  //    fuera del periodo se avisan con QcOutOfPeriodNotice (nunca se esconden
+  //    sin decirlo: una casa pendiente lo está sea cual sea su fecha).
   const [housesPeriod, setHousesPeriod] = useStoredPeriod('pc.qc.houses.period', 'year');
   const housesPeriodRange = useMemo(() => periodRange(housesPeriod), [housesPeriod]);
-  const [tableSearch, setTableSearch] = useState('');
+  const [houseSearchText, setHouseSearchText] = useState('');
+  // "Edit checklist": qué área o tarea se está guardando (ver handleMoveChecklistSection).
+  const { pending: pendingChecklistIds, run: runChecklistWrite } = usePendingById();
 
   // ⭐ Ruta de inspección (drawer lateral): ids de casas agregadas + apertura del panel
   const [routeHouseIds, setRouteHouseIds] = useState<string[]>([]);
@@ -645,14 +651,14 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    menú): permiso "Quality Check Reports"; si el rol no lo declara, la ve
   //    quien entra a Quality Check (mismo criterio que tenía el menú).
   const qcReportsPermission = activeRole?.permissions?.find((permission) => permission.module === 'Quality Check Reports');
-  const canSeeQcReports = !!isSuperAdmin || (qcReportsPermission ? !!qcReportsPermission.canView : true);
+  const canViewQcReports = !!isSuperAdmin || (qcReportsPermission ? !!qcReportsPermission.canView : true);
 
   // ⭐ "Edit checklist" en el panel (módulo "QC Checklist Setup" de Roles):
   //    Add = agregar tareas · Edit = renombrarlas y ordenar las áreas · Delete = quitarlas.
   const checklistSetupPermission = activeRole?.permissions?.find((permission) => permission.module === 'QC Checklist Setup');
   const canAddChecklistTasks = !!isSuperAdmin || !!checklistSetupPermission?.canAdd;
   const canEditChecklistTasks = !!isSuperAdmin || !!checklistSetupPermission?.canEdit;
-  const canRemoveChecklistTasks = !!isSuperAdmin || !!checklistSetupPermission?.canDelete;
+  const canArchiveChecklistTasks = !!isSuperAdmin || !!checklistSetupPermission?.canDelete;
   const houseOfficeNote = (h: Property): string =>
     String((h as PropertyNotes).officeNote || '').trim();
 
@@ -795,15 +801,17 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Dentro del periodo elegido (Schedule Date). Una casa SIN fecha se sigue
   //    mostrando: si no, una pendiente sin agendar desaparecería de la vista.
   const isHouseInPeriod = (house: Property) => !house.scheduleDate || inPeriod(house.scheduleDate, housesPeriodRange);
-  const pendingQCHouses = properties.filter(h => isQualityCheckStatus(h.statusId, statuses) && !housePassedQC(h.id, qcList) && !houseFailedQC(h.id, qcList) && isHouseInPeriod(h));
+  const allPendingQCHouses = properties.filter(h => isQualityCheckStatus(h.statusId, statuses) && !housePassedQC(h.id, qcList) && !houseFailedQC(h.id, qcList));
+  const pendingQCHouses = allPendingQCHouses.filter(isHouseInPeriod);
 
   // ⭐ RECALL = casas en estado "Recall" en el pipeline (aunque no tengan un QC
   //    "RECALL" registrado: muchas llegan a Recall por cambio de status).
-  const recallHouses = properties.filter(h => isRecallStatus(h) && isHouseInPeriod(h));
+  const allRecallHouses = properties.filter(h => isRecallStatus(h));
+  const recallHouses = allRecallHouses.filter(isHouseInPeriod);
 
   // ⭐ ¿La casa/registro coincide con la búsqueda?
   const matchesSearch = (text: string[]) => {
-    const q = tableSearch.trim().toLowerCase();
+    const q = houseSearchText.trim().toLowerCase();
     if (!q) return true;
     return text.filter(Boolean).join(' ').toLowerCase().includes(q);
   };
@@ -817,6 +825,18 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   const filteredRecallHouses = recallHouses.filter(h =>
     matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)])
   );
+
+  // ⭐ Pendientes / Recall de la pestaña elegida que el periodo deja fuera (con el
+  //    mismo buscador): se avisan para que nadie dé por hecho que no hay trabajo.
+  const housesOfSelectedGroup = [
+    ...(selectedHouseGroup === 'Recall' ? [] : allPendingQCHouses),
+    ...(selectedHouseGroup === 'Pending' ? [] : allRecallHouses),
+  ];
+  const outOfPeriodHouseCount = housesOfSelectedGroup
+    .filter(h => !isHouseInPeriod(h))
+    .filter(h => matchesSearch([h.address, getClientName(h.client), getTeamNameForHouse(h), String(h.client)]))
+    .length;
+  const handleShowAllHouses = () => setHousesPeriod({ kind: 'custom', anchor: todayIso(), customStart: '', customEnd: '' });
 
   // ⭐ Conteos de las pestañas (coherentes con lo que se ve):
   //    Pending = casas esperando inspección · Recall = casas en estado "Recall".
@@ -842,15 +862,15 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       window.prompt('Copia las direcciones:', txt);
     }
   };
-  const groupCounts = {
+  const houseCountByGroup = {
     All: pendingQCHouses.length + recallTotal,
     Pending: pendingQCHouses.length,
     Recall: recallTotal,
   };
 
   // ⭐ ¿Mostrar cada bloque según la pestaña activa?
-  const showPendingBlock = statusFilter === 'All' || statusFilter === 'Pending';
-  const showRecallBlock = statusFilter === 'All' || statusFilter === 'Recall';
+  const showPendingBlock = selectedHouseGroup === 'All' || selectedHouseGroup === 'Pending';
+  const showRecallBlock = selectedHouseGroup === 'All' || selectedHouseGroup === 'Recall';
 
   // ⭐ Áreas activas para una casa: si la casa tiene áreas marcadas (qcPlaces),
   //    solo esas; si no marcó ninguna, se muestran todas (compatibilidad).
@@ -1623,7 +1643,11 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
 
   // ⭐ "Edit checklist": cambian el catálogo (Settings → Places / Tasks), así
   //    que valen para todas las casas. El listener del store muestra el cambio.
-  const handleMoveChecklistSection = async (section: QcSection, positionOffset: -1 | 1) => {
+  // Cada cambio marca su elemento como "guardando" (usePendingById): un doble
+  // toque no crea dos tareas iguales ni calcula dos intercambios con la misma
+  // lista de áreas. Si falla, usePendingById avisa con el mensaje.
+  const handleMoveChecklistSection = (section: QcSection, positionOffset: -1 | 1) => {
+    if (pendingChecklistIds.has(CHECKLIST_ORDER_PENDING_ID)) return;
     const visibleSectionIds = qcSections.map((visibleSection) => visibleSection.id);
     const neighborSectionId = visibleSectionIds[visibleSectionIds.indexOf(section.id) + positionOffset];
     if (!neighborSectionId) return;
@@ -1634,56 +1658,48 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     const neighborPosition = reorderedPlaces.findIndex((place) => place.id === neighborSectionId);
     [reorderedPlaces[sectionPosition], reorderedPlaces[neighborPosition]] =
       [reorderedPlaces[neighborPosition], reorderedPlaces[sectionPosition]];
-    try {
+    runChecklistWrite(CHECKLIST_ORDER_PENDING_ID, async () => {
       await settingsPlacesService.saveOrder(reorderedPlaces);
       void logActivity({
         action: 'update', module: 'Quality Check', user: currentUser, targetId: section.id, targetLabel: section.name,
         detail: `Área movida ${positionOffset < 0 ? 'arriba' : 'abajo'} en el checklist`,
       });
-    } catch (error) {
-      console.error('Error ordenando las áreas del checklist:', error);
-      alert('No se pudo cambiar el orden de las áreas. Inténtalo de nuevo.');
-    }
+    }, 'No se pudo cambiar el orden de las áreas. Inténtalo de nuevo.');
   };
 
-  const handleAddChecklistTask = async (section: QcSection, taskName: string) => {
-    try {
+  const handleAddChecklistTask = (section: QcSection, taskName: string) => {
+    const pendingId = addTaskPendingId(section.id);
+    if (pendingChecklistIds.has(pendingId)) return;
+    runChecklistWrite(pendingId, async () => {
       const newTaskId = await settingsTasksService.create({ placeId: section.id, name: taskName });
       void logActivity({
         action: 'create', module: 'Quality Check', user: currentUser, targetId: newTaskId,
         targetLabel: `${section.name} · ${taskName}`, detail: 'Tarea agregada al checklist',
       });
-    } catch (error) {
-      console.error('Error agregando la tarea al checklist:', error);
-      alert('No se pudo agregar la tarea. Inténtalo de nuevo.');
-    }
+    }, 'No se pudo agregar la tarea. Inténtalo de nuevo.');
   };
 
-  const handleRenameChecklistTask = async (section: QcSection, task: QcSectionTask, name: string) => {
-    try {
-      await settingsTasksService.rename(task.id, name);
+  const handleRenameChecklistTask = (section: QcSection, task: QcSectionTask, newTaskName: string) => {
+    if (pendingChecklistIds.has(task.id)) return;
+    runChecklistWrite(task.id, async () => {
+      await settingsTasksService.rename(task.id, newTaskName);
       void logActivity({
         action: 'update', module: 'Quality Check', user: currentUser, targetId: task.id,
-        targetLabel: `${section.name} · ${name}`, changes: [{ field: 'name', before: task.name, after: name }],
+        targetLabel: `${section.name} · ${newTaskName}`, changes: [{ field: 'name', before: task.name, after: newTaskName }],
       });
-    } catch (error) {
-      console.error('Error renombrando la tarea del checklist:', error);
-      alert('No se pudo cambiar el nombre de la tarea. Inténtalo de nuevo.');
-    }
+    }, 'No se pudo cambiar el nombre de la tarea. Inténtalo de nuevo.');
   };
 
-  const handleRemoveChecklistTask = async (section: QcSection, task: QcSectionTask) => {
+  const handleArchiveChecklistTask = (section: QcSection, task: QcSectionTask) => {
+    if (pendingChecklistIds.has(task.id)) return;
     if (!window.confirm(`¿Quitar "${task.name}" del checklist de ${section.name}?\n\nYa no saldrá en las inspecciones nuevas de ninguna casa; los reportes anteriores la siguen mostrando.`)) return;
-    try {
+    runChecklistWrite(task.id, async () => {
       await settingsTasksService.archive(task.id);
       void logActivity({
         action: 'update', module: 'Quality Check', user: currentUser, targetId: task.id,
         targetLabel: `${section.name} · ${task.name}`, detail: 'Tarea quitada del checklist (archivada)',
       });
-    } catch (error) {
-      console.error('Error quitando la tarea del checklist:', error);
-      alert('No se pudo quitar la tarea. Inténtalo de nuevo.');
-    }
+    }, 'No se pudo quitar la tarea. Inténtalo de nuevo.');
   };
 
   // ⭐ Inspectores: usuarios activos (más el actual, aunque su perfil esté incompleto).
@@ -1720,7 +1736,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     photoSlots.flatMap(photoSlot => ((qcData[photoSlot]?.photos ?? []) as string[])
       .map((url, index) => ({ key: `${photoSlot}-${url}`, url, slot: photoSlot, index })));
   const checklistSectionIds = new Set(qcSections.map(section => section.id));
-  const generalPhotoSlots = [
+  const otherPhotoSlots = [
     GENERAL_SLOT,
     ...places.map(place => place.id).filter(placeId => !checklistSectionIds.has(placeId)),
   ];
@@ -1794,15 +1810,19 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       <div className="qcv-period">
         <PeriodBar period={housesPeriod} onChange={setHousesPeriod}>
           <QcHouseFilters
-            searchText={tableSearch}
-            selectedGroup={statusFilter}
-            houseCountByGroup={groupCounts}
-            onSearchTextChange={setTableSearch}
-            onSelectGroup={setStatusFilter}
+            searchText={houseSearchText}
+            selectedGroup={selectedHouseGroup}
+            houseCountByGroup={houseCountByGroup}
+            onSearchTextChange={setHouseSearchText}
+            onSelectGroup={setSelectedHouseGroup}
             onCopyAddresses={copyQCAddresses}
           />
         </PeriodBar>
       </div>
+
+      {!isLoadingCatalogs && outOfPeriodHouseCount > 0 && (
+        <QcOutOfPeriodNotice outOfPeriodHouseCount={outOfPeriodHouseCount} onShowAllHouses={handleShowAllHouses} />
+      )}
 
       {/* ⭐ Aviso de conexión / fotos pendientes de subir */}
       {(!isOnline || pendingUploadCount > 0) && (
@@ -1849,7 +1869,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       )}
 
       {/* Mensaje cuando la pestaña Pending no tiene casas pendientes */}
-      {!isLoadingCatalogs && statusFilter === 'Pending' && filteredPendingHouses.length === 0 && (
+      {!isLoadingCatalogs && selectedHouseGroup === 'Pending' && filteredPendingHouses.length === 0 && (
         <div className="qcv-empty-note-box">
           No hay casas pendientes de Quality Check.
         </div>
@@ -1890,7 +1910,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
 
       {/* ⭐ QUALITY CHECK REPORTS: inspecciones terminadas, debajo de Recall.
           Se abre a pedido (carga todos los reportes solo al abrirse). */}
-      {!isLoadingCatalogs && canSeeQcReports && (
+      {!isLoadingCatalogs && canViewQcReports && (
         <QcReportsBlock
           properties={properties}
           currentUser={currentUser}
@@ -1952,12 +1972,13 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               renderSectionPhotos={renderSectionPhotos}
               canAddChecklistTasks={canAddChecklistTasks}
               canEditChecklistTasks={canEditChecklistTasks}
-              canRemoveChecklistTasks={canRemoveChecklistTasks}
+              canRemoveChecklistTasks={canArchiveChecklistTasks}
+              pendingChecklistIds={pendingChecklistIds}
               onMoveChecklistSection={handleMoveChecklistSection}
               onAddChecklistTask={handleAddChecklistTask}
               onRenameChecklistTask={handleRenameChecklistTask}
-              onRemoveChecklistTask={handleRemoveChecklistTask}
-              generalPhotos={renderPhotoGrid(GENERAL_SLOT, generalPhotoSlots, 'plain')}
+              onRemoveChecklistTask={handleArchiveChecklistTask}
+              generalPhotos={renderPhotoGrid(GENERAL_SLOT, otherPhotoSlots, 'plain')}
               officePhotos={renderPhotoGrid(OFFICE_SLOT, [OFFICE_SLOT], 'card')}
               showOffice={canSeeOfficeNotes}
               teamNotes={String(qcData[GENERAL_SLOT]?.notes || '')}

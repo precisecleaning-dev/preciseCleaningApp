@@ -2791,3 +2791,55 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
     (antes abría en la semana más reciente con nómina). La key de la semana es `periodRange().start`
     (lunes 00:00 local), el mismo valor que `mondayOf()` da a cada pago: no cambiar uno sin el otro.
     El estado de pago de la semana (Pagado / Pendiente) va como `extra` de la barra.
+- CR de tonnydev1801 (10/2026) · status por id-o-nombre en Houses: `utils/relations.ts` tiene
+  `normalizeRelationKey` / `matchesRelation` (sin mayúsculas ni espacios de más) y getRelationName /
+  getRelationColor los usan. El tablero (`getPropertiesForStatus`), la pastilla, los conteos de
+  HouseList (`statusCounts`, tarjetas KPI y del Overview) y el filtro de Status resuelven igual.
+  · `statusIndex` (useHouseCatalogs) guarda las claves EXACTAS (HouseForm las busca con `.get`) y
+    además las normalizadas; `findStatusInIndex` prueba exacta y luego normalizada. No quitar las
+    exactas: los ids de Firestore distinguen mayúsculas.
+  · Efecto visible: casas viejas con el status escrito con otras mayúsculas o espacios ("quality
+    check ") vuelven a salir en la lista y el tablero (antes HouseList las descartaba).
+- PeriodBar · `allowedKinds`: una lista vacía cuenta como "todos"; si el periodo que llega por props
+  no está permitido, "Today" lo lleva al de respaldo (Week o el primero que no sea Custom) y en
+  desarrollo sale un console.warn; con solo Custom no se muestra "Today".
+- Checklist del empleado (ChecklistModal, CR de tonnydev1801, 10/2026): al guardar se escriben SOLO
+  las marcas que esta persona cambió (`checked.<tarea>`: true o deleteField(), con FieldPath) y las
+  notas si se tocaron. No volver a `updateDoc({ checked: mapaCompleto })`: borraba las marcas que
+  otra persona guardó con el modal abierto, o todas si se guardaba antes de que llegara el listener.
+  · `useHouseChecklist` devuelve `{ checklist, isLoaded, hasLoadError }`: el botón Guardar queda
+    bloqueado hasta `isLoaded` (null también significa "no tiene checklist").
+  · Las áreas preseleccionadas salen del checklist en vivo hasta que el empleado toca un chip.
+  · Tipos `ChecklistRecord` / `HouseChecklistState` en types/index.ts.
+  · **Pendiente:** el modal todavía importa `firebase/firestore` (regla de CLAUDE.md); mover sus
+    escrituras a un service de `features/houses/services/`.
+- HouseForm (mismo CR): `createdPropertyIdRef` guarda el id de la casa que creó el formulario; si un
+  paso posterior falla y se presiona Save otra vez, se actualiza esa casa (antes se creaba otra) y
+  sigue contando como alta. Si falla el batch de servicios y pagos, se guarda un borrador con la casa
+  tal como quedó (id y fotos subidas) antes de cerrar. El borrador no lleva los borrados pendientes
+  (servicesToDelete / payrollsToDelete).
+- TaskApproval (CR de tonnydev1801, 10/2026): `onDecideApproval` devuelve Promise<boolean> (TaskListView
+  pasa `.ok` de `actions.decide`); "Send changes" solo limpia la nota si se guardó, para no perder
+  lo escrito si falla. El aviso del error lo sigue dando `run()` de useTaskActions. `Actor` vive en
+  types/userTasks.ts (antes en userTasksService).
+- Quality Check · periodo de Pending/Recall (CR de tonnydev1801, 10/2026): se mantiene el filtro por
+  Schedule Date (decisión de Omar), pero las casas de la pestaña elegida que quedan FUERA del periodo
+  se avisan con `QcOutOfPeriodNotice` ("N casa(s)… fuera de este periodo · Ver todas"; Ver todas =
+  Custom sin fechas). No quitar el aviso: "Year" es el año calendario y una pendiente del 28/12 se
+  escondía el 2/1 sin decir nada (también si el navegador recordaba "Week").
+- Quality Check · "Edit checklist": cada escritura va por `usePendingById` (ids en utils/qcCatalog:
+  `CHECKLIST_ORDER_PENDING_ID`, `addTaskPendingId(área)` y el id de la tarea) y su botón se
+  deshabilita mientras guarda: un doble toque creaba dos tareas iguales o calculaba dos intercambios
+  de orden con la misma lista.
+- Sin red con el caché persistente de Firestore (`persistentLocalCache`, 10/2026): las lecturas NO
+  fallan (responden desde el caché con `metadata.fromCache`) y las escrituras NO fallan (quedan en
+  espera hasta que vuelve la señal). Decisiones:
+  · Task list (`useTaskActions.run` y `attach`): sin red no se escribe; avisa "…: sin conexión" y la
+    vista conserva lo escrito (antes el botón se quedaba girando sin aviso).
+  · `useOpsData`: con `includeMetadataChanges`, una lista vacía que solo viene del caché y sin red es
+    error ("Could not load the tasks"), y la tarea del panel que no está en caché es error, no
+    "borrada". El error se quita solo al volver la red.
+  · Checklist del empleado (`useHouseChecklist`): una respuesta VACÍA del caché no cuenta como
+    cargada (si no, se creaba un checklist nuevo que tapaba al anterior). Con el checklist en caché y
+    sin red, Guardar deja el cambio en espera (Firestore lo sube solo), avisa y cierra el modal.
+  · HouseForm sin red: `addDoc` espera la señal y guarda una sola vez (no se tocó).

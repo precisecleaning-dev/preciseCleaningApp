@@ -31,7 +31,7 @@ import PipelineKpiCard from "../../../components/PipelineKpiCard";
 import HistoryWindowNotice from "../../../components/HistoryWindowNotice";
 import type { StatusModalConfig } from "../../../components/StatusChangeModal";
 import { changeHouseStatus } from "../services/houseStatus";
-import { useHouseCatalogs } from "../hooks/useHouseCatalogs";
+import { findStatusInIndex, useHouseCatalogs } from "../hooks/useHouseCatalogs";
 import type { HouseAccess } from "../hooks/useHouseAccess";
 import type { FormVisibilityConfig } from "../houseFieldConfig";
 import JobCard from "./JobCard";
@@ -228,12 +228,17 @@ const HouseList = ({
     // findStatusOf e isHiddenPipelineStatus cambian con statusIndex; isStatusVisibleForRole, con el rol y formConfig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [separateBusiness, boardLoading, scopedProperties, cavalryKeys, statusIndex, formConfig, currentUser?.roleId, isSuperAdmin]);
-  // Casas por statusId (tarjetas KPI del tablero), en un solo recorrido.
+  // Casas por status (tarjetas KPI del tablero), en un solo recorrido. Se cuenta
+  // por el status RESUELTO (findStatusInIndex: id o nombre, sin mayúsculas ni
+  // espacios de más), la misma regla que usan el tablero y la pastilla.
   const statusCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    propertiesWithScope.forEach((p) => m.set(String(p.statusId), (m.get(String(p.statusId)) || 0) + 1));
-    return m;
-  }, [propertiesWithScope]);
+    const countByStatusId = new Map<string, number>();
+    propertiesWithScope.forEach((property) => {
+      const propertyStatusId = findStatusInIndex(statusIndex, property.statusId)?.id;
+      if (propertyStatusId) countByStatusId.set(propertyStatusId, (countByStatusId.get(propertyStatusId) ?? 0) + 1);
+    });
+    return countByStatusId;
+  }, [propertiesWithScope, statusIndex]);
 
   const uniqueHouses = useMemo(
     () =>
@@ -273,9 +278,8 @@ const HouseList = ({
 
     let passStatusFilter = true;
     if (statusFilter !== "All") {
-      const stObj = statuses.find((stt) => stt.id === statusFilter);
-      passStatusFilter =
-        p.statusId === statusFilter || (!!stObj && p.statusId === stObj.name);
+      // Por el status resuelto (id o nombre, sin mayúsculas ni espacios de más).
+      passStatusFilter = st?.id === statusFilter;
     }
 
     let passPriority = true;
@@ -578,9 +582,7 @@ const HouseList = ({
 
   const kpiIcons = [Briefcase, Clock, ShieldCheck, AlertTriangle];
   /** Trabajos de un status en el tablero (por id y, en casas viejas, por nombre). */
-  const getBoardStatusCount = (status: Status) =>
-    (statusCounts.get(String(status.id)) ?? 0)
-    + (status.name !== status.id ? statusCounts.get(String(status.name)) ?? 0 : 0);
+  const getBoardStatusCount = (status: Status) => statusCounts.get(status.id) ?? 0;
   /** Filtra el tablero por ese status; si ya estaba filtrado, lo quita. */
   const handleToggleStatusFilter = (status: Status) =>
     setActiveFilter(activeFilter === status.name ? "All" : status.name);
@@ -725,7 +727,7 @@ const HouseList = ({
           <PeriodBar
             period={period}
             onChange={setPeriod}
-            extra={
+            trailingActions={
                     <div className="property-select-container">
                       <button
                         onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
@@ -846,9 +848,7 @@ const HouseList = ({
                           label: status.name,
                           value: isLoading
                             ? "…"
-                            : propertiesWithScope
-                                .filter((p) => p.statusId === status.id || p.statusId === status.name)
-                                .length.toLocaleString("en-US"),
+                            : getBoardStatusCount(status).toLocaleString("en-US"),
                           sub: isActive ? "Filtering ✓" : "jobs now",
                           active: isActive,
                           onClick: () => setActiveFilter(isActive ? "All" : status.name),
@@ -898,7 +898,7 @@ const HouseList = ({
             Ningún status es de {business} todavía. Márcalos en Settings → Status.
           </p>
         ) : (
-          /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
+          /* ⭐ isOfficeNoteVisible: las notas internas solo llegan al tablero si el rol
              puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
              no se pase siquiera al componente cuando no hay permiso. */
           <PipelineBoardView
@@ -907,10 +907,10 @@ const HouseList = ({
             teams={teams}
             priorities={priorities}
             getClientName={getClientName}
-            onOpenDetail={onOpenDetail}
-            onQuickStatusChange={handleQuickStatusChange}
-            canEdit={!!canEdit}
-            showOfficeNote={canSeeOfficeNotes()}
+            onOpenPropertyDetail={onOpenDetail}
+            onStatusChange={handleQuickStatusChange}
+            canChangeStatus={!!canEdit}
+            isOfficeNoteVisible={canSeeOfficeNotes()}
           />
         )
       ) : (

@@ -39,6 +39,8 @@ interface QcCheckDrawerProps {
   canAddChecklistTasks: boolean;
   canEditChecklistTasks: boolean;
   canRemoveChecklistTasks: boolean;
+  /** Áreas o tareas del checklist que se están guardando (usePendingById). */
+  pendingChecklistIds: ReadonlySet<string>;
   onMoveChecklistSection: (section: QcSection, positionOffset: -1 | 1) => void;
   onAddChecklistTask: (section: QcSection, taskName: string) => void;
   onRenameChecklistTask: (section: QcSection, task: QcSectionTask, name: string) => void;
@@ -60,7 +62,7 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
   const {
     address, subtitle, headerActions, onClose, officeNotes, cleanerNotes, teamName, cleanerPhotos,
     inspectors, extras, onExtras, sections, answers, onAnswer, renderSectionPhotos, canAddChecklistTasks,
-    canEditChecklistTasks, canRemoveChecklistTasks, onMoveChecklistSection, onAddChecklistTask, onRenameChecklistTask,
+    canEditChecklistTasks, canRemoveChecklistTasks, pendingChecklistIds, onMoveChecklistSection, onAddChecklistTask, onRenameChecklistTask,
     onRemoveChecklistTask, generalPhotos, officePhotos,
     showOffice, teamNotes, onTeamNotes, saving, saveState, onSave,
   } = props;
@@ -142,6 +144,7 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
             canAddTasks={canAddChecklistTasks}
             canEditTasks={canEditChecklistTasks}
             canRemoveTasks={canRemoveChecklistTasks}
+            pendingChecklistIds={pendingChecklistIds}
             onMoveSection={onMoveChecklistSection}
             onAddTask={onAddChecklistTask}
             onRenameTask={onRenameChecklistTask}
