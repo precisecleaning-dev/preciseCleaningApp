@@ -1,18 +1,18 @@
 // Proyectos del Task list: crear, editar, cambiar estado y borrar (solo los
-// que no tienen tareas; los demás se archivan).
+// que no tienen tareas; los demás se archivan). Con `initialProjectId` abre
+// editando ese proyecto (tarjeta de "My projects").
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Pencil, Trash2, X } from 'lucide-react';
-import type { TaskProject, TaskProjectStatus, Team } from '../../../types/index';
+import type { AssignableUser, TaskProject, TaskProjectStatus, Team } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
 import { formatDate } from '../../../utils/dateFormat';
 import { PROJECT_COLORS, colorFor, projectHex } from '../opsOptions';
 import type { ProjectInput } from '../../../services/taskProjectsService';
-import type { PersonOption } from '../opsPermissions';
 import './OpsModals.css';
 
 interface ProjectsModalProps {
   projects: TaskProject[];
-  people: PersonOption[];
+  people: AssignableUser[];
   /** Equipos de Settings (settings_teams) para `teamId`. */
   teams: Team[];
   defaultOwnerId: string;
@@ -22,6 +22,8 @@ interface ProjectsModalProps {
   onSave: (input: ProjectInput, project: TaskProject | null) => Promise<boolean>;
   onStatus: (project: TaskProject, status: TaskProjectStatus) => void;
   onDelete: (project: TaskProject) => void;
+  /** Proyecto que se abre ya en edición (null/sin valor = formulario vacío para crear). */
+  initialProjectId?: string | null;
 }
 
 const STATUS_ORDER: Record<TaskProjectStatus, number> = { active: 0, done: 1, archived: 2 };
@@ -45,13 +47,26 @@ const emptyForm = (ownerUserId: string, color: string): ProjectForm => ({
 const shownColor = (p: TaskProject): string | null =>
   p.color || PROJECT_COLORS.find((c) => c.hex === colorFor(p.id))?.id || null;
 
-export default function ProjectsModal({
-  projects, people, teams, defaultOwnerId, canEdit, canDelete, onClose, onSave, onStatus, onDelete,
-}: ProjectsModalProps) {
+/** Formulario lleno con los datos de un proyecto (para editarlo). */
+const formFromProject = (project: TaskProject): ProjectForm => ({
+  title: project.title,
+  description: project.description,
+  ownerUserId: project.ownerUserId,
+  teamId: project.teamId ?? '',
+  startDate: project.startDate ?? '',
+  dueDate: project.dueDate,
+  color: shownColor(project),
+});
+
+const ProjectsModal = ({
+  projects, people, teams, defaultOwnerId, canEdit, canDelete, onClose, onSave, onStatus, onDelete, initialProjectId,
+}: ProjectsModalProps) => {
   // Un proyecto nuevo toma el siguiente color de la lista (se puede cambiar).
   const nextColor = PROJECT_COLORS[projects.length % PROJECT_COLORS.length].id;
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProjectForm>(() => emptyForm(defaultOwnerId, nextColor));
+  const initialProject = projects.find((project) => project.id === initialProjectId);
+  const [editingId, setEditingId] = useState<string | null>(initialProject?.id ?? null);
+  const [form, setForm] = useState<ProjectForm>(() =>
+    (initialProject ? formFromProject(initialProject) : emptyForm(defaultOwnerId, nextColor)));
   const [saving, setSaving] = useState(false);
 
   const sorted = [...projects].sort(
@@ -60,15 +75,7 @@ export default function ProjectsModal({
 
   const startEdit = (p: TaskProject) => {
     setEditingId(p.id);
-    setForm({
-      title: p.title,
-      description: p.description,
-      ownerUserId: p.ownerUserId,
-      teamId: p.teamId || '',
-      startDate: p.startDate || '',
-      dueDate: p.dueDate,
-      color: shownColor(p),
-    });
+    setForm(formFromProject(p));
   };
   const reset = () => {
     setEditingId(null);
@@ -210,4 +217,6 @@ export default function ProjectsModal({
       </div>
     </div>
   );
-}
+};
+
+export default ProjectsModal;

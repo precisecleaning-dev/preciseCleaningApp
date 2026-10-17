@@ -5,7 +5,8 @@
 // Se importan desde '../types/index' (index.ts los reexporta).
 //
 // Fechas como TEXTO: días AAAA-MM-DD (YmdDate) y fecha + hora ISO
-// (IsoDateTime). Todo campo que guarda un usuario termina en UserId / UserName.
+// (IsoDateTime). Todo campo que guarda un usuario termina en UserId / UserName
+// (UserIds / UserNames si guarda varios, como las personas asignadas).
 // ============================================================================
 import type { IsoDateTime, YmdDate } from './index';
 
@@ -24,17 +25,21 @@ export type RepeatFreq =
 export interface Repeat {
   freq: RepeatFreq; //                  frecuencia de la repetición
   days?: number[]; //                   solo con 'weekly': 0 = domingo … 6 = sábado
+  timesLeft?: number | null; //         veces que falta hacerla, contando esta (null o sin campo = siempre)
 }
 
 /** Estado del visto bueno de una tarea:
  *  draft = necesita OK pero aún no se envía · pending = esperando la respuesta ·
- *  approved = aprobada · changes = pidieron cambios. */
-export type UserTaskApprovalStatus = 'draft' | 'pending' | 'approved' | 'changes';
+ *  approved = aprobada · changes_requested = pidieron cambios. */
+export type UserTaskApprovalStatus = 'draft' | 'pending' | 'approved' | 'changes_requested';
+
+/** Respuesta de quien da el visto bueno. */
+export type ApprovalDecision = Extract<UserTaskApprovalStatus, 'approved' | 'changes_requested'>;
 
 /** Map `approval` de una tarea (null = no necesita visto bueno). La tarea no se
  *  puede marcar hecha hasta que esté `approved`. */
 export interface UserTaskApproval {
-  status: UserTaskApprovalStatus; //    draft · pending · approved · changes
+  status: UserTaskApprovalStatus; //    draft · pending · approved · changes_requested
   approverUserId: string; //            FK → system_users: quién da el OK
   approverUserName: string; //          copia del nombre de quien aprueba
   requestedByUserId: string | null; //  FK → system_users: quién la envió
@@ -56,6 +61,12 @@ export interface TaskAttachment {
 /** Elemento de `comments[]` de una tarea o de un proyecto (sin archivos). Se
  *  identifica por autor + hora (no tiene id propio). `createdAt` es texto ISO:
  *  dentro de un arreglo Firestore no acepta serverTimestamp(). */
+/** Elemento de `assignees[]`: una de las personas asignadas a la tarea. */
+export interface TaskAssignee {
+  userId: string; //                    FK → system_users: persona asignada
+  userName: string; //                  copia de su nombre
+}
+
 export interface TaskComment {
   userId: string; //                    FK → system_users: quién comentó
   userName: string; //                  copia del nombre de quien comentó
@@ -67,11 +78,10 @@ export interface TaskComment {
 export interface UserTask {
   id: string; //                        PK · id del documento
   title: string; //                     qué hay que hacer
-  assigneeUserId: string; //            FK → system_users: a quién se asignó
-  assigneeUserName: string; //          copia del nombre del asignado
+  assignees: TaskAssignee[]; //         a quiénes se asignó (una o varias personas)
   dueDate: YmdDate; //                  día en que vence ('' = sin fecha)
   dueTime: string; //                   hora "HH:mm" (24 h) o "" si no tiene hora
-  durationMinutes: number; //           duración estimada en minutos (2 h = 120)
+  durationMinutes: number; //           duración estimada en minutos (2 h = 120; 0 = no aplica)
   priorityId: string | null; //         FK → settings_priorities (High, Medium…)
   projectId: string | null; //          FK → task_projects (null = "No project")
   projectTitle: string | null; //       copia del título del proyecto
@@ -85,4 +95,41 @@ export interface UserTask {
   createdByUserId: string; //           FK → system_users: quién la asignó (no se edita)
   createdByUserName: string; //         copia del nombre de quien la asignó
   createdAt: IsoDateTime; //            cuándo se creó
+}
+
+/** Formato viejo de la persona asignada (hasta 10/2026 una tarea tenía una
+ *  sola). Solo se lee: el service lo pasa a `assignees` y lo borra la próxima
+ *  vez que se cambian las personas de esa tarea. */
+export interface LegacyTaskAssignee {
+  assigneeUserId?: string; //           FK → system_users: la única persona asignada
+  assigneeUserName?: string; //         copia de su nombre
+}
+
+/** `approval` como puede estar guardado: hasta 10/2026 "pidieron cambios" se
+ *  guardaba como 'changes' (el service lo lee como 'changes_requested'). */
+export type StoredUserTaskApproval = Omit<UserTaskApproval, 'status'> & {
+  status: UserTaskApprovalStatus | 'changes';
+};
+
+/** Cómo está guardada una tarea en Firestore: sin `id` (es el del documento),
+ *  con `assigneeUserIds` (los ids de `assignees`, solo para la consulta
+ *  array-contains; lo arma el service) y, si es vieja, con la persona y el
+ *  visto bueno en el formato de antes. */
+export type StoredUserTask = Omit<UserTask, 'id' | 'assignees' | 'approval'>
+  & Partial<Pick<UserTask, 'assignees'>>
+  & { approval: StoredUserTaskApproval | null; assigneeUserIds?: string[] }
+  & LegacyTaskAssignee;
+
+/** Persona a la que se le puede asignar una tarea. */
+/** Quién hace un cambio o a quién se le pide algo (id + nombre del usuario). */
+export interface Actor {
+  id: string;
+  name: string;
+}
+
+export interface AssignableUser {
+  id: string;
+  name: string;
+  /** "Me" para quien está usando la app. */
+  label: string;
 }

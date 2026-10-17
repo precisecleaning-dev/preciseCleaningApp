@@ -11,16 +11,22 @@ interface RelationItem {
   color?: string;
 }
 
+/** Clave de comparación de un id-o-nombre: sin mayúsculas y sin espacios de más. */
+export const normalizeRelationKey = (idOrName?: string | null): string => String(idOrName ?? '').toLowerCase().trim();
+
+/** ¿El id-o-nombre guardado apunta a este elemento del catálogo? (misma regla que getRelationName). */
+export const matchesRelation = (item: RelationItem, idOrName?: string | null): boolean => {
+  if (!idOrName) return false;
+  const relationKey = normalizeRelationKey(idOrName);
+  return normalizeRelationKey(item.id) === relationKey || normalizeRelationKey(item.name) === relationKey;
+};
+
 export function getRelationName<T extends RelationItem>(
   list: T[],
   idOrName?: string | null,
   fallback = '-'
 ): string {
-  if (!idOrName) return fallback;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  const found = list.find(
-    item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal
-  );
+  const found = list.find((item) => matchesRelation(item, idOrName));
   return found ? found.name : fallback;
 }
 
@@ -28,9 +34,5 @@ export function getRelationColor<T extends RelationItem>(
   list: T[],
   idOrName?: string | null
 ): string | undefined {
-  if (!idOrName) return undefined;
-  const safeVal = String(idOrName).toLowerCase().trim();
-  return list.find(
-    item => String(item.id).toLowerCase().trim() === safeVal || String(item.name).toLowerCase().trim() === safeVal
-  )?.color;
+  return list.find((item) => matchesRelation(item, idOrName))?.color;
 }

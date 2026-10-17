@@ -1,91 +1,130 @@
-// Fila de una tarea en la lista: casilla para marcarla hecha, título y datos
-// (persona, quién la asignó, vencimiento, repetición, duración, proyecto,
-// comentarios, archivos).
+// Tarjeta de una tarea en la lista: casilla para marcarla hecha, título, datos
+// (personas, quién la asignó, vencimiento, repetición, duración, proyecto,
+// comentarios, archivos) y el botón "Open". El borde izquierdo toma el color de
+// su sección (Daily, Overdue, Today).
 import type { CSSProperties } from 'react';
-import { BadgeCheck, Check, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
+import { BadgeCheck, Check, ChevronRight, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
 import type { UserTaskApproval, UserTask } from '../../../types/index';
-import { dueLabel, formatMinutes, REPEAT_LABEL, sectionOf, type TaskSection } from '../opsDates';
+import { dueLabel, formatMinutes, repeatBadgeLabel, sectionOf, taskSectionOf, type TaskSection } from '../opsDates';
+import { getFirstName } from '../opsOptions';
+import { isAwaitingApproval } from '../opsPermissions';
+import ActionButton from './ActionButton';
 import OpsAvatar from './OpsAvatar';
 import './TaskRow.css';
 
 interface TaskRowProps {
   task: UserTask;
-  today: string;
-  /** Nombre que se muestra de la persona asignada ("Me" si es quien mira). */
-  assigneeLabel: string;
-  /** Quién la asignó ("From Omar"); null si se la asignó la misma persona o
-   *  si es quien se está mirando (pestaña "Assigned by"). */
-  assignedByLabel: string | null;
+  /** Hoy, AAAA-MM-DD. */
+  todayIsoDate: string;
+  /** Nombres de las personas asignadas ("Me, Sandy +1"; "Me" es quien mira). */
+  assigneesLabel: string;
+  /** Nombre corto de quien la asignó ("Omar"; la fila agrega "From"); null si
+   *  se la asignó la misma persona o si es quien se está mirando. */
+  assignedByName: string | null;
   /** Título del proyecto en vivo (o la copia guardada en la tarea). */
-  projectName: string | null;
+  projectTitle: string | null;
   /** Color del proyecto (el elegido o el automático). */
   projectColor: string;
-  selected: boolean;
-  busy: boolean;
+  isSelected: boolean;
+  isBusy: boolean;
   onOpen: (task: UserTask) => void;
-  onComplete: (task: UserTask) => void;
+  /** Sin `onMarkDone` la fila no lleva casilla (en "Waiting for your OK" quien
+   *  da el visto bueno revisa la tarea, no la marca hecha). */
+  onMarkDone?: (task: UserTask) => void;
 }
 
-const ROW_TONE: Record<TaskSection, string> = {
-  overdue: ' overdue',
-  today: ' today',
+/** Avatares que se ven en la fila (el resto lo cuenta la etiqueta: "+2"). */
+const MAX_VISIBLE_AVATARS = 3;
+
+/** Clase de la fila según su sección ('' = sin color propio). */
+const SECTION_ROW_CLASS: Record<TaskSection, string> = {
+  daily: 'daily',
+  overdue: 'overdue',
+  today: 'today',
   week: '',
   later: '',
   nodate: '',
 };
 
+const getApproverFirstName = (approval: UserTaskApproval): string =>
+  getFirstName(approval.approverUserName ?? '') || 'approver';
+
 /** Texto de la etiqueta del visto bueno ("Waiting for Omar", "Approved"…). */
-function approvalLabel(a: UserTaskApproval): string {
-  const first = (a.approverUserName || '').split(' ')[0] || 'approver';
-  if (a.status === 'pending') return `Waiting for ${first}`;
-  if (a.status === 'approved') return 'Approved';
-  if (a.status === 'changes') return 'Changes requested';
+function getApprovalLabel(approval: UserTaskApproval): string {
+  const approverFirstName = getApproverFirstName(approval);
+  if (approval.status === 'pending') return `Waiting for ${approverFirstName}`;
+  if (approval.status === 'approved') return 'Approved';
+  if (approval.status === 'changes_requested') return 'Changes requested';
   return 'Needs OK';
 }
 
-export default function TaskRow({
-  task, today, assigneeLabel, assignedByLabel, projectName, projectColor, selected, busy, onOpen, onComplete,
-}: TaskRowProps) {
-  const section = sectionOf(task.dueDate, today);
-  const attachments = task.attachments?.length || 0;
-  const commentCount = task.comments?.length || 0;
+/** Por qué todavía no se puede marcar hecha (null si se puede). */
+function getMarkDoneBlockedReason(task: UserTask): string | null {
+  if (!task.approval || !isAwaitingApproval(task)) return null;
+  const approverFirstName = getApproverFirstName(task.approval);
+  return task.approval.status === 'pending'
+    ? `Waiting for ${approverFirstName}'s OK`
+    : `Needs ${approverFirstName}'s OK before it's done`;
+}
+
+const TaskRow = ({
+  task, todayIsoDate, assigneesLabel, assignedByName, projectTitle, projectColor, isSelected, isBusy, onOpen,
+  onMarkDone,
+}: TaskRowProps) => {
+  const dueSection = sectionOf(task.dueDate, todayIsoDate);
+  const rowSection = taskSectionOf(task, todayIsoDate);
+  const attachmentCount = task.attachments?.length ?? 0;
+  const commentCount = task.comments?.length ?? 0;
+  const visibleAssignees = task.assignees.slice(0, MAX_VISIBLE_AVATARS);
+  const markDoneBlockedReason = getMarkDoneBlockedReason(task);
+  const stateClasses = [SECTION_ROW_CLASS[rowSection], isSelected ? 'selected' : '']
+    .filter(Boolean)
+    .sort();
+  const rowClassName = ['ops-row', ...stateClasses].join(' ');
   return (
-    <li className={`ops-row${ROW_TONE[section]}${selected ? ' selected' : ''}`}>
-      <button
-        type="button"
-        className="ops-check"
-        onClick={() => onComplete(task)}
-        disabled={busy}
-        aria-label={`Mark "${task.title}" as done`}
-      >
-        <Check size={14} />
-      </button>
+    <li className={rowClassName}>
+      {onMarkDone && (
+        <button
+          type="button"
+          className="ops-check"
+          onClick={() => onMarkDone(task)}
+          disabled={isBusy || !!markDoneBlockedReason}
+          title={markDoneBlockedReason ?? undefined}
+          aria-label={markDoneBlockedReason ?? `Mark "${task.title}" as done`}
+        >
+          <Check size={14} />
+        </button>
+      )}
       <button type="button" className="ops-row-main" onClick={() => onOpen(task)}>
         <span className="ops-row-title">{task.title}</span>
         <span className="ops-row-meta">
           <span className="ops-meta-person">
-            <OpsAvatar id={task.assigneeUserId} name={task.assigneeUserName} size="xs" />
-            {assigneeLabel}
+            <span className="ops-avatars">
+              {visibleAssignees.map((assignee) => (
+                <OpsAvatar key={assignee.userId} id={assignee.userId} name={assignee.userName} size="xs" />
+              ))}
+            </span>
+            {assigneesLabel}
           </span>
-          {assignedByLabel && <span className="ops-meta-from">From {assignedByLabel}</span>}
-          <span className={`ops-meta-due${section === 'overdue' ? ' late' : ''}`}>
-            {dueLabel(task.dueDate, task.dueTime, today)}
+          {assignedByName && <span className="ops-meta-from">From {assignedByName}</span>}
+          <span className={`ops-meta-due${dueSection === 'overdue' ? ' late' : ''}`}>
+            {dueLabel(task.dueDate, task.dueTime, todayIsoDate, task.repeat)}
           </span>
           {task.approval && (
-            <span className={`ops-badge approval ${task.approval.status}`}>
+            <span className={`approval ops-badge ${task.approval.status}`}>
               {task.approval.status === 'approved' ? <BadgeCheck size={11} /> : <Hourglass size={11} />}
-              {approvalLabel(task.approval)}
+              {getApprovalLabel(task.approval)}
             </span>
           )}
-          {task.repeat && <span className="ops-badge repeat">{REPEAT_LABEL[task.repeat.freq]}</span>}
+          {task.repeat && <span className="ops-badge repeat">{repeatBadgeLabel(task.repeat)}</span>}
           {task.durationMinutes > 0 && (
             <span className="ops-badge time">
               <Clock size={11} /> {formatMinutes(task.durationMinutes)}
             </span>
           )}
-          {task.projectId && projectName && (
+          {task.projectId && projectTitle && (
             <span className="ops-chip" style={{ '--chip-color': projectColor } as CSSProperties}>
-              {projectName}
+              {projectTitle}
             </span>
           )}
           {commentCount > 0 && (
@@ -93,13 +132,26 @@ export default function TaskRow({
               <MessageSquare size={12} /> {commentCount}
             </span>
           )}
-          {attachments > 0 && (
-            <span className="ops-meta-count" aria-label={`${attachments} attachments`}>
-              <Paperclip size={12} /> {attachments}
+          {attachmentCount > 0 && (
+            <span className="ops-meta-count" aria-label={`${attachmentCount} attachments`}>
+              <Paperclip size={12} /> {attachmentCount}
             </span>
           )}
         </span>
       </button>
+      <span className="ops-row-open">
+        <ActionButton
+          variant="outline"
+          size="sm"
+          trailingIcon={<ChevronRight size={14} />}
+          ariaLabel={`Open "${task.title}"`}
+          onClick={() => onOpen(task)}
+        >
+          Open
+        </ActionButton>
+      </span>
     </li>
   );
-}
+};
+
+export default TaskRow;

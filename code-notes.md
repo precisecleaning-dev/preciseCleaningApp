@@ -2661,3 +2661,185 @@ modal muerto de empresa, `QCReportsDashboard`, y "ruteo QC unificado".)_
   de layout que lo impida (ninguna hasta ahora — CSS Grid/Flexbox funcionan igual en `<ul>`).
 - **`key` en listas:** preferir un identificador único de dato (id, url) sobre combinaciones
   con índice de array, salvo que el dato no tenga identificador único garantizado.
+
+## Task list: varias personas por tarea, hora libre, "N/A" y botón "Add Task" (2026-10-16, rama `tareas-varias-personas`)
+
+Pedido de Omar: "Assign to"/"Assignee" como lista (una tarea la pueden hacer varias personas),
+"How long" con opción de no aplica, "Time" como campo de hora (8:00 AM, 5:00 PM), y quitar el
+top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre el panel lateral.
+- **`assignees: { userId, userName }[]` en vez de `assigneeUserId` / `assigneeUserName`** (review del PR:
+  antes eran dos listas paralelas, ids y nombres, que se podían desincronizar). `assigneeUserIds` se
+  guarda solo para la consulta `array-contains` y lo arma `assigneeFields` en `userTasksService`
+  (converter al crear y `update`); no escribirlo a mano en otro lado.
+  Sin migración (decisión de Omar): el converter de `userTasksService` lee el formato viejo como
+  lista, y `update` borra los campos viejos (`deleteField`) SOLO cuando cambian las personas. No
+  convertirlo en cada escritura: la regla de reasignar rechazaría que la persona asignada cambie,
+  p. ej., la fecha de una tarea vieja (el update tocaría campos assignee*).
+- **Dos listeners por persona mientras queden tareas viejas abiertas** (`useOpsData.ts`):
+  `assigneeUserIds array-contains` + `assigneeUserId ==` (`LEGACY_ASSIGNEE_FIELD`), juntados por id.
+  Cuando ya no quede ninguna tarea abierta con `assigneeUserId`, se puede quitar la segunda consulta
+  (y el campo del converter). `getAll` ya no filtra por persona.
+- Reglas propuestas: `myTask` acepta los dos formatos; reasignar revisa los 4 campos assignee*.
+  Pruebas actualizadas en security/tests (no se pudieron correr: el emulador no se descarga aquí).
+- "Assigned by me" muestra también las tareas que uno comparte con otras personas (antes solo las
+  de otros); "From X" no sale si la tarea es solo de quien la asignó (`isOnlyAssignee`).
+- "How long": opción `N/A` = `durationMinutes: 0` (la fila no muestra duración; no suma minutos al
+  proyecto). "Time": `shared/components/TimeInput` (h:mm AM/PM en cualquier navegador, como
+  DateInput; guarda "HH:mm"). `formatHm` se movió de `opsDates.ts` a `utils/dateFormat.ts`.
+- Crear: `NewTaskPanel` (borrador local, se guarda con "Add task"); comparte `TaskDrawer` (marco) y
+  `TaskFields` (campos) con `TaskPanel`. Si elige quién aprueba, la tarea nace con el visto bueno
+  "por enviar" (`draftApproval`), como la casilla "Needs OK" de antes.
+- **Pendiente:** el top 3 (`user_priorities`) ya no tiene pantalla, pero siguen `useTopProjectIds`
+  (antes `usePriorities`), `savePriorities`, `prioritiesService`, el tipo `UserPriorities` (antes
+  `OpsPriorities`) y su regla. Decidir si se borran.
+- Review del PR: `userTasksService.create`/`update` validan el título (no vacío, ≤ `MAX_TITLE_LENGTH`)
+  y la duración (entero ≥ 0) con `assertValidTaskFields`; la pantalla ya los limita, pero el service
+  es la última puerta antes de Firestore. `MAX_TITLE_LENGTH` y `DEFAULT_DURATION_MINUTES` viven en el
+  service y los usan los paneles. Las reglas propuestas todavía no validan el título (pendiente).
+- Review del PR: el visto bueno "pidieron cambios" ahora se guarda como `approval.status =
+  'changes_requested'` (antes `'changes'`); tipo `ApprovalDecision` en `types/userTasks.ts`. Sin
+  migración: el converter (`toApproval` en `userTasksService`) lee `'changes'` como `'changes_requested'`.
+  No quitarlo mientras haya tareas viejas con `'changes'`. Las clases CSS siguen el valor
+  (`.changes_requested` en TaskPanel.css y TaskRow.css).
+- Review del PR (TaskListView): en "Waiting for your OK" la fila va sin `onMarkDone` (TaskRow no
+  dibuja la casilla): quien da el visto bueno abre la tarea y aprueba o pide cambios, no la cierra.
+  `useLiveTask` devuelve `loaded`: si la tarea abierta se borró o no se pudo leer, la vista avisa
+  ("This task was deleted." / "Could not open the task…") en vez de dejar `selectedTaskId` apuntando
+  a nada. No avisa mientras se borra desde el mismo panel (`actions.busyId === selectedTaskId`): el
+  listener la ve borrada antes de que termine `remove`. El error del panel ya no reemplaza la lista.
+- Review del PR (Manager): el "Pass" rápido ya no escribe `quality_checks` desde la vista. Hace lo
+  mismo que el resultado "Invoice" de la inspección completa (decisión de Omar, 10/2026): en un batch
+  (`qualityChecks.saveBatch` + `addStatusChange`) el reporte (`outcome: 'invoice'`, `quickPass: true`,
+  fecha con `todayIso()`), la casa a "Quality Check" salvo que ya esté en Invoice, `invoiceHold: false`
+  si estaba retenida y su `status_history`. Antes solo creaba el reporte y la casa no cambiaba de
+  status (las métricas de status_history no lo veían). ManagerView ya no importa firebase/firestore.
+- Review del PR (Owner): se quitaron "Updated …" y el botón "Refresh" del resumen (decisión de Omar):
+  solo cambiaban la hora mostrada; los datos ya llegan en vivo. "% vs. mes anterior" compara contra el
+  mismo día del mes anterior topado a los días que tuvo (antes topado a 28: del 29 al 31 salía
+  inflado). El filtro por persona vuelve a "All" en el render si la persona ya no está en los chips.
+  Sin `eslint-disable` de exhaustive-deps: los periodos salen de un `useMemo([now])` (`now` es estado
+  de `useHomeData`) y `fin.sum` se pasa como dependencia (cambia cuando llegan billingServices/payroll).
+- Task list (10/2026, pedido de Omar con nota del senior): la lista va por pestañas de sección
+  (`TaskSectionTabs`; solo las que tienen tareas) y UN componente para todas (`TaskSection`, antes
+  `TaskSections`). "Daily" = tareas que se repiten `daily` o `weekdays`, sin importar la fecha
+  (`taskSectionOf`/`groupTasksBySection` en opsDates); las demás van por vencimiento (Overdue, Today,
+  This week, Later, No date). `sectionOf` sigue sin devolver 'daily': Owner, Manager y la fila lo usan
+  para saber si algo está vencido.
+- Repetición con fin ("Ends: Never / After N times", `TaskRepeatPicker`): `repeat.timesLeft` = veces que
+  falta hacerla contando la actual (null o sin campo = siempre). Al marcarla hecha, `complete` crea la
+  siguiente con una vez menos; con `timesLeft: 1` ya no crea otra. Las reglas no validan `repeat`, así
+  que no hubo que tocarlas; el service valida 1..`MAX_REPEAT_TIMES`.
+- "My projects" (`MyProjectsPanel` + `TaskCalendar` + `ProjectCard`) usa solo lo que ya está cargado
+  (tareas asignadas + dadas a otros de la persona que se mira y `taskProjects`): sin consultas nuevas.
+  "Off track" = alguna de sus tareas abiertas CARGADAS está vencida; el avance sale de los contadores
+  `doneCount`/`taskCount`. La tarjeta abre `ProjectsModal` con `initialProjectId`. Sin el top 3.
+- Quality Check (10/2026, pedido de Omar): cada área del checklist (Porch, Rooms…) tiene sus fotos
+  debajo de sus tareas (`QcChecklist` recibe `renderSectionPhotos`). Se guardan donde ya se guardaban
+  las fotos por área (`qcData[placeId].photos`): misma subida, cola sin conexión, editor y PDF por
+  área. "Other photos (before / after)" muestra el área General (`__general`) y las fotos de áreas que
+  ya no salen en el checklist (inspecciones viejas): no quitarlas de ahí o esas fotos no se verían.
+- Quality Check · "Edit checklist" (10/2026, pedido de Omar): las áreas se contraen/extienden (estado
+  local del panel) y, con el módulo nuevo **"QC Checklist Setup"** de Roles (Add = agregar tareas,
+  Edit = renombrarlas y ordenar áreas, Delete = quitarlas), se editan desde el panel. Los cambios son
+  del CATÁLOGO (settings_places / settings_tasks): valen para todas las casas.
+  · Orden manual: `Place.sortOrder` (sin valor = al final por nombre; `sortPlacesByOrder` en
+    utils/qcCatalog.ts). Las flechas intercambian el área con la de al lado visible en esa casa y
+    `settingsPlacesService.saveOrder` reescribe solo las posiciones que cambian, en un batch.
+  · Quitar = ARCHIVAR (`Task.archived: true`), no borrar: los reportes viejos guardan respuestas por
+    id de tarea y el PDF/puntaje necesitan el nombre, por eso `tasks` sigue trayendo las archivadas y
+    solo el checklist las filtra (`isActiveTask`; también el checklist de Houses).
+  · Reglas propuestas: ese módulo solo puede tocar `sortOrder` de un área y crear / renombrar /
+    archivar tareas (no borrar). Pruebas en security/tests (no se corrieron: el emulador no se
+    descarga aquí). Las reglas reales de la consola hay que actualizarlas a mano.
+  · **Pendiente:** Settings → Places/Tasks todavía escribe con `settingsService` y muestra las tareas
+    archivadas como si siguieran; pasar a `settingsPlacesService`/`settingsTasksService` y marcarlas.
+- Quality Check Reports (10/2026, pedido de Omar): ya NO es una vista del menú (se quitó
+  `qc_reports_table` de App.tsx, Sidebar y viewPrefetch, y se borró QCReportsTableView). Su tabla
+  con filtros vive en Quality Check, debajo de Recall: `QcReportsBlock` → `QcReportsSection`.
+  · El bloque va CERRADO y monta la sección solo al abrirlo: la sección lee la colección completa
+    `qualityChecks` y Quality Check a propósito solo trae los reportes de sus casas
+    (useQcForHouses). No dejarlo abierto por defecto.
+  · Permiso: el módulo "Quality Check Reports" de Roles sigue y ahora decide si se ve la tabla; sin
+    declararlo, la ve quien entra a Quality Check (lo mismo que hacía el menú).
+  · Tabla o tarjetas con `useMediaQuery('(max-width: 900px)')` (antes las dos y una escondida).
+  · Las clases pasaron de `qcrt-` a `qcrs-`: QCRoutesTableView también usa `qcrt-` y, al cargar los
+    dos CSS juntos, se pisaban. La pestaña Rutas pierde reglas que le llegaban "prestadas" del CSS de
+    reportes (p. ej. el padding de 24 px y min-height de `.qcrt-page`); se queda con las suyas.
+  · Las tarjetas de casa (pendiente / Did Not Pass / Recall) son `QcHouseCard`.
+- Houses · status por empresa en el formulario (10/2026, pedido de Omar): el cliente decide la
+  empresa (`houseBusiness`: tipo Cavalry → Cavalry; cualquier otro → Normal) y "Status" solo ofrece
+  los de esa empresa en su Form Order (`statusesForBusiness` en shared/utils/businesses.ts, el mismo
+  que usa el tablero). Sin cliente, los de Normal. Al cambiar de cliente, si el status no es de la
+  nueva empresa se pone el primero de esa empresa. Si una casa vieja tiene un status de la otra
+  empresa, se sigue mostrando (no se pierde al editar).
+- Tipos de cliente: "Commercial" pasó a llamarse "Property manager" (decisión de Omar). Normal =
+  Private customer, Residential, Property manager (`NORMAL_CUSTOMER_TYPES`); los clientes viejos con
+  "Commercial" siguen siendo Normal y conservan su tipo al editarlos (no se migró nada).
+- Pipeline: la tarjeta, la columna, la pastilla de status y el indicador son componentes
+  (`PipelineJobCard`, `PipelineColumn`, `PipelineStatusPill`, `PipelineKpiCard` en src/components,
+  al lado de PipelineBoardView, decisión de Omar); los mismos para Normal y Cavalry.
+- PeriodBar en más pantallas (10/2026, pedido de Omar): Quality Check (casas pendientes y Recall),
+  Quality Check Reports, Payroll → Asignar nómina y Payroll → Nóminas. Los filtros de cada pantalla
+  van DENTRO de la barra como `children` (fila `.pb-filters`); `allowedKinds` limita los periodos.
+  · QC casas: filtra por Schedule Date y arranca en Year (`pc.qc.houses.period`); las casas SIN
+    scheduleDate se muestran siempre (si no, una casa sin fecha desaparecería de la inspección).
+  · QC Reports: por la fecha de la inspección, arranca en Month (`pc.qc.reports.period`).
+  · Asignar nómina: por Schedule Date (`recScheduleTime`), arranca en Year
+    (`pc.payroll.assign.period`). Antes, sin fechas, se veía TODO: para ver casas pendientes de un
+    año anterior hay que ir al año anterior o usar Custom con las fechas vacías (= sin límite).
+  · Nóminas: solo semanas (`allowedKinds={['week']}`), abre en la semana de HOY y no se recuerda
+    (antes abría en la semana más reciente con nómina). La key de la semana es `periodRange().start`
+    (lunes 00:00 local), el mismo valor que `mondayOf()` da a cada pago: no cambiar uno sin el otro.
+    El estado de pago de la semana (Pagado / Pendiente) va como `extra` de la barra.
+- CR de tonnydev1801 (10/2026) · status por id-o-nombre en Houses: `utils/relations.ts` tiene
+  `normalizeRelationKey` / `matchesRelation` (sin mayúsculas ni espacios de más) y getRelationName /
+  getRelationColor los usan. El tablero (`getPropertiesForStatus`), la pastilla, los conteos de
+  HouseList (`statusCounts`, tarjetas KPI y del Overview) y el filtro de Status resuelven igual.
+  · `statusIndex` (useHouseCatalogs) guarda las claves EXACTAS (HouseForm las busca con `.get`) y
+    además las normalizadas; `findStatusInIndex` prueba exacta y luego normalizada. No quitar las
+    exactas: los ids de Firestore distinguen mayúsculas.
+  · Efecto visible: casas viejas con el status escrito con otras mayúsculas o espacios ("quality
+    check ") vuelven a salir en la lista y el tablero (antes HouseList las descartaba).
+- PeriodBar · `allowedKinds`: una lista vacía cuenta como "todos"; si el periodo que llega por props
+  no está permitido, "Today" lo lleva al de respaldo (Week o el primero que no sea Custom) y en
+  desarrollo sale un console.warn; con solo Custom no se muestra "Today".
+- Checklist del empleado (ChecklistModal, CR de tonnydev1801, 10/2026): al guardar se escriben SOLO
+  las marcas que esta persona cambió (`checked.<tarea>`: true o deleteField(), con FieldPath) y las
+  notas si se tocaron. No volver a `updateDoc({ checked: mapaCompleto })`: borraba las marcas que
+  otra persona guardó con el modal abierto, o todas si se guardaba antes de que llegara el listener.
+  · `useHouseChecklist` devuelve `{ checklist, isLoaded, hasLoadError }`: el botón Guardar queda
+    bloqueado hasta `isLoaded` (null también significa "no tiene checklist").
+  · Las áreas preseleccionadas salen del checklist en vivo hasta que el empleado toca un chip.
+  · Tipos `ChecklistRecord` / `HouseChecklistState` en types/index.ts.
+  · **Pendiente:** el modal todavía importa `firebase/firestore` (regla de CLAUDE.md); mover sus
+    escrituras a un service de `features/houses/services/`.
+- HouseForm (mismo CR): `createdPropertyIdRef` guarda el id de la casa que creó el formulario; si un
+  paso posterior falla y se presiona Save otra vez, se actualiza esa casa (antes se creaba otra) y
+  sigue contando como alta. Si falla el batch de servicios y pagos, se guarda un borrador con la casa
+  tal como quedó (id y fotos subidas) antes de cerrar. El borrador no lleva los borrados pendientes
+  (servicesToDelete / payrollsToDelete).
+- TaskApproval (CR de tonnydev1801, 10/2026): `onDecideApproval` devuelve Promise<boolean> (TaskListView
+  pasa `.ok` de `actions.decide`); "Send changes" solo limpia la nota si se guardó, para no perder
+  lo escrito si falla. El aviso del error lo sigue dando `run()` de useTaskActions. `Actor` vive en
+  types/userTasks.ts (antes en userTasksService).
+- Quality Check · periodo de Pending/Recall (CR de tonnydev1801, 10/2026): se mantiene el filtro por
+  Schedule Date (decisión de Omar), pero las casas de la pestaña elegida que quedan FUERA del periodo
+  se avisan con `QcOutOfPeriodNotice` ("N casa(s)… fuera de este periodo · Ver todas"; Ver todas =
+  Custom sin fechas). No quitar el aviso: "Year" es el año calendario y una pendiente del 28/12 se
+  escondía el 2/1 sin decir nada (también si el navegador recordaba "Week").
+- Quality Check · "Edit checklist": cada escritura va por `usePendingById` (ids en utils/qcCatalog:
+  `CHECKLIST_ORDER_PENDING_ID`, `addTaskPendingId(área)` y el id de la tarea) y su botón se
+  deshabilita mientras guarda: un doble toque creaba dos tareas iguales o calculaba dos intercambios
+  de orden con la misma lista.
+- Sin red con el caché persistente de Firestore (`persistentLocalCache`, 10/2026): las lecturas NO
+  fallan (responden desde el caché con `metadata.fromCache`) y las escrituras NO fallan (quedan en
+  espera hasta que vuelve la señal). Decisiones:
+  · Task list (`useTaskActions.run` y `attach`): sin red no se escribe; avisa "…: sin conexión" y la
+    vista conserva lo escrito (antes el botón se quedaba girando sin aviso).
+  · `useOpsData`: con `includeMetadataChanges`, una lista vacía que solo viene del caché y sin red es
+    error ("Could not load the tasks"), y la tarea del panel que no está en caché es error, no
+    "borrada". El error se quita solo al volver la red.
+  · Checklist del empleado (`useHouseChecklist`): una respuesta VACÍA del caché no cuenta como
+    cargada (si no, se creaba un checklist nuevo que tapaba al anterior). Con el checklist en caché y
+    sin red, Guardar deja el cambio en espera (Firestore lo sube solo), avisa y cierra el modal.
+  · HouseForm sin red: `addDoc` espera la señal y guarda una sola vez (no se tocó).

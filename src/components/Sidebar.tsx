@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, FileBarChart, Gauge, Briefcase, UserCog, ListChecks
+  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, Gauge, Briefcase, UserCog, ListChecks
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Role, Permission } from '../types/index';
@@ -121,10 +121,8 @@ export default function Sidebar({
     { tab: 'calendar', label: 'Calendar', icon: CalendarDays, visible: canView('Calendar') },
     // ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses")
     { tab: 'qc_report', label: 'Quality Check', icon: ClipboardCheck, visible: canView('Quality Check') },
-    // ⭐ QUALITY CHECK REPORTS — inspecciones ya finalizadas, en formato tabla.
-    //    Comparte el permiso "Quality Check": quien puede inspeccionar tambien
-    //    puede revisar lo inspeccionado.
-    { tab: 'qc_reports_table', label: 'Quality Check Reports', icon: FileBarChart, visible: canViewOrLegacy('Quality Check Reports', canView('Quality Check')) },
+    // (Quality Check Reports ya no es una vista del menú: su tabla vive dentro
+    //  de Quality Check, debajo de Recall. Ver QcReportsBlock.)
     // ⭐ QC DASHBOARD — vista nueva (indicadores de calidad y scorecard por
     //    equipo). Permiso propio "QC Dashboard"; si el rol aún no lo tiene
     //    declarado, hereda el de "Quality Check".

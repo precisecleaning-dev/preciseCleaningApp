@@ -8,7 +8,7 @@
 //    casa al presionar "Confirm & Save"; al salir sin guardar queda borrador.
 //    Extraído de HousesView sin cambiar la lógica.
 // ============================================================================
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, MapPin, Plus, X, Edit2, Trash2, Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag,
   Users, StickyNote, Image as ImageIcon, CheckSquare, DollarSign, Save, XCircle, Layers, Settings, Receipt,
@@ -23,6 +23,7 @@ import type { PhotoConfig } from "../../../services/photoConfigService";
 import { formatDate, dateSortValue, todayIso } from "../../../utils/dateFormat";
 import { getRelationName } from "../../../utils/relations";
 import { stampInvoiceEntry } from "../../../utils/invoiceEntry";
+import { cavalryClientKeys, houseBusiness, statusesForBusiness } from "../../../shared/utils/businesses";
 import PhotoSection from "../../../components/PhotoSection";
 import DateInput from "../../../shared/components/DateInput";
 import { type ServiceRecord, newServiceRecord, recordFingerprint, recordTotalMinusTax } from "../serviceRecords";
@@ -186,7 +187,7 @@ interface HouseFormProps {
   onClose: () => void;
 }
 
-export default function HouseForm({
+const HouseForm = ({
   init,
   records,
   properties,
@@ -198,7 +199,7 @@ export default function HouseForm({
   queue,
   onSaveDraft,
   onClose,
-}: HouseFormProps) {
+}: HouseFormProps) => {
   const {
     statuses, teams, priorities, services, products, taxes, customersList, employees, rolesList,
     statusIndex, getClientName, getServiceName, logLabel,
@@ -225,12 +226,12 @@ export default function HouseForm({
   // ⭐ "Edit" abre al instante: el borrador de servicios y pagos del formulario
   //    se llena UNA vez cuando llegan los de la casa (antes el clic esperaba
   //    dos getDocs al servidor antes de mostrar nada).
-  const [formSeedFor, setFormSeedFor] = useState<string | null>(initial.seedFor);
-  const formRecordsReady = formSeedFor === null;
+  const [seededPropertyId, setSeededPropertyId] = useState<string | null>(initial.seedFor);
+  const formRecordsReady = seededPropertyId === null;
 
   const [isSaving, setIsSaving] = useState(false);
-  const [isAssigningWorkerForm, setIsAssigningWorkerForm] = useState(false);
-  const [workerSearch, setWorkerSearch] = useState(""); // ⭐ buscador de empleados
+  const [isWorkerPickerOpen, setIsWorkerPickerOpen] = useState(false);
+  const [workerSearchText, setWorkerSearchText] = useState(""); // ⭐ buscador de empleados
   const [isFieldConfigOpen, setIsFieldConfigOpen] = useState(false);
   // ⭐ Modal de PAGO y de SERVICIO: en el formulario van al borrador local.
   const [payrollModal, setPayrollModal] = useState<{ initial: PayrollRecord; editingId: string | null } | null>(null);
@@ -247,22 +248,27 @@ export default function HouseForm({
   // ⭐ La casa tal como estaba al abrir el formulario de edición: al guardar
   //    se escriben solo las diferencias contra ella (null = alta o borrador).
   const formBaseRef = useRef<Property | null>(initial.base);
+  // ⭐ Id de la casa que ESTE formulario creó. Si después del create falla un
+  //    paso (fotos, batch) y el usuario presiona Save otra vez, se actualiza esa
+  //    casa en vez de crear una segunda (antes el id solo vivía en una variable
+  //    local de handleSave y el reintento duplicaba la casa).
+  const createdPropertyIdRef = useRef<string | null>(null);
   // ⭐ Servicios tal como llegaron de Firestore al abrir el formulario (id →
   //    huella). Al guardar solo se reescriben los que cambiaron; antes se
   //    actualizaban TODOS, uno por uno, aunque nadie los hubiera tocado.
   const loadedServicesRef = useRef<Map<string, string>>(new Map());
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
 
   // ⭐ Mapa de la dirección: se actualiza con debounce mientras escribes.
   const [mapAddress, setMapAddress] = useState("");
   useEffect(() => {
-    const addr = (formData.address || "").trim();
-    if (addr.length < 6) {
+    const trimmedAddress = (formData.address ?? "").trim();
+    if (trimmedAddress.length < 6) {
       setMapAddress("");
       return;
     }
-    const t = setTimeout(() => setMapAddress(addr), 900);
-    return () => clearTimeout(t);
+    const timeoutId = setTimeout(() => setMapAddress(trimmedAddress), 900);
+    return () => clearTimeout(timeoutId);
   }, [formData.address]);
 
   // Fotos del FORMULARIO: todas las visibles (guardadas + nuevas), con los
@@ -393,30 +399,32 @@ export default function HouseForm({
   // por apertura. Va DESPUÉS del efecto de la "foto": la reemplaza con las
   // listas cargadas para que abrir y cerrar sin tocar nada no cuente como cambio.
   useEffect(() => {
-    if (!formSeedFor || !records.loaded || records.houseId !== formSeedFor) return;
-    const { services: srv, payroll: pay } = records;
-    loadedServicesRef.current = new Map(srv.map((s) => [s.id as string, recordFingerprint(s)]));
+    if (!seededPropertyId || !records.loaded || records.houseId !== seededPropertyId) return;
+    const { services: loadedServices, payroll: loadedPayments } = records;
+    loadedServicesRef.current = new Map(loadedServices.map((service) => [service.id as string, recordFingerprint(service)]));
     const isTemp = (r: { id?: string }) => String(r.id || "").startsWith("temp-");
-    setFormServices((prev) => [...srv, ...prev.filter(isTemp)]);
-    setHousePayrollRecords((prev) => [...pay, ...prev.filter(isTemp)]);
-    formSnapshotRef.current = JSON.stringify({ formData: formBaseRef.current, formServices: srv, housePayrollRecords: pay });
-    setFormSeedFor(null);
-  }, [formSeedFor, records]);
+    setFormServices((prev) => [...loadedServices, ...prev.filter(isTemp)]);
+    setHousePayrollRecords((prev) => [...loadedPayments, ...prev.filter(isTemp)]);
+    formSnapshotRef.current = JSON.stringify({ formData: formBaseRef.current, formServices: loadedServices, housePayrollRecords: loadedPayments });
+    setSeededPropertyId(null);
+  }, [seededPropertyId, records]);
 
-  const isFormDirty = (): boolean =>
+  const hasUnsavedChanges = (): boolean =>
     JSON.stringify({ formData, formServices, housePayrollRecords }) !==
     formSnapshotRef.current;
 
-  const saveDraftFromForm = (): void => {
+  /** Guarda el formulario como borrador. `draftFormData` permite guardar la casa
+   *  tal como quedó en Firestore (con su id y las fotos ya subidas). */
+  const saveDraftFromForm = (draftFormData: Property = formData): void => {
     const label =
-      [getClientName(formData.client), formData.address]
+      [getClientName(draftFormData.client), draftFormData.address]
         .filter(Boolean)
         .join(" · ") || "(sin cliente ni dirección)";
     const draft: HouseDraft = {
       id: `draft-${Date.now()}`,
       savedAt: new Date().toISOString(),
       label,
-      formData,
+      formData: draftFormData,
       formServices,
       housePayrollRecords,
     };
@@ -425,43 +433,70 @@ export default function HouseForm({
 
   // ⭐ CUALQUIER salida del formulario pasa por aquí: si hay cambios sin
   //    guardar, pregunta. El cierre directo solo ocurre sin cambios.
-  const requestCloseForm = () => {
+  const handleRequestClose = () => {
     if (isSaving) return;
     // ⭐ SIEMPRE pregunta — con o sin cambios — porque el clic fuera del
     //    formulario suele ser accidental. El borrador solo se guarda cuando
     //    hay algo capturado que valga la pena conservar.
-    setShowExitConfirm(true);
+    setIsExitConfirmOpen(true);
   };
 
   // Salir CONFIRMADO: guarda borrador y cierra (el trabajo no se pierde).
-  const confirmExitForm = () => {
-    if (isFormDirty()) saveDraftFromForm();
-    setShowExitConfirm(false);
+  const handleConfirmExit = () => {
+    if (hasUnsavedChanges()) saveDraftFromForm();
+    setIsExitConfirmOpen(false);
     onClose();
   };
 
+  // ⭐ STATUS POR EMPRESA: el cliente decide la empresa (Cavalry si su tipo es
+  //    Cavalry; si no, Normal: Residential, Private customer, Property manager…)
+  //    y el selector solo ofrece los status de esa empresa, en su Form Order.
+  //    Sin cliente, los de Normal. Si la casa ya tiene un status que no es de su
+  //    empresa (casas viejas), se sigue mostrando para no perderlo.
+  const cavalryClientKeySet = useMemo(() => cavalryClientKeys(customersList), [customersList]);
+  const propertyBusiness = houseBusiness({ client: formData.client }, cavalryClientKeySet);
+  const propertyBusinessStatuses = statusesForBusiness(statuses, propertyBusiness);
+  const currentPropertyStatus = statusIndex.get(String(formData.statusId ?? ""));
+  const isCurrentStatusOutsideBusiness = !!currentPropertyStatus
+    && !propertyBusinessStatuses.some((status) => status.id === currentPropertyStatus.id);
+  const statusOptions = isCurrentStatusOutsideBusiness && currentPropertyStatus
+    ? [...propertyBusinessStatuses, currentPropertyStatus]
+    : propertyBusinessStatuses;
+
+  /** Status que queda al cambiar de cliente: el mismo si es de la empresa del
+   *  cliente nuevo; si no, el primero de esa empresa. */
+  const getStatusIdForCustomer = (customerId: string): string => {
+    const customerBusiness = houseBusiness({ client: customerId }, cavalryClientKeySet);
+    const customerBusinessStatuses = statusesForBusiness(statuses, customerBusiness);
+    const isStatusInCustomerBusiness = customerBusinessStatuses
+      .some((status) => status.id === formData.statusId || status.name === formData.statusId);
+    return isStatusInCustomerBusiness ? formData.statusId : customerBusinessStatuses[0]?.id ?? formData.statusId;
+  };
+
   const handleCustomerSelect = (customerId: string) => {
-    const selectedCust = customersList.find((c) => c.id === customerId);
-    if (selectedCust) {
+    const nextStatusId = getStatusIdForCustomer(customerId);
+    const selectedCustomer = customersList.find((customer) => customer.id === customerId);
+    if (selectedCustomer) {
       // ⭐ Regla AppSheet: if([Type]="Private customer", lookup(client, Address), "")
       //    Si el cliente es "Private customer", trae su dirección (queda editable); si no, vacío.
-      const isPrivate =
-        String(selectedCust.type || "")
+      const isPrivateCustomer =
+        String(selectedCustomer.type || "")
           .toLowerCase()
           .trim() === "private customer";
       // ⭐ De igual manera, trae la NOTA guardada del cliente al campo General Note
       //    (queda editable). Solo si el cliente tiene nota; si no, conserva la actual.
-      const custNote = String(
-        (selectedCust as Customer & { note?: string | null }).note || "",
+      const customerNote = String(
+        (selectedCustomer as Customer & { note?: string | null }).note || "",
       ).trim();
       setFormData({
         ...formData,
         client: customerId,
-        address: isPrivate ? String(selectedCust.address || "") : "",
-        note: isPrivate && custNote ? custNote : formData.note,
+        statusId: nextStatusId,
+        address: isPrivateCustomer ? String(selectedCustomer.address ?? "") : "",
+        note: isPrivateCustomer && customerNote ? customerNote : formData.note,
       });
     } else {
-      setFormData({ ...formData, client: customerId });
+      setFormData({ ...formData, client: customerId, statusId: nextStatusId });
     }
   };
 
@@ -495,8 +530,10 @@ export default function HouseForm({
 
     setIsSaving(true);
     try {
-      let workingId = formData.id;
-      let isNew = false;
+      // Una casa creada por este formulario en un intento anterior sigue
+      // contando como alta (sello de Invoice, sin diff), pero ya no se crea.
+      let workingId = formData.id || createdPropertyIdRef.current || "";
+      let isNew = !formData.id || formData.id === createdPropertyIdRef.current;
 
       // ⭐ Autocompletar los trabajadores del equipo SOLO si el usuario no toco la
       //    lista. Antes se rellenaba siempre que estuviera vacia, asi que quitar
@@ -523,9 +560,13 @@ export default function HouseForm({
           beforePhotos: [],
           afterPhotos: [],
         };
-        const docRef = await propertiesService.create(dataToCreate);
-        workingId = docRef;
+        const newPropertyId = await propertiesService.create(dataToCreate);
+        workingId = newPropertyId;
         isNew = true;
+        createdPropertyIdRef.current = newPropertyId;
+        // También en el formulario: si el usuario sale tras un fallo, el
+        // borrador lleva el id y al restaurarlo se actualiza esta casa.
+        setFormData((previousFormData) => ({ ...previousFormData, id: newPropertyId }));
         // ⭐ Bitacora: alta de casa.
         logActivity({
           action: "create",
@@ -561,16 +602,16 @@ export default function HouseForm({
       //    no debe reordenar la lista.
       // Con la copia de cuando se abrió el formulario: así solo se sella si
       // ESTE guardado cambia el status (y solo se escribe lo que cambió).
-      const openedBase =
+      const openedProperty =
         formBaseRef.current && formBaseRef.current.id === workingId
           ? formBaseRef.current
           : null;
-      const prevStatusId = isNew
+      const previousStatusId = isNew
         ? ""
         : String(
-          (openedBase ?? properties.find((p) => p.id === workingId))?.statusId || "",
+          (openedProperty ?? properties.find((property) => property.id === workingId))?.statusId ?? "",
         );
-      const enteredInvoiceNow = String(formData.statusId || "") !== prevStatusId;
+      const hasStatusChanged = String(formData.statusId || "") !== previousStatusId;
 
       const finalDataToUpdate = {
         ...formData,
@@ -579,21 +620,20 @@ export default function HouseForm({
         afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls],
         beforePhotosExcluded: beforeExcluded,
         afterPhotosExcluded: afterExcluded,
-        ...(enteredInvoiceNow
+        ...(hasStatusChanged
           ? stampInvoiceEntry({}, statuses, formData.statusId)
           : {}),
       };
 
       const { id: _omitId, ...dataForFirestore } = finalDataToUpdate;
-      const base = openedBase;
       // ⭐ Si este guardado cambia el status de una casa existente, su entrada
       //    de status_history viaja en el MISMO batch que la casa.
       const savedId = workingId;
       const historyOps: BatchOp[] =
-        !isNew && enteredInvoiceNow
+        !isNew && hasStatusChanged
           ? [
-            (b) => {
-              addStatusHistory(b, savedId, prevStatusId, String(formData.statusId || ""), {
+            (batch) => {
+              addStatusHistory(batch, savedId, previousStatusId, String(formData.statusId || ""), {
                 statuses,
                 actor: currentUser,
                 source: "houses",
@@ -601,10 +641,10 @@ export default function HouseForm({
             },
           ]
           : [];
-      if (isNew || !base) {
+      if (isNew || !openedProperty) {
         // Alta nueva o borrador restaurado: no hay "antes" contra qué comparar.
         await commitOps([
-          (b) => propertiesService.batchUpdate(b, savedId, dataForFirestore),
+          (batch) => propertiesService.batchUpdate(batch, savedId, dataForFirestore),
           ...historyOps,
         ]);
       } else {
@@ -619,19 +659,19 @@ export default function HouseForm({
           assignedWorkers: nextWorkers = [], notesHistory: nextNotes = [],
           ...plain
         } = dataForFirestore;
-        const fields = changedFields(base, plain);
-        const bp = listDiff(base.beforePhotos, nextBefore);
-        const ap = listDiff(base.afterPhotos, nextAfter);
-        const bx = listDiff(base.beforePhotosExcluded, nextBeforeEx);
-        const ax = listDiff(base.afterPhotosExcluded, nextAfterEx);
-        const wk = listDiff(base.assignedWorkers, nextWorkers);
-        const nh = listDiff(base.notesHistory, nextNotes);
+        const fields = changedFields(openedProperty, plain);
+        const beforePhotosDiff = listDiff(openedProperty.beforePhotos, nextBefore);
+        const afterPhotosDiff = listDiff(openedProperty.afterPhotos, nextAfter);
+        const beforeExcludedDiff = listDiff(openedProperty.beforePhotosExcluded, nextBeforeEx);
+        const afterExcludedDiff = listDiff(openedProperty.afterPhotosExcluded, nextAfterEx);
+        const workersDiff = listDiff(openedProperty.assignedWorkers, nextWorkers);
+        const notesDiff = listDiff(openedProperty.notesHistory, nextNotes);
         await commitOps([
-          (b) =>
-            propertiesService.batchArrayChange(b, workingId, {
+          (batch) =>
+            propertiesService.batchArrayChange(batch, workingId, {
               fields,
-              remove: { beforePhotos: bp.remove, afterPhotos: ap.remove, beforePhotosExcluded: bx.remove, afterPhotosExcluded: ax.remove, assignedWorkers: wk.remove, notesHistory: nh.remove },
-              add: { beforePhotos: bp.add, afterPhotos: ap.add, beforePhotosExcluded: bx.add, afterPhotosExcluded: ax.add, assignedWorkers: wk.add, notesHistory: nh.add },
+              remove: { beforePhotos: beforePhotosDiff.remove, afterPhotos: afterPhotosDiff.remove, beforePhotosExcluded: beforeExcludedDiff.remove, afterPhotosExcluded: afterExcludedDiff.remove, assignedWorkers: workersDiff.remove, notesHistory: notesDiff.remove },
+              add: { beforePhotos: beforePhotosDiff.add, afterPhotos: afterPhotosDiff.add, beforePhotosExcluded: beforeExcludedDiff.add, afterPhotosExcluded: afterExcludedDiff.add, assignedWorkers: workersDiff.add, notesHistory: notesDiff.add },
             }),
           ...historyOps,
         ]);
@@ -644,7 +684,7 @@ export default function HouseForm({
       if (!isNew) {
         // Contra la copia de cuando se abrió: la bitácora no debe atribuirle a
         // esta persona lo que otra cambió mientras tanto.
-        const original = openedBase ?? properties.find((p) => p.id === workingId);
+        const original = openedProperty ?? properties.find((p) => p.id === workingId);
         logActivity({
           action: "update",
           module: "Houses",
@@ -677,40 +717,43 @@ export default function HouseForm({
       //    escrituras sueltas y un fallo solo quedaba en la consola; editar un
       //    pago (borrar + recrear) podía perderlo si fallaba la segunda mitad.
       const relatedOps: BatchOp[] = [];
-      for (const srvId of servicesToDelete) {
-        relatedOps.push((b) => billingServices.batchDelete(b, srvId));
+      for (const serviceId of servicesToDelete) {
+        relatedOps.push((batch) => billingServices.batchDelete(batch, serviceId));
       }
-      for (const srv of formServices) {
-        const srvData = { ...srv, propertyId: workingId };
-        const { id, ...data } = srvData;
+      for (const service of formServices) {
+        const serviceData = { ...service, propertyId: workingId };
+        const { id, ...data } = serviceData;
         if (id && !id.startsWith("temp-")) {
-          if (loadedServicesRef.current.get(id) === recordFingerprint(srvData))
+          if (loadedServicesRef.current.get(id) === recordFingerprint(serviceData))
             continue;
-          relatedOps.push((b) => billingServices.batchUpdate(b, id, data));
+          relatedOps.push((batch) => billingServices.batchUpdate(batch, id, data));
         } else {
-          relatedOps.push((b) => billingServices.batchCreate(b, data));
+          relatedOps.push((batch) => billingServices.batchCreate(batch, data));
         }
       }
-      for (const payId of payrollsToDelete) {
-        relatedOps.push((b) => payrollService.batchDelete(b, payId));
+      for (const paymentId of payrollsToDelete) {
+        relatedOps.push((batch) => payrollService.batchDelete(batch, paymentId));
       }
-      for (const pay of housePayrollRecords) {
-        if (pay.id && !String(pay.id).startsWith("temp-")) continue;
+      for (const payment of housePayrollRecords) {
+        if (payment.id && !String(payment.id).startsWith("temp-")) continue;
         const createData: Omit<PayrollRecord, "id"> = {
-          ...pay,
+          ...payment,
           propertyId: workingId,
         };
         delete (createData as Partial<PayrollRecord>).id;
-        relatedOps.push((b) => payrollService.batchCreate(b, createData));
+        relatedOps.push((batch) => payrollService.batchCreate(batch, createData));
       }
       try {
         await commitOps(relatedOps);
       } catch (error) {
         // La casa ya quedó guardada; lo que falló fue el batch de servicios y
-        // pagos, que no se aplicó en absoluto.
-        const fbErr = error as { code?: string; message?: string };
+        // pagos, que no se aplicó en absoluto. Son montos que el usuario ya
+        // capturó: quedan en un borrador con la casa tal como se guardó (id y
+        // fotos ya subidas), para no tener que teclearlos de nuevo.
+        saveDraftFromForm({ ...finalDataToUpdate, id: workingId });
+        const firebaseError = error as { code?: string; message?: string };
         alert(
-          `La casa se guardó, pero sus servicios y pagos NO se pudieron guardar.\nÁbrela de nuevo y vuelve a capturarlos.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+          `La casa se guardó, pero sus servicios y pagos NO se pudieron guardar.\nQuedaron en "Borradores": ábrelo y presiona Save para volver a intentarlo.\n\nCódigo: ${firebaseError.code ?? "desconocido"}\nDetalle: ${firebaseError.message ?? String(error)}`,
         );
       }
       setPayrollsToDelete([]);
@@ -730,9 +773,9 @@ export default function HouseForm({
       onClose();
     } catch (error) {
       console.error("❌ Error saving to Firebase:", error);
-      const fbErr = error as { code?: string; message?: string };
+      const firebaseError = error as { code?: string; message?: string };
       alert(
-        `No se pudo guardar la propiedad.\n\nCódigo: ${fbErr.code || "desconocido"}\nDetalle: ${fbErr.message || String(error)}`,
+        `No se pudo guardar la propiedad.\n\nCódigo: ${firebaseError.code || "desconocido"}\nDetalle: ${firebaseError.message || String(error)}`,
       );
     } finally {
       setIsSaving(false);
@@ -794,7 +837,7 @@ export default function HouseForm({
   return (
     <>
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
-      <div className="modal-overlay-centered" onClick={requestCloseForm}>
+      <div className="modal-overlay-centered" onClick={handleRequestClose}>
         <div className="modal-full" onClick={(e) => e.stopPropagation()}>
           <div className="modal-full-left">
             <div className="hv-form-inner">
@@ -843,7 +886,7 @@ export default function HouseForm({
                           {(() => {
                             // ⭐ Muestra el TIPO del cliente seleccionado (viene de la colección customers)
                             const selCust = customersList.find(
-                              (c) => c.id === formData.client,
+                              (customer) => customer.id === formData.client,
                             );
                             if (!selCust?.type) return null;
                             const typeKey = String(selCust.type)
@@ -943,7 +986,7 @@ export default function HouseForm({
                         Status <span className="hv-required">*</span>
                       </label>
                       <SearchableSelect
-                        options={statuses}
+                        options={statusOptions}
                         value={formData.statusId}
                         onChange={(val: string) =>
                           setFormData({ ...formData, statusId: val })
@@ -1218,7 +1261,7 @@ export default function HouseForm({
                         <button
                           type="button"
                           onClick={() =>
-                            setIsAssigningWorkerForm(!isAssigningWorkerForm)
+                            setIsWorkerPickerOpen(!isWorkerPickerOpen)
                           }
                           disabled={isSaving || isFieldRO("assignedWorkers")}
                           title={
@@ -1228,11 +1271,11 @@ export default function HouseForm({
                           }
                           className="hv-btn-toggle-workers"
                         >
-                          {isAssigningWorkerForm
+                          {isWorkerPickerOpen
                             ? "Close"
                             : "+ Assign / Remove"}
                         </button>
-                        {isAssigningWorkerForm && (
+                        {isWorkerPickerOpen && (
                           <div className="hv-workers-dropdown">
                             <div className="hv-workers-search-head">
                               <div className="hv-workers-search-wrap">
@@ -1244,9 +1287,9 @@ export default function HouseForm({
                                 <input
                                   autoFocus
                                   type="text"
-                                  value={workerSearch}
+                                  value={workerSearchText}
                                   onChange={(e) =>
-                                    setWorkerSearch(e.target.value)
+                                    setWorkerSearchText(e.target.value)
                                   }
                                   placeholder="Buscar empleado..."
                                   className="hv-workers-search-input"
@@ -1254,7 +1297,7 @@ export default function HouseForm({
                               </div>
                             </div>
                             {(() => {
-                              const q = workerSearch.trim().toLowerCase();
+                              const q = workerSearchText.trim().toLowerCase();
                               const list = employees.filter((emp) => {
                                 if (!q) return true;
                                 return `${emp.firstName || ""} ${emp.lastName || ""}`
@@ -1830,7 +1873,7 @@ export default function HouseForm({
                 <Save size={18} /> {isSaving ? "Saving..." : "Confirm & Save"}
               </button>
               <button
-                onClick={requestCloseForm}
+                onClick={handleRequestClose}
                 disabled={isSaving}
                 className="hv-btn-cancel-form"
               >
@@ -1842,17 +1885,17 @@ export default function HouseForm({
       </div>
 
       {/* --- MODAL: ¿SALIR DEL FORMULARIO SIN GUARDAR? --- */}
-      {showExitConfirm && (
+      {isExitConfirmOpen && (
         <div
           className="modal-overlay-centered"
-          onClick={() => setShowExitConfirm(false)}
+          onClick={() => setIsExitConfirmOpen(false)}
         >
           <div className="modal-50 hv-exit-modal" onClick={(e) => e.stopPropagation()}>
             <header className="hv-modal-header">
               <h3 className="hv-modal-title">¿Salir sin guardar?</h3>
             </header>
             <div className="hv-gcal-body">
-              {isFormDirty() ? (
+              {hasUnsavedChanges() ? (
                 <p className="hv-gcal-hint">
                   Tienes cambios sin guardar en este formulario. Si sales, la
                   orden se conserva como <b>borrador</b> y puedes retomarla con
@@ -1868,13 +1911,13 @@ export default function HouseForm({
             <footer className="hv-gcal-footer">
               <button
                 className="hv-gcal-btn-cancel"
-                onClick={() => setShowExitConfirm(false)}
+                onClick={() => setIsExitConfirmOpen(false)}
               >
                 Seguir editando
               </button>
-              <button className="hv-btn-danger-modal" onClick={confirmExitForm}>
+              <button className="hv-btn-danger-modal" onClick={handleConfirmExit}>
                 <XCircle size={16} />{" "}
-                {isFormDirty() ? "Salir (guardar borrador)" : "Salir"}
+                {hasUnsavedChanges() ? "Salir (guardar borrador)" : "Salir"}
               </button>
             </footer>
           </div>
@@ -1939,4 +1982,6 @@ export default function HouseForm({
       )}
     </>
   );
-}
+};
+
+export default HouseForm;

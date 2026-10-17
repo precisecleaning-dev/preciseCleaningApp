@@ -1,17 +1,19 @@
 // ⭐ Tareas pendientes del Task list con casilla (vistas Owner y Manager).
 //    Aquí solo se ven y se marcan hechas (salen de la lista); crear, editar y
-//    borrar es en el Task list. Con varias personas se muestra a quién está
+//    borrar es en el Task list. Con varias personas se muestra a quiénes está
 //    asignada.
 import type { UserTask } from '../types/index';
 import { addDays, sectionOf, ymdToDate } from '../features/ops/opsDates';
-import { formatDate } from '../utils/dateFormat';
+import { namesSummary } from '../features/ops/opsOptions';
+import { isOnlyAssignee } from '../features/ops/opsPermissions';
+import { formatDate, shortTime } from '../utils/dateFormat';
 
 interface TaskChecklistProps {
   tasks: UserTask[];
   /** Hoy, AAAA-MM-DD. */
   today: string;
   meId: string;
-  /** Etiqueta con la persona asignada (cuando la lista es de varias). */
+  /** Etiqueta con las personas asignadas (cuando la lista es de varias). */
   showAssignee: boolean;
   busyId: string | null;
   canComplete: boolean;
@@ -21,25 +23,21 @@ interface TaskChecklistProps {
 
 const firstName = (name: string) => name.split(' ')[0] || name;
 
-/** "14:30" → "2:30 PM"; "14:00" → "2 PM". */
-function shortTime(hm: string): string {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  if (!m) return '';
-  const h = Number(m[1]);
-  return `${h % 12 || 12}${m[2] === '00' ? '' : `:${m[2]}`} ${h < 12 ? 'AM' : 'PM'}`;
-}
+/** "Me, Sandy +1": nombres cortos de las personas de la tarea. */
+const assigneesText = (task: UserTask, meId: string): string =>
+  namesSummary(task.assignees.map((assignee) => (assignee.userId === meId ? 'Me' : firstName(assignee.userName))));
 
 /** Vencimiento corto: "Overdue", "Today 2 PM", "Fri", "10/24/2026" o "—". */
-function dueText(t: UserTask, today: string): { text: string; tone: 'overdue' | 'today' | 'later' } {
-  const section = sectionOf(t.dueDate, today);
+function dueText(task: UserTask, today: string): { text: string; tone: 'overdue' | 'today' | 'later' } {
+  const section = sectionOf(task.dueDate, today);
   if (section === 'nodate') return { text: '—', tone: 'later' };
   if (section === 'overdue') return { text: 'Overdue', tone: 'overdue' };
-  const time = shortTime(t.dueTime);
+  const time = shortTime(task.dueTime);
   if (section === 'today') return { text: time ? `Today ${time}` : 'Today', tone: 'today' };
-  if (t.dueDate < addDays(today, 6)) {
-    return { text: ymdToDate(t.dueDate).toLocaleDateString('en-US', { weekday: 'short' }), tone: 'later' };
+  if (task.dueDate < addDays(today, 6)) {
+    return { text: ymdToDate(task.dueDate).toLocaleDateString('en-US', { weekday: 'short' }), tone: 'later' };
   }
-  return { text: formatDate(t.dueDate), tone: 'later' };
+  return { text: formatDate(task.dueDate), tone: 'later' };
 }
 
 export default function TaskChecklist({
@@ -50,7 +48,7 @@ export default function TaskChecklist({
     <ul className="hm-tasks">
       {tasks.map((t) => {
         const due = dueText(t, today);
-        const fromOther = !!t.createdByUserId && t.createdByUserId !== t.assigneeUserId;
+        const fromOther = !!t.createdByUserId && !isOnlyAssignee(t, t.createdByUserId);
         return (
           <li key={t.id} className="hm-task">
             <label className="hm-task-main">
@@ -68,7 +66,7 @@ export default function TaskChecklist({
               </span>
             </label>
             {showAssignee && (
-              <span className="hm-tag">{t.assigneeUserId === meId ? 'Me' : firstName(t.assigneeUserName)}</span>
+              <span className="hm-tag">{assigneesText(t, meId)}</span>
             )}
             <span className={`hm-due ${due.tone}`}>{due.text}</span>
           </li>

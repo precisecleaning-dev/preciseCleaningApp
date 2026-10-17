@@ -16,7 +16,7 @@
 //   Rige también en Owner y Manager. Un rol que no declara el módulo ve todas,
 //   como antes. Las reglas propuestas (security/) aplican lo mismo.
 // ============================================================================
-import type { Permission, Role, SystemUser } from '../../types/index';
+import type { AssignableUser, Permission, Role, SystemUser, TaskAssignee, UserTask } from '../../types/index';
 
 const TASK_LIST_MODULE = 'Task List';
 
@@ -57,28 +57,35 @@ function isTaskListUser(user: SystemUser, roles: Role[]): boolean {
   return role.name === 'Administrator' || canViewTaskList(role, false);
 }
 
-/** ¿Puede cambiar a quién está asignada la tarea? Quien la asignó, sí. A quien
- *  se la asignó otra persona, no (aunque su rol tenga Edit). Con Edit también
- *  se pueden reasignar las tareas de los demás. Las reglas propuestas aplican
- *  lo mismo. */
+/** ¿`userId` es una de las personas asignadas a la tarea? */
+export const isAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
+  task.assignees.some((assignee) => assignee.userId === userId);
+
+/** ¿Tiene visto bueno y todavía no está aprobada? Así no se puede marcar hecha. */
+export const isAwaitingApproval = (task: Pick<UserTask, 'approval'>): boolean =>
+  !!task.approval && task.approval.status !== 'approved';
+
+/** ¿La tarea es solo de `userId`? (p. ej. alguien que se la asignó a sí mismo). */
+export const isOnlyAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
+  task.assignees.length === 1 && task.assignees[0].userId === userId;
+
+/** ¿Puede cambiar a quiénes está asignada la tarea? Quien la asignó, sí. A
+ *  quien se la asignó otra persona, no (aunque su rol tenga Edit). Con Edit
+ *  también se pueden reasignar las tareas de los demás. Las reglas propuestas
+ *  aplican lo mismo. */
 export function canReassignTask(
-  task: { createdByUserId: string; assigneeUserId: string }, meId: string, rights: TaskListRights,
+  task: Pick<UserTask, 'createdByUserId' | 'assignees'>, meId: string, rights: TaskListRights,
 ): boolean {
   if (task.createdByUserId === meId) return true;
-  return rights.canEdit && task.assigneeUserId !== meId;
+  return rights.canEdit && !isAssignee(task, meId);
 }
 
-/** Persona a la que se le puede asignar una tarea. */
-export interface PersonOption {
-  id: string;
-  name: string;
-  /** "Me" para quien está usando la app. */
-  label: string;
-}
+/** Un usuario de la lista de "Assign to" como persona asignada de una tarea. */
+export const toTaskAssignee = (user: AssignableUser): TaskAssignee => ({ userId: user.id, userName: user.name });
 
 /** "Assign to": usuarios activos de system_users cuyo rol puede abrir Task
  *  List (más uno mismo), con "Me" primero y los demás por nombre. */
-export function assignablePeople(users: SystemUser[], roles: Role[], meId: string, meName: string): PersonOption[] {
+export function assignablePeople(users: SystemUser[], roles: Role[], meId: string, meName: string): AssignableUser[] {
   const list = users
     .filter((u) => u.id === meId || isTaskListUser(u, roles))
     .map((u) => ({ id: u.id, name: userName(u), label: u.id === meId ? 'Me' : userName(u) }));

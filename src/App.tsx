@@ -35,13 +35,9 @@ const UsersView = lazy(() => import('./views/admin/UsersView'));
 // ⭐ Vista de importacion de CSV (solo SuperAdmin)
 const DataImportView = lazy(() => import('./views/DataImportView'));
 // ⭐ Vista de Recalls (ranking de equipos)
-// ⭐ Reportes de Quality Check FINALIZADOS, en formato tabla tipo Invoices
-//    (sin montos). Es una vista propia del menu, distinta de la pestana
-//    "Reportes" del hub de QC, que es un listado de tarjetas con metricas.
-const QCReportsTableView = lazy(() => import('./views/QCReportsTableView'));
 // ⭐ QC DASHBOARD — vista nueva (diseño del lienzo): indicadores de calidad,
 //    inspecciones con score/resultado/áreas con fallas y scorecard por equipo.
-//    No reemplaza a Quality Check ni a Quality Check Reports.
+//    No reemplaza a Quality Check (ni a su tabla de reportes).
 const QualityDashboardView = lazy(() => import('./views/QualityDashboardView'));
 const OwnerView = lazy(() => import('./views/OwnerView'));
 const ManagerView = lazy(() => import('./views/ManagerView'));
@@ -64,7 +60,7 @@ import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_reports_table' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
@@ -73,13 +69,13 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 /** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
 const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
-  'qc_reports_table', 'qc_dashboard', 'owner', 'manager',
+  'qc_dashboard', 'owner', 'manager',
 ]);
 /** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
 const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'calendar', 'invoices', 'payroll', 'qc_report', 'qc_dashboard', 'owner', 'manager',
 ]);
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_reports_table', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -337,7 +333,7 @@ export default function App() {
     if (isSuperAdmin || !activeRole) return;
     const TAB_MODULE: Partial<Record<TabOptions, string[]>> = {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
-      qc_report: ['Quality Check'], qc_reports_table: ['Quality Check'],
+      qc_report: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
       owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'],
       payroll: ['Payroll'],
@@ -352,7 +348,7 @@ export default function App() {
     const mods = TAB_MODULE[activeTab];
     if (!mods || mods.some(canViewModule)) return; // sin mapeo o permitido: no tocar
     const order: TabOptions[] = ['houses', 'pipeline', 'invoices', 'calendar', 'qc_report',
-      'qc_reports_table', 'payroll', 'customers', 'roles', 'users', 'data_import', 'company',
+      'payroll', 'customers', 'roles', 'users', 'data_import', 'company',
       'photo_settings', 'settings'];
     const fallback = order.find(t => (TAB_MODULE[t] || []).some(canViewModule));
     if (fallback) setActiveTab(fallback);
@@ -581,19 +577,6 @@ export default function App() {
           />
         )}
 
-        {/* ⭐ QUALITY CHECK REPORTS — inspecciones FINALIZADAS en formato tabla.
-            Sin montos: la manager de calidad no necesita costos. Permite ver el
-            PDF y mover la casa solo entre Quality Check y Recall. */}
-        {activeTab === 'qc_reports_table' && (
-          <QCReportsTableView
-            onOpenMenu={toggleMenu}
-            properties={visibleProperties}
-            currentUser={effectiveUser}
-            activeRole={activeRole}
-            isSuperAdmin={isSuperAdmin}
-          />
-        )}
-
         {/* ⭐ OWNER y MANAGER — páginas de inicio del dueño y del gerente. Quien
             puede ver las dos cambia entre ellas con el menú lateral.
             El detalle / edición de una casa se abre aquí mismo. */}
@@ -616,7 +599,7 @@ export default function App() {
                 currentUser={effectiveUser}
                 activeRole={activeRole}
                 isSuperAdmin={isSuperAdmin}
-                onInspect={handleCheckHouse}
+                onOpenInspection={handleCheckHouse}
                 onOpenHouseDetail={openHouseDetail}
                 onOpenHouseEdit={openHouseEdit}
               />

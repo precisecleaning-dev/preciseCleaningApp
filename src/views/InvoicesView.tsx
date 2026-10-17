@@ -9,7 +9,8 @@ import {
 import PeriodBar from '../components/PeriodBar';
 import KpiGrid from '../components/KpiGrid';
 import { groupByDate, weekNumberOf } from '../utils/dateGrouping';
-import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
+import { inPeriod, periodRange } from '../utils/periods';
+import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { money, pct, marginTone, useJobFinancials } from '../utils/jobFinancials';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
@@ -208,10 +209,8 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
   // ⭐ Periodo (Day / Week / Month / Year / Custom) — misma barra que el
   //    Overview. Reemplaza Start/End Date y "Agrupar por": el periodo filtra y
   //    agrupa (Year → meses · Month → semanas · Week → días).
-  const PERIOD_KEY = 'pc.invoices.period';
-  const [period, setPeriodState] = useState<PeriodState>(() => loadPeriod(PERIOD_KEY, 'month'));
-  const setPeriod = (p: PeriodState) => { setPeriodState(p); savePeriod(PERIOD_KEY, p); };
-  const range = useMemo(() => periodRange(period), [period]);
+  const [invoicesPeriod, setInvoicesPeriod] = useStoredPeriod('pc.invoices.period', 'month');
+  const invoicesPeriodRange = useMemo(() => periodRange(invoicesPeriod), [invoicesPeriod]);
 
   // Filtros UI
   const [searchClient, setSearchClient] = useState('');
@@ -377,7 +376,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
       if (filterStatus !== 'All' && String(prop.invoiceStatus || '').toLowerCase().trim() !== filterStatus.toLowerCase()) return false;
       if (q && !(searchTextByProp.get(prop.id) || '').includes(q)) return false;
       // ⭐ Periodo de la barra superior (Schedule Date dentro del rango)
-      return inPeriod(prop.scheduleDate, range);
+      return inPeriod(prop.scheduleDate, invoicesPeriodRange);
     }).sort((a, b) => {
       // ⭐ Dentro de cada grupo: últimas agregadas a Invoices arriba
       //    (sentToInvoiceAt); las viejas sin marca, por Schedule Date desc.
@@ -390,7 +389,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
       }
       return parseDateForSort(b.scheduleDate) - parseDateForSort(a.scheduleDate);
     });
-  }, [invoiceProps, filterStatus, deferredSearch, range, searchTextByProp]);
+  }, [invoiceProps, filterStatus, deferredSearch, invoicesPeriodRange, searchTextByProp]);
 
   const calcFinancials = jobFin.calc;
 
@@ -401,11 +400,11 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
   //    uno con sus subtotales.
   const groups = useMemo(
     () =>
-      groupByDate(filteredProperties, p => p.scheduleDate, range.groupBy, 'desc').map(g => ({
+      groupByDate(filteredProperties, p => p.scheduleDate, invoicesPeriodRange.groupBy, 'desc').map(g => ({
         ...g,
         totals: jobFin.sum(g.items),
       })),
-    [filteredProperties, range.groupBy, jobFin]
+    [filteredProperties, invoicesPeriodRange.groupBy, jobFin]
   );
   // Columnas de la tabla: "Notes" (oficina) solo con permiso
   const COLS = canSeeOfficeNotes ? 16 : 15;
@@ -733,7 +732,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
       <HistoryWindowNotice />
 
       {/* ⭐ Periodo — misma barra que el Overview */}
-      <PeriodBar period={period} onChange={setPeriod} />
+      <PeriodBar period={invoicesPeriod} onChange={setInvoicesPeriod} />
 
       {/* ⭐ RESUMEN del periodo — de izquierda a derecha igual que la hoja:
           lo cobrado → impuesto → neto → costo → ganancia. */}

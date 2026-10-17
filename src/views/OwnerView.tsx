@@ -15,14 +15,17 @@
 // ============================================================================
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Sparkles } from 'lucide-react';
-import type { UserTask, Property, Role, SystemUser } from '../types/index';
+import type { TabOptions } from '../App';
+import type { TaskAssignee, Property, Role, SystemUser } from '../types/index';
 import HomeHeader from '../components/HomeHeader';
 import TaskChecklist from '../components/TaskChecklist';
 import {
-  fullName, greeting, headerDate, moneyShort, useHomeData,
+  fullName, greeting, headerDate, moneyShort, startOfDay, useHomeData, type HomeJob,
 } from '../utils/homeData';
 import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
 import { sectionOf } from '../features/ops/opsDates';
+import { getFirstName, namesSummary } from '../features/ops/opsOptions';
+import { isAssignee } from '../features/ops/opsPermissions';
 import UndoToast from '../features/ops/components/UndoToast';
 import { fmtClock, openEntryOf, weekHours, weekStart } from '../services/timeClockService';
 import { toDate } from '../utils/dateGrouping';
@@ -30,259 +33,307 @@ import { pct } from '../utils/jobFinancials';
 import { todayIso } from '../utils/dateFormat';
 import './HomeViews.css';
 
-interface Props {
+interface OwnerViewProps {
   onOpenMenu: () => void;
   properties: Property[];
   currentUser: SystemUser | null;
   activeRole: Role | null;
   isSuperAdmin: boolean;
   /** Ir a otra vista de la app (Invoices, Overview, QC Dashboard, Task list…). */
-  onNavigate: (tab: 'invoices' | 'houses' | 'qc_dashboard' | 'task_list') => void;
-  onOpenHouseDetail: (p: Property) => void;
+  onNavigate: (tab: Extract<TabOptions, 'invoices' | 'houses' | 'qc_dashboard' | 'task_list'>) => void;
+  onOpenHouseDetail: (house: Property) => void;
 }
 
 interface TimelineItem {
-  key: string;
-  minutes: number;
+  id: string;
+  minutesFromMidnight: number;
   time: string;
   title: string;
-  sub: string;
+  subtitle: string;
   tone: 'jobs' | 'task' | 'alert';
 }
 
+const DAY_MS = 86400000;
+
+/** ¿La casa está agendada entre `rangeStart` (incluido) y `rangeEnd` (excluido)? */
+const isScheduledInRange = (house: Property, rangeStart: Date, rangeEnd: Date) => {
+  const scheduledTime = toDate(house.scheduleDate)?.getTime();
+  return scheduledTime !== undefined && scheduledTime >= rangeStart.getTime() && scheduledTime < rangeEnd.getTime();
+};
+
+/** Nombre corto de una persona de la tarea ("You" si es uno mismo). */
+const getAssigneeShortName = (assignee: TaskAssignee, currentUserId: string) =>
+  (assignee.userId === currentUserId ? 'You' : getFirstName(assignee.userName) || 'Someone');
+
 export default function OwnerView({
   onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onNavigate, onOpenHouseDetail,
-}: Props) {
-  const d = useHomeData(properties);
-  const ht = useHomeTasks(currentUser, activeRole, isSuperAdmin);
-  const tasksRef = useRef<HTMLElement | null>(null);
-  const [updatedAt, setUpdatedAt] = useState(() => new Date());
-  const [taskFilter, setTaskFilter] = useState('all');
+}: OwnerViewProps) {
+  const homeData = useHomeData(properties);
+  const homeTasks = useHomeTasks(currentUser, activeRole, isSuperAdmin);
+  const tasksSectionRef = useRef<HTMLElement | null>(null);
+  const [assigneeFilterId, setAssigneeFilterId] = useState('all');
 
-  const me = currentUser;
-  const now = d.now;
-  const today = d.today;
-  const meId = me?.id || '';
+  const now = homeData.now;
+  const currentUserId = currentUser?.id ?? '';
 
-  // ---- Periodos ----
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMonthSameDay = new Date(now.getFullYear(), now.getMonth() - 1, Math.min(now.getDate(), 28), 23, 59);
-  const wStart = weekStart(now);
-  const wEnd = new Date(wStart.getTime() + 7 * 86400000);
-  const endToday = new Date(today.getTime() + 86400000);
-
-  const inRange = (p: Property, a: Date, b: Date) => {
-    const t = toDate(p.scheduleDate)?.getTime();
-    return t !== undefined && t >= a.getTime() && t < b.getTime();
-  };
+  // ---- Periodos (se recalculan cuando avanza el reloj de la pantalla) ----
+  const {
+    monthStart, previousMonthStart, previousMonthSameDayEnd, weekStartDate, weekEndDate, tomorrowStart,
+  } = useMemo(() => {
+    const weekStartOfNow = weekStart(now);
+    const todayStart = startOfDay(now);
+    // Mismo día del mes anterior, sin pasarse de los días que tuvo (el 31 de
+    // marzo se compara con el 28 o 29 de febrero, no con el 3 de marzo).
+    const previousMonthDays = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    return {
+      monthStart: new Date(now.getFullYear(), now.getMonth(), 1),
+      previousMonthStart: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+      previousMonthSameDayEnd: new Date(now.getFullYear(), now.getMonth() - 1, Math.min(now.getDate(), previousMonthDays), 23, 59),
+      weekStartDate: weekStartOfNow,
+      weekEndDate: new Date(weekStartOfNow.getTime() + 7 * DAY_MS),
+      tomorrowStart: new Date(todayStart.getTime() + DAY_MS),
+    };
+  }, [now]);
 
   // ---- Indicadores ----
-  const k = useMemo(() => {
-    const month = properties.filter((p) => inRange(p, monthStart, endToday));
-    const prev = properties.filter((p) => inRange(p, prevMonthStart, prevMonthSameDay));
-    const week = properties.filter((p) => inRange(p, wStart, wEnd));
-    const m = d.fin.sum(month);
-    const pv = d.fin.sum(prev);
-    const wk = d.fin.sum(week);
-    const outstanding = d.unpaid.reduce((s, u) => s + u.amount, 0);
-    const over30 = d.unpaid.filter((u) => u.days > 30);
+  const sumFinancials = homeData.fin.sum;
+  const kpis = useMemo(() => {
+    const monthJobs = properties.filter((house) => isScheduledInRange(house, monthStart, tomorrowStart));
+    const previousMonthJobs = properties.filter((house) => isScheduledInRange(house, previousMonthStart, previousMonthSameDayEnd));
+    const weekJobs = properties.filter((house) => isScheduledInRange(house, weekStartDate, weekEndDate));
+    const monthTotals = sumFinancials(monthJobs);
+    const previousMonthTotals = sumFinancials(previousMonthJobs);
+    const weekTotals = sumFinancials(weekJobs);
+    const outstanding = homeData.unpaid.reduce((total, invoice) => total + invoice.amount, 0);
+    const invoicesOver30Days = homeData.unpaid.filter((invoice) => invoice.days > 30);
     return {
-      month: m,
-      change: pv.servicePrice > 0 ? ((m.servicePrice - pv.servicePrice) / pv.servicePrice) * 100 : null,
+      monthTotals,
+      revenueChangePercent: previousMonthTotals.servicePrice > 0
+        ? ((monthTotals.servicePrice - previousMonthTotals.servicePrice) / previousMonthTotals.servicePrice) * 100
+        : null,
       outstanding,
-      over30Total: over30.reduce((s, u) => s + u.amount, 0),
-      over30Count: over30.length,
-      weekPayroll: wk.payroll,
-      weekJobs: week.length,
+      over30Total: invoicesOver30Days.reduce((total, invoice) => total + invoice.amount, 0),
+      over30Count: invoicesOver30Days.length,
+      weekPayroll: weekTotals.payroll,
+      weekJobs: weekJobs.length,
     };
-    // inRange/fechas dependen de `now`
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, d.fin.sum, d.unpaid, now.getTime()]);
+  }, [
+    properties, sumFinancials, homeData.unpaid,
+    monthStart, previousMonthStart, previousMonthSameDayEnd, weekStartDate, weekEndDate, tomorrowStart,
+  ]);
 
-  const noCrew = d.todayJobs.filter((j) => j.state === 'nocrew');
-  const openRecalls = d.recalls.filter((r) => r.reclean === 'open');
+  const jobsWithoutCrew = homeData.todayJobs.filter((job) => job.state === 'nocrew');
+  const unscheduledRecalls = homeData.recalls.filter((recall) => recall.reclean === 'open');
 
   // ---- Tareas pendientes (Task list) ----
-  const todayYmd = todayIso();
-  const openTasks = ht.tasks;
-  const shownTasks = taskFilter === 'all' ? openTasks : openTasks.filter((t) => t.assigneeUserId === taskFilter);
-  const overdue = openTasks.filter((t) => sectionOf(t.dueDate, todayYmd) === 'overdue');
-  const taskName = (t: UserTask) => (t.assigneeUserId === meId ? 'You' : t.assigneeUserName.split(' ')[0] || 'Someone');
-  const overdueBy = useMemo(() => {
-    const m = new Map<string, number>();
-    overdue.forEach((t) => m.set(taskName(t), (m.get(taskName(t)) || 0) + 1));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-    // taskName solo depende de meId
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overdue, meId]);
+  const todayIsoDate = todayIso();
+  const openTasks = homeTasks.tasks;
+  const overdueTasks = useMemo(
+    () => openTasks.filter((task) => sectionOf(task.dueDate, todayIsoDate) === 'overdue'),
+    [openTasks, todayIsoDate],
+  );
+  // Atrasadas por persona: una tarea de varias personas cuenta para cada una.
+  const overdueCountByAssignee = useMemo(() => {
+    const countByName = new Map<string, number>();
+    overdueTasks.forEach((task) => task.assignees.forEach((assignee) => {
+      const name = getAssigneeShortName(assignee, currentUserId);
+      countByName.set(name, (countByName.get(name) ?? 0) + 1);
+    }));
+    return [...countByName.entries()].sort((first, second) => second[1] - first[1]);
+  }, [overdueTasks, currentUserId]);
   // Filtro por persona: quienes tienen tareas abiertas.
-  const assignees = useMemo(() => {
-    const m = new Map<string, string>();
-    openTasks.forEach((t) => m.set(t.assigneeUserId, t.assigneeUserId === meId ? 'Me' : t.assigneeUserName.split(' ')[0] || '—'));
-    return [...m.entries()].sort((a, b) => (a[0] === meId ? -1 : b[0] === meId ? 1 : a[1].localeCompare(b[1])));
-  }, [openTasks, meId]);
+  const assigneeFilterOptions = useMemo(() => {
+    const nameById = new Map<string, string>();
+    openTasks.forEach((task) => task.assignees.forEach((assignee) => {
+      nameById.set(assignee.userId, assignee.userId === currentUserId ? 'Me' : getFirstName(assignee.userName) || '—');
+    }));
+    return [...nameById.entries()].sort(([firstId, firstName], [secondId, secondName]) => {
+      if (firstId === currentUserId) return -1;
+      if (secondId === currentUserId) return 1;
+      return firstName.localeCompare(secondName);
+    });
+  }, [openTasks, currentUserId]);
+  // Si la persona elegida ya no tiene tareas abiertas (o ya no hay chips), el
+  // filtro vuelve a "All": si no, la lista queda vacía sin botón para salir.
+  const isAssigneeFilterAvailable = assigneeFilterOptions.length > 1
+    && assigneeFilterOptions.some(([assigneeId]) => assigneeId === assigneeFilterId);
+  const activeAssigneeFilterId = isAssigneeFilterAvailable ? assigneeFilterId : 'all';
+  const visibleTasks = activeAssigneeFilterId === 'all'
+    ? openTasks
+    : openTasks.filter((task) => isAssignee(task, activeAssigneeFilterId));
 
   // ---- Your day in 30 seconds ----
-  const biggest = d.unpaid.filter((u) => u.days > 30).sort((a, b) => b.amount - a.amount)[0];
+  const largestOverdueInvoice = homeData.unpaid
+    .filter((invoice) => invoice.days > 30)
+    .sort((first, second) => second.amount - first.amount)[0];
+  // linkTarget: la vista a la que lleva el enlace ('tasks_section' = la lista de tareas de esta página).
   const briefCards = [
     {
       tag: 'Money', tone: 'money',
-      text: k.over30Count
-        ? `${k.over30Count} invoice${k.over30Count === 1 ? ' is' : 's are'} past 30 days, ${moneyShort(k.over30Total)} total.${biggest ? ` The biggest is ${biggest.client}.` : ''}`
-        : d.unpaid.length ? `${d.unpaid.length} invoices open (${moneyShort(k.outstanding)}), none past 30 days.` : 'Every completed job is paid.',
-      link: 'Open invoices', onClick: () => onNavigate('invoices'),
+      text: kpis.over30Count
+        ? `${kpis.over30Count} invoice${kpis.over30Count === 1 ? ' is' : 's are'} past 30 days, ${moneyShort(kpis.over30Total)} total.${largestOverdueInvoice ? ` The biggest is ${largestOverdueInvoice.client}.` : ''}`
+        : homeData.unpaid.length ? `${homeData.unpaid.length} invoices open (${moneyShort(kpis.outstanding)}), none past 30 days.` : 'Every completed job is paid.',
+      link: 'Open invoices', linkTarget: 'invoices' as const,
     },
     {
       tag: 'Jobs', tone: 'jobs',
-      text: d.todayJobs.length
-        ? `${d.todayJobs.length} cleaning${d.todayJobs.length === 1 ? '' : 's'} today.${noCrew.length ? ` ${noCrew.length === 1 ? `The ${noCrew[0].time ? `${noCrew[0].time} ` : ''}job at ${noCrew[0].client} has` : `${noCrew.length} jobs have`} no crew assigned yet.` : ' Every job has a crew.'}`
+      text: homeData.todayJobs.length
+        ? `${homeData.todayJobs.length} cleaning${homeData.todayJobs.length === 1 ? '' : 's'} today.${jobsWithoutCrew.length ? ` ${jobsWithoutCrew.length === 1 ? `The ${jobsWithoutCrew[0].time ? `${jobsWithoutCrew[0].time} ` : ''}job at ${jobsWithoutCrew[0].client} has` : `${jobsWithoutCrew.length} jobs have`} no crew assigned yet.` : ' Every job has a crew.'}`
         : 'No cleanings scheduled today.',
-      link: noCrew.length ? 'Assign crew' : 'Open overview', onClick: () => onNavigate('houses'),
+      link: jobsWithoutCrew.length ? 'Assign crew' : 'Open overview', linkTarget: 'houses' as const,
     },
     {
       tag: 'Team', tone: 'team',
-      text: !ht.canView
+      text: !homeTasks.canView
         ? 'Task List is off for your role (Roles & Permissions).'
-        : overdue.length
-          ? `${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}${overdueBy[0] && overdueBy.length > 1 ? `. ${overdueBy[0][0]} ${overdueBy[0][0] === 'You' ? 'have' : 'has'} ${overdueBy[0][1]} of them` : overdueBy[0] ? `, all ${overdueBy[0][0] === 'You' ? 'yours' : `${overdueBy[0][0]}'s`}` : ''}.`
+        : overdueTasks.length
+          ? `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? '' : 's'}${overdueCountByAssignee[0] && overdueCountByAssignee.length > 1 ? `. ${overdueCountByAssignee[0][0]} ${overdueCountByAssignee[0][0] === 'You' ? 'have' : 'has'} ${overdueCountByAssignee[0][1]} of them` : overdueCountByAssignee[0] ? `, all ${overdueCountByAssignee[0][0] === 'You' ? 'yours' : `${overdueCountByAssignee[0][0]}'s`}` : ''}.`
           : `${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}, none overdue.`,
-      link: 'Review tasks',
-      onClick: () => (ht.canView ? tasksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : onNavigate('task_list')),
+      link: 'Review tasks', linkTarget: homeTasks.canView ? 'tasks_section' as const : 'task_list' as const,
     },
     {
       tag: 'QC', tone: 'qc',
-      text: `${d.waitingQc.length} inspection${d.waitingQc.length === 1 ? '' : 's'} waiting.${d.recalls.length ? ` ${d.recalls.length} on recall${openRecalls.length ? `, ${openRecalls.length} not re-cleaned or scheduled` : ''}.` : ''}`,
-      link: 'Open QC queue', onClick: () => onNavigate('qc_dashboard'),
+      text: `${homeData.waitingQc.length} inspection${homeData.waitingQc.length === 1 ? '' : 's'} waiting.${homeData.recalls.length ? ` ${homeData.recalls.length} on recall${unscheduledRecalls.length ? `, ${unscheduledRecalls.length} not re-cleaned or scheduled` : ''}.` : ''}`,
+      link: 'Open QC queue', linkTarget: 'qc_dashboard' as const,
     },
   ];
 
-  const tiles: { key: string; label: string; value: string; sub: string; tone: string }[] = [
+  const kpiTiles: { key: string; label: string; value: string; sub: string; tone: string }[] = [
     {
-      key: 'rev', label: 'Revenue this month', value: moneyShort(k.month.servicePrice),
-      sub: k.change === null ? 'month to date' : `${k.change >= 0 ? '+' : ''}${Math.round(k.change)}% vs. ${prevMonthStart.toLocaleDateString('en-US', { month: 'short' })}`,
-      tone: k.change === null ? 'muted' : k.change >= 0 ? 'good' : 'bad',
+      key: 'rev', label: 'Revenue this month', value: moneyShort(kpis.monthTotals.servicePrice),
+      sub: kpis.revenueChangePercent === null ? 'month to date' : `${kpis.revenueChangePercent >= 0 ? '+' : ''}${Math.round(kpis.revenueChangePercent)}% vs. ${previousMonthStart.toLocaleDateString('en-US', { month: 'short' })}`,
+      tone: kpis.revenueChangePercent === null ? 'muted' : kpis.revenueChangePercent >= 0 ? 'good' : 'bad',
     },
     {
-      key: 'out', label: 'Outstanding invoices', value: moneyShort(k.outstanding),
-      sub: k.over30Count ? `${moneyShort(k.over30Total)} over 30 days` : `${d.unpaid.length} open`, tone: k.over30Count ? 'warn' : 'muted',
+      key: 'out', label: 'Outstanding invoices', value: moneyShort(kpis.outstanding),
+      sub: kpis.over30Count ? `${moneyShort(kpis.over30Total)} over 30 days` : `${homeData.unpaid.length} open`, tone: kpis.over30Count ? 'warn' : 'muted',
     },
-    { key: 'jobs', label: 'Jobs today', value: String(d.todayJobs.length), sub: noCrew.length ? `${noCrew.length} unassigned` : 'all assigned', tone: noCrew.length ? 'warn' : 'good' },
-    { key: 'qc', label: 'QC queue', value: String(d.waitingQc.length), sub: `${d.recalls.length} recall${d.recalls.length === 1 ? '' : 's'} open`, tone: d.recalls.length ? 'bad' : 'muted' },
+    { key: 'jobs', label: 'Jobs today', value: String(homeData.todayJobs.length), sub: jobsWithoutCrew.length ? `${jobsWithoutCrew.length} unassigned` : 'all assigned', tone: jobsWithoutCrew.length ? 'warn' : 'good' },
+    { key: 'qc', label: 'QC queue', value: String(homeData.waitingQc.length), sub: `${homeData.recalls.length} recall${homeData.recalls.length === 1 ? '' : 's'} open`, tone: homeData.recalls.length ? 'bad' : 'muted' },
     {
-      key: 'gp', label: 'Gross profit · month', value: moneyShort(k.month.profit),
-      sub: k.month.margin === null ? '—' : `${pct(k.month.margin)} margin`, tone: (k.month.margin ?? 0) >= 35 ? 'good' : 'warn',
+      key: 'gp', label: 'Gross profit · month', value: moneyShort(kpis.monthTotals.profit),
+      sub: kpis.monthTotals.margin === null ? '—' : `${pct(kpis.monthTotals.margin)} margin`, tone: (kpis.monthTotals.margin ?? 0) >= 35 ? 'good' : 'warn',
     },
-    { key: 'pay', label: 'Payroll this week', value: moneyShort(k.weekPayroll), sub: `${k.weekJobs} jobs this week`, tone: 'muted' },
+    { key: 'pay', label: 'Payroll this week', value: moneyShort(kpis.weekPayroll), sub: `${kpis.weekJobs} jobs this week`, tone: 'muted' },
   ];
 
   // ---- Today's time: el día por hora (trabajos + tareas con hora) ----
   const timeline = useMemo(() => {
     const items: TimelineItem[] = [];
-    const slots = new Map<string, typeof d.todayJobs>();
-    d.todayJobs.forEach((j) => {
-      if (j.state === 'nocrew') {
-        items.push({ key: `nc-${j.prop.id}`, minutes: j.minutes, time: j.time, title: `${j.client} · no crew yet`, sub: 'Needs assignment', tone: 'alert' });
+    const jobsByTime = new Map<string, HomeJob[]>();
+    homeData.todayJobs.forEach((job) => {
+      if (job.state === 'nocrew') {
+        items.push({ id: `nc-${job.prop.id}`, minutesFromMidnight: job.minutes, time: job.time, title: `${job.client} · no crew yet`, subtitle: 'Needs assignment', tone: 'alert' });
         return;
       }
-      const list = slots.get(j.time) || [];
-      list.push(j);
-      slots.set(j.time, list);
+      const jobsInSlot = jobsByTime.get(job.time) ?? [];
+      jobsInSlot.push(job);
+      jobsByTime.set(job.time, jobsInSlot);
     });
-    slots.forEach((list, time) => {
-      const teamsInSlot = [...new Set(list.map((j) => j.teamName).filter(Boolean))];
+    jobsByTime.forEach((jobsInSlot, time) => {
+      const teamsInSlot = [...new Set(jobsInSlot.map((job) => job.teamName).filter(Boolean))];
       items.push({
-        key: `s-${time}`, minutes: list[0].minutes, time,
-        title: `Crews out · ${list.length} cleaning${list.length === 1 ? '' : 's'}`,
-        sub: teamsInSlot.slice(0, 4).join(', ') + (teamsInSlot.length > 4 ? ` +${teamsInSlot.length - 4}` : ''),
+        id: `s-${time}`, minutesFromMidnight: jobsInSlot[0].minutes, time,
+        title: `Crews out · ${jobsInSlot.length} cleaning${jobsInSlot.length === 1 ? '' : 's'}`,
+        subtitle: teamsInSlot.slice(0, 4).join(', ') + (teamsInSlot.length > 4 ? ` +${teamsInSlot.length - 4}` : ''),
         tone: 'jobs',
       });
     });
     // Tareas que vencen hoy: con hora, en su lugar; sin hora, al final del día.
-    const ymd = todayIso();
-    ht.tasks.forEach((t) => {
-      if (t.dueDate !== ymd) return;
-      const m = /^(\d{1,2}):(\d{2})$/.exec(t.dueTime || '');
+    homeTasks.tasks.forEach((task) => {
+      if (task.dueDate !== todayIsoDate) return;
+      const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(task.dueTime ?? '');
       items.push({
-        key: `t-${t.id}`, minutes: m ? Number(m[1]) * 60 + Number(m[2]) : 24 * 60 - 1,
-        time: m ? `${Number(m[1]) % 12 || 12}:${m[2]}` : '',
-        title: t.title, sub: `${t.assigneeUserName.split(' ')[0]} · task due`, tone: 'task',
+        id: `t-${task.id}`,
+        minutesFromMidnight: timeMatch ? Number(timeMatch[1]) * 60 + Number(timeMatch[2]) : 24 * 60 - 1,
+        time: timeMatch ? `${Number(timeMatch[1]) % 12 || 12}:${timeMatch[2]}` : '',
+        title: task.title,
+        subtitle: `${namesSummary(task.assignees.map((assignee) => getFirstName(assignee.userName)))} · task due`,
+        tone: 'task',
       });
     });
-    return items.sort((a, b) => a.minutes - b.minutes);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.todayJobs, ht.tasks, now.getTime()]);
+    return items.sort((first, second) => first.minutesFromMidnight - second.minutesFromMidnight);
+  }, [homeData.todayJobs, homeTasks.tasks, todayIsoDate]);
 
-  const started = d.todayJobs.filter((j) => j.state === 'progress' || j.state === 'done').length;
+  const startedJobsCount = homeData.todayJobs.filter((job) => job.state === 'progress' || job.state === 'done').length;
 
   // ---- Finance ----
-  const maxBar = Math.max(1, k.month.servicePrice);
-  const bar = (n: number) => ({ '--w': `${Math.max(0, Math.min(100, (n / maxBar) * 100))}%` } as CSSProperties);
+  const maxBarValue = Math.max(1, kpis.monthTotals.servicePrice);
+  const getBarWidthStyle = (amount: number) =>
+    ({ '--w': `${Math.max(0, Math.min(100, (amount / maxBarValue) * 100))}%` } as CSSProperties);
   const monthName = now.toLocaleDateString('en-US', { month: 'long' });
+
+  const handleOpenBriefCardLink = (linkTarget: (typeof briefCards)[number]['linkTarget']) => {
+    if (linkTarget === 'tasks_section') tasksSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else onNavigate(linkTarget);
+  };
+
+  // Texto de la lista de tareas cuando no hay filas (o no se pudieron cargar).
+  const taskEmptyText = (() => {
+    if (homeTasks.error) return 'Could not load the tasks.';
+    if (!homeTasks.loaded) return 'Loading tasks…';
+    return activeAssigneeFilterId === 'all' ? 'No open tasks.' : 'No open tasks for this person.';
+  })();
 
   return (
     <div className="fade-in hm-page">
       <HomeHeader
-        title={`${greeting(now)}, ${me?.firstName || 'there'}`}
-        subtitle={[headerDate(now), d.cityState].filter(Boolean).join(' · ')}
+        title={`${greeting(now)}, ${currentUser?.firstName || 'there'}`}
+        subtitle={[headerDate(now), homeData.cityState].filter(Boolean).join(' · ')}
         onOpenMenu={onOpenMenu}
       />
 
       <section className="hm-brief" aria-label="Your day in 30 seconds">
-        <div className="hm-brief-head">
-          <h2 className="hm-brief-title"><Sparkles size={18} /> Your day in 30 seconds</h2>
-          <div className="hm-brief-meta">
-            <span>Updated {updatedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-            <button type="button" className="hm-brief-btn" onClick={() => setUpdatedAt(new Date())}>Refresh</button>
-          </div>
-        </div>
+        <h2 className="hm-brief-title"><Sparkles size={18} /> Your day in 30 seconds</h2>
         <ul className="hm-brief-cards">
-          {briefCards.map((c) => (
-            <li key={c.tag} className="hm-brief-card">
-              <span className={`hm-btag ${c.tone}`}>{c.tag}</span>
-              <p className="hm-brief-text">{c.text}</p>
-              <button type="button" className="hm-brief-link" onClick={c.onClick}>{c.link}</button>
+          {briefCards.map((card) => (
+            <li key={card.tag} className="hm-brief-card">
+              <span className={`hm-btag ${card.tone}`}>{card.tag}</span>
+              <p className="hm-brief-text">{card.text}</p>
+              <button type="button" className="hm-brief-link" onClick={() => handleOpenBriefCardLink(card.linkTarget)}>
+                {card.link}
+              </button>
             </li>
           ))}
         </ul>
       </section>
 
       <ul className="hm-kpis" aria-label="Indicadores">
-        {tiles.map((t) => (
-          <li key={t.key} className="hm-kpi">
-            <span className="hm-kpi-label">{t.label}</span>
-            <span className="hm-kpi-value">{d.fin.loading && ['rev', 'out', 'gp', 'pay'].includes(t.key) ? '…' : t.value}</span>
-            <span className={`hm-kpi-sub ${t.tone}`}>{t.sub}</span>
+        {kpiTiles.map((tile) => (
+          <li key={tile.key} className="hm-kpi">
+            <span className="hm-kpi-label">{tile.label}</span>
+            <span className="hm-kpi-value">{homeData.fin.loading && ['rev', 'out', 'gp', 'pay'].includes(tile.key) ? '…' : tile.value}</span>
+            <span className={`hm-kpi-sub ${tile.tone}`}>{tile.sub}</span>
           </li>
         ))}
       </ul>
 
       <div className="hm-grid hm-grid-wide">
-        {ht.canView && (
-          <section className="hm-card" aria-label="Open tasks" ref={tasksRef}>
+        {homeTasks.canView && (
+          <section className="hm-card" aria-label="Open tasks" ref={tasksSectionRef}>
             <div className="hm-card-head">
-              <h2 className="hm-card-title">{ht.rights.seesAll ? 'Open tasks' : 'My open tasks'}</h2>
-              <span className="hm-muted">{ht.loaded ? `${openTasks.length} open · ${overdue.length} overdue` : '…'}</span>
+              <h2 className="hm-card-title">{homeTasks.rights.seesAll ? 'Open tasks' : 'My open tasks'}</h2>
+              <span className="hm-muted">{homeTasks.loaded ? `${openTasks.length} open · ${overdueTasks.length} overdue` : '…'}</span>
             </div>
-            {assignees.length > 1 && (
+            {assigneeFilterOptions.length > 1 && (
               <div className="hm-chips" role="tablist" aria-label="Filtrar por persona">
-                <button type="button" role="tab" aria-selected={taskFilter === 'all'} className={`hm-chip${taskFilter === 'all' ? ' on' : ''}`} onClick={() => setTaskFilter('all')}>All</button>
-                {assignees.map(([id, name]) => (
-                  <button key={id} type="button" role="tab" aria-selected={taskFilter === id} className={`hm-chip${taskFilter === id ? ' on' : ''}`} onClick={() => setTaskFilter(id)}>
+                <button type="button" role="tab" aria-selected={activeAssigneeFilterId === 'all'} className={`hm-chip${activeAssigneeFilterId === 'all' ? ' on' : ''}`} onClick={() => setAssigneeFilterId('all')}>All</button>
+                {assigneeFilterOptions.map(([assigneeId, name]) => (
+                  <button key={assigneeId} type="button" role="tab" aria-selected={activeAssigneeFilterId === assigneeId} className={`hm-chip${activeAssigneeFilterId === assigneeId ? ' on' : ''}`} onClick={() => setAssigneeFilterId(assigneeId)}>
                     {name}
                   </button>
                 ))}
               </div>
             )}
             <TaskChecklist
-              tasks={shownTasks}
-              today={todayYmd}
-              meId={meId}
-              showAssignee={ht.rights.seesAll}
-              busyId={ht.actions.busyId}
-              canComplete={!!me}
-              onComplete={ht.actions.complete}
-              emptyText={!ht.loaded ? 'Loading tasks…' : taskFilter === 'all' ? 'No open tasks.' : 'No open tasks for this person.'}
+              tasks={visibleTasks}
+              today={todayIsoDate}
+              meId={currentUserId}
+              showAssignee={homeTasks.rights.seesAll}
+              busyId={homeTasks.actions.busyId}
+              canComplete={!!currentUser}
+              onComplete={homeTasks.actions.complete}
+              emptyText={taskEmptyText}
             />
             <button type="button" className="hm-more" onClick={() => onNavigate('task_list')}>Open Task List</button>
           </section>
@@ -291,13 +342,13 @@ export default function OwnerView({
         <section className="hm-card" aria-label="Today's time">
           <h2 className="hm-card-title">Today&apos;s time</h2>
           {timeline.length === 0 ? <p className="hm-empty">Nothing scheduled today.</p> : (
-            <ol className="hm-timeline hm-scroll-list">
-              {timeline.map((it) => (
-                <li key={it.key} className="hm-tl">
-                  <span className="hm-tl-time">{it.time || '—'}</span>
-                  <div className={`hm-tl-card ${it.tone}`}>
-                    <span className="hm-slot-title">{it.title}</span>
-                    {it.sub && <span className={`hm-slot-sub${it.tone === 'alert' ? ' warn' : ''}`}>{it.sub}</span>}
+            <ol className="hm-scroll-list hm-timeline">
+              {timeline.map((item) => (
+                <li key={item.id} className="hm-tl">
+                  <span className="hm-tl-time">{item.time || '—'}</span>
+                  <div className={`hm-tl-card ${item.tone}`}>
+                    <span className="hm-slot-title">{item.title}</span>
+                    {item.subtitle && <span className={`hm-slot-sub${item.tone === 'alert' ? ' warn' : ''}`}>{item.subtitle}</span>}
                   </div>
                 </li>
               ))}
@@ -306,26 +357,26 @@ export default function OwnerView({
           <div className="hm-onclock">
             <h3 className="hm-sub-title">On the clock now</h3>
             <ul className="hm-onclock-list">
-              {d.managers.map((u) => {
-                const open = openEntryOf(d.clock, u.id);
-                const hrs = weekHours(d.clock, u.id, now);
+              {homeData.managers.map((user) => {
+                const openClockEntry = openEntryOf(homeData.clock, user.id);
+                const hoursThisWeek = weekHours(homeData.clock, user.id, now);
                 return (
-                  <li key={u.id} className="hm-onclock-row">
-                    <span className="hm-onclock-name"><span className={`hm-dot${open ? ' on' : ''}`} /> {fullName(u)}</span>
-                    <span className="hm-muted">{open ? `since ${fmtClock(open.inAt)}` : 'not clocked in'} · {hrs} h this week</span>
+                  <li key={user.id} className="hm-onclock-row">
+                    <span className="hm-onclock-name"><span className={`hm-dot${openClockEntry ? ' on' : ''}`} /> {fullName(user)}</span>
+                    <span className="hm-muted">{openClockEntry ? `since ${fmtClock(openClockEntry.inAt)}` : 'not clocked in'} · {hoursThisWeek} h this week</span>
                   </li>
                 );
               })}
               <li className="hm-onclock-row">
-                <span className="hm-onclock-name"><span className={`hm-dot${started ? ' on' : ''}`} /> Crews</span>
-                <span className="hm-muted">{started} of {d.todayJobs.length} jobs started</span>
+                <span className="hm-onclock-name"><span className={`hm-dot${startedJobsCount ? ' on' : ''}`} /> Crews</span>
+                <span className="hm-muted">{startedJobsCount} of {homeData.todayJobs.length} jobs started</span>
               </li>
             </ul>
           </div>
         </section>
       </div>
 
-      {ht.actions.undo && <UndoToast title={ht.actions.undo.task.title} onUndo={ht.actions.undoComplete} />}
+      {homeTasks.actions.undo && <UndoToast title={homeTasks.actions.undo.task.title} onUndo={homeTasks.actions.undoComplete} />}
 
       <h2 className="hm-section-title">Finance</h2>
       <div className="hm-grid hm-grid-half">
@@ -336,22 +387,22 @@ export default function OwnerView({
           </div>
           <dl className="hm-bars">
             <div className="hm-barrow">
-              <dt>Revenue</dt><dd>{moneyShort(k.month.servicePrice)}</dd>
-              <span className="hm-bar"><span className="hm-bar-fill rev" style={bar(k.month.servicePrice)} /></span>
+              <dt>Revenue</dt><dd>{moneyShort(kpis.monthTotals.servicePrice)}</dd>
+              <span className="hm-bar"><span className="hm-bar-fill rev" style={getBarWidthStyle(kpis.monthTotals.servicePrice)} /></span>
             </div>
             <div className="hm-barrow">
-              <dt>Sales tax (8.25%)</dt><dd>{moneyShort(k.month.taxes)}</dd>
-              <span className="hm-bar"><span className="hm-bar-fill tax" style={bar(k.month.taxes)} /></span>
+              <dt>Sales tax (8.25%)</dt><dd>{moneyShort(kpis.monthTotals.taxes)}</dd>
+              <span className="hm-bar"><span className="hm-bar-fill tax" style={getBarWidthStyle(kpis.monthTotals.taxes)} /></span>
             </div>
             <div className="hm-barrow">
-              <dt>Payroll</dt><dd>{moneyShort(k.month.payroll)}</dd>
-              <span className="hm-bar"><span className="hm-bar-fill pay" style={bar(k.month.payroll)} /></span>
+              <dt>Payroll</dt><dd>{moneyShort(kpis.monthTotals.payroll)}</dd>
+              <span className="hm-bar"><span className="hm-bar-fill pay" style={getBarWidthStyle(kpis.monthTotals.payroll)} /></span>
             </div>
           </dl>
           <div className="hm-profit">
             <span className="hm-profit-lbl">Gross profit</span>
-            <span className={`hm-profit-num${k.month.profit < 0 ? ' neg' : ''}`}>
-              {moneyShort(k.month.profit)}{k.month.margin !== null ? ` · ${Math.round(k.month.margin)}%` : ''}
+            <span className={`hm-profit-num${kpis.monthTotals.profit < 0 ? ' neg' : ''}`}>
+              {moneyShort(kpis.monthTotals.profit)}{kpis.monthTotals.margin !== null ? ` · ${Math.round(kpis.monthTotals.margin)}%` : ''}
             </span>
           </div>
         </section>
@@ -359,17 +410,17 @@ export default function OwnerView({
         <section className="hm-card" aria-label="Oldest unpaid invoices">
           <div className="hm-card-head">
             <h2 className="hm-card-title">Oldest unpaid invoices</h2>
-            <span className="hm-muted">{d.unpaid.length} open · {moneyShort(k.outstanding)}</span>
+            <span className="hm-muted">{homeData.unpaid.length} open · {moneyShort(kpis.outstanding)}</span>
           </div>
-          {d.unpaid.length === 0 ? <p className="hm-empty">No unpaid invoices. 🎉</p> : (
+          {homeData.unpaid.length === 0 ? <p className="hm-empty">No unpaid invoices. 🎉</p> : (
             <table className="hm-mini">
               <thead><tr><th>Client</th><th className="n">Days</th><th className="n">Amount</th></tr></thead>
               <tbody>
-                {d.unpaid.slice(0, 6).map((u) => (
-                  <tr key={u.prop.id} className="hm-row" onClick={() => onOpenHouseDetail(u.prop)}>
-                    <td><div className="strong">{u.client}</div><div className="hm-muted">{u.prop.address}</div></td>
-                    <td className={`n${u.days > 30 ? ' late' : ''}`}>{u.days}</td>
-                    <td className="n strong">{u.amount ? moneyShort(u.amount) : '—'}</td>
+                {homeData.unpaid.slice(0, 6).map((invoice) => (
+                  <tr key={invoice.prop.id} className="hm-row" onClick={() => onOpenHouseDetail(invoice.prop)}>
+                    <td><div className="strong">{invoice.client}</div><div className="hm-muted">{invoice.prop.address}</div></td>
+                    <td className={`n${invoice.days > 30 ? ' late' : ''}`}>{invoice.days}</td>
+                    <td className="n strong">{invoice.amount ? moneyShort(invoice.amount) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -381,4 +432,3 @@ export default function OwnerView({
     </div>
   );
 }
-

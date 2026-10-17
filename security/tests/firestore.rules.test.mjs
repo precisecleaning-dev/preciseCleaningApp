@@ -18,6 +18,7 @@ import {
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -70,6 +71,11 @@ const PEOPLE = {
     active: true, admin: false, fin: true, roleId: 'r-office', userId: 'u-office',
     m: { Houses: R(), 'Office Notes': R(), Settings: R(), Payroll: R(), 'Recycle Bin': R() },
   },
+  // Inspector con "QC Checklist Setup": agrega y renombra (sin quitar ni Settings).
+  'checklist@precise.test': {
+    active: true, admin: false, fin: false, roleId: 'r-checklist', userId: 'u-checklist',
+    m: { 'Quality Check': R(), 'QC Checklist Setup': R(true, true, true, false) },
+  },
   'inactive@precise.test': {
     active: false, admin: false, fin: true, roleId: 'r-owner', userId: 'u-inactive', m: { Houses: ALL },
   },
@@ -116,6 +122,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'time_clock', 'closed'), { userId: 'u-sandy', inAt: '2026-10-12T08:00:00Z', outAt: '2026-10-12T17:00:00Z' });
     await setDoc(doc(db, 'time_clock', 'open'), { userId: 'u-sandy', inAt: '2026-10-13T08:00:00Z', outAt: null });
     await setDoc(doc(db, 'quality_checks', 'q1'), { houseId: 'h1', status: 'Pending' });
+    await setDoc(doc(db, 'settings_places', 'pl1'), { name: 'Porch' });
+    await setDoc(doc(db, 'settings_tasks', 'tk1'), { placeId: 'pl1', name: 'Sweep' });
   });
 });
 
@@ -234,6 +242,38 @@ describe('usuarios y roles', () => {
   });
 });
 
+describe('checklist de Quality Check (QC Checklist Setup)', () => {
+  test('ordena áreas: solo sortOrder', async () => {
+    const db = as('checklist@precise.test');
+    await assertSucceeds(updateDoc(doc(db, 'settings_places', 'pl1'), { sortOrder: 0 }));
+    await assertFails(updateDoc(doc(db, 'settings_places', 'pl1'), { name: 'Front porch' }));
+    await assertFails(updateDoc(doc(as('inspector@precise.test'), 'settings_places', 'pl1'), { sortOrder: 1 }));
+  });
+
+  test('agrega y renombra tareas; quitar pide Delete; borrar sigue en Settings', async () => {
+    const db = as('checklist@precise.test');
+    await assertSucceeds(setDoc(doc(db, 'settings_tasks', 'tk2'), { placeId: 'pl1', name: 'Mop', archived: false }));
+    await assertFails(setDoc(doc(db, 'settings_tasks', 'tk3'), { placeId: 'pl1', name: '', archived: false }));
+    await assertSucceeds(updateDoc(doc(db, 'settings_tasks', 'tk1'), { name: 'Sweep porch' }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { placeId: 'pl9' }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { archived: true }));
+    await assertFails(deleteDoc(doc(db, 'settings_tasks', 'tk1')));
+    await assertFails(setDoc(doc(as('inspector@precise.test'), 'settings_tasks', 'tk4'), { placeId: 'pl1', name: 'X', archived: false }));
+  });
+
+  test('con Delete archiva la tarea (no la borra)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'user_access', 'checklist@precise.test'), {
+        ...PEOPLE['checklist@precise.test'],
+        m: { 'Quality Check': R(), 'QC Checklist Setup': R(true, false, false, true) },
+      });
+    });
+    const db = as('checklist@precise.test');
+    await assertSucceeds(updateDoc(doc(db, 'settings_tasks', 'tk1'), { archived: true }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { name: 'Renamed' }));
+  });
+});
+
 describe('correo', () => {
   test('solo al correo de la empresa y solo { to, message }', async () => {
     const db = as('inspector@precise.test');
@@ -254,35 +294,53 @@ describe('Task list y reloj', () => {
   test('tareas con Scope "Own": solo las propias', async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
-      await setDoc(doc(db, 'user_tasks', 'mine'), { assigneeUserId: 'u-emp', createdByUserId: 'u-owner', status: 'open', approval: null });
-      await setDoc(doc(db, 'user_tasks', 'other'), { assigneeUserId: 'u-sandy', createdByUserId: 'u-owner', status: 'open', approval: null });
+      await setDoc(doc(db, 'user_tasks', 'mine'), { assignees: [{ userId: 'u-emp', userName: 'Emp' }], assigneeUserIds: ['u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null });
+      await setDoc(doc(db, 'user_tasks', 'shared'), {
+        assignees: [{ userId: 'u-sandy', userName: 'Sandy' }, { userId: 'u-emp', userName: 'Emp' }],
+        assigneeUserIds: ['u-sandy', 'u-emp'], createdByUserId: 'u-owner', status: 'open', approval: null,
+      });
+      await setDoc(doc(db, 'user_tasks', 'other'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-owner', status: 'open', approval: null });
+      // Formato de antes: una sola persona en assigneeUserId.
+      await setDoc(doc(db, 'user_tasks', 'legacy'), { assigneeUserId: 'u-emp', createdByUserId: 'u-owner', status: 'open', approval: null });
       await setDoc(doc(db, 'user_tasks', 'toApprove'), {
-        assigneeUserId: 'u-sandy', createdByUserId: 'u-sandy', status: 'open',
+        assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-sandy', status: 'open',
         approval: { approverUserId: 'u-emp', status: 'pending' },
       });
     });
     const emp = as('employee@precise.test');
     const tasks = collection(emp, 'user_tasks');
     await assertSucceeds(getDoc(doc(emp, 'user_tasks', 'mine')));
+    await assertSucceeds(getDoc(doc(emp, 'user_tasks', 'shared')));
+    await assertSucceeds(getDoc(doc(emp, 'user_tasks', 'legacy')));
     await assertSucceeds(getDoc(doc(emp, 'user_tasks', 'toApprove')));
     await assertFails(getDoc(doc(emp, 'user_tasks', 'other')));
+    await assertSucceeds(getDocs(query(tasks, where('assigneeUserIds', 'array-contains', 'u-emp'), where('status', '==', 'open'))));
     await assertSucceeds(getDocs(query(tasks, where('assigneeUserId', '==', 'u-emp'), where('status', '==', 'open'))));
     await assertSucceeds(getDocs(query(tasks, where('approval.approverUserId', '==', 'u-emp'), where('approval.status', '==', 'pending'))));
     // Pestaña "Assigned by me": las que creó, aunque sean de otra persona.
     await assertSucceeds(getDocs(query(tasks, where('createdByUserId', '==', 'u-emp'), where('status', '==', 'open'))));
     await assertFails(getDocs(query(tasks, where('status', '==', 'open'))));
     await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'mine'), { status: 'done' }));
+    await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'shared'), { dueTime: '08:00' }));
     await assertFails(updateDoc(doc(emp, 'user_tasks', 'other'), { status: 'done' }));
     // Quién la asignó no se edita (ni siquiera con Scope All).
     await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { createdByUserId: 'u-emp' }));
     await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { createdByUserName: 'Sandy' }));
-    await assertSucceeds(setDoc(doc(emp, 'user_tasks', 'new'), { assigneeUserId: 'u-sandy', createdByUserId: 'u-emp', status: 'open' }));
+    await assertSucceeds(setDoc(doc(emp, 'user_tasks', 'new'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], createdByUserId: 'u-emp', status: 'open' }));
     // Reasignar: no la que me asignó otra persona; sí la que asigné yo.
-    await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { assigneeUserId: 'u-sandy', assigneeUserName: 'Sandy' }));
-    await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'new'), { assigneeUserId: 'u-owner', assigneeUserName: 'Owner' }));
-    // Con Edit: la que le asignaron a él, no; la de otra persona, sí.
-    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { assigneeUserId: 'u-owner' }));
-    await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'mine'), { assigneeUserId: 'u-owner' }));
+    await assertFails(updateDoc(doc(emp, 'user_tasks', 'mine'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'] }));
+    await assertFails(updateDoc(doc(emp, 'user_tasks', 'legacy'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'], assigneeUserId: deleteField() }));
+    await assertSucceeds(updateDoc(doc(emp, 'user_tasks', 'new'), {
+      assignees: [{ userId: 'u-owner', userName: 'Owner' }, { userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-owner', 'u-sandy'],
+    }));
+    // Con Edit: la que le asignaron a él (sola o con más personas), no; la de otra persona, sí.
+    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'other'), { assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'] }));
+    await assertFails(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'shared'), { assignees: [{ userId: 'u-sandy', userName: 'Sandy' }], assigneeUserIds: ['u-sandy'] }));
+    await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'mine'), { assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'] }));
+    await assertSucceeds(updateDoc(doc(as('sandy@precise.test'), 'user_tasks', 'legacy'), {
+      assignees: [{ userId: 'u-owner', userName: 'Owner' }], assigneeUserIds: ['u-owner'],
+      assigneeUserId: deleteField(), assigneeUserName: deleteField(),
+    }));
     // Scope "All": las de todos.
     await assertSucceeds(getDocs(query(collection(as('sandy@precise.test'), 'user_tasks'), where('status', '==', 'open'))));
   });

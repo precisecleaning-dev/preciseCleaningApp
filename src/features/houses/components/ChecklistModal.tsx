@@ -5,131 +5,191 @@
 //      2) no hay "DID NOT PASS": el empleado no puede mandar a Recall.
 //    Guarda en 'checklists' con el mismo modelo (checked + notes), así que los
 //    registros previos siguen sirviendo. Extraído de HousesView.
+//    Lo que se ve es la versión EN VIVO del checklist más las marcas que esta
+//    persona cambió; al guardar se escriben SOLO esas marcas (checked.<tarea>:
+//    true o deleteField()) y las notas si se tocaron. Antes se reescribía el
+//    mapa completo con la copia tomada al abrir: se perdían las marcas que otra
+//    persona guardó mientras tanto, o todas si se guardaba antes de que cargara.
 import { useMemo, useState } from "react";
 import { Check, ClipboardCheck, Clock, Plus, Save, Search, StickyNote, User, X } from "lucide-react";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, FieldPath, updateDoc } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { COLLECTIONS } from "../../../lib/firebase/collections";
-import type { Property, SystemUser } from "../../../types/index";
+import type { ChecklistRecord, Property, SystemUser } from "../../../types/index";
 import { useLiveData } from "../../../shared/data/liveCollections";
 import { formatTime, todayIso } from "../../../utils/dateFormat";
-import type { ChecklistRecord } from "../hooks/useHouseChecklist";
+import { isActiveTask, sortPlacesByOrder } from "../../../utils/qcCatalog";
 
 interface ChecklistModalProps {
-  house: Property;
+  property: Property;
   clientName: string;
   currentUser?: SystemUser | null;
-  readOnly: boolean;
-  record: ChecklistRecord | null;
+  isReadOnly: boolean;
+  /** Último checklist de la casa, en vivo (null = no tiene o todavía no llega). */
+  savedChecklist: ChecklistRecord | null;
+  /** Ya llegó el primer dato del listener: antes no se deja guardar. */
+  isChecklistLoaded: boolean;
+  hasChecklistLoadError: boolean;
   onClose: () => void;
 }
 
-/** Hora corta (p. ej. "11:46 PM") de la cabecera, igual que la "Entrada" de Quality Check. */
-const fmtClockTime = (iso: string): string => formatTime(iso);
+const EMPTY_CHECKED: Record<string, boolean> = {};
 
-export default function ChecklistModal({ house, clientName, currentUser, readOnly, record, onClose }: ChecklistModalProps) {
+const ChecklistModal = ({
+  property, clientName, currentUser, isReadOnly, savedChecklist, isChecklistLoaded, hasChecklistLoadError, onClose,
+}: ChecklistModalProps) => {
   // Usa los mismos places/tasks del Quality Check (settings_places/_tasks).
-  const clPlacesData = useLiveData("places");
-  const clTasks = useLiveData("tasks");
-  const clPlaces = useMemo(() => [...clPlacesData].sort((a, b) => a.name.localeCompare(b.name)), [clPlacesData]);
-  const clActivePlaces = clPlaces.filter((pl) => clTasks.some((t) => t.placeId === pl.id));
+  // Áreas en su orden manual y solo las tareas que siguen en el checklist (no archivadas).
+  const allPlaces = useLiveData("places");
+  const allTasks = useLiveData("tasks");
+  const activeTasks = useMemo(() => allTasks.filter(isActiveTask), [allTasks]);
+  const sortedPlaces = useMemo(() => sortPlacesByOrder(allPlaces), [allPlaces]);
+  const placesWithTasks = sortedPlaces.filter((place) => activeTasks.some((task) => task.placeId === place.id));
   // ⭐ Áreas disponibles: si la casa define sus propias áreas (qcPlaces) se
   //    respetan; si no, todas las que tengan tareas configuradas (mismo criterio
   //    que el modal de Quality Check).
-  const clHouseAreaIds = house.qcPlaces;
-  const clAvailablePlaces = clActivePlaces.filter(
-    (pl) => !Array.isArray(clHouseAreaIds) || clHouseAreaIds.length === 0 || clHouseAreaIds.includes(pl.id),
+  const propertyPlaceIds = property.qcPlaces;
+  const availablePlaces = placesWithTasks.filter(
+    (place) => !Array.isArray(propertyPlaceIds) || propertyPlaceIds.length === 0 || propertyPlaceIds.includes(place.id),
   );
 
-  const [clChecked, setClChecked] = useState<Record<string, boolean>>(() => record?.checked || {});
-  const [clNotes, setClNotes] = useState(record?.notes || "");
-  const [isSavingChecklist, setIsSavingChecklist] = useState(false);
+  // Marcas guardadas (en vivo) + las que esta persona cambió (tarea → marcada o no).
+  const savedCheckedByTaskId = savedChecklist?.checked ?? EMPTY_CHECKED;
+  const [changedCheckByTaskId, setChangedCheckByTaskId] = useState<Record<string, boolean>>({});
+  const isTaskChecked = (taskId: string) => changedCheckByTaskId[taskId] ?? !!savedCheckedByTaskId[taskId];
+  // null = notas sin tocar: se muestran (y se conservan) las guardadas.
+  const [notesDraft, setNotesDraft] = useState<string | null>(null);
+  const notes = notesDraft ?? savedChecklist?.notes ?? "";
+  const [isSaving, setIsSaving] = useState(false);
   // ⭐ Formato "Iniciar Inspección": buscador de áreas + chips + hora de entrada.
-  const [clPlaceSearch, setClPlaceSearch] = useState("");
-  // Preselecciona las áreas que ya traen tareas marcadas; si el checklist es
-  // nuevo, el empleado elige las áreas con los chips (igual que en QC).
-  const [clSelectedPlaceIds, setClSelectedPlaceIds] = useState<string[]>(() =>
-    clAvailablePlaces
-      .filter((pl) => clTasks.some((t) => t.placeId === pl.id && record?.checked?.[t.id]))
-      .map((pl) => pl.id),
-  );
-  const [clOpenedAt] = useState(() => new Date().toISOString());
+  const [placeSearchText, setPlaceSearchText] = useState("");
+  // Preselecciona las áreas que ya traen tareas marcadas (también si el
+  // checklist llega después de abrir); en cuanto el empleado toca un chip,
+  // manda su selección. Si el checklist es nuevo, elige las áreas con los chips.
+  const [pickedPlaceIds, setPickedPlaceIds] = useState<string[] | null>(null);
+  const placeIdsWithSavedMarks = availablePlaces
+    .filter((place) => activeTasks.some((task) => task.placeId === place.id && savedCheckedByTaskId[task.id]))
+    .map((place) => place.id);
+  const selectedPlaceIds = pickedPlaceIds ?? placeIdsWithSavedMarks;
+  const [openedAtIso] = useState(() => new Date().toISOString());
 
-  const clPlaceQuery = clPlaceSearch.trim().toLowerCase();
-  const clSearchablePlaces = clAvailablePlaces.filter((pl) => !clPlaceQuery || pl.name.toLowerCase().includes(clPlaceQuery));
-  const clRenderPlaces = clAvailablePlaces.filter((pl) => clSelectedPlaceIds.includes(pl.id));
+  const normalizedPlaceQuery = placeSearchText.trim().toLowerCase();
+  const matchingPlaces = availablePlaces.filter((place) => !normalizedPlaceQuery || place.name.toLowerCase().includes(normalizedPlaceQuery));
+  const selectedPlaces = availablePlaces.filter((place) => selectedPlaceIds.includes(place.id));
   // Avance: solo sobre las tareas de las áreas seleccionadas
-  const clSelectedTasks = clTasks.filter((t) => clSelectedPlaceIds.includes(t.placeId));
-  const clSelectedTotal = clSelectedTasks.length;
-  const clSelectedDone = clSelectedTasks.filter((t) => !!clChecked[t.id]).length;
+  const selectedPlaceTasks = activeTasks.filter((task) => selectedPlaceIds.includes(task.placeId));
+  const selectedTaskCount = selectedPlaceTasks.length;
+  const checkedTaskCount = selectedPlaceTasks.filter((task) => isTaskChecked(task.id)).length;
 
-  const toggleClPlace = (placeId: string) =>
-    setClSelectedPlaceIds((prev) => (prev.includes(placeId) ? prev.filter((x) => x !== placeId) : [...prev, placeId]));
+  const canSave = isChecklistLoaded && !isSaving;
+  let saveButtonLabel = "Guardar Checklist";
+  if (hasChecklistLoadError) saveButtonLabel = "No se pudo cargar el checklist";
+  else if (!isChecklistLoaded) saveButtonLabel = "Cargando checklist…";
+  else if (isSaving) saveButtonLabel = "Guardando…";
 
-  const toggleClTask = (taskId: string) => {
-    if (readOnly) return;
-    setClChecked((prev) => {
-      const next = { ...prev };
-      if (next[taskId]) delete next[taskId];
-      else next[taskId] = true;
-      return next;
+  const handleTogglePlace = (placeId: string) =>
+    setPickedPlaceIds(selectedPlaceIds.includes(placeId)
+      ? selectedPlaceIds.filter((selectedId) => selectedId !== placeId)
+      : [...selectedPlaceIds, placeId]);
+
+  const handleToggleTask = (taskId: string) => {
+    if (isReadOnly) return;
+    const nextIsChecked = !isTaskChecked(taskId);
+    setChangedCheckByTaskId((previousChanges) => {
+      const nextChanges = { ...previousChanges };
+      // Si vuelve a quedar como está guardada, deja de ser un cambio.
+      if (nextIsChecked === !!savedCheckedByTaskId[taskId]) delete nextChanges[taskId];
+      else nextChanges[taskId] = nextIsChecked;
+      return nextChanges;
     });
   };
 
+  /** checked.<tarea>: true / deleteField() por cada marca cambiada, y las notas si se tocaron. */
+  const buildChangedFieldUpdates = (): unknown[] => {
+    const fieldUpdates: unknown[] = Object.entries(changedCheckByTaskId).flatMap(([taskId, isChecked]) => [
+      new FieldPath("checked", taskId),
+      isChecked ? true : deleteField(),
+    ]);
+    if (notesDraft !== null) fieldUpdates.push("notes", notesDraft.trim());
+    return fieldUpdates;
+  };
+
   const handleSaveChecklist = async () => {
-    setIsSavingChecklist(true);
+    if (!canSave) return;
+    setIsSaving(true);
     try {
-      if (record?.id) {
-        await updateDoc(doc(db, COLLECTIONS.checklists, record.id), { checked: clChecked, notes: clNotes.trim() });
+      if (savedChecklist?.id) {
+        const [firstField, firstValue, ...moreFieldsAndValues] = buildChangedFieldUpdates();
+        if (firstField) {
+          const savePromise = updateDoc(
+            doc(db, COLLECTIONS.checklists, savedChecklist.id),
+            firstField as FieldPath | string,
+            firstValue,
+            ...moreFieldsAndValues,
+          );
+          // Sin red Firestore guarda el cambio en el teléfono y lo sube al
+          // volver la señal (caché persistente): no se espera, para que el
+          // modal no se quede en "Guardando…" (mismo criterio que las fotos).
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            savePromise.catch((error: unknown) => console.error("Error sincronizando checklist:", error));
+            alert("Sin conexión: el checklist se guardará automáticamente al recuperar señal.");
+            onClose();
+            return;
+          }
+          await savePromise;
+        }
       } else {
+        const checkedTaskIds = Object.entries(changedCheckByTaskId)
+          .filter(([, isChecked]) => isChecked)
+          .map(([taskId]) => taskId);
         await addDoc(collection(db, COLLECTIONS.checklists), {
-          houseId: house.id,
-          address: house.address || "",
-          client: house.client || "",
+          houseId: property.id,
+          address: property.address ?? "",
+          client: property.client ?? "",
           date: todayIso(),
           inspector: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : "Unknown",
-          checked: clChecked,
-          notes: clNotes.trim(),
+          checked: Object.fromEntries(checkedTaskIds.map((taskId) => [taskId, true])),
+          notes: notes.trim(),
           createdAt: new Date().toISOString(),
         });
       }
       onClose();
-    } catch (err) {
-      console.error("Error guardando checklist:", err);
-      const e = err as { code?: string; message?: string };
-      alert(`Error al guardar el checklist.\n\nCódigo: ${e.code || "desconocido"}\nDetalle: ${e.message || String(err)}`);
+    } catch (error) {
+      console.error("Error guardando checklist:", error);
+      const firebaseError = error as { code?: string; message?: string };
+      alert(`Error al guardar el checklist.\n\nCódigo: ${firebaseError.code ?? "desconocido"}\nDetalle: ${firebaseError.message ?? String(error)}`);
     } finally {
-      setIsSavingChecklist(false);
+      setIsSaving(false);
     }
   };
 
   return (
     <div
       className="modal-overlay-centered hv-cl-overlay"
-      onClick={() => !isSavingChecklist && onClose()}
+      onClick={() => !isSaving && onClose()}
     >
-      <div className="hv-cl-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="hv-cl-modal" onClick={(event) => event.stopPropagation()}>
         <header className="hv-cl-header">
           <div className="hv-cl-header-title-wrap">
             <h2 className="hv-cl-title">
               <ClipboardCheck size={20} /> Checklist
-              {readOnly && (
+              {isReadOnly && (
                 <span className="hv-checklist-ro-badge">Solo lectura</span>
               )}
             </h2>
             <p className="hv-cl-prop">
               {clientName} ·{" "}
-              {house.address || "—"}
+              {property.address || "—"}
             </p>
             <p className="hv-cl-insp">
               <User size={13} />{" "}
               {currentUser
                 ? `${currentUser.firstName} ${currentUser.lastName}`
-                : record?.inspector || "Unknown"}
-              {clOpenedAt && (
+                : savedChecklist?.inspector || "Unknown"}
+              {openedAtIso && (
                 <>
                   {" · "}
-                  <Clock size={13} /> Entrada {fmtClockTime(clOpenedAt)}
+                  <Clock size={13} /> Entrada {formatTime(openedAtIso)}
                 </>
               )}
             </p>
@@ -137,7 +197,7 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
           <button
             className="hv-cl-close-btn"
             onClick={onClose}
-            disabled={isSavingChecklist}
+            disabled={isSaving}
             aria-label="Cerrar"
           >
             <X size={22} />
@@ -150,13 +210,13 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
             <Search size={18} className="hv-cl-search-icon" />
             <input
               type="text"
-              value={clPlaceSearch}
-              onChange={(e) => setClPlaceSearch(e.target.value)}
+              value={placeSearchText}
+              onChange={(event) => setPlaceSearchText(event.target.value)}
               placeholder="Buscar área del checklist..."
             />
-            {clPlaceSearch && (
+            {placeSearchText && (
               <button
-                onClick={() => setClPlaceSearch("")}
+                onClick={() => setPlaceSearchText("")}
                 aria-label="Limpiar"
               >
                 <X size={16} />
@@ -170,31 +230,31 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
           <div className="hv-cl-picker">
             <div className="hv-cl-picker-title">
               <span>
-                Áreas del checklist ({clSelectedPlaceIds.length}{" "}
+                Áreas del checklist ({selectedPlaceIds.length}{" "}
                 seleccionada(s))
               </span>
-              {clSelectedTotal > 0 && (
+              {selectedTaskCount > 0 && (
                 <span className="hv-cl-picker-progress">
-                  {clSelectedDone} de {clSelectedTotal} marcados
+                  {checkedTaskCount} de {selectedTaskCount} marcados
                 </span>
               )}
             </div>
-            {clSearchablePlaces.length === 0 ? (
+            {matchingPlaces.length === 0 ? (
               <div className="hv-cl-picker-empty">
                 No hay áreas con tareas configuradas.
               </div>
             ) : (
               <div className="hv-cl-chip-list">
-                {clSearchablePlaces.map((pl) => {
-                  const sel = clSelectedPlaceIds.includes(pl.id);
+                {matchingPlaces.map((place) => {
+                  const isSelected = selectedPlaceIds.includes(place.id);
                   return (
                     <button
-                      key={pl.id}
-                      className={`hv-cl-chip${sel ? " selected" : ""}`}
-                      onClick={() => toggleClPlace(pl.id)}
+                      key={place.id}
+                      className={`hv-cl-chip${isSelected ? " selected" : ""}`}
+                      onClick={() => handleTogglePlace(place.id)}
                     >
-                      {sel ? <Check size={14} /> : <Plus size={14} />}{" "}
-                      {pl.name}
+                      {isSelected ? <Check size={14} /> : <Plus size={14} />}{" "}
+                      {place.name}
                     </button>
                   );
                 })}
@@ -203,23 +263,23 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
           </div>
 
           {/* Una tarjeta por área seleccionada — SOLO "Yes" */}
-          {clRenderPlaces.map((pl) => {
-            const placeTasks = clTasks.filter((t) => t.placeId === pl.id);
+          {selectedPlaces.map((place) => {
+            const placeTasks = activeTasks.filter((task) => task.placeId === place.id);
             return (
-              <div key={pl.id} className="hv-cl-card">
-                <h3 className="hv-cl-card-title">{pl.name}</h3>
+              <div key={place.id} className="hv-cl-card">
+                <h3 className="hv-cl-card-title">{place.name}</h3>
                 {placeTasks.map((task) => {
-                  const on = !!clChecked[task.id];
+                  const isChecked = isTaskChecked(task.id);
                   return (
                     <div key={task.id} className="hv-cl-task-item">
                       <span className="hv-cl-task-name">{task.name}</span>
                       <div className="hv-cl-task-buttons">
                         <button
-                          className={`hv-cl-toggle yes${on ? " active" : ""}`}
-                          onClick={() => toggleClTask(task.id)}
-                          disabled={readOnly}
+                          className={`hv-cl-toggle yes${isChecked ? " active" : ""}`}
+                          onClick={() => handleToggleTask(task.id)}
+                          disabled={isReadOnly}
                           title={
-                            on ? "Quitar la marca" : "Marcar como hecho"
+                            isChecked ? "Quitar la marca" : "Marcar como hecho"
                           }
                         >
                           <Check size={15} /> Yes
@@ -232,7 +292,7 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
             );
           })}
 
-          {clRenderPlaces.length === 0 && clSearchablePlaces.length > 0 && (
+          {selectedPlaces.length === 0 && matchingPlaces.length > 0 && (
             <div className="hv-cl-no-places">
               Selecciona al menos un área arriba para comenzar el checklist.
             </div>
@@ -245,17 +305,17 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
             </label>
             <textarea
               className="hv-cl-textarea"
-              value={clNotes}
-              onChange={(e) => setClNotes(e.target.value)}
+              value={notes}
+              onChange={(event) => setNotesDraft(event.target.value)}
               placeholder="Observaciones del checklist…"
-              disabled={readOnly}
+              disabled={isReadOnly}
             />
           </div>
         </div>
 
         {/* Barra de guardado: solo "Guardar Checklist" (sin DID NOT PASS) */}
         <div className="hv-cl-savebar">
-          {readOnly ? (
+          {isReadOnly ? (
             <button
               className="hv-cl-btn-save"
               onClick={onClose}
@@ -266,14 +326,16 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
             <button
               className="hv-cl-btn-save"
               onClick={handleSaveChecklist}
-              disabled={isSavingChecklist}
+              disabled={!canSave}
             >
               <Save size={18} />{" "}
-              {isSavingChecklist ? "Guardando…" : "Guardar Checklist"}
+              {saveButtonLabel}
             </button>
           )}
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default ChecklistModal;

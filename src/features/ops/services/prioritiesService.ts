@@ -8,11 +8,11 @@ import { doc, setDoc, type DocumentReference } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
 import { COLLECTIONS } from '../../../lib/firebase/collections';
 import { typedConverter } from '../../../lib/firebase/typedConverter';
-import type { OpsPriorities } from '../../../types/index';
+import type { UserPriorities } from '../../../types/index';
 
 /** Top 3 de un gerente. */
-export const prioritiesRef = (userId: string): DocumentReference<OpsPriorities> =>
-  doc(db, COLLECTIONS.userPriorities, userId).withConverter(typedConverter<OpsPriorities>());
+export const prioritiesRef = (userId: string): DocumentReference<UserPriorities> =>
+  doc(db, COLLECTIONS.userPriorities, userId).withConverter(typedConverter<UserPriorities>());
 
 /** Guarda el top 3 de un gerente (máximo 3 proyectos, en orden). */
 export async function setPriorities(userId: string, projectIds: string[]): Promise<void> {

@@ -43,8 +43,15 @@ const DEFAULT_MODULES = [
   'Checklist',
   // --- Calidad ---
   'Quality Check',
+  // ⭐ Ya no es una vista del menú: permite ver la tabla "Quality Check
+  //    Reports" dentro de Quality Check (si el rol no lo declara, la ve quien
+  //    entra a Quality Check).
   'Quality Check Reports',
   'QC Dashboard',
+  // ⭐ Permiso especial, no es una vista: "Edit checklist" en el panel de
+  //    Quality Check. Add = agregar tareas · Edit = renombrarlas y ordenar las
+  //    áreas · Delete = quitarlas (se archivan). Cambia Settings → Places/Tasks.
+  'QC Checklist Setup',
   // --- Administracion del negocio ---
   'Payroll',
   'Invoices',

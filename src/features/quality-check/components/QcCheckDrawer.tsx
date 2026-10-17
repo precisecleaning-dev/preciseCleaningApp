@@ -3,8 +3,9 @@
 // ⭐ PANEL DE QUALITY CHECK (diseño "Quality Check", 10/2026). Reemplaza el
 //    modal con selector de áreas: panel lateral a la derecha en computadora y
 //    pantalla completa en el teléfono, con todo en una sola columna:
-//    notas de oficina y limpiadores → inspector y fecha → checklist Pass/Fail →
-//    puntaje → fotos → notas para el equipo → solo oficina → resultado.
+//    notas de oficina y limpiadores → inspector y fecha → checklist Pass/Fail
+//    (cada área con sus fotos; se contraen y, con permiso, se ordenan y editan) → puntaje → otras fotos (General) → notas para
+//    el equipo → solo oficina → resultado.
 //
 // Es de presentación: QualityCheckView guarda, sube fotos y mueve la casa.
 // ============================================================================
@@ -13,7 +14,7 @@ import { Loader2, Save, X } from 'lucide-react';
 import DateInput from '../../../shared/components/DateInput';
 import QcChecklist from './QcChecklist';
 import QcIncomingNotes, { type QcNoteItem } from './QcIncomingNotes';
-import { checklistTotals, type QcAnswer, type QcExtras, type QcSection } from '../qcForm';
+import { checklistTotals, type QcAnswer, type QcExtras, type QcSection, type QcSectionTask } from '../qcForm';
 import './QcCheckDrawer.css';
 
 interface QcCheckDrawerProps {
@@ -32,6 +33,19 @@ interface QcCheckDrawerProps {
   sections: QcSection[];
   answers: Record<string, Record<string, string> | undefined>;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
+  /** Fotos de un área del checklist (van debajo de sus tareas). */
+  renderSectionPhotos: (section: QcSection) => ReactNode;
+  /** Permisos de "QC Checklist Setup" (Roles) para ordenar áreas y editar tareas. */
+  canAddChecklistTasks: boolean;
+  canEditChecklistTasks: boolean;
+  canRemoveChecklistTasks: boolean;
+  /** Áreas o tareas del checklist que se están guardando (usePendingById). */
+  pendingChecklistIds: ReadonlySet<string>;
+  onMoveChecklistSection: (section: QcSection, positionOffset: -1 | 1) => void;
+  onAddChecklistTask: (section: QcSection, taskName: string) => void;
+  onRenameChecklistTask: (section: QcSection, task: QcSectionTask, name: string) => void;
+  onRemoveChecklistTask: (section: QcSection, task: QcSectionTask) => void;
+  /** Fotos que no son de un área del checklist (área General). */
   generalPhotos: ReactNode;
   officePhotos: ReactNode;
   /** Sección "Office only" (permiso Office Notes). */
@@ -44,25 +58,41 @@ interface QcCheckDrawerProps {
   onSave: () => void;
 }
 
-export default function QcCheckDrawer(props: QcCheckDrawerProps) {
+const QcCheckDrawer = (props: QcCheckDrawerProps) => {
   const {
     address, subtitle, headerActions, onClose, officeNotes, cleanerNotes, teamName, cleanerPhotos,
-    inspectors, extras, onExtras, sections, answers, onAnswer, generalPhotos, officePhotos,
+    inspectors, extras, onExtras, sections, answers, onAnswer, renderSectionPhotos, canAddChecklistTasks,
+    canEditChecklistTasks, canRemoveChecklistTasks, pendingChecklistIds, onMoveChecklistSection, onAddChecklistTask, onRenameChecklistTask,
+    onRemoveChecklistTask, generalPhotos, officePhotos,
     showOffice, teamNotes, onTeamNotes, saving, saveState, onSave,
   } = props;
-  const totals = checklistTotals(sections, answers);
-  const rate = totals.answered ? Math.round((totals.passed / totals.answered) * 100) : 0;
-  const scoreTone = totals.answered === 0 ? 'none' : totals.failed > 0 ? 'bad' : 'ok';
-  const hasInspector = inspectors.some((u) => u.id === extras.inspectorId);
+  const checklistTotal = checklistTotals(sections, answers);
+  const passRatePercent = checklistTotal.answered ? Math.round((checklistTotal.passed / checklistTotal.answered) * 100) : 0;
+  const scoreTone = checklistTotal.answered === 0 ? 'none' : checklistTotal.failed > 0 ? 'bad' : 'ok';
+  const hasInspector = inspectors.some((inspector) => inspector.id === extras.inspectorId);
+
+  const handleInspectorChange = (inspectorId: string) => {
+    const selectedInspector = inspectors.find((inspector) => inspector.id === inspectorId);
+    onExtras({ inspectorId, inspectorName: selectedInspector?.name ?? '' });
+  };
 
   // Al abrir, el foco entra al panel (lectores de pantalla y teclado) y al
   // cerrar vuelve a donde estaba.
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
+    const previouslyFocusedElement = document.activeElement as HTMLElement | null;
     rootRef.current?.focus();
-    return () => { prev?.focus?.(); };
+    return () => { previouslyFocusedElement?.focus?.(); };
   }, []);
+
+  // Texto junto al puntaje (fuera del JSX: sin ternarios anidados).
+  const scoreNote = (() => {
+    if (checklistTotal.answered === 0) return 'Mark each item Pass or Fail.';
+    if (checklistTotal.failed === 0) return 'Every checked item passed.';
+    const shownFailedNames = checklistTotal.failedNames.slice(0, 3).join(', ');
+    const moreFailedSuffix = checklistTotal.failedNames.length > 3 ? '…' : '';
+    return `${checklistTotal.failed} item${checklistTotal.failed === 1 ? '' : 's'} failed (${shownFailedNames}${moreFailedSuffix}) — re-clean required`;
+  })();
 
   return (
     <div ref={rootRef} tabIndex={-1} className="qcd" role="dialog" aria-modal="true" aria-label={`Quality check · ${address}`}>
@@ -89,53 +119,59 @@ export default function QcCheckDrawer(props: QcCheckDrawerProps) {
             <select
               className="qcd-input"
               value={extras.inspectorId}
-              onChange={(e) => {
-                const u = inspectors.find((x) => x.id === e.target.value);
-                onExtras({ inspectorId: e.target.value, inspectorName: u?.name || '' });
-              }}
+              onChange={(event) => handleInspectorChange(event.target.value)}
             >
               {!hasInspector && <option value={extras.inspectorId}>{extras.inspectorName || '—'}</option>}
-              {inspectors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {inspectors.map((inspector) => <option key={inspector.id} value={inspector.id}>{inspector.name}</option>)}
             </select>
           </label>
           <label className="qcd-field">
             <span className="qcd-lbl">Inspection date</span>
-            <DateInput className="qcd-input" value={extras.date} onChange={(iso) => onExtras({ date: iso })} />
+            <DateInput className="qcd-input" value={extras.date} onChange={(isoDate) => onExtras({ date: isoDate })} />
           </label>
         </div>
 
         <section className="qcd-block" aria-label="Checklist">
           <div className="qcd-row">
             <p className="qcd-lbl">Checklist</p>
-            <span className="qcd-hint">{totals.passed} of {totals.total} passed</span>
+            <span className="qcd-hint">{checklistTotal.passed} of {checklistTotal.total} passed</span>
           </div>
-          <QcChecklist sections={sections} answers={answers} onAnswer={onAnswer} />
+          <QcChecklist
+            sections={sections}
+            answers={answers}
+            onAnswer={onAnswer}
+            renderSectionPhotos={renderSectionPhotos}
+            canAddTasks={canAddChecklistTasks}
+            canEditTasks={canEditChecklistTasks}
+            canRemoveTasks={canRemoveChecklistTasks}
+            pendingChecklistIds={pendingChecklistIds}
+            onMoveSection={onMoveChecklistSection}
+            onAddTask={onAddChecklistTask}
+            onRenameTask={onRenameChecklistTask}
+            onRemoveTask={onRemoveChecklistTask}
+          />
         </section>
 
         <div className={`qcd-score ${scoreTone}`}>
           <div>
             <p className="qcd-lbl">Score</p>
             <p className="qcd-score-num">
-              {totals.answered ? `${totals.passed} / ${totals.answered} · ${rate}%` : '—'}
+              {checklistTotal.answered ? `${checklistTotal.passed} / ${checklistTotal.answered} · ${passRatePercent}%` : '—'}
             </p>
           </div>
           <p className="qcd-score-note">
-            {totals.answered === 0
-              ? 'Mark each item Pass or Fail.'
-              : totals.failed > 0
-                ? `${totals.failed} item${totals.failed === 1 ? '' : 's'} failed (${totals.failedNames.slice(0, 3).join(', ')}${totals.failedNames.length > 3 ? '…' : ''}) — re-clean required`
-                : 'Every checked item passed.'}
+            {scoreNote}
           </p>
         </div>
 
         <section className="qcd-block small" aria-label="Photos">
-          <p className="qcd-lbl">Photos (before / after)</p>
+          <p className="qcd-lbl">Other photos (before / after)</p>
           {generalPhotos}
         </section>
 
         <label className="qcd-field">
           <span className="qcd-lbl">Notes for the team</span>
-          <textarea className="qcd-textarea" rows={3} value={teamNotes} onChange={(e) => onTeamNotes(e.target.value)} />
+          <textarea className="qcd-textarea" rows={3} value={teamNotes} onChange={(event) => onTeamNotes(event.target.value)} />
         </label>
 
         {showOffice && (
@@ -150,11 +186,11 @@ export default function QcCheckDrawer(props: QcCheckDrawerProps) {
                 className="qcd-textarea white"
                 rows={3}
                 value={extras.clientNotes}
-                onChange={(e) => onExtras({ clientNotes: e.target.value })}
+                onChange={(event) => onExtras({ clientNotes: event.target.value })}
               />
             </label>
             <label className="qcd-check">
-              <input type="checkbox" checked={extras.notifyManager} onChange={(e) => onExtras({ notifyManager: e.target.checked })} />
+              <input type="checkbox" checked={extras.notifyManager} onChange={(event) => onExtras({ notifyManager: event.target.checked })} />
               <span>Notify property manager.</span>
             </label>
             <div className="qcd-block small">
@@ -186,7 +222,7 @@ export default function QcCheckDrawer(props: QcCheckDrawerProps) {
           </div>
           {extras.outcome === 'recall' && (
             <label className="qcd-check">
-              <input type="checkbox" checked={extras.reclean} onChange={(e) => onExtras({ reclean: e.target.checked })} />
+              <input type="checkbox" checked={extras.reclean} onChange={(event) => onExtras({ reclean: event.target.checked })} />
               <span>Create re-clean job for {teamName || 'the team'} &amp; hold invoice until QC passes.</span>
             </label>
           )}
@@ -202,4 +238,6 @@ export default function QcCheckDrawer(props: QcCheckDrawerProps) {
       </footer>
     </div>
   );
-}
+};
+
+export default QcCheckDrawer;

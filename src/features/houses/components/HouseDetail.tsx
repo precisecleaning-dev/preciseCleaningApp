@@ -177,7 +177,7 @@ export default function HouseDetail({
   // ⭐ CHECKLIST: visor del último checklist de la casa (ChecklistModal).
   //    Visible por "card_checklist"; editable si NO está en "solo lectura".
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
-  const clRecord = useHouseChecklist(selectedHouse.id);
+  const houseChecklist = useHouseChecklist(selectedHouse.id);
   // Places/tasks del store compartido se precargan con el detalle abierto: el
   // visor elige las áreas marcadas en cuanto se abre.
   useLiveData("places");
@@ -1943,9 +1943,9 @@ export default function HouseDetail({
                   className="hv-btn-checklist-modal"
                 >
                   <ClipboardCheck size={16} /> Checklist
-                  {clRecord && (
+                  {houseChecklist.checklist && (
                     <span className="hv-checklist-footer-count">
-                      {Object.keys(clRecord.checked || {}).length}
+                      {Object.keys(houseChecklist.checklist.checked ?? {}).length}
                     </span>
                   )}
                 </button>
@@ -2031,11 +2031,13 @@ export default function HouseDetail({
           de Quality Check, solo con "Yes" y sin "DID NOT PASS". */}
       {isChecklistOpen && selectedHouse && (
         <ChecklistModal
-          house={selectedHouse}
+          property={selectedHouse}
           clientName={getClientName(selectedHouse.client)}
           currentUser={currentUser}
-          readOnly={isFieldRO("card_checklist")}
-          record={clRecord}
+          isReadOnly={isFieldRO("card_checklist")}
+          savedChecklist={houseChecklist.checklist}
+          isChecklistLoaded={houseChecklist.isLoaded}
+          hasChecklistLoadError={houseChecklist.hasLoadError}
           onClose={() => setIsChecklistOpen(false)}
         />
       )}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { ClipboardCheck, Route } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { Property, SystemUser } from '../types/index';
+import type { Property, Role, SystemUser } from '../types/index';
 import QualityCheckView from './QualityCheckView';
 import QCRoutesTableView from './QCRoutesTableView';
 import './QualityCheckHub.css';
@@ -24,9 +24,9 @@ import './QualityCheckHub.css';
 // ============================================================================
 
 interface Props {
-  // ⭐ Para el permiso 'Office Notes': las notas de oficina solo se muestran
-  //    a los roles que las tienen permitidas (o al super admin).
-  activeRole?: { permissions?: { module: string; canView?: boolean }[] } | null;
+  // ⭐ Para los permisos 'Office Notes' (las notas de oficina solo se muestran
+  //    a los roles que las tienen permitidas o al super admin) y 'QC Checklist Setup'.
+  activeRole?: Role | null;
   isSuperAdmin?: boolean;
   onOpenMenu: () => void;
   properties: Property[];
@@ -65,9 +65,9 @@ export default function QualityCheckHub(props: Props) {
         <div className="qch-tabbar">
           {tabBtn('inspections', 'Quality Check', ClipboardCheck, '#1d4ed8')}
           {tabBtn('routes', 'Rutas', Route, '#16a34a')}
-          {/* ⭐ La pestana "Reportes" se retiro: los reportes finalizados ya tienen
-              su propia entrada en el menu lateral (Quality Check Reports), con
-              tabla, filtros y envio por WhatsApp/email. Tener dos listados del
+          {/* ⭐ La pestana "Reportes" se retiro: los reportes finalizados estan en
+              la tabla "Quality Check Reports" de la vista Quality Check (debajo de
+              Recall), con filtros y envio por WhatsApp/email. Tener dos listados del
               mismo dato invitaba a editar en uno y consultar en el otro.
               QCReportsView.tsx se eliminó en la limpieza de 10/2026 (historial de git). */}
         </div>

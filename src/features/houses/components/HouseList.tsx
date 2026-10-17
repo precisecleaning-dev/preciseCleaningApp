@@ -2,17 +2,18 @@
 //    indicadores y la lista (tabla unificada o tarjetas, o el tablero), con su
 //    propio estado de filtros. El detalle, el formulario y el cambio de status
 //    los abre HousesView (props on*). Extraído de HousesView.
-import { useCallback, useDeferredValue, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import {
   AlertTriangle, Briefcase, ChevronRight, Clock, CloudOff, FileText, Filter, Plus, Search, ShieldCheck, Wrench,
 } from "lucide-react";
-import type { Property, SystemUser } from "../../../types/index";
+import type { Property, Status, SystemUser } from "../../../types/index";
 import { propertiesService } from "../../../services/propertiesService";
 import { logActivity } from "../../../services/activityLogService";
 import { resolveCustomerName } from "../../../utils/customerDocs";
 import { dateSortValue } from "../../../utils/dateFormat";
 import { getRelationName } from "../../../utils/relations";
-import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from "../../../utils/periods";
+import { inPeriod, periodRange } from "../../../utils/periods";
+import { useStoredPeriod } from "../../../shared/hooks/useStoredPeriod";
 import { useJobFinancials } from "../../../utils/jobFinancials";
 import { qcCounts, qcInfoFor, useQcRecords } from "../../../utils/jobQuality";
 import { buildUnifiedGroups, type UnifiedGroup } from "../../../utils/unifiedRows";
@@ -26,10 +27,11 @@ import PeriodBar from "../../../components/PeriodBar";
 import KpiGrid from "../../../components/KpiGrid";
 import UnifiedJobsTable from "../../../components/UnifiedJobsTable";
 import PipelineBoardView from "../../../components/PipelineBoardView";
+import PipelineKpiCard from "../../../components/PipelineKpiCard";
 import HistoryWindowNotice from "../../../components/HistoryWindowNotice";
 import type { StatusModalConfig } from "../../../components/StatusChangeModal";
 import { changeHouseStatus } from "../services/houseStatus";
-import { useHouseCatalogs } from "../hooks/useHouseCatalogs";
+import { findStatusInIndex, useHouseCatalogs } from "../hooks/useHouseCatalogs";
 import type { HouseAccess } from "../hooks/useHouseAccess";
 import type { FormVisibilityConfig } from "../houseFieldConfig";
 import JobCard from "./JobCard";
@@ -40,7 +42,7 @@ import RepairClientsModal from "./RepairClientsModal";
 import VirtualItems from "../../../shared/components/VirtualItems";
 import BusinessTabs from "../../../shared/components/BusinessTabs";
 import { useBusiness } from "../../../shared/hooks/useBusiness";
-import { cavalryClientKeys, houseBusiness, statusInBusiness, statusOrderIn } from "../../../shared/utils/businesses";
+import { cavalryClientKeys, houseBusiness, statusesForBusiness, statusInBusiness } from "../../../shared/utils/businesses";
 
 // ⭐ Valor del filtro para "casas sin status" (no choca con ningún nombre real)
 const NO_STATUS_FILTER = "__NO_STATUS__";
@@ -91,10 +93,10 @@ interface HouseListProps {
   onRequestStatus: (cfg: StatusModalConfig) => void;
 }
 
-export default function HouseList({
+const HouseList = ({
   viewMode, properties, currentUser, isSuperAdmin, access, formConfig, onOpenMenu, isOnline, pendingTotal,
   draftsCount, onOpenDrafts, onNewJob, onOpenDetail, onEdit, onDelete, onPhotosFromCard, onRequestStatus,
-}: HouseListProps) {
+}: HouseListProps) => {
   const {
     statuses, statusesLoaded, teams, priorities, services, customersList, customersLoaded, statusIndex, findStatusOf,
     getClientName, isHiddenPipelineStatus, logLabel,
@@ -212,9 +214,7 @@ export default function HouseList({
   const boardLoading = !statusesLoaded || !customersLoaded;
   const boardStatuses = boardLoading
     ? []
-    : statuses
-        .filter((s) => isStatusVisibleForRole(s.id) && statusInBusiness(s, business))
-        .sort((a, b) => statusOrderIn(a, business) - statusOrderIn(b, business));
+    : statusesForBusiness(statuses.filter((status) => isStatusVisibleForRole(status.id)), business);
   // Casas de cada empresa en su tablero, para el conteo de las pestañas.
   const businessCounts = useMemo(() => {
     const counts = { Normal: 0, Cavalry: 0 };
@@ -228,12 +228,17 @@ export default function HouseList({
     // findStatusOf e isHiddenPipelineStatus cambian con statusIndex; isStatusVisibleForRole, con el rol y formConfig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [separateBusiness, boardLoading, scopedProperties, cavalryKeys, statusIndex, formConfig, currentUser?.roleId, isSuperAdmin]);
-  // Casas por statusId (tarjetas KPI del tablero), en un solo recorrido.
+  // Casas por status (tarjetas KPI del tablero), en un solo recorrido. Se cuenta
+  // por el status RESUELTO (findStatusInIndex: id o nombre, sin mayúsculas ni
+  // espacios de más), la misma regla que usan el tablero y la pastilla.
   const statusCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    propertiesWithScope.forEach((p) => m.set(String(p.statusId), (m.get(String(p.statusId)) || 0) + 1));
-    return m;
-  }, [propertiesWithScope]);
+    const countByStatusId = new Map<string, number>();
+    propertiesWithScope.forEach((property) => {
+      const propertyStatusId = findStatusInIndex(statusIndex, property.statusId)?.id;
+      if (propertyStatusId) countByStatusId.set(propertyStatusId, (countByStatusId.get(propertyStatusId) ?? 0) + 1);
+    });
+    return countByStatusId;
+  }, [propertiesWithScope, statusIndex]);
 
   const uniqueHouses = useMemo(
     () =>
@@ -273,9 +278,8 @@ export default function HouseList({
 
     let passStatusFilter = true;
     if (statusFilter !== "All") {
-      const stObj = statuses.find((stt) => stt.id === statusFilter);
-      passStatusFilter =
-        p.statusId === statusFilter || (!!stObj && p.statusId === stObj.name);
+      // Por el status resuelto (id o nombre, sin mayúsculas ni espacios de más).
+      passStatusFilter = st?.id === statusFilter;
     }
 
     let passPriority = true;
@@ -328,14 +332,7 @@ export default function HouseList({
   //    Quedan fuera solo los trabajos SIN status (tienen su módulo propio).
   //    El periodo (Day / Week / Month / Year / Custom) filtra la tabla y define
   //    la agrupación: Week → días, Month → semanas, Year → meses.
-  const PERIOD_KEY = "pc.overview.period";
-  const [period, setPeriodState] = useState<PeriodState>(() =>
-    loadPeriod(PERIOD_KEY, "week"),
-  );
-  const setPeriod = (p: PeriodState) => {
-    setPeriodState(p);
-    savePeriod(PERIOD_KEY, p);
-  };
+  const [period, setPeriod] = useStoredPeriod("pc.overview.period", "week");
   const range = useMemo(() => periodRange(period), [period]);
   // Solo la tabla del Overview (no el tablero) abre los listeners de
   // finanzas y QC.
@@ -584,6 +581,11 @@ export default function HouseList({
   };
 
   const kpiIcons = [Briefcase, Clock, ShieldCheck, AlertTriangle];
+  /** Trabajos de un status en el tablero (por id y, en casas viejas, por nombre). */
+  const getBoardStatusCount = (status: Status) => statusCounts.get(status.id) ?? 0;
+  /** Filtra el tablero por ese status; si ya estaba filtrado, lo quita. */
+  const handleToggleStatusFilter = (status: Status) =>
+    setActiveFilter(activeFilter === status.name ? "All" : status.name);
 
   // ⭐ Lista del Overview (tabla y tarjetas con memo): handlers con identidad
   //    fija, así escribir en el formulario de la casa no vuelve a dibujarla.
@@ -725,7 +727,7 @@ export default function HouseList({
           <PeriodBar
             period={period}
             onChange={setPeriod}
-            extra={
+            trailingActions={
                     <div className="property-select-container">
                       <button
                         onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
@@ -846,9 +848,7 @@ export default function HouseList({
                           label: status.name,
                           value: isLoading
                             ? "…"
-                            : propertiesWithScope
-                                .filter((p) => p.statusId === status.id || p.statusId === status.name)
-                                .length.toLocaleString("en-US"),
+                            : getBoardStatusCount(status).toLocaleString("en-US"),
                           sub: isActive ? "Filtering ✓" : "jobs now",
                           active: isActive,
                           onClick: () => setActiveFilter(isActive ? "All" : status.name),
@@ -878,44 +878,16 @@ export default function HouseList({
           {boardLoading ? (
             <div className="hv-loading-text">Loading metrics...</div>
           ) : (
-            boardStatuses
-              .slice(0, 4)
-              .map((status, index) => {
-                const Icon = kpiIcons[index % kpiIcons.length];
-                const count =
-                  (statusCounts.get(String(status.id)) || 0) +
-                  (status.name !== status.id ? statusCounts.get(String(status.name)) || 0 : 0);
-                const isActive = activeFilter === status.name;
-                return (
-                  <div
-                    className={`hv-kpi-card${isActive ? " active" : ""}`}
-                    style={
-                      {
-                        "--kpi-color": status.color,
-                        "--kpi-color-30": `${status.color}30`,
-                        "--kpi-icon-bg": `${status.color}15`,
-                      } as CSSProperties
-                    }
-                    key={status.id}
-                    onClick={() =>
-                      setActiveFilter(isActive ? "All" : status.name)
-                    }
-                    title={
-                      isActive
-                        ? "Click para limpiar filtro"
-                        : `Filtrar trabajos por ${status.name}`
-                    }
-                  >
-                    <div className="hv-kpi-icon-box">
-                      <Icon size={18} />
-                    </div>
-                    <div className="hv-min-w-0">
-                      <div className="hv-kpi-label">{status.name}</div>
-                      <div className="hv-kpi-count">{count}</div>
-                    </div>
-                  </div>
-                );
-              })
+            boardStatuses.slice(0, 4).map((status, statusIndex) => (
+              <PipelineKpiCard
+                key={status.id}
+                status={status}
+                jobCount={getBoardStatusCount(status)}
+                icon={kpiIcons[statusIndex % kpiIcons.length]}
+                isActive={activeFilter === status.name}
+                onToggleFilter={handleToggleStatusFilter}
+              />
+            ))
           )}
         </div>
       )}
@@ -926,7 +898,7 @@ export default function HouseList({
             Ningún status es de {business} todavía. Márcalos en Settings → Status.
           </p>
         ) : (
-          /* ⭐ showOfficeNote: las notas internas solo llegan al tablero si el rol
+          /* ⭐ isOfficeNoteVisible: las notas internas solo llegan al tablero si el rol
              puede verlas. Se decide AQUI, no dentro de la tarjeta, para que el dato
              no se pase siquiera al componente cuando no hay permiso. */
           <PipelineBoardView
@@ -935,10 +907,10 @@ export default function HouseList({
             teams={teams}
             priorities={priorities}
             getClientName={getClientName}
-            onOpenDetail={onOpenDetail}
-            onQuickStatusChange={handleQuickStatusChange}
-            canEdit={!!canEdit}
-            showOfficeNote={canSeeOfficeNotes()}
+            onOpenPropertyDetail={onOpenDetail}
+            onStatusChange={handleQuickStatusChange}
+            canChangeStatus={!!canEdit}
+            isOfficeNoteVisible={canSeeOfficeNotes()}
           />
         )
       ) : (
@@ -1014,4 +986,6 @@ export default function HouseList({
       )}
     </>
   );
-}
+};
+
+export default HouseList;

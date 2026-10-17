@@ -39,7 +39,8 @@
 
 .cx-color-dot { background-color: var(--dot-color); width: 20px; height: 20px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,0.1); }
 .cx-type-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
-.cx-type-badge.commercial { background-color: #eff6ff; color: #1e40af; }
+.cx-type-badge.commercial,
+.cx-type-badge.property-manager { background-color: #eff6ff; color: #1e40af; }
 .cx-type-badge.residential { background-color: #f0fdf4; color: #166534; }
 .td-content.cx-actions-cell { gap: 12px; }
 .cx-btn-edit { background: none; border: none; color: #3b82f6; cursor: pointer; padding: 4px; }
