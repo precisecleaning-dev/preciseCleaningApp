@@ -134,9 +134,12 @@ export const MAX_TITLE_LENGTH = 200;
 /** Duración con la que se propone una tarea nueva, en minutos. */
 export const DEFAULT_DURATION_MINUTES = 30;
 
+/** Máximo de veces que se puede repetir una tarea con "After N times". */
+export const MAX_REPEAT_TIMES = 365;
+
 /** Revisa el título y la duración antes de escribir. La pantalla ya los
  *  limita, pero el service es la última puerta antes de Firestore. */
-function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durationMinutes'>>): void {
+function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durationMinutes' | 'repeat'>>): void {
   if (fields.title !== undefined) {
     const title = fields.title.trim();
     if (!title) throw new Error('La tarea necesita un título.');
@@ -148,6 +151,19 @@ function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durati
     const isValidDuration = Number.isInteger(fields.durationMinutes) && fields.durationMinutes >= 0;
     if (!isValidDuration) throw new Error('La duración debe ser un número entero de minutos (0 = no aplica).');
   }
+  const timesLeft = fields.repeat?.timesLeft;
+  if (timesLeft !== undefined && timesLeft !== null) {
+    const isValidTimesLeft = Number.isInteger(timesLeft) && timesLeft >= 1 && timesLeft <= MAX_REPEAT_TIMES;
+    if (!isValidTimesLeft) throw new Error(`Las repeticiones deben ser un número entero de 1 a ${MAX_REPEAT_TIMES}.`);
+  }
+}
+
+/** La siguiente repetición de una tarea al marcarla hecha (null si ya no se
+ *  repite más: `timesLeft` llegó a 1). Con `timesLeft` vacío se repite siempre. */
+function nextRepeat(repeat: Repeat | null): Repeat | null {
+  if (!repeat) return null;
+  if (repeat.timesLeft === undefined || repeat.timesLeft === null) return repeat;
+  return repeat.timesLeft > 1 ? { ...repeat, timesLeft: repeat.timesLeft - 1 } : null;
 }
 
 /** Lo que una tarea aporta a los contadores de su proyecto. */
@@ -270,14 +286,15 @@ export const userTasksService = {
     return snap.exists() ? snap.data() : null;
   },
 
-  /** Marca la tarea hecha. Si se repite, crea la siguiente en el MISMO batch
-   *  (nueva fecha) y devuelve su id para poder deshacer. */
+  /** Marca la tarea hecha. Si se repite (y le quedan veces), crea la siguiente
+   *  en el MISMO batch (nueva fecha, una vez menos) y devuelve su id para poder deshacer. */
   async complete(task: UserTask, actor: Actor, known: KnownProjects): Promise<string | null> {
     const batch = writeBatch(db);
     batch.update(userTaskRef(task.id), { status: 'done', doneAt: nowIso(), doneByUserId: actor.id });
     bumpProjectCounters(batch, task.projectId, { doneCount: 1, openMinutes: -(Number(task.durationMinutes) || 0) }, known);
     let nextId: string | null = null;
-    if (task.repeat) {
+    const repeatOfNextTask = nextRepeat(task.repeat);
+    if (task.repeat && repeatOfNextTask) {
       const nextRef = doc(userTasksCol);
       nextId = nextRef.id;
       const input: TaskInput = {
@@ -289,7 +306,7 @@ export const userTasksService = {
         priorityId: task.priorityId ?? null,
         projectId: task.projectId,
         projectTitle: task.projectTitle,
-        repeat: task.repeat,
+        repeat: repeatOfNextTask,
         // La repetición también necesita su visto bueno (vuelve a "por enviar").
         approval: task.approval ? draftApproval(task.approval.approverUserId, task.approval.approverUserName) : null,
       };

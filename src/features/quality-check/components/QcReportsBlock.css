@@ -1,0 +1,19 @@
+/* Bloque "Quality Check Reports" debajo de Recall (QcReportsBlock.tsx). Usa las
+   clases de bloque de QualityCheckView.css (.qcv-house-block…) con su color. */
+.qcv-house-block.reports { background: linear-gradient(135deg, #f0fdf4, #ffffff); border: 1px solid #bbf7d0; }
+.qcv-house-block-icon.reports { background: #dcfce7; color: #15803d; }
+.qcv-house-block-title.reports { color: #166534; }
+
+.qcv-reports-toggle {
+  background: transparent;
+  border: 0;
+  color: #475569;
+  cursor: pointer;
+  font: inherit;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+.qcv-reports-toggle[aria-expanded="false"] { margin-bottom: 0; }
+.qcv-reports-toggle-text { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }

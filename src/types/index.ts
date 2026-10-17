@@ -69,6 +69,8 @@ export interface Property {
   scheduleDate: string;
   client: string;
   note: string;
+  /** Nota general de las casas importadas de AppSheet (las de la app usan `note`). */
+  generalNotes?: string | null;
   /** ⭐ HISTORIAL DE NOTAS: cada creación/edición de note/officeNote/
    *  employeeNote agrega una entrada con autor, fecha-hora, acción y el
    *  texto que quedó — trazabilidad completa de quién escribió qué. */
@@ -206,9 +208,23 @@ export interface Customer {
 export interface CategoryExpense { id: string; name: string; }
 export interface Responsable { id: string; name: string; color: string; }
 export interface Tax { id: string; percentage: number; name?: string; }
-export interface Place { id: string; name: string; }
+/** settings_places/{id} — Áreas del checklist (Porch, Rooms…). */
+export interface Place {
+  id: string;
+  name: string;
+  /** Posición manual en el checklist (0, 1, 2…). Sin valor = al final, por nombre. */
+  sortOrder?: number;
+}
 export interface PaymentMethod { id: string; name: string; }
-export interface Task { id: string; placeId: string; name: string; }
+/** settings_tasks/{id} — Tareas de un área del checklist. */
+export interface Task {
+  id: string;
+  placeId: string;
+  name: string;
+  /** true = se quitó del checklist: no sale en inspecciones nuevas, pero los
+   *  reportes viejos la siguen mostrando con su nombre. */
+  archived?: boolean;
+}
 export interface Product { id: string; name: string; price: string | number; }
 export interface Business { id: string; name: string; }
 
@@ -234,7 +250,7 @@ export interface PayrollRecord {
 // ==========================================
 // ⭐ Antes cada pieza declaraba su propia versión del reporte (QCRecord en
 //    QualityCheckView, QcRecordLite en qcDashboard, QcDoc en jobQuality,
-//    QCStatusLike en qcStatus, campos extra en QCReportsTableView).
+//    QCStatusLike en qcStatus, campos extra en la tabla de reportes de Quality Check).
 
 // ⭐ Datos del formulario de Quality Check (`qcData`): un objeto por área
 //    (placeId → { tasks, photos, notes, damage, score, corrections, … }) cuya
@@ -287,6 +303,16 @@ export interface QualityCheckRecord {
   // Registros de prueba (no cuentan en los indicadores).
   isTestRecord?: boolean;
 }
+
+/** Reporte de QC leído de Firestore (siempre trae su id). Lo usa la tabla de
+ *  reportes de Quality Check (features/quality-check/components/QcReportsSection). */
+export type QcReportRow = QualityCheckRecord & { id: string };
+
+/** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
+export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
+
+/** Pestaña de la tabla de reportes: el estado ACTUAL de la casa, no el resultado. */
+export type QcReportTab = 'quality_check' | 'invoice' | 'recall';
 
 /** Lo mínimo para saber qué casas tienen QC pendiente o terminado. */
 export type QcStatusRecord = Pick<QualityCheckRecord, 'houseId' | 'date' | 'status' | 'result'>;

@@ -54,19 +54,14 @@
   gap: 12px;
 }
 
-/* ===== Barra de herramientas: buscador + pestañas juntos en una tarjeta ===== */
-.qc-toolbar {
-  display: flex;
+/* ===== Barra de periodo con los filtros de las casas (QcHouseFilters) ===== */
+.qcv-period { margin-bottom: 20px; }
+.qc-house-filters {
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  display: flex;
   flex-wrap: wrap;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  gap: 14px;
+  justify-content: space-between;
 }
 
 /* ===== Buscador de la tabla ===== */
@@ -164,10 +159,9 @@
   
   
 
-  .qc-toolbar {
-    flex-direction: column;
+  .qc-house-filters {
     align-items: stretch;
-    padding: 12px;
+    flex-direction: column;
   }
   .qc-table-search {
     width: 100%;

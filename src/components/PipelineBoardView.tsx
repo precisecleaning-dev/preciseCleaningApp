@@ -1,32 +1,23 @@
 import { useState } from 'react';
-import type { CSSProperties } from 'react';
-import { MapPin, Users, ChevronDown, AlertTriangle, CalendarDays, StickyNote, CheckCircle, Briefcase } from 'lucide-react';
-import type { Property as BaseProperty, Status, Team, Priority } from '../types/index';
-import { formatDate, dateSortValue } from '../utils/dateFormat';
-import { getRelationName, getRelationColor } from '../utils/relations';
+import type { Priority, Property, Status, Team } from '../types/index';
+import { dateSortValue } from '../utils/dateFormat';
+import { getRelationColor, getRelationName } from '../utils/relations';
 import StatusChangeModal, { type StatusModalConfig } from './StatusChangeModal';
+import PipelineColumn from './PipelineColumn';
+import PipelineJobCard from './PipelineJobCard';
 import './PipelineBoardView.css';
 
 /* ------------------------------------------------------------------
-   PipelineBoardView.tsx — Vista alternativa tipo tablero (Kanban)
-   para HousesView. Una columna por cada Status; cada trabajo es una
-   tarjeta arrastrable visualmente (cambia el estado desde el menú).
-   Presentacional puro: recibe los datos y callbacks por props, así
-   que no toca Firebase ni tu lógica existente.
-   Usa tu misma paleta (#3b82f6, #111827, etc.) y el color de cada
-   status para diferenciar columnas.
-
-   Sin filtro de fechas: el tablero muestra todos los trabajos de cada
-   columna, ordenados por fecha descendente (más reciente primero).
+   PipelineBoardView.tsx — Tablero tipo Kanban de Houses (Pipeline):
+   una columna por status (PipelineColumn) con una tarjeta por trabajo
+   (PipelineJobCard). El status se cambia desde la pastilla de la
+   tarjeta con el modal central. Los mismos componentes sirven para
+   Normal y Cavalry: HouseList le pasa los status y las casas de la
+   empresa elegida.
+   Presentacional: recibe datos y callbacks por props (no toca Firebase).
+   Sin filtro de fechas: cada columna va de la fecha más reciente a la
+   más vieja (scheduleDate; si no hay, receiveDate).
    ------------------------------------------------------------------ */
-
-type Property = BaseProperty & {
-  scheduleDate?: string | null;
-  receiveDate?: string | null;
-  note?: string | null;
-  generalNotes?: string | null;
-  officeNote?: string | null;
-};
 
 interface PipelineBoardViewProps {
   properties: Property[];
@@ -34,204 +25,83 @@ interface PipelineBoardViewProps {
   teams: Team[];
   priorities?: Priority[];
   getClientName: (idOrName?: string | null) => string;
-  onOpenDetail: (p: Property) => void;
+  onOpenDetail: (house: Property) => void;
   onQuickStatusChange: (propertyId: string, newStatusId: string) => void;
   canEdit?: boolean;
-  /** Opcional: si tienes el monto facturado por propiedad, muéstralo y suma por columna */
-  getAmount?: (p: Property) => number;
-  /**
-   * ⭐ Mostrar las NOTAS DE OFICINA en la tarjeta.
-   *    Lo decide HousesView combinando el permiso "Office Notes" de Roles con el
-   *    elemento "officeNote" del configurador. Aqui solo se obedece: el tablero
-   *    no debe conocer las reglas de permisos.
-   */
+  /** Opcional: monto facturado por casa; se muestra en la tarjeta y se suma por columna. */
+  getAmount?: (house: Property) => number;
+  /** Mostrar las NOTAS DE OFICINA en la tarjeta. Lo decide HouseList (permiso
+   *  "Office Notes" + Configure Fields); el tablero solo obedece. */
   showOfficeNote?: boolean;
 }
 
-/* Pastilla de estado en la tarjeta. Al tocarla YA NO abre un dropdown:
-   solicita abrir el modal central de selección (StatusChangeModal), igual
-   que en HousesView (tabla, tarjetas móviles y detalle). */
-function StatusPill({ current, statuses, disabled, onOpen }: {
-  current: string; statuses: Status[]; disabled?: boolean; onOpen: () => void;
-}) {
-  const v = String(current || '').toLowerCase().trim();
-  const st = statuses.find(s => String(s.id).toLowerCase().trim() === v || String(s.name).toLowerCase().trim() === v);
-  const color = st?.color || '#64748b';
-  return (
-    <button
-      className="pb-status-pill"
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onOpen(); }}
-      disabled={disabled}
-      title={disabled ? undefined : 'Cambiar estado'}
-    >
-      <span className="pb-status-pill-label">
-        <span className="pb-status-dot" style={{ '--dot-color': color } as CSSProperties} />
-        <span className="pb-status-pill-name">{st?.name || 'Unassigned'}</span>
-      </span>
-      <ChevronDown size={15} color="#94a3b8" className="pb-shrink-0" />
-    </button>
-  );
-}
+const DEFAULT_TEAM_COLOR = '#64748b';
 
-export default function PipelineBoardView({
+/** Más reciente primero: scheduleDate o, si no tiene, receiveDate. */
+const compareByDateDescending = (firstHouse: Property, secondHouse: Property) =>
+  dateSortValue(secondHouse.scheduleDate || secondHouse.receiveDate)
+  - dateSortValue(firstHouse.scheduleDate || firstHouse.receiveDate);
+
+const PipelineBoardView = ({
   properties, statuses, teams, priorities = [], getClientName,
-  onOpenDetail, onQuickStatusChange, canEdit, getAmount,
+  onOpenDetail, onQuickStatusChange, canEdit = false, getAmount,
   showOfficeNote = false,
-}: PipelineBoardViewProps) {
-
+}: PipelineBoardViewProps) => {
   // Modal central de cambio de estado (null = cerrado)
   const [statusModal, setStatusModal] = useState<StatusModalConfig | null>(null);
 
-  // Columnas = todos los status (excluye "invoice", igual que tu tabla)
-  const statusColumns = statuses.filter(s => s.name?.toLowerCase() !== 'invoice');
+  // Columnas = todos los status menos "Invoice" (igual que la tabla). Las casas
+  // SIN status no salen: viven en su propio módulo ("No Status").
+  const boardColumns = statuses.filter((status) => status.name?.toLowerCase() !== 'invoice');
 
-  const byDateDesc = (a: Property, b: Property) =>
-    dateSortValue(b.scheduleDate || b.receiveDate) - dateSortValue(a.scheduleDate || a.receiveDate);
+  const getHousesForStatus = (status: Status) => properties
+    .filter((house) => house.statusId === status.id || house.statusId === status.name)
+    .sort(compareByDateDescending);
 
-  const propsForStatus = (st: Status) =>
-    properties
-      .filter(p => p.statusId === st.id || p.statusId === st.name)
-      // ⭐ Orden por fecha descendente (más reciente primero). Usa scheduleDate, si no receiveDate.
-      .sort(byDateDesc);
+  const isHighPriority = (house: Property) => {
+    const housePriority = priorities.find((priority) => priority.id === house.priorityId || priority.name === house.priorityId);
+    return housePriority?.name?.toLowerCase() === 'high' || String(house.priorityId).toLowerCase() === 'high';
+  };
 
-  // ⭐ Las casas SIN status ya no salen aquí: viven en su propio módulo
-  //    ("No Status"), donde se les asigna estado. Antes ocupaban una columna
-  //    con miles de tarjetas que no aportaba nada al flujo del tablero.
-  const columns: Status[] = statusColumns;
+  const handleRequestStatusChange = (house: Property) => setStatusModal({
+    currentId: house.statusId,
+    onSelect: (newStatusId) => onQuickStatusChange(house.id, newStatusId),
+    title: getClientName(house.client),
+    subtitle: house.address,
+  });
 
   return (
     <div className="pipeline-board-wrap">
-
-      {/* --- TABLERO --- */}
       <div className="pipeline-board">
-        {columns.map(st => {
-          const items = propsForStatus(st);
-          const total = getAmount ? items.reduce((sum, p) => sum + (getAmount(p) || 0), 0) : null;
+        {boardColumns.map((status) => {
+          const columnHouses = getHousesForStatus(status);
+          const columnTotal = getAmount
+            ? columnHouses.reduce((totalAmount, house) => totalAmount + (getAmount(house) || 0), 0)
+            : null;
           return (
-            <div key={st.id} className="board-column">
-              {/* Cabecera de columna */}
-              <div className="pb-column-head" style={{ '--col-color': st.color || '#e5e7eb' } as CSSProperties}>
-                <div className="pb-column-head-row">
-                  <h3 className="pb-column-title">
-                    {st.name}
-                  </h3>
-                  <span className="pb-column-count">
-                    {items.length}
-                  </span>
-                </div>
-                {total !== null && (
-                  <div className="pb-column-total">
-                    ${total.toFixed(2)} total
-                  </div>
-                )}
-              </div>
-
-              {/* Tarjetas */}
-              <div className="pb-column-body">
-                {items.length === 0 ? (
-                  <div className="pb-column-empty">
-                    Sin trabajos
-                  </div>
-                ) : items.map(p => {
-                  const prObj = priorities.find(pp => pp.id === p.priorityId || pp.name === p.priorityId);
-                  const isHigh = prObj?.name?.toLowerCase() === 'high' || String(p.priorityId).toLowerCase() === 'high';
-                  const teamColor = getRelationColor(teams, p.teamId);
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => onOpenDetail(p)}
-                      className="pb-job-card"
-                    >
-                      {/* Título + flags */}
-                      <div className="pb-job-top-row">
-                        <span className="pb-job-name">
-                          {getClientName(p.client)}
-                        </span>
-                        <div className="pb-job-flags">
-                          {p.employeeFinishedBy && <CheckCircle size={15} color="#10b981" />}
-                          {isHigh && <AlertTriangle size={15} color="#dc2626" />}
-                        </div>
-                      </div>
-
-                      {/* Dirección */}
-                      {p.address && (
-                        <div className="pb-job-meta-row">
-                          <MapPin size={12} className="pb-shrink-0" />
-                          <span className="pb-job-meta-text">{p.address}</span>
-                        </div>
-                      )}
-
-                      {/* Schedule date */}
-                      <div className="pb-job-meta-row">
-                        <CalendarDays size={12} className="pb-shrink-0" />
-                        <span>{p.scheduleDate ? formatDate(p.scheduleDate) : 'Sin fecha'}</span>
-                      </div>
-
-                      {/* ⭐ NOTAS DE OFICINA — en azul y con etiqueta, para que se
-                          distingan de la nota general de un vistazo. Van primero
-                          porque son la informacion de coordinacion. */}
-                      {showOfficeNote && p.officeNote && (
-                        <div className="pb-job-note office">
-                          <Briefcase size={12} className="pb-job-note-icon office" />
-                          <span className="pb-job-note-body">
-                            <span className="pb-job-note-label">Office</span>
-                            <span className="pb-job-note-text">{p.officeNote}</span>
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Nota general (NO la del empleado). Soporta datos de la app (note)
-                          y los importados de AppSheet (generalNotes). */}
-                      {(p.note || p.generalNotes) && (
-                        <div className="pb-job-note">
-                          <StickyNote size={12} className="pb-job-note-icon" />
-                          <span className="pb-job-note-text">{p.note || p.generalNotes}</span>
-                        </div>
-                      )}
-
-                      {/* Monto (si se provee) */}
-                      {getAmount && (
-                        <div className="pb-job-amount">
-                          ${(getAmount(p) || 0).toFixed(2)}
-                        </div>
-                      )}
-
-                      {/* Equipo */}
-                      <div className="pb-job-team-row">
-                        <span
-                          className="pb-job-team-avatar"
-                          style={{ '--team-bg': `${teamColor || '#64748b'}20`, '--team-color': teamColor || '#64748b' } as CSSProperties}
-                        >
-                          <Users size={12} />
-                        </span>
-                        {getRelationName(teams, p.teamId, 'Unassigned')}
-                      </div>
-
-                      {/* Cambiar estado — abre el modal central */}
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <StatusPill
-                          current={p.statusId}
-                          statuses={statuses}
-                          disabled={!canEdit}
-                          onOpen={() => setStatusModal({
-                            currentId: p.statusId,
-                            onSelect: (id) => onQuickStatusChange(p.id, id),
-                            title: getClientName(p.client),
-                            subtitle: p.address,
-                          })}
-                        />
-                      </div>
-
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <PipelineColumn key={status.id} status={status} jobCount={columnHouses.length} totalAmount={columnTotal}>
+              {columnHouses.map((house) => (
+                <PipelineJobCard
+                  key={house.id}
+                  house={house}
+                  clientName={getClientName(house.client)}
+                  teamName={getRelationName(teams, house.teamId, 'Unassigned')}
+                  teamColor={getRelationColor(teams, house.teamId) || DEFAULT_TEAM_COLOR}
+                  isHighPriority={isHighPriority(house)}
+                  showOfficeNote={showOfficeNote}
+                  amount={getAmount ? getAmount(house) || 0 : null}
+                  statuses={statuses}
+                  canChangeStatus={canEdit}
+                  onOpenDetail={onOpenDetail}
+                  onRequestStatusChange={handleRequestStatusChange}
+                />
+              ))}
+            </PipelineColumn>
           );
         })}
       </div>
 
-      {/* --- MODAL CENTRAL DE CAMBIO DE ESTADO --- */}
+      {/* Modal central de cambio de estado */}
       {statusModal && (
         <StatusChangeModal
           config={statusModal}
@@ -241,4 +111,6 @@ export default function PipelineBoardView({
       )}
     </div>
   );
-}
+};
+
+export default PipelineBoardView;

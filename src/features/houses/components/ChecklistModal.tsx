@@ -13,6 +13,7 @@ import { COLLECTIONS } from "../../../lib/firebase/collections";
 import type { Property, SystemUser } from "../../../types/index";
 import { useLiveData } from "../../../shared/data/liveCollections";
 import { formatTime, todayIso } from "../../../utils/dateFormat";
+import { isActiveTask, sortPlacesByOrder } from "../../../utils/qcCatalog";
 import type { ChecklistRecord } from "../hooks/useHouseChecklist";
 
 interface ChecklistModalProps {
@@ -27,11 +28,13 @@ interface ChecklistModalProps {
 /** Hora corta (p. ej. "11:46 PM") de la cabecera, igual que la "Entrada" de Quality Check. */
 const fmtClockTime = (iso: string): string => formatTime(iso);
 
-export default function ChecklistModal({ house, clientName, currentUser, readOnly, record, onClose }: ChecklistModalProps) {
+const ChecklistModal = ({ house, clientName, currentUser, readOnly, record, onClose }: ChecklistModalProps) => {
   // Usa los mismos places/tasks del Quality Check (settings_places/_tasks).
+  // Áreas en su orden manual y solo las tareas que siguen en el checklist (no archivadas).
   const clPlacesData = useLiveData("places");
-  const clTasks = useLiveData("tasks");
-  const clPlaces = useMemo(() => [...clPlacesData].sort((a, b) => a.name.localeCompare(b.name)), [clPlacesData]);
+  const clTasksData = useLiveData("tasks");
+  const clTasks = useMemo(() => clTasksData.filter(isActiveTask), [clTasksData]);
+  const clPlaces = useMemo(() => sortPlacesByOrder(clPlacesData), [clPlacesData]);
   const clActivePlaces = clPlaces.filter((pl) => clTasks.some((t) => t.placeId === pl.id));
   // ⭐ Áreas disponibles: si la casa define sus propias áreas (qcPlaces) se
   //    respetan; si no, todas las que tengan tareas configuradas (mismo criterio
@@ -276,4 +279,6 @@ export default function ChecklistModal({ house, clientName, currentUser, readOnl
       </div>
     </div>
   );
-}
+};
+
+export default ChecklistModal;

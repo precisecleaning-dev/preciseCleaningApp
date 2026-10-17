@@ -9,7 +9,8 @@ import {
 import PeriodBar from '../components/PeriodBar';
 import KpiGrid from '../components/KpiGrid';
 import { groupByDate, weekNumberOf } from '../utils/dateGrouping';
-import { inPeriod, loadPeriod, periodRange, savePeriod, type PeriodState } from '../utils/periods';
+import { inPeriod, periodRange } from '../utils/periods';
+import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { money, pct, marginTone, useJobFinancials } from '../utils/jobFinancials';
 import StatusChangeModal, { type StatusModalConfig } from '../components/StatusChangeModal';
 
@@ -208,9 +209,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
   // ⭐ Periodo (Day / Week / Month / Year / Custom) — misma barra que el
   //    Overview. Reemplaza Start/End Date y "Agrupar por": el periodo filtra y
   //    agrupa (Year → meses · Month → semanas · Week → días).
-  const PERIOD_KEY = 'pc.invoices.period';
-  const [period, setPeriodState] = useState<PeriodState>(() => loadPeriod(PERIOD_KEY, 'month'));
-  const setPeriod = (p: PeriodState) => { setPeriodState(p); savePeriod(PERIOD_KEY, p); };
+  const [period, setPeriod] = useStoredPeriod('pc.invoices.period', 'month');
   const range = useMemo(() => periodRange(period), [period]);
 
   // Filtros UI

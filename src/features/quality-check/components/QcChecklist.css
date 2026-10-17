@@ -6,10 +6,30 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  gap: 6px;
+  padding: 2px 6px 2px 0;
   background: #f8f9fc;
   border-radius: 8px;
 }
+/* Encabezado del área: contrae o extiende sus tareas y fotos */
+.qcl-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  gap: 6px;
+  min-height: 36px;
+  min-width: 0;
+  padding: 4px 4px 4px 10px;
+  text-align: left;
+}
+.qcl-toggle .qcl-count { margin-left: auto; }
+.qcl-move { display: flex; flex-shrink: 0; gap: 4px; }
 .qcl-name { margin: 0; font-size: 13px; font-weight: 800; color: #0f172a; }
 .qcl-count { font-size: 12px; font-weight: 700; }
 .qcl-count.ok { color: #047857; }
@@ -27,6 +47,7 @@
   color: #1e293b;
 }
 .qcl-task { min-width: 0; overflow-wrap: anywhere; }
+.qcl-item.editing { padding-right: 0; }
 .qcl-yn { display: flex; gap: 4px; flex-shrink: 0; }
 .qcl-btn {
   height: 32px;
@@ -45,6 +66,92 @@
 .qcl-btn.ok { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
 .qcl-btn.bad { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
 .qcl-btn:hover { border-color: #94a3b8; }
+
+/* Barra del checklist: "Collapse all" / "Expand all" y "Edit checklist" */
+.qcl-toolbar { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.qcl-tool-btn {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 5px;
+  height: 32px;
+  min-height: 0;
+  padding: 0 10px;
+}
+.qcl-tool-btn:hover { border-color: #94a3b8; }
+.qcl-tool-btn.active { background: #eef2ff; border-color: #a5b4fc; color: #1e3a8a; }
+.qcl-edit-note { color: #5b6475; font-size: 12px; margin: -6px 0 0; text-align: right; }
+
+/* Modo "Edit checklist": ordenar áreas, renombrar, quitar y agregar tareas */
+.qcl-icon-btn {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 30px;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  width: 30px;
+}
+.qcl-icon-btn:disabled { cursor: default; opacity: 0.4; }
+.qcl-icon-btn:hover:not(:disabled) { border-color: #94a3b8; }
+.qcl-icon-btn.remove { color: #b91c1c; }
+.qcl-icon-btn.remove:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
+.qcl-task-input {
+  border: 1px solid #d5dbe6;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #0f172a;
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: 14px;
+  min-height: 34px;
+  min-width: 0;
+  padding: 5px 9px;
+}
+.qcl-task-input:focus { border-color: #2546d8; box-shadow: 0 0 0 3px rgba(37, 70, 216, 0.15); outline: none; }
+.qcl-add { align-items: center; display: flex; gap: 6px; padding: 10px 0 0 10px; }
+.qcl-add-btn {
+  align-items: center;
+  background: #2546d8;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 4px;
+  height: 34px;
+  min-height: 0;
+  padding: 0 12px;
+}
+.qcl-add-btn:disabled { cursor: default; opacity: 0.5; }
+
+/* Fotos de cada área, debajo de sus tareas */
+.qcl-photos { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px 10px; }
+.qcl-photos-lbl {
+  color: #5b6475;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 @media (max-width: 640px) {
   .qcl-btn { height: 40px; min-width: 58px; }
 }

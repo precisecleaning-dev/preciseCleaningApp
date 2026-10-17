@@ -10,12 +10,14 @@
   border-radius: 12px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.ops-row.daily { border-left-color: #0d9488; }
 .ops-row.today { border-left-color: #2546d8; }
 .ops-row.overdue { border-left-color: #dc2626; }
 .ops-row:hover { box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06); }
 .ops-row.selected { border-color: #93a5f5; box-shadow: 0 0 0 3px rgba(37, 70, 216, 0.12); }
 .ops-row.selected.overdue { border-left-color: #dc2626; }
 .ops-row.selected.today { border-left-color: #2546d8; }
+.ops-row.selected.daily { border-left-color: #0d9488; }
 
 .ops-check {
   flex-shrink: 0;
@@ -53,6 +55,7 @@
   gap: 6px;
   cursor: pointer;
 }
+.ops-row-open { align-self: center; flex-shrink: 0; }
 .ops-row-title {
   font-size: 15px;
   font-weight: 700;

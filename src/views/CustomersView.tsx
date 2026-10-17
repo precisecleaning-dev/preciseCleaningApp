@@ -8,13 +8,13 @@ import type { Customer } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 import './CustomersView.css';
 import MenuButton from '../shared/components/MenuButton';
-import { CAVALRY_CUSTOMER_TYPE } from '../shared/utils/businesses';
+import { CAVALRY_CUSTOMER_TYPE, CUSTOMER_TYPE_OPTIONS } from '../shared/utils/businesses';
 
 interface CustomersViewProps {
   onOpenMenu: () => void;
 }
 
-export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
+const CustomersView = ({ onOpenMenu }: CustomersViewProps) => {
   // ⭐ Clientes del store compartido (en vivo). Antes: getDocs de TODA la
   //    colección en cada visita, aunque otras vistas ya la tuvieran. Guardar,
   //    borrar o cambiar Apply Tax ya no tocan la lista a mano: Firestore aplica
@@ -39,14 +39,22 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
     return customers.filter(c => c.name.toLowerCase().includes(q) || (c.business && c.business.toLowerCase().includes(q)));
   }, [customers, deferredSearch]);
 
-  // ⭐ Clase del badge de tipo (Commercial / Residential / Private customer / Cavalry)
+  // ⭐ Clase del badge de tipo (Property manager o Commercial de clientes viejos /
+  //    Residential / Private customer / Cavalry)
   const typeBadgeClass = (type?: string) => {
     const t = String(type || '').toLowerCase().trim();
+    if (t === 'property manager') return 'property-manager';
     if (t === 'commercial') return 'commercial';
     if (t === 'private customer') return 'private';
     if (type === CAVALRY_CUSTOMER_TYPE) return 'cavalry';
     return 'residential';
   };
+
+  // Tipos para el selector; un cliente viejo con otro tipo (p. ej. "Commercial")
+  // lo conserva como opción para que no se cambie sin querer al editarlo.
+  const customerTypeOptions = formData.type && !CUSTOMER_TYPE_OPTIONS.includes(formData.type)
+    ? [...CUSTOMER_TYPE_OPTIONS, formData.type]
+    : CUSTOMER_TYPE_OPTIONS;
 
   const handleOpenForm = (customer?: Customer) => {
     if (customer) {
@@ -314,10 +322,9 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
                 <div>
                   <label className="cx-label">Type</label>
                   <select className="cx-input selectable" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
-                    <option value="Private customer">Private customer</option>
-                    <option value="Residential">Residential</option>
-                    <option value="Commercial">Commercial</option>
-                    <option value={CAVALRY_CUSTOMER_TYPE}>{CAVALRY_CUSTOMER_TYPE}</option>
+                    {customerTypeOptions.map((customerType) => (
+                      <option key={customerType} value={customerType}>{customerType}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -396,4 +403,6 @@ export default function CustomersView({ onOpenMenu }: CustomersViewProps) {
       )}
     </div>
   );
-}
+};
+
+export default CustomersView;

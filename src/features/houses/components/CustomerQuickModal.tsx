@@ -7,7 +7,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { COLLECTIONS } from "../../../lib/firebase/collections";
 import SearchableSelect from "./SearchableSelect";
-import { CAVALRY_CUSTOMER_TYPE } from "../../../shared/utils/businesses";
+import { CUSTOMER_TYPE_OPTIONS } from "../../../shared/utils/businesses";
 
 interface CustomerQuickModalProps {
   /** Id del cliente creado y su dirección (vacía si no se capturó). */
@@ -15,7 +15,10 @@ interface CustomerQuickModalProps {
   onClose: () => void;
 }
 
-export default function CustomerQuickModal({ onCreated, onClose }: CustomerQuickModalProps) {
+/** Opciones de "Type" (Normal: Private customer, Residential, Property manager · Cavalry). */
+const CUSTOMER_TYPE_SELECT_OPTIONS = CUSTOMER_TYPE_OPTIONS.map((customerType) => ({ id: customerType, name: customerType }));
+
+const CustomerQuickModal = ({ onCreated, onClose }: CustomerQuickModalProps) => {
   const [customerForm, setCustomerForm] = useState({
     type: "Residential",
     color: "#3b82f6",
@@ -77,12 +80,7 @@ export default function CustomerQuickModal({ onCreated, onClose }: CustomerQuick
             <div>
               <label className="hv-label">Type</label>
               <SearchableSelect
-                options={[
-                  { id: "Private customer", name: "Private customer" },
-                  { id: "Residential", name: "Residential" },
-                  { id: "Commercial", name: "Commercial" },
-                  { id: CAVALRY_CUSTOMER_TYPE, name: CAVALRY_CUSTOMER_TYPE },
-                ]}
+                options={CUSTOMER_TYPE_SELECT_OPTIONS}
                 value={customerForm.type}
                 onChange={(val: string) =>
                   setCustomerForm({ ...customerForm, type: val })
@@ -240,4 +238,6 @@ export default function CustomerQuickModal({ onCreated, onClose }: CustomerQuick
       </div>
     </div>
   );
-}
+};
+
+export default CustomerQuickModal;

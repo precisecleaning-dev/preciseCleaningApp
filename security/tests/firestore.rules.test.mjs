@@ -71,6 +71,11 @@ const PEOPLE = {
     active: true, admin: false, fin: true, roleId: 'r-office', userId: 'u-office',
     m: { Houses: R(), 'Office Notes': R(), Settings: R(), Payroll: R(), 'Recycle Bin': R() },
   },
+  // Inspector con "QC Checklist Setup": agrega y renombra (sin quitar ni Settings).
+  'checklist@precise.test': {
+    active: true, admin: false, fin: false, roleId: 'r-checklist', userId: 'u-checklist',
+    m: { 'Quality Check': R(), 'QC Checklist Setup': R(true, true, true, false) },
+  },
   'inactive@precise.test': {
     active: false, admin: false, fin: true, roleId: 'r-owner', userId: 'u-inactive', m: { Houses: ALL },
   },
@@ -117,6 +122,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'time_clock', 'closed'), { userId: 'u-sandy', inAt: '2026-10-12T08:00:00Z', outAt: '2026-10-12T17:00:00Z' });
     await setDoc(doc(db, 'time_clock', 'open'), { userId: 'u-sandy', inAt: '2026-10-13T08:00:00Z', outAt: null });
     await setDoc(doc(db, 'quality_checks', 'q1'), { houseId: 'h1', status: 'Pending' });
+    await setDoc(doc(db, 'settings_places', 'pl1'), { name: 'Porch' });
+    await setDoc(doc(db, 'settings_tasks', 'tk1'), { placeId: 'pl1', name: 'Sweep' });
   });
 });
 
@@ -232,6 +239,38 @@ describe('usuarios y roles', () => {
   test('catálogos: los edita quien entra a Settings', async () => {
     await assertFails(setDoc(doc(as('cleaner@precise.test'), 'settings_statuses', 's9'), { name: 'X' }));
     await assertSucceeds(setDoc(doc(as('owner@precise.test'), 'settings_statuses', 's9'), { name: 'X' }));
+  });
+});
+
+describe('checklist de Quality Check (QC Checklist Setup)', () => {
+  test('ordena áreas: solo sortOrder', async () => {
+    const db = as('checklist@precise.test');
+    await assertSucceeds(updateDoc(doc(db, 'settings_places', 'pl1'), { sortOrder: 0 }));
+    await assertFails(updateDoc(doc(db, 'settings_places', 'pl1'), { name: 'Front porch' }));
+    await assertFails(updateDoc(doc(as('inspector@precise.test'), 'settings_places', 'pl1'), { sortOrder: 1 }));
+  });
+
+  test('agrega y renombra tareas; quitar pide Delete; borrar sigue en Settings', async () => {
+    const db = as('checklist@precise.test');
+    await assertSucceeds(setDoc(doc(db, 'settings_tasks', 'tk2'), { placeId: 'pl1', name: 'Mop', archived: false }));
+    await assertFails(setDoc(doc(db, 'settings_tasks', 'tk3'), { placeId: 'pl1', name: '', archived: false }));
+    await assertSucceeds(updateDoc(doc(db, 'settings_tasks', 'tk1'), { name: 'Sweep porch' }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { placeId: 'pl9' }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { archived: true }));
+    await assertFails(deleteDoc(doc(db, 'settings_tasks', 'tk1')));
+    await assertFails(setDoc(doc(as('inspector@precise.test'), 'settings_tasks', 'tk4'), { placeId: 'pl1', name: 'X', archived: false }));
+  });
+
+  test('con Delete archiva la tarea (no la borra)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'user_access', 'checklist@precise.test'), {
+        ...PEOPLE['checklist@precise.test'],
+        m: { 'Quality Check': R(), 'QC Checklist Setup': R(true, false, false, true) },
+      });
+    });
+    const db = as('checklist@precise.test');
+    await assertSucceeds(updateDoc(doc(db, 'settings_tasks', 'tk1'), { archived: true }));
+    await assertFails(updateDoc(doc(db, 'settings_tasks', 'tk1'), { name: 'Renamed' }));
   });
 });
 

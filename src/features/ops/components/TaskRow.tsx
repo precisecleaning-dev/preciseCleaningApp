@@ -1,12 +1,14 @@
-// Fila de una tarea en la lista: casilla para marcarla hecha, título y datos
+// Tarjeta de una tarea en la lista: casilla para marcarla hecha, título, datos
 // (personas, quién la asignó, vencimiento, repetición, duración, proyecto,
-// comentarios, archivos).
+// comentarios, archivos) y el botón "Open". El borde izquierdo toma el color de
+// su sección (Daily, Overdue, Today).
 import type { CSSProperties } from 'react';
-import { BadgeCheck, Check, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
+import { BadgeCheck, Check, ChevronRight, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
 import type { UserTaskApproval, UserTask } from '../../../types/index';
-import { dueLabel, formatMinutes, REPEAT_LABEL, sectionOf, type TaskSection } from '../opsDates';
+import { dueLabel, formatMinutes, repeatBadgeLabel, sectionOf, taskSectionOf, type TaskSection } from '../opsDates';
 import { getFirstName } from '../opsOptions';
 import { isAwaitingApproval } from '../opsPermissions';
+import ActionButton from './ActionButton';
 import OpsAvatar from './OpsAvatar';
 import './TaskRow.css';
 
@@ -34,8 +36,9 @@ interface TaskRowProps {
 /** Avatares que se ven en la fila (el resto lo cuenta la etiqueta: "+2"). */
 const MAX_VISIBLE_AVATARS = 3;
 
-/** Clase de la fila según cuándo vence ('' = sin color propio). */
+/** Clase de la fila según su sección ('' = sin color propio). */
 const SECTION_ROW_CLASS: Record<TaskSection, string> = {
+  daily: 'daily',
   overdue: 'overdue',
   today: 'today',
   week: '',
@@ -64,16 +67,17 @@ function getMarkDoneBlockedReason(task: UserTask): string | null {
     : `Needs ${approverFirstName}'s OK before it's done`;
 }
 
-export default function TaskRow({
+const TaskRow = ({
   task, todayIsoDate, assigneesLabel, assignedByName, projectTitle, projectColor, isSelected, isBusy, onOpen,
   onMarkDone,
-}: TaskRowProps) {
+}: TaskRowProps) => {
   const dueSection = sectionOf(task.dueDate, todayIsoDate);
+  const rowSection = taskSectionOf(task, todayIsoDate);
   const attachmentCount = task.attachments?.length ?? 0;
   const commentCount = task.comments?.length ?? 0;
   const visibleAssignees = task.assignees.slice(0, MAX_VISIBLE_AVATARS);
   const markDoneBlockedReason = getMarkDoneBlockedReason(task);
-  const stateClasses = [SECTION_ROW_CLASS[dueSection], isSelected ? 'selected' : '']
+  const stateClasses = [SECTION_ROW_CLASS[rowSection], isSelected ? 'selected' : '']
     .filter(Boolean)
     .sort();
   const rowClassName = ['ops-row', ...stateClasses].join(' ');
@@ -104,7 +108,7 @@ export default function TaskRow({
           </span>
           {assignedByName && <span className="ops-meta-from">From {assignedByName}</span>}
           <span className={`ops-meta-due${dueSection === 'overdue' ? ' late' : ''}`}>
-            {dueLabel(task.dueDate, task.dueTime, todayIsoDate)}
+            {dueLabel(task.dueDate, task.dueTime, todayIsoDate, task.repeat)}
           </span>
           {task.approval && (
             <span className={`approval ops-badge ${task.approval.status}`}>
@@ -112,7 +116,7 @@ export default function TaskRow({
               {getApprovalLabel(task.approval)}
             </span>
           )}
-          {task.repeat && <span className="ops-badge repeat">{REPEAT_LABEL[task.repeat.freq]}</span>}
+          {task.repeat && <span className="ops-badge repeat">{repeatBadgeLabel(task.repeat)}</span>}
           {task.durationMinutes > 0 && (
             <span className="ops-badge time">
               <Clock size={11} /> {formatMinutes(task.durationMinutes)}
@@ -135,6 +139,19 @@ export default function TaskRow({
           )}
         </span>
       </button>
+      <span className="ops-row-open">
+        <ActionButton
+          variant="outline"
+          size="sm"
+          trailingIcon={<ChevronRight size={14} />}
+          ariaLabel={`Open "${task.title}"`}
+          onClick={() => onOpen(task)}
+        >
+          Open
+        </ActionButton>
+      </span>
     </li>
   );
-}
+};
+
+export default TaskRow;

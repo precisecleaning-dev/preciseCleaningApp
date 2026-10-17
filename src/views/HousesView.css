@@ -2419,7 +2419,8 @@
   color: #475569;
   border: 1px solid #e2e8f0;
 }
-.hv-client-type-badge.commercial {
+.hv-client-type-badge.commercial,
+.hv-client-type-badge.property-manager {
   background: #eff6ff;
   color: #1e40af;
   border-color: #bfdbfe;

@@ -38,10 +38,17 @@ export interface QcExtras {
   reclean: boolean;
 }
 
+/** Una tarea de un área del checklist. */
+export interface QcSectionTask {
+  id: string;
+  name: string;
+}
+
+/** Un área del checklist (Porch, Rooms…) con sus tareas activas. */
 export interface QcSection {
   id: string;
   name: string;
-  tasks: { id: string; name: string }[];
+  tasks: QcSectionTask[];
 }
 
 export type QcAnswer = 'Yes' | 'No';

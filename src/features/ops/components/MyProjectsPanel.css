@@ -1,0 +1,14 @@
+/* Columna "My projects" del Task list (MyProjectsPanel.tsx) */
+.my-projects { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.my-projects-head { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.my-projects-title { color: #0f172a; font-size: 22px; font-weight: 800; margin: 0; }
+.my-projects-empty {
+  border: 1px dashed #d5dbe6;
+  border-radius: 14px;
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+  padding: 18px 14px;
+  text-align: center;
+}
+.my-projects-note { color: #64748b; font-size: 13px; line-height: 1.45; margin: 0; }

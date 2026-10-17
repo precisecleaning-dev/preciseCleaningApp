@@ -23,25 +23,12 @@
   font-size: 0.95rem;
 }
 
-/* ===================== Filtros ===================== */
-.pv-filters {
-  background-color: white;
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+/* ===================== Filtros (dentro de la PeriodBar) ===================== */
+.pv-period {
   margin-bottom: 24px;
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.pv-filter-item {
-  flex: 1 1 180px;
 }
 .pv-filter-item.employee {
-  flex: 1 1 250px;
-}
-.pv-filter-item.status {
-  flex: 1 1 200px;
+  max-width: 420px;
 }
 .pv-label {
   display: block;
@@ -94,10 +81,6 @@
   background-color: #ecfdf5;
   border: 1px solid #a7f3d0;
 }
-.pv-summary-card.ennomina {
-  background-color: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
 .pv-summary-card.pending {
   background-color: #fff7ed;
   border: 1px solid #fed7aa;
@@ -114,10 +97,6 @@
   background-color: #d1fae5;
   color: #10b981;
 }
-.pv-summary-icon-box.ennomina {
-  background-color: #dbeafe;
-  color: #2563eb;
-}
 .pv-summary-icon-box.pending {
   background-color: #ffedd5;
   color: #f59e0b;
@@ -130,9 +109,6 @@
 .pv-summary-label.paid {
   color: #047857;
 }
-.pv-summary-label.ennomina {
-  color: #1d4ed8;
-}
 .pv-summary-label.pending {
   color: #b45309;
 }
@@ -142,9 +118,6 @@
 }
 .pv-summary-value.paid {
   color: #065f46;
-}
-.pv-summary-value.ennomina {
-  color: #1e40af;
 }
 .pv-summary-value.pending {
   color: #92400e;
@@ -680,16 +653,30 @@ dl.pv-detail-banner {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
 }
 
-/* ===================== Pestaña Nóminas: toolbar ===================== */
-.pnw-toolbar {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 16px 20px;
+/* ===================== Pestaña Nóminas: semana (PeriodBar) + toolbar ===================== */
+.pnw-period {
   margin-bottom: 20px;
+}
+.pnw-toolbar {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+/* Estado de pago de la semana elegida, a la derecha de la PeriodBar. */
+.pnw-week-state {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  color: #92400e;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.pnw-week-state.paid {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
 }
 .pnw-toolbar-row {
   display: flex;
@@ -703,15 +690,8 @@ dl.pv-detail-banner {
 .pnw-field {
   min-width: 200px;
 }
-.pnw-field.week {
-  flex: 0 1 340px;
-}
 .pnw-field.grow {
   flex: 1 1 220px;
-}
-.pnw-select {
-  padding-left: 14px;
-  cursor: pointer;
 }
 .pnw-sort-group {
   display: inline-flex;
@@ -875,9 +855,6 @@ dl.pv-detail-banner {
   }
   .pnw-clear-btn {
     align-self: stretch;
-  }
-  .pnw-field.week {
-    flex: 1 1 100%;
   }
 }
 

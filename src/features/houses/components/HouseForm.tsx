@@ -8,7 +8,7 @@
 //    casa al presionar "Confirm & Save"; al salir sin guardar queda borrador.
 //    Extraído de HousesView sin cambiar la lógica.
 // ============================================================================
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Search, MapPin, Plus, X, Edit2, Trash2, Activity, FileText, CalendarDays, Clock, User, Wrench, Hash, Flag,
   Users, StickyNote, Image as ImageIcon, CheckSquare, DollarSign, Save, XCircle, Layers, Settings, Receipt,
@@ -23,6 +23,7 @@ import type { PhotoConfig } from "../../../services/photoConfigService";
 import { formatDate, dateSortValue, todayIso } from "../../../utils/dateFormat";
 import { getRelationName } from "../../../utils/relations";
 import { stampInvoiceEntry } from "../../../utils/invoiceEntry";
+import { cavalryClientKeys, houseBusiness, statusesForBusiness } from "../../../shared/utils/businesses";
 import PhotoSection from "../../../components/PhotoSection";
 import DateInput from "../../../shared/components/DateInput";
 import { type ServiceRecord, newServiceRecord, recordFingerprint, recordTotalMinusTax } from "../serviceRecords";
@@ -186,7 +187,7 @@ interface HouseFormProps {
   onClose: () => void;
 }
 
-export default function HouseForm({
+const HouseForm = ({
   init,
   records,
   properties,
@@ -198,7 +199,7 @@ export default function HouseForm({
   queue,
   onSaveDraft,
   onClose,
-}: HouseFormProps) {
+}: HouseFormProps) => {
   const {
     statuses, teams, priorities, services, products, taxes, customersList, employees, rolesList,
     statusIndex, getClientName, getServiceName, logLabel,
@@ -440,7 +441,33 @@ export default function HouseForm({
     onClose();
   };
 
+  // ⭐ STATUS POR EMPRESA: el cliente decide la empresa (Cavalry si su tipo es
+  //    Cavalry; si no, Normal: Residential, Private customer, Property manager…)
+  //    y el selector solo ofrece los status de esa empresa, en su Form Order.
+  //    Sin cliente, los de Normal. Si la casa ya tiene un status que no es de su
+  //    empresa (casas viejas), se sigue mostrando para no perderlo.
+  const cavalryKeys = useMemo(() => cavalryClientKeys(customersList), [customersList]);
+  const formBusiness = houseBusiness({ client: formData.client }, cavalryKeys);
+  const businessStatuses = statusesForBusiness(statuses, formBusiness);
+  const currentStatus = statusIndex.get(String(formData.statusId ?? ""));
+  const isCurrentStatusOutsideBusiness = !!currentStatus
+    && !businessStatuses.some((status) => status.id === currentStatus.id);
+  const statusOptions = isCurrentStatusOutsideBusiness && currentStatus
+    ? [...businessStatuses, currentStatus]
+    : businessStatuses;
+
+  /** Status que queda al cambiar de cliente: el mismo si es de la empresa del
+   *  cliente nuevo; si no, el primero de esa empresa. */
+  const getStatusForClient = (customerId: string): string => {
+    const clientBusiness = houseBusiness({ client: customerId }, cavalryKeys);
+    const clientBusinessStatuses = statusesForBusiness(statuses, clientBusiness);
+    const isStatusInClientBusiness = clientBusinessStatuses
+      .some((status) => status.id === formData.statusId || status.name === formData.statusId);
+    return isStatusInClientBusiness ? formData.statusId : clientBusinessStatuses[0]?.id ?? formData.statusId;
+  };
+
   const handleCustomerSelect = (customerId: string) => {
+    const statusIdForClient = getStatusForClient(customerId);
     const selectedCust = customersList.find((c) => c.id === customerId);
     if (selectedCust) {
       // ⭐ Regla AppSheet: if([Type]="Private customer", lookup(client, Address), "")
@@ -457,11 +484,12 @@ export default function HouseForm({
       setFormData({
         ...formData,
         client: customerId,
+        statusId: statusIdForClient,
         address: isPrivate ? String(selectedCust.address || "") : "",
         note: isPrivate && custNote ? custNote : formData.note,
       });
     } else {
-      setFormData({ ...formData, client: customerId });
+      setFormData({ ...formData, client: customerId, statusId: statusIdForClient });
     }
   };
 
@@ -943,7 +971,7 @@ export default function HouseForm({
                         Status <span className="hv-required">*</span>
                       </label>
                       <SearchableSelect
-                        options={statuses}
+                        options={statusOptions}
                         value={formData.statusId}
                         onChange={(val: string) =>
                           setFormData({ ...formData, statusId: val })
@@ -1939,4 +1967,6 @@ export default function HouseForm({
       )}
     </>
   );
-}
+};
+
+export default HouseForm;

@@ -2719,3 +2719,75 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   inflado). El filtro por persona vuelve a "All" en el render si la persona ya no está en los chips.
   Sin `eslint-disable` de exhaustive-deps: los periodos salen de un `useMemo([now])` (`now` es estado
   de `useHomeData`) y `fin.sum` se pasa como dependencia (cambia cuando llegan billingServices/payroll).
+- Task list (10/2026, pedido de Omar con nota del senior): la lista va por pestañas de sección
+  (`TaskSectionTabs`; solo las que tienen tareas) y UN componente para todas (`TaskSection`, antes
+  `TaskSections`). "Daily" = tareas que se repiten `daily` o `weekdays`, sin importar la fecha
+  (`taskSectionOf`/`groupTasksBySection` en opsDates); las demás van por vencimiento (Overdue, Today,
+  This week, Later, No date). `sectionOf` sigue sin devolver 'daily': Owner, Manager y la fila lo usan
+  para saber si algo está vencido.
+- Repetición con fin ("Ends: Never / After N times", `TaskRepeatPicker`): `repeat.timesLeft` = veces que
+  falta hacerla contando la actual (null o sin campo = siempre). Al marcarla hecha, `complete` crea la
+  siguiente con una vez menos; con `timesLeft: 1` ya no crea otra. Las reglas no validan `repeat`, así
+  que no hubo que tocarlas; el service valida 1..`MAX_REPEAT_TIMES`.
+- "My projects" (`MyProjectsPanel` + `TaskCalendar` + `ProjectCard`) usa solo lo que ya está cargado
+  (tareas asignadas + dadas a otros de la persona que se mira y `taskProjects`): sin consultas nuevas.
+  "Off track" = alguna de sus tareas abiertas CARGADAS está vencida; el avance sale de los contadores
+  `doneCount`/`taskCount`. La tarjeta abre `ProjectsModal` con `initialProjectId`. Sin el top 3.
+- Quality Check (10/2026, pedido de Omar): cada área del checklist (Porch, Rooms…) tiene sus fotos
+  debajo de sus tareas (`QcChecklist` recibe `renderSectionPhotos`). Se guardan donde ya se guardaban
+  las fotos por área (`qcData[placeId].photos`): misma subida, cola sin conexión, editor y PDF por
+  área. "Other photos (before / after)" muestra el área General (`__general`) y las fotos de áreas que
+  ya no salen en el checklist (inspecciones viejas): no quitarlas de ahí o esas fotos no se verían.
+- Quality Check · "Edit checklist" (10/2026, pedido de Omar): las áreas se contraen/extienden (estado
+  local del panel) y, con el módulo nuevo **"QC Checklist Setup"** de Roles (Add = agregar tareas,
+  Edit = renombrarlas y ordenar áreas, Delete = quitarlas), se editan desde el panel. Los cambios son
+  del CATÁLOGO (settings_places / settings_tasks): valen para todas las casas.
+  · Orden manual: `Place.sortOrder` (sin valor = al final por nombre; `sortPlacesByOrder` en
+    utils/qcCatalog.ts). Las flechas intercambian el área con la de al lado visible en esa casa y
+    `settingsPlacesService.saveOrder` reescribe solo las posiciones que cambian, en un batch.
+  · Quitar = ARCHIVAR (`Task.archived: true`), no borrar: los reportes viejos guardan respuestas por
+    id de tarea y el PDF/puntaje necesitan el nombre, por eso `tasks` sigue trayendo las archivadas y
+    solo el checklist las filtra (`isActiveTask`; también el checklist de Houses).
+  · Reglas propuestas: ese módulo solo puede tocar `sortOrder` de un área y crear / renombrar /
+    archivar tareas (no borrar). Pruebas en security/tests (no se corrieron: el emulador no se
+    descarga aquí). Las reglas reales de la consola hay que actualizarlas a mano.
+  · **Pendiente:** Settings → Places/Tasks todavía escribe con `settingsService` y muestra las tareas
+    archivadas como si siguieran; pasar a `settingsPlacesService`/`settingsTasksService` y marcarlas.
+- Quality Check Reports (10/2026, pedido de Omar): ya NO es una vista del menú (se quitó
+  `qc_reports_table` de App.tsx, Sidebar y viewPrefetch, y se borró QCReportsTableView). Su tabla
+  con filtros vive en Quality Check, debajo de Recall: `QcReportsBlock` → `QcReportsSection`.
+  · El bloque va CERRADO y monta la sección solo al abrirlo: la sección lee la colección completa
+    `qualityChecks` y Quality Check a propósito solo trae los reportes de sus casas
+    (useQcForHouses). No dejarlo abierto por defecto.
+  · Permiso: el módulo "Quality Check Reports" de Roles sigue y ahora decide si se ve la tabla; sin
+    declararlo, la ve quien entra a Quality Check (lo mismo que hacía el menú).
+  · Tabla o tarjetas con `useMediaQuery('(max-width: 900px)')` (antes las dos y una escondida).
+  · Las clases pasaron de `qcrt-` a `qcrs-`: QCRoutesTableView también usa `qcrt-` y, al cargar los
+    dos CSS juntos, se pisaban. La pestaña Rutas pierde reglas que le llegaban "prestadas" del CSS de
+    reportes (p. ej. el padding de 24 px y min-height de `.qcrt-page`); se queda con las suyas.
+  · Las tarjetas de casa (pendiente / Did Not Pass / Recall) son `QcHouseCard`.
+- Houses · status por empresa en el formulario (10/2026, pedido de Omar): el cliente decide la
+  empresa (`houseBusiness`: tipo Cavalry → Cavalry; cualquier otro → Normal) y "Status" solo ofrece
+  los de esa empresa en su Form Order (`statusesForBusiness` en shared/utils/businesses.ts, el mismo
+  que usa el tablero). Sin cliente, los de Normal. Al cambiar de cliente, si el status no es de la
+  nueva empresa se pone el primero de esa empresa. Si una casa vieja tiene un status de la otra
+  empresa, se sigue mostrando (no se pierde al editar).
+- Tipos de cliente: "Commercial" pasó a llamarse "Property manager" (decisión de Omar). Normal =
+  Private customer, Residential, Property manager (`NORMAL_CUSTOMER_TYPES`); los clientes viejos con
+  "Commercial" siguen siendo Normal y conservan su tipo al editarlos (no se migró nada).
+- Pipeline: la tarjeta, la columna, la pastilla de status y el indicador son componentes
+  (`PipelineJobCard`, `PipelineColumn`, `PipelineStatusPill`, `PipelineKpiCard` en src/components,
+  al lado de PipelineBoardView, decisión de Omar); los mismos para Normal y Cavalry.
+- PeriodBar en más pantallas (10/2026, pedido de Omar): Quality Check (casas pendientes y Recall),
+  Quality Check Reports, Payroll → Asignar nómina y Payroll → Nóminas. Los filtros de cada pantalla
+  van DENTRO de la barra como `children` (fila `.pb-filters`); `allowedKinds` limita los periodos.
+  · QC casas: filtra por Schedule Date y arranca en Year (`pc.qc.houses.period`); las casas SIN
+    scheduleDate se muestran siempre (si no, una casa sin fecha desaparecería de la inspección).
+  · QC Reports: por la fecha de la inspección, arranca en Month (`pc.qc.reports.period`).
+  · Asignar nómina: por Schedule Date (`recScheduleTime`), arranca en Year
+    (`pc.payroll.assign.period`). Antes, sin fechas, se veía TODO: para ver casas pendientes de un
+    año anterior hay que ir al año anterior o usar Custom con las fechas vacías (= sin límite).
+  · Nóminas: solo semanas (`allowedKinds={['week']}`), abre en la semana de HOY y no se recuerda
+    (antes abría en la semana más reciente con nómina). La key de la semana es `periodRange().start`
+    (lunes 00:00 local), el mismo valor que `mondayOf()` da a cada pago: no cambiar uno sin el otro.
+    El estado de pago de la semana (Pagado / Pendiente) va como `extra` de la barra.

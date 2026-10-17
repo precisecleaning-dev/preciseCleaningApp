@@ -1,0 +1,39 @@
+// "+ Add task" al final de un área del checklist (modo "Edit checklist").
+import { useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
+import { MAX_CHECKLIST_TASK_NAME_LENGTH } from '../../../services/settingsTasksService';
+
+interface QcAddTaskFormProps {
+  sectionName: string;
+  onAddTask: (taskName: string) => void;
+}
+
+const QcAddTaskForm = ({ sectionName, onAddTask }: QcAddTaskFormProps) => {
+  const [newTaskName, setNewTaskName] = useState('');
+  const trimmedTaskName = newTaskName.trim();
+
+  const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!trimmedTaskName) return;
+    onAddTask(trimmedTaskName);
+    setNewTaskName('');
+  };
+
+  return (
+    <form className="qcl-add" onSubmit={handleAddTask}>
+      <input
+        className="qcl-task-input"
+        value={newTaskName}
+        maxLength={MAX_CHECKLIST_TASK_NAME_LENGTH}
+        placeholder="New task"
+        aria-label={`New task for ${sectionName}`}
+        onChange={(event) => setNewTaskName(event.target.value)}
+      />
+      <button type="submit" className="qcl-add-btn" disabled={!trimmedTaskName}>
+        <Plus size={14} /> Add task
+      </button>
+    </form>
+  );
+};
+
+export default QcAddTaskForm;

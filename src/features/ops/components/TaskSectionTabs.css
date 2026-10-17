@@ -1,0 +1,37 @@
+/* Pestañas de las secciones de la lista (TaskSectionTabs.tsx) */
+.task-section-tabs {
+  border-bottom: 1px solid #e3e7ef;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+.task-section-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: #5b6475;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 6px;
+  letter-spacing: 0.06em;
+  min-height: 42px;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+.task-section-tab:hover { color: #0f172a; }
+.task-section-tab-count {
+  background: #f1f5f9;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 11px;
+  letter-spacing: 0;
+  padding: 1px 7px;
+}
+
+.task-section-tab.active { border-bottom-color: #2546d8; color: #2546d8; }
+.task-section-tab.daily.active { border-bottom-color: #0d9488; color: #0d9488; }
+.task-section-tab.overdue.active { border-bottom-color: #dc2626; color: #dc2626; }

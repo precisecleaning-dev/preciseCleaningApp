@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import {
-  Calendar, User, DollarSign, CheckCircle, Activity, MapPin,
+  User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
   Search, Wallet, ClipboardList, ChevronDown, ChevronRight
 } from 'lucide-react';
@@ -20,6 +20,9 @@ import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTo
 import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
 import { todayIso } from '../utils/dateFormat';
 import DateInput from '../shared/components/DateInput';
+import PeriodBar from '../components/PeriodBar';
+import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
+import { periodRange, type PeriodState } from '../utils/periods';
 import VirtualItems from '../shared/components/VirtualItems';
 import './PayrollView.css';
 import MenuButton from '../shared/components/MenuButton';
@@ -120,6 +123,9 @@ const mondayOf = (t: number): number => {
   return d.getTime();
 };
 
+// La pestaña Nóminas abre (y "Limpiar filtros" vuelve) en la semana de hoy.
+const currentWeekPeriod = (): PeriodState => ({ kind: 'week', anchor: todayIso(), customStart: '', customEnd: '' });
+
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const weekLabel = (mondayT: number): string => {
   const a = new Date(mondayT);
@@ -214,10 +220,11 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // Formulario temporal de edición
   const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
 
-  // ⭐ Filtros de "Asignar nómina": solo fechas (Schedule Date) y empleado
+  // ⭐ Filtros de "Asignar nómina": periodo (Schedule Date, se recuerda por
+  //    navegador; Custom sin fechas = todo) y empleado
   const [employeeQuery, setEmployeeQuery] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [assignPeriod, setAssignPeriod] = useStoredPeriod('pc.payroll.assign.period', 'year');
+  const assignPeriodRange = useMemo(() => periodRange(assignPeriod), [assignPeriod]);
   const [selectedEmployee, setSelectedEmployee] = useState('');
 
   // ⭐ Sub-pestaña de "Asignar nómina" (sustituye al filtro de Status):
@@ -232,8 +239,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //    'nominas' = tarjetas semanales por empleado.
   const [tab, setTab] = useState<'asignar' | 'nominas'>('asignar');
 
-  // ⭐ Pestaña Nóminas: semana seleccionada (key = timestamp del lunes), búsqueda y orden
-  const [pickedWeekKey, setSelectedWeekKey] = useState('');
+  // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
+  const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
   const [weekSearch, setWeekSearch] = useState('');
   const [weekSort, setWeekSort] = useState<'name' | 'amount'>('name');
   const [weekDetailPick, setWeekDetail] = useState<{ employee: SystemUser; records: PayrollRecordExt[] } | null>(null);
@@ -294,22 +301,26 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       .map(([k, recs]) => {
         const allPaid = recs.length > 0 && recs.every(r => r.status === 'Paid');
         const lastPaidT = recs.map(r => toTime(r.paidAt)).filter(t => !isNaN(t)).sort((a, b) => b - a)[0];
-        const suffix = allPaid ? (lastPaidT ? `(Pagado ${fmtDate(new Date(lastPaidT))})` : '(Pagado)') : '(Pendiente)';
-        return { key: String(k), label: weekLabel(k), suffix };
+        const paymentStatusLabel = allPaid ? (lastPaidT ? `Pagado ${fmtDate(new Date(lastPaidT))}` : 'Pagado') : 'Pendiente';
+        return { key: String(k), label: weekLabel(k), paymentStatusLabel, isPaid: allPaid };
       });
     // recScheduleTime depende de propById (closure); por eso está en las deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, propById]);
 
-  // Semana seleccionada: la elegida si sigue existiendo; si no (o si todavía no
-  // hay ninguna), la más reciente QUEDA fijada — llegar una semana más nueva no
-  // mueve la vista. Se ajusta durante el render (patrón de React para estado que
-  // depende de datos) en vez de un efecto que corregía el estado un render tarde.
-  const pickedExists = weeks.some(w => w.key === pickedWeekKey);
-  if (weeks.length > 0 && !pickedExists) setSelectedWeekKey(weeks[0].key);
-  const selectedWeekKey = pickedExists ? pickedWeekKey : (weeks[0]?.key ?? pickedWeekKey);
+  // Semana elegida en la PeriodBar: su inicio es el lunes 00:00 local, el mismo
+  // valor que mondayOf() da a cada pago, así que sirve directo como key.
+  const selectedWeekStart = periodRange(payrollWeekPeriod).start;
+  const selectedWeekKey = selectedWeekStart === null ? '' : String(selectedWeekStart);
+  const selectedWeekLabel = selectedWeekStart === null ? '' : weekLabel(selectedWeekStart);
+  // null = la semana no tiene nóminas asignadas (no lleva estado de pago).
+  const selectedWeek = weeks.find(w => w.key === selectedWeekKey) ?? null;
 
-  const selectedWeek = weeks.find(w => w.key === selectedWeekKey) || null;
+  const handleClearWeekFilters = () => {
+    setWeekSearch('');
+    setWeekSort('name');
+    setPayrollWeekPeriod(currentWeekPeriod());
+  };
 
   // ⭐ Tarjetas de la semana: una por empleado, SOLO si tiene nómina asignada en ella.
   const weekCards = useMemo(() => {
@@ -369,19 +380,19 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // reparte después entre pending / en nómina / paid. Los registros de ajuste
   // (bonus/descuento, sin casa) no se listan aquí — se ven en la pestaña Nóminas.
   const baseFiltered = useMemo(() => {
-    const startT = startDate ? toTime(startDate) : null;
-    const endT = endDate ? toTime(endDate) + (24 * 60 * 60 * 1000 - 1) : null; // fin inclusivo
+    // Fin EXCLUSIVO (periodRange); null = sin límite (Custom sin fechas).
+    const { start: periodStartTime, end: periodEndTime } = assignPeriodRange;
 
     const list = records.filter(record => {
       if (!record.propertyId) return false;
       // ⭐ Alcance 'Own': el usuario solo ve SUS propios registros de nómina.
       if (!canSeeAllPayroll && record.employeeId !== currentUser?.id) return false;
       if (selectedEmployee && record.employeeId !== selectedEmployee) return false;
-      if (startT !== null || endT !== null) {
+      if (periodStartTime !== null || periodEndTime !== null) {
         const recT = recScheduleTime(record);
         if (isNaN(recT)) return false; // sin fecha válida: fuera del rango
-        if (startT !== null && recT < startT) return false;
-        if (endT !== null && recT > endT) return false;
+        if (periodStartTime !== null && recT < periodStartTime) return false;
+        if (periodEndTime !== null && recT >= periodEndTime) return false;
       }
       return true;
     });
@@ -399,7 +410,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       .map(k => k.r);
     // recScheduleTime lee propById (closure).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, propById, startDate, endDate, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
+  }, [records, propById, assignPeriodRange, selectedEmployee, canSeeAllPayroll, currentUser?.id]);
 
   // Memoizado: la tabla se vuelve a dibujar al hacer scroll (ventana de filas) y
   // estos recorridos sobre miles de registros no deben repetirse en cada paso.
@@ -551,11 +562,11 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
   // Cálculos dinámicos
   // Totales sobre TODO lo filtrado por fecha/empleado (independiente de la sub-pestaña):
-  // pagado = casas en nómina pagadas; en nómina = asignadas sin pagar;
-  // pendiente = casas aún sin asignar a ninguna nómina.
-  const { totalPaid, totalEnNomina, totalPending } = useMemo(() => ({
+  // pagado = casas en nómina pagadas; pendiente = casas aún sin asignar a
+  // ninguna nómina. (La tarjeta "Total en nómina" se quitó a pedido de Omar;
+  // lo asignado sin pagar se ve en la sub-pestaña "En nómina".)
+  const { totalPaid, totalPending } = useMemo(() => ({
     totalPaid: baseFiltered.filter(r => classifyRecord(r) === 'paid').reduce((sum, r) => sum + getPayrollTotal(r), 0),
-    totalEnNomina: baseFiltered.filter(r => classifyRecord(r) === 'ennomina').reduce((sum, r) => sum + getPayrollTotal(r), 0),
     totalPending: baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getPayrollTotal(r), 0),
   }), [baseFiltered]);
 
@@ -888,22 +899,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       {/* ═══════════ PESTAÑA 1: ASIGNAR NÓMINA (registros creados desde "Pay" en Houses) ═══════════ */}
       {tab === 'asignar' && (<>
 
-      {/* FILTROS */}
-      <div className="pv-filters">
-        <div className="pv-filter-item">
-          <label className="pv-label">Schedule Date (inicio)</label>
-          <div className="pv-input-wrap">
-            <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
-            <DateInput className="pv-input" value={startDate} onChange={setStartDate} />
-          </div>
-        </div>
-        <div className="pv-filter-item">
-          <label className="pv-label">Schedule Date (fin)</label>
-          <div className="pv-input-wrap">
-            <Calendar size={16} color="#9ca3af" className="pv-input-icon" />
-            <DateInput className="pv-input" value={endDate} onChange={setEndDate} />
-          </div>
-        </div>
+      {/* FILTROS: periodo (Schedule Date) y, debajo, el empleado */}
+      <div className="pv-period">
+        <PeriodBar period={assignPeriod} onChange={setAssignPeriod}>
         {/* ⭐ El filtro de empleado SOLO existe con alcance 'All'. Con 'Own' se
             oculta para que nadie vea la nómina de sus compañeros. */}
         {canSeeAllPayroll && (
@@ -932,6 +930,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           </div>
         </div>
         )}
+        </PeriodBar>
       </div>
 
       {/* ⭐ SUB-PESTAÑAS (sustituyen al filtro de Status): estado de cada casa
@@ -955,13 +954,6 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           <div>
             <div className="pv-summary-label paid">Total Paid (Filtered)</div>
             <div className="pv-summary-value paid">${totalPaid.toFixed(2)}</div>
-          </div>
-        </div>
-        <div className="pv-summary-card ennomina">
-          <div className="pv-summary-icon-box ennomina"><Wallet size={24} /></div>
-          <div>
-            <div className="pv-summary-label ennomina">Total en nómina (Filtered)</div>
-            <div className="pv-summary-value ennomina">${totalEnNomina.toFixed(2)}</div>
           </div>
         </div>
         <div className="pv-summary-card pending">
@@ -1049,36 +1041,40 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       {/* ═══════════ PESTAÑA 2: NÓMINAS SEMANALES POR EMPLEADO ═══════════ */}
       {tab === 'nominas' && (
         <>
-          {/* Toolbar: semana + búsqueda + orden */}
-          <div className="pnw-toolbar">
-            <div className="pnw-toolbar-row">
-              <div className="pnw-field week">
-                <label className="pv-label" htmlFor="pnw-week">Semana (fecha de pago)</label>
-                <select id="pnw-week" className="pv-input pnw-select" value={selectedWeekKey} onChange={e => setSelectedWeekKey(e.target.value)}>
-                  {weeks.length === 0 && <option value="">Sin semanas con nómina</option>}
-                  {weeks.map(w => <option key={w.key} value={w.key}>{w.label} {w.suffix}</option>)}
-                </select>
-              </div>
-              <div className="pnw-field grow">
-                <label className="pv-label" htmlFor="pnw-search">Buscar</label>
-                <div className="pv-input-wrap">
-                  <Search size={16} color="#9ca3af" className="pv-input-icon" />
-                  <input id="pnw-search" className="pv-input" placeholder="Nombre..." value={weekSearch} onChange={e => setWeekSearch(e.target.value)} />
+          {/* Semana (PeriodBar solo Week, con su estado de pago) + búsqueda + orden */}
+          <div className="pnw-period">
+            <PeriodBar
+              period={payrollWeekPeriod}
+              onChange={setPayrollWeekPeriod}
+              allowedKinds={['week']}
+              extra={selectedWeek && (
+                <span className={`pnw-week-state${selectedWeek.isPaid ? ' paid' : ''}`}>{selectedWeek.paymentStatusLabel}</span>
+              )}
+            >
+              <div className="pnw-toolbar">
+                <div className="pnw-toolbar-row">
+                  <div className="pnw-field grow">
+                    <label className="pv-label" htmlFor="pnw-search">Buscar</label>
+                    <div className="pv-input-wrap">
+                      <Search size={16} color="#9ca3af" className="pv-input-icon" />
+                      <input id="pnw-search" className="pv-input" placeholder="Nombre..." value={weekSearch} onChange={e => setWeekSearch(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+                <div className="pnw-toolbar-row bottom">
+                  <div className="pnw-field">
+                    <span className="pv-label">Ordenar por</span>
+                    <div className="pnw-sort-group">
+                      <button className={`pnw-sort-btn${weekSort === 'name' ? ' active' : ''}`} onClick={() => setWeekSort('name')}>Nombre (A-Z)</button>
+                      <button className={`pnw-sort-btn${weekSort === 'amount' ? ' active' : ''}`} onClick={() => setWeekSort('amount')}>Payroll (mayor a menor)</button>
+                    </div>
+                  </div>
+                  <button className="pnw-clear-btn" onClick={handleClearWeekFilters}>
+                    Limpiar filtros
+                  </button>
                 </div>
               </div>
-            </div>
-            <div className="pnw-toolbar-row bottom">
-              <div className="pnw-field">
-                <span className="pv-label">Ordenar por</span>
-                <div className="pnw-sort-group">
-                  <button className={`pnw-sort-btn${weekSort === 'name' ? ' active' : ''}`} onClick={() => setWeekSort('name')}>Nombre (A-Z)</button>
-                  <button className={`pnw-sort-btn${weekSort === 'amount' ? ' active' : ''}`} onClick={() => setWeekSort('amount')}>Payroll (mayor a menor)</button>
-                </div>
-              </div>
-              <button className="pnw-clear-btn" onClick={() => { setWeekSearch(''); setWeekSort('name'); if (weeks[0]) setSelectedWeekKey(weeks[0].key); }}>
-                Limpiar filtros
-              </button>
-            </div>
+            </PeriodBar>
           </div>
 
           {isLoading || !usersLive.loaded ? (
@@ -1119,7 +1115,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
                         </div>
                       </div>
                       <div className="pnw-card-range">
-                        <CalendarDays size={13} /> {selectedWeek ? selectedWeek.label : ''}
+                        <CalendarDays size={13} /> {selectedWeekLabel}
                       </div>
                     </div>
                     <div className="pnw-card-divider" />

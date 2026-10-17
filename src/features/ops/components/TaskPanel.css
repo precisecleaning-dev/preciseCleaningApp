@@ -114,7 +114,7 @@
 .task-panel-optional { font-weight: 600; text-transform: none; letter-spacing: 0; color: #64748b; }
 .task-panel-schedule-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 .task-panel-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -134,26 +134,6 @@
 .task-panel-input:disabled { background: #f1f5f9; color: #475569; }
 .task-panel-input.slim { width: auto; min-width: 150px; max-width: 100%; }
 .task-panel-date-wrap { display: flex; width: 170px; max-width: 100%; }
-
-.task-panel-days { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.task-panel-day {
-  width: 32px;
-  height: 32px;
-  min-height: 0;
-  min-width: 0;
-  padding: 0;
-  border: 1px solid #d5dbe6;
-  border-radius: 50%;
-  background: #fff;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
-.task-panel-day.selected { background: #6d28d9; border-color: #6d28d9; color: #fff; }
-.task-panel-day:hover:not(:disabled) { border-color: #6d28d9; }
-.task-panel-day.selected:hover:not(:disabled) { background: #5b21b6; }
-.task-panel-day:disabled { cursor: default; opacity: 0.7; }
 
 /* ---- Datos ---- */
 .task-panel-props { margin: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -335,8 +315,6 @@
 
 @media (max-width: 640px) {
   .task-panel { max-width: none; border-left: 0; }
-  .task-panel-schedule-grid { grid-template-columns: 1fr 1fr; }
-  .task-panel-schedule-grid .task-panel-field:first-child { grid-column: 1 / -1; }
   .task-panel-prop { grid-template-columns: 84px minmax(0, 1fr); }
   .task-panel-input.slim { min-width: 0; width: auto; flex: 1 1 0; }
   .task-panel-prop dd.task-panel-with-dot { flex-wrap: nowrap; }

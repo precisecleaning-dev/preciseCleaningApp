@@ -9,7 +9,7 @@
 // Ahora vive aquí y lo usan los tres lugares que lo necesitan:
 //   · qcReportPdf.ts  — para imprimirlo en el reporte (misma cifra de siempre)
 //   · QualityCheckView — lo guarda en el registro al cerrar la inspección
-//   · QCReportsTableView — lo muestra en la lista sin abrir el PDF
+//   · QcReportsSection (tabla de reportes de Quality Check) — lo muestra en la lista sin abrir el PDF
 //
 // La fórmula NO cambió: Yes / (Yes + No) sobre las tareas de las áreas que
 // tienen datos. Las tareas sin responder no cuentan ni a favor ni en contra.

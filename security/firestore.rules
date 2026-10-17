@@ -162,6 +162,30 @@ service cloud.firestore {
       allow write: if isCatalog(col) && (has('Settings') || importer());
     }
 
+    // "Edit checklist" del panel de Quality Check (módulo "QC Checklist Setup",
+    // sin necesitar Settings): ordenar las áreas (solo `sortOrder`) y agregar,
+    // renombrar (Edit) o archivar (Delete) tareas. Borrar sigue siendo de Settings.
+    function checklistSetup(right) {
+      return canDo('QC Checklist Setup', right);
+    }
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    match /settings_places/{placeId} {
+      allow update: if checklistSetup('e') && changedOnly(['sortOrder'])
+        && request.resource.data.sortOrder is int;
+    }
+    match /settings_tasks/{taskId} {
+      allow create: if checklistSetup('a')
+        && request.resource.data.keys().hasOnly(['name', 'placeId', 'archived'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0
+        && request.resource.data.placeId is string
+        && request.resource.data.archived == false;
+      allow update: if (checklistSetup('e') && changedOnly(['name'])
+          && request.resource.data.name is string && request.resource.data.name.size() > 0)
+        || (checklistSetup('d') && changedOnly(['archived']) && request.resource.data.archived == true);
+    }
+
     match /settings_company/{docId} {
       allow read: if active();
       allow write: if has('Company Settings') || importer();

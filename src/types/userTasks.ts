@@ -25,6 +25,7 @@ export type RepeatFreq =
 export interface Repeat {
   freq: RepeatFreq; //                  frecuencia de la repetición
   days?: number[]; //                   solo con 'weekly': 0 = domingo … 6 = sábado
+  timesLeft?: number | null; //         veces que falta hacerla, contando esta (null o sin campo = siempre)
 }
 
 /** Estado del visto bueno de una tarea:

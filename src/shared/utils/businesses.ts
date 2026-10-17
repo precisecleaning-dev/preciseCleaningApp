@@ -7,6 +7,14 @@ export type BusinessName = (typeof BUSINESSES)[number];
 /** Tipo de cliente (Customers → Type) cuyas casas son de Cavalry. */
 export const CAVALRY_CUSTOMER_TYPE = 'Cavalry';
 
+/** Tipos de cliente de la empresa Normal. Cualquier tipo que no sea Cavalry
+ *  también cuenta como Normal (p. ej. "Commercial", que se renombró a
+ *  "Property manager" en 10/2026 y sigue en clientes viejos). */
+export const NORMAL_CUSTOMER_TYPES = ['Private customer', 'Residential', 'Property manager'] as const;
+
+/** Opciones de "Type" al crear o editar un cliente. */
+export const CUSTOMER_TYPE_OPTIONS: readonly string[] = [...NORMAL_CUSTOMER_TYPES, CAVALRY_CUSTOMER_TYPE];
+
 /**
  * Empresas de un status. Se guardan en `business` separadas por coma
  * ("Normal", "Cavalry" o "Normal, Cavalry"). Ese campo traía códigos de
@@ -26,6 +34,12 @@ export function statusOrderIn(status: Pick<Status, 'order' | 'cavalryOrder'>, bu
   const own = business === 'Cavalry' ? status.cavalryOrder : undefined;
   return Number(own === undefined || own === null || own === '' ? status.order : own);
 }
+
+/** Status de una empresa, en el Form Order de esa empresa (tablero y formulario de la casa). */
+export const statusesForBusiness = (statuses: Status[], business: BusinessName): Status[] =>
+  statuses
+    .filter((status) => statusInBusiness(status, business))
+    .sort((firstStatus, secondStatus) => statusOrderIn(firstStatus, business) - statusOrderIn(secondStatus, business));
 
 /**
  * Claves (id, id legacy y nombre, sin mayúsculas) de los clientes de Cavalry:

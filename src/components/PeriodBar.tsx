@@ -1,6 +1,9 @@
 // ⭐ Barra de periodo del diseño "Unified Jobs View": ← [Semana 41 · Oct 5 –
 //    Oct 11, 2026] → · Today · Show: Day Week Month Year Custom.
-//    La comparten el Overview e Invoices.
+//    La comparten el Overview, Invoices, QC Dashboard, Quality Check (casas y
+//    reportes), Payroll y Nóminas. Debajo puede llevar la fila de filtros de
+//    cada pantalla (`children`: buscador, pestañas…); con `allowedKinds` se
+//    limita a ciertos periodos (Nóminas: solo Week).
 import type { ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -14,13 +17,27 @@ interface PeriodBarProps {
   onChange: (p: PeriodState) => void;
   /** Controles extra a la derecha (p. ej. el botón Filters). */
   extra?: ReactNode;
+  /** Periodos que se pueden elegir (por defecto todos). Con uno solo no se
+   *  muestra el selector "Show". */
+  allowedKinds?: PeriodKind[];
+  /** Fila de filtros de la pantalla, debajo de la barra (buscador, pestañas…). */
+  children?: ReactNode;
 }
 
-export default function PeriodBar({ period, onChange, extra }: PeriodBarProps) {
+const PeriodBar = ({ period, onChange, extra, allowedKinds, children }: PeriodBarProps) => {
   const range = periodRange(period);
   const isCustom = period.kind === 'custom';
+  const selectablePeriodKinds = allowedKinds
+    ? PERIOD_KINDS.filter((periodKind) => allowedKinds.includes(periodKind.id))
+    : PERIOD_KINDS;
+  const showPeriodKindSelector = selectablePeriodKinds.length > 1;
+  // "Today" vuelve a hoy; desde Custom pasa a Week (o al primer periodo permitido).
+  const defaultPeriodKind = selectablePeriodKinds.some((periodKind) => periodKind.id === 'week')
+    ? 'week'
+    : selectablePeriodKinds[0]?.id ?? 'week';
+  const todayPeriodKind = isCustom ? defaultPeriodKind : period.kind;
 
-  const pick = (kind: PeriodKind) => {
+  const handleSelectPeriodKind = (kind: PeriodKind) => {
     if (kind === period.kind) return;
     onChange({ ...period, kind, anchor: todayIso() });
   };
@@ -78,30 +95,35 @@ export default function PeriodBar({ period, onChange, extra }: PeriodBarProps) {
         <button
           type="button"
           className="pb-chip"
-          onClick={() => onChange({ ...period, kind: isCustom ? 'week' : period.kind, anchor: todayIso() })}
+          onClick={() => onChange({ ...period, kind: todayPeriodKind, anchor: todayIso() })}
         >
           Today
         </button>
       </div>
 
       <div className="pb-right">
-        <span className="pb-name">Show</span>
-        <div className="pb-seg" role="radiogroup" aria-label="Periodo">
-          {PERIOD_KINDS.map((k) => (
-            <button
-              key={k.id}
-              type="button"
-              role="radio"
-              aria-checked={period.kind === k.id}
-              className={`pb-seg-btn${period.kind === k.id ? ' on' : ''}`}
-              onClick={() => pick(k.id)}
-            >
-              {k.label}
-            </button>
-          ))}
-        </div>
+        {showPeriodKindSelector && <span className="pb-name">Show</span>}
+        {showPeriodKindSelector && (
+          <div className="pb-seg" role="radiogroup" aria-label="Periodo">
+            {selectablePeriodKinds.map((periodKind) => (
+              <button
+                key={periodKind.id}
+                type="button"
+                role="radio"
+                aria-checked={period.kind === periodKind.id}
+                className={`pb-seg-btn${period.kind === periodKind.id ? ' on' : ''}`}
+                onClick={() => handleSelectPeriodKind(periodKind.id)}
+              >
+                {periodKind.label}
+              </button>
+            ))}
+          </div>
+        )}
         {extra}
       </div>
+      {children && <div className="pb-filters">{children}</div>}
     </section>
   );
-}
+};
+
+export default PeriodBar;
