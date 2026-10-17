@@ -50,15 +50,15 @@ export default function TaskSections({
                 <TaskRow
                   key={task.id}
                   task={task}
-                  today={today}
-                  assigneeLabel={personLabel(task)}
-                  assignedByLabel={assignedByLabel(task)}
-                  projectName={projectName(task)}
+                  todayIsoDate={today}
+                  assigneesLabel={personLabel(task)}
+                  assignedByName={assignedByLabel(task)}
+                  projectTitle={projectName(task)}
                   projectColor={projectColor(task)}
-                  selected={task.id === selectedId}
-                  busy={busyId === task.id}
+                  isSelected={task.id === selectedId}
+                  isBusy={busyId === task.id}
                   onOpen={onOpen}
-                  onComplete={onComplete}
+                  onMarkDone={onComplete}
                 />
               ))}
             </ul>

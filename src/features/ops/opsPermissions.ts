@@ -61,6 +61,10 @@ function isTaskListUser(user: SystemUser, roles: Role[]): boolean {
 export const isAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
   task.assignees.some((assignee) => assignee.userId === userId);
 
+/** ¿Tiene visto bueno y todavía no está aprobada? Así no se puede marcar hecha. */
+export const isAwaitingApproval = (task: Pick<UserTask, 'approval'>): boolean =>
+  !!task.approval && task.approval.status !== 'approved';
+
 /** ¿La tarea es solo de `userId`? (p. ej. alguien que se la asignó a sí mismo). */
 export const isOnlyAssignee = (task: Pick<UserTask, 'assignees'>, userId: string): boolean =>
   task.assignees.length === 1 && task.assignees[0].userId === userId;

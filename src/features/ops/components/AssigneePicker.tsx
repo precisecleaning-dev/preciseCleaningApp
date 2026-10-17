@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { AssignableUser, TaskAssignee } from '../../../types/index';
-import { namesSummary } from '../opsOptions';
+import { getFirstName, namesSummary } from '../opsOptions';
 import { toTaskAssignee } from '../opsPermissions';
 import OpsAvatar from './OpsAvatar';
 import './AssigneePicker.css';
@@ -19,8 +19,6 @@ interface AssigneePickerProps {
   label: string;
   onAssigneesChange: (assignees: TaskAssignee[]) => void;
 }
-
-const getFirstName = (name: string) => name.split(' ')[0] || name;
 
 const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAssigneesChange }: AssigneePickerProps) => {
   const [isOpen, setIsOpen] = useState(false);

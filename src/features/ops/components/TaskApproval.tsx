@@ -4,7 +4,7 @@
 // comentarios de la tarea.
 import { useState } from 'react';
 import { Check, RotateCcw, Send, X } from 'lucide-react';
-import type { AssignableUser, UserTaskApproval } from '../../../types/index';
+import type { ApprovalDecision, AssignableUser, UserTaskApproval } from '../../../types/index';
 import { formatDate, formatTime } from '../../../utils/dateFormat';
 
 interface TaskApprovalProps {
@@ -17,7 +17,7 @@ interface TaskApprovalProps {
   canManage: boolean;
   busy: boolean;
   onSend: (approver: AssignableUser) => void;
-  onDecide: (decision: 'approved' | 'changes', note: string) => void;
+  onDecide: (decision: ApprovalDecision, note: string) => void;
   onSetApproval: (approval: UserTaskApproval | null) => void;
 }
 
@@ -37,7 +37,7 @@ export default function TaskApproval({
 
   // Elegir a quién se le pide el OK y enviarlo (sin requisito, por enviar o
   // después de que pidieron cambios).
-  const sendRow = canManage && (status === 'none' || status === 'draft' || status === 'changes') && (
+  const sendRow = canManage && (status === 'none' || status === 'draft' || status === 'changes_requested') && (
     <div className="task-panel-approval-row">
       <label className="task-panel-approval-for">
         <span>For</span>
@@ -52,7 +52,7 @@ export default function TaskApproval({
           const target = approver || (approval ? { id: approval.approverUserId, name: approval.approverUserName, label: approval.approverUserName } : null);
           if (target) onSend(target);
         }}>
-        <Send size={14} /> {status === 'changes' ? 'Send again' : 'Send for approval'}
+        <Send size={14} /> {status === 'changes_requested' ? 'Send again' : 'Send for approval'}
       </button>
     </div>
   );
@@ -79,7 +79,7 @@ export default function TaskApproval({
         </p>
       )}
 
-      {status === 'changes' && approval && (
+      {status === 'changes_requested' && approval && (
         <>
           <p className="bad task-panel-approval-state">
             <strong>{approval.approverUserName}</strong> asked for changes
@@ -111,7 +111,7 @@ export default function TaskApproval({
               <X size={14} /> Cancel
             </button>
             <button type="button" className="bad task-panel-approval-btn" disabled={busy || !note.trim()}
-              onClick={() => { onDecide('changes', note.trim()); setAsking(false); setNote(''); }}>
+              onClick={() => { onDecide('changes_requested', note.trim()); setAsking(false); setNote(''); }}>
               Send changes
             </button>
           </div>

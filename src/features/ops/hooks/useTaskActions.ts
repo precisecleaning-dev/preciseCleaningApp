@@ -2,12 +2,13 @@
 // Acciones del Task list con su aviso de error, el estado "guardando" y el
 // "Undo" de unos segundos después de marcar una tarea hecha.
 import { useEffect, useRef, useState } from 'react';
-import type { UserTaskApproval, TaskAttachment, TaskProject, TaskProjectStatus, UserTask } from '../../../types/index';
+import type { ApprovalDecision, UserTaskApproval, TaskAttachment, TaskProject, TaskProjectStatus, UserTask } from '../../../types/index';
 import {
   userTasksService, type Actor, type KnownProjects, type TaskInput, type TaskPatch,
 } from '../../../services/userTasksService';
 import { taskProjectsService, type ProjectInput } from '../../../services/taskProjectsService';
 import { setPriorities } from '../services/prioritiesService';
+import { isAwaitingApproval } from '../opsPermissions';
 
 const UNDO_MS = 6000;
 
@@ -68,7 +69,7 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
 
     complete: async (task: UserTask) => {
       // Sin el visto bueno no se puede terminar (regla de la tarea con approval).
-      if (task.approval && task.approval.status !== 'approved') {
+      if (task.approval && isAwaitingApproval(task)) {
         const who = task.approval.approverUserName || 'the approver';
         alert(task.approval.status === 'pending'
           ? `This task is waiting for ${who}'s OK. It can be marked done after it is approved.`
@@ -109,7 +110,7 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
     sendForApproval: (task: UserTask, approver: Actor) =>
       run(task.id, 'No se pudo enviar para aprobación', () => userTasksService.requestApproval(task, approver, actor)),
 
-    decide: (task: UserTask, decision: 'approved' | 'changes', note: string) =>
+    decide: (task: UserTask, decision: ApprovalDecision, note: string) =>
       run(task.id, 'No se pudo guardar la respuesta', () => userTasksService.decideApproval(task, decision, note, actor)),
 
     setApproval: (task: UserTask, approval: UserTaskApproval | null) =>

@@ -10,130 +10,141 @@
 //        hechas; se crean en el Task list.
 //      · Houses Today: trabajos de hoy por hora; si no tienen equipo se
 //        asigna ahí mismo
-//      · Quality check: casas que esperan inspección (Pass rápido o
-//        inspección completa si no pasó)
+//      · Quality check: casas que esperan inspección (Pass rápido = "Invoice"
+//        de la inspección completa, sin checklist; o inspección completa si no pasó)
 //      · On recall: casas en Recall y si su re-clean ya está agendado
 //      · All jobs: tabla de hoy con la acción sugerida
 //    Las reglas viven en src/utils/homeData.ts.
 // ============================================================================
 import { useMemo, useState, type CSSProperties } from 'react';
-import { addDoc, collection } from 'firebase/firestore';
 import { ChevronDown, ChevronRight, ClipboardCheck, RotateCcw, Sparkles } from 'lucide-react';
-import { db } from '../config/firebase';
 import type { Property, Role, SystemUser } from '../types/index';
 import HomeHeader from '../components/HomeHeader';
 import TaskChecklist from '../components/TaskChecklist';
+import TeamPill from '../components/TeamPill';
 import {
   fullName, greeting, headerDate, startOfDay, TODAY_STATE_LABEL, useHomeData, type HomeJob,
 } from '../utils/homeData';
 import { useHomeTasks } from '../features/ops/hooks/useHomeTasks';
 import { sectionOf } from '../features/ops/opsDates';
+import { getFirstName } from '../features/ops/opsOptions';
 import { isOnlyAssignee } from '../features/ops/opsPermissions';
 import UndoToast from '../features/ops/components/UndoToast';
+import { usePendingById } from '../shared/hooks/usePendingById';
+import { qualityChecks } from '../features/quality-check/services/qualityChecks';
+import {
+  addStatusChange, afterStatusHistoryWrite, houseLogLabel, logStatusChange,
+} from '../features/houses/services/houseStatus';
 import { fmtClock, openEntryOf, timeClockService, weekHours } from '../services/timeClockService';
 import { propertiesService } from '../services/propertiesService';
 import { logActivity } from '../services/activityLogService';
 import { qcInfoFor } from '../utils/jobQuality';
 import { jobInsight } from '../utils/jobInsights';
 import { formatDate, todayIso } from '../utils/dateFormat';
+import { isInvoiceStatus } from '../utils/invoiceEntry';
+import { isQualityCheckStatus } from '../utils/qcStatus';
 import { groupByDate } from '../utils/dateGrouping';
 import './HomeViews.css';
 
-interface Props {
+interface ManagerViewProps {
   onOpenMenu: () => void;
   properties: Property[];
   currentUser: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   /** Abre la inspección completa en Quality Check. */
-  onInspect?: (p: Property) => void;
-  onOpenHouseDetail: (p: Property) => void;
-  onOpenHouseEdit: (p: Property) => void;
+  onOpenInspection?: (house: Property) => void;
+  onOpenHouseDetail: (house: Property) => void;
+  onOpenHouseEdit: (house: Property) => void;
 }
 
 const BILLING_TONE: Record<string, string> = { 'needs invoice': 'warn', pending: 'info', paid: 'good', 'pre-paid': 'good' };
 const INSIGHT_TONE: Record<string, string> = { 'Action needed': 'bad', 'Follow up': 'warn', 'All good': 'good' };
-const STATE_TONE: Record<string, string> = { done: 'good', progress: 'good', late: 'warn', scheduled: 'muted', nocrew: 'warn' };
-const JOBS_PAGE = 5;
+const JOB_STATE_TONE: Record<string, string> = { done: 'good', progress: 'good', late: 'warn', scheduled: 'muted', nocrew: 'warn' };
+const JOBS_PAGE_SIZE = 5;
+
+/** Id de la acción del reloj en `pendingActionIds` (las demás usan el id de la casa). */
+const CLOCK_ACTION_ID = 'clock';
 
 export default function ManagerView({
   onOpenMenu, properties, currentUser, activeRole, isSuperAdmin = false,
-  onInspect, onOpenHouseDetail, onOpenHouseEdit,
-}: Props) {
-  const d = useHomeData(properties);
-  const ht = useHomeTasks(currentUser, activeRole, isSuperAdmin);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [showAllJobs, setShowAllJobs] = useState(false);
-  const [jobsOpen, setJobsOpen] = useState(true);
+  onOpenInspection, onOpenHouseDetail, onOpenHouseEdit,
+}: ManagerViewProps) {
+  const homeData = useHomeData(properties);
+  const homeTasks = useHomeTasks(currentUser, activeRole, isSuperAdmin);
+  const { pending: pendingActionIds, run: runPendingAction } = usePendingById();
+  const [isShowingAllJobs, setIsShowingAllJobs] = useState(false);
+  const [isJobsTableOpen, setIsJobsTableOpen] = useState(true);
 
-  const perm = (module: string) => activeRole?.permissions?.find((p) => p.module === module);
-  const canEditHouses = isSuperAdmin || !!perm('Houses')?.canEdit;
-  const canInspect = isSuperAdmin || !!perm('Quality Check')?.canEdit;
-  const me = currentUser;
-  const myName = fullName(me);
+  const getModulePermission = (module: string) =>
+    activeRole?.permissions?.find((permission) => permission.module === module);
+  const canEditHouses = isSuperAdmin || !!getModulePermission('Houses')?.canEdit;
+  const canInspect = isSuperAdmin || !!getModulePermission('Quality Check')?.canEdit;
+  const currentUserFullName = fullName(currentUser);
 
   // ---- Reloj ----
-  const myOpen = me ? openEntryOf(d.clock, me.id) : undefined;
-  const myHours = me ? weekHours(d.clock, me.id, d.now) : 0;
-  const toggleClock = async () => {
-    if (!me) return;
-    setBusy('clock');
-    try {
-      if (myOpen) await timeClockService.clockOut(myOpen.id);
-      else await timeClockService.clockIn(me.id, myName);
-    } catch (e) {
-      console.error('Error en el reloj:', e);
-      alert('No se pudo registrar la hora. Revisa tu conexión e inténtalo de nuevo.');
-    } finally { setBusy(null); }
+  const openClockEntry = currentUser ? openEntryOf(homeData.clock, currentUser.id) : undefined;
+  const hoursThisWeek = currentUser ? weekHours(homeData.clock, currentUser.id, homeData.now) : 0;
+  const handleToggleClock = () => {
+    if (!currentUser) return;
+    runPendingAction(
+      CLOCK_ACTION_ID,
+      () => (openClockEntry
+        ? timeClockService.clockOut(openClockEntry.id)
+        : timeClockService.clockIn(currentUser.id, currentUserFullName)),
+      'No se pudo registrar la hora. Revisa tu conexión e inténtalo de nuevo.',
+    );
   };
 
   // ---- Tareas pendientes (Task list) ----
   // Scope "All": las de los gerentes (y las propias). "Own": solo las propias
   // (el listener ya trae solo esas).
-  const meId = me?.id || '';
-  const todayYmd = todayIso();
-  const managerIds = useMemo(() => new Set(d.managers.map((u) => u.id)), [d.managers]);
-  const openTasks = useMemo(
-    () => (ht.rights.seesAll
-      ? ht.tasks.filter((t) => t.assignees.some((assignee) => assignee.userId === meId || managerIds.has(assignee.userId)))
-      : ht.tasks),
-    [ht.tasks, ht.rights.seesAll, managerIds, meId],
+  const currentUserId = currentUser?.id ?? '';
+  const todayIsoDate = todayIso();
+  const managerIds = useMemo(() => new Set(homeData.managers.map((user) => user.id)), [homeData.managers]);
+  const visibleOpenTasks = useMemo(
+    () => (homeTasks.rights.seesAll
+      ? homeTasks.tasks.filter((task) =>
+        task.assignees.some((assignee) => assignee.userId === currentUserId || managerIds.has(assignee.userId)))
+      : homeTasks.tasks),
+    [homeTasks.tasks, homeTasks.rights.seesAll, managerIds, currentUserId],
   );
-  const overdueTasks = openTasks.filter((t) => sectionOf(t.dueDate, todayYmd) === 'overdue');
+  const overdueTasks = visibleOpenTasks.filter((task) => sectionOf(task.dueDate, todayIsoDate) === 'overdue');
 
   // ---- Asignar equipo desde "Houses Today" ----
-  const assignTeam = async (job: HomeJob, teamId: string) => {
+  const handleAssignTeam = (job: HomeJob, teamId: string) => {
     if (!teamId) return;
-    setBusy(job.prop.id);
-    try {
+    runPendingAction(job.prop.id, async () => {
       await propertiesService.update(job.prop.id, { teamId });
-      const t = d.teams.find((x) => x.id === teamId);
+      const team = homeData.teams.find((catalogTeam) => catalogTeam.id === teamId);
       void logActivity({
-        action: 'update', module: 'Houses', user: me, targetId: job.prop.id,
+        action: 'update', module: 'Houses', user: currentUser, targetId: job.prop.id,
         targetLabel: `${job.client} · ${job.prop.address}`,
-        changes: [{ field: 'teamId', before: job.teamName || '', after: t?.name || teamId }],
+        changes: [{ field: 'teamId', before: job.teamName ?? '', after: team?.name ?? teamId }],
       });
-    } catch (e) {
-      console.error('Error asignando equipo:', e);
-      alert('No se pudo asignar el equipo.');
-    } finally { setBusy(null); }
+    }, 'No se pudo asignar el equipo.');
   };
 
-  // ---- QC rápido: "Pass" guarda un reporte aprobado sin checklist ----
-  const quickPass = async (job: HomeJob) => {
-    if (!window.confirm(`¿Marcar ${job.client} · ${job.prop.address} como aprobada (Pass)?\n\nSe guarda un reporte de QC aprobado sin checklist. Para revisar área por área usa la inspección completa.`)) return;
-    setBusy(job.prop.id);
-    const nowIso = new Date().toISOString();
-    try {
-      await addDoc(collection(db, 'quality_checks'), {
+  // ---- QC rápido: "Pass" = el resultado "Invoice" de la inspección completa, sin checklist ----
+  // Como en Quality Check, todo en un batch: el reporte aprobado, la casa a
+  // "Quality Check" (salvo que ya esté en Invoice) con la factura liberada si
+  // estaba retenida, y su status_history (de ahí salen las métricas).
+  const handleQuickPass = (job: HomeJob) => {
+    if (!window.confirm(`¿Marcar ${job.client} · ${job.prop.address} como aprobada (Pass)?\n\nSe guarda un reporte de QC aprobado sin checklist, igual que "Invoice" en la inspección completa: la casa pasa a Quality Check y se libera su factura si estaba retenida. Para revisar área por área usa la inspección completa.`)) return;
+    const houseLabel = houseLogLabel(job.client, job.prop.address);
+    runPendingAction(job.prop.id, async () => {
+      const nowIso = new Date().toISOString();
+      const { batch } = qualityChecks.saveBatch(null, {
         houseId: job.prop.id,
-        date: nowIso.split('T')[0],
+        date: todayIso(),
         address: job.prop.address,
         client: job.prop.client,
         team: job.teamName,
         status: 'Finished',
         result: 'passed',
-        inspector: myName,
+        outcome: 'invoice',
+        inspector: currentUserFullName,
+        inspectorId: currentUserId,
         checkInAt: nowIso,
         checkOutAt: nowIso,
         durationMinutes: 0,
@@ -144,68 +155,86 @@ export default function ManagerView({
         quickPass: true,
         createdAt: nowIso,
       });
-      void logActivity({ action: 'create', module: 'Quality Check', user: me, targetId: job.prop.id, targetLabel: `${job.client} · ${job.prop.address}`, detail: 'Pass rápido desde Manager' });
-    } catch (e) {
-      console.error('Error guardando el QC:', e);
-      alert('No se pudo guardar el resultado.');
-    } finally { setBusy(null); }
+      const qualityCheckStatusId = homeData.statuses
+        .find((status) => isQualityCheckStatus(status.id, homeData.statuses))?.id ?? null;
+      const targetStatusId = isInvoiceStatus(homeData.statuses, job.prop.statusId) ? null : qualityCheckStatusId;
+      const isHouseMoved = addStatusChange(
+        batch,
+        job.prop,
+        targetStatusId,
+        { statuses: homeData.statuses, actor: currentUser, source: 'quality_check' },
+        job.prop.invoiceHold ? { invoiceHold: false } : {},
+      );
+      await batch.commit();
+      void logActivity({ action: 'create', module: 'Quality Check', user: currentUser, targetId: job.prop.id, targetLabel: houseLabel, detail: 'Pass rápido desde Manager' });
+      if (isHouseMoved && targetStatusId) {
+        afterStatusHistoryWrite();
+        logStatusChange(job.prop, targetStatusId, {
+          statuses: homeData.statuses, actor: currentUser, source: 'quality_check', module: 'Quality Check', label: houseLabel,
+        });
+      }
+    }, 'No se pudo guardar el resultado: no se escribió nada (ni el reporte ni el status de la casa).');
   };
 
   // ---- "Your day in 30 seconds" ----
-  const late = d.todayJobs.filter((j) => j.state === 'late');
-  const noCrew = d.todayJobs.filter((j) => j.state === 'nocrew');
-  const openRecalls = d.recalls.filter((r) => r.reclean === 'open');
-  const brief: { tag: string; tone: string; text: string }[] = [];
-  if (noCrew.length) {
-    const j = noCrew[0];
-    brief.push({ tag: 'First', tone: 'first', text: `The ${j.time ? `${j.time} ` : ''}${j.type.toLowerCase()} at ${j.client} has no crew. Assign it${j.time ? ` before ${j.time}` : ' today'}.` });
+  const lateJobs = homeData.todayJobs.filter((job) => job.state === 'late');
+  const jobsWithoutCrew = homeData.todayJobs.filter((job) => job.state === 'nocrew');
+  const unscheduledRecalls = homeData.recalls.filter((recall) => recall.reclean === 'open');
+  const dailyBriefLines: { tag: string; tone: string; text: string }[] = [];
+  if (jobsWithoutCrew.length) {
+    const job = jobsWithoutCrew[0];
+    dailyBriefLines.push({ tag: 'First', tone: 'first', text: `The ${job.time ? `${job.time} ` : ''}${job.type.toLowerCase()} at ${job.client} has no crew. Assign it${job.time ? ` before ${job.time}` : ' today'}.` });
   } else if (overdueTasks.length) {
-    const t = overdueTasks[0];
-    const asked = isOnlyAssignee(t, t.createdByUserId) ? '' : t.createdByUserName.split(' ')[0];
-    brief.push({ tag: 'First', tone: 'first', text: `“${t.title}” is overdue${asked ? ` — ${asked} asked for it` : ''}.` });
-  } else if (openRecalls.length) {
-    brief.push({ tag: 'First', tone: 'first', text: `${openRecalls[0].client} failed QC and the re-clean isn't scheduled yet.` });
+    const task = overdueTasks[0];
+    const requesterFirstName = isOnlyAssignee(task, task.createdByUserId) ? '' : getFirstName(task.createdByUserName);
+    dailyBriefLines.push({ tag: 'First', tone: 'first', text: `“${task.title}” is overdue${requesterFirstName ? ` — ${requesterFirstName} asked for it` : ''}.` });
+  } else if (unscheduledRecalls.length) {
+    dailyBriefLines.push({ tag: 'First', tone: 'first', text: `${unscheduledRecalls[0].client} failed QC and the re-clean isn't scheduled yet.` });
   }
-  brief.push({
+  dailyBriefLines.push({
     tag: 'Jobs', tone: 'jobs',
-    text: d.todayJobs.length === 0
+    text: homeData.todayJobs.length === 0
       ? 'No cleanings scheduled today.'
-      : `You dispatch ${d.todayJobs.length} cleaning${d.todayJobs.length === 1 ? '' : 's'} today.${late.length ? ` ${late.length} crew${late.length === 1 ? ' is' : 's are'} late to start.` : ''}${noCrew.length ? ` ${noCrew.length} without a crew.` : ''}`,
+      : `You dispatch ${homeData.todayJobs.length} cleaning${homeData.todayJobs.length === 1 ? '' : 's'} today.${lateJobs.length ? ` ${lateJobs.length} crew${lateJobs.length === 1 ? ' is' : 's are'} late to start.` : ''}${jobsWithoutCrew.length ? ` ${jobsWithoutCrew.length} without a crew.` : ''}`,
   });
-  if (ht.canView) brief.push({
+  if (homeTasks.canView) dailyBriefLines.push({
     tag: 'Tasks', tone: 'tasks',
     text: overdueTasks.length
-      ? `${overdueTasks.length} task${overdueTasks.length === 1 ? ' is' : 's are'} overdue: ${overdueTasks.map((t) => t.title.toLowerCase()).slice(0, 2).join('; ')}.`
-      : openTasks.length ? `${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}, none overdue.` : 'No open tasks.',
+      ? `${overdueTasks.length} task${overdueTasks.length === 1 ? ' is' : 's are'} overdue: ${overdueTasks.map((task) => task.title.toLowerCase()).slice(0, 2).join('; ')}.`
+      : visibleOpenTasks.length ? `${visibleOpenTasks.length} open task${visibleOpenTasks.length === 1 ? '' : 's'}, none overdue.` : 'No open tasks.',
   });
-  brief.push({
+  dailyBriefLines.push({
     tag: 'QC', tone: 'qc',
-    text: `${d.waitingQc.length} house${d.waitingQc.length === 1 ? '' : 's'} wait${d.waitingQc.length === 1 ? 's' : ''} for inspection.`
-      + (d.recalls.length ? ` ${d.recalls.length} on recall${openRecalls.length ? `; ${openRecalls.length} re-clean${openRecalls.length === 1 ? " isn't" : "s aren't"} scheduled yet` : ''}.` : ''),
+    text: `${homeData.waitingQc.length} house${homeData.waitingQc.length === 1 ? '' : 's'} wait${homeData.waitingQc.length === 1 ? 's' : ''} for inspection.`
+      + (homeData.recalls.length ? ` ${homeData.recalls.length} on recall${unscheduledRecalls.length ? `; ${unscheduledRecalls.length} re-clean${unscheduledRecalls.length === 1 ? " isn't" : "s aren't"} scheduled yet` : ''}.` : ''),
   });
 
   // ---- All jobs (hoy) ----
-  const jobRows = d.todayJobs.map((j) => {
-    const qc = qcInfoFor(j.prop.id, j.prop.statusId, d.statuses, d.latestQc);
-    const fin = d.fin.calc(j.prop);
+  const jobRows = homeData.todayJobs.map((job) => {
+    const qc = qcInfoFor(job.prop.id, job.prop.statusId, homeData.statuses, homeData.latestQc);
+    const financials = homeData.fin.calc(job.prop);
     const insight = jobInsight({
-      statusName: j.statusName, teamName: j.teamName || null, client: j.client,
-      dateLabel: formatDate(j.prop.scheduleDate), isPast: false, isDuplicate: false,
-      qc, billing: String(j.prop.invoiceStatus || ''), fin,
+      statusName: job.statusName, teamName: job.teamName || null, client: job.client,
+      dateLabel: formatDate(job.prop.scheduleDate), isPast: false, isDuplicate: false,
+      qc, billing: String(job.prop.invoiceStatus ?? ''), fin: financials,
     });
-    return { j, qc, insight };
+    return { job, qc, insight };
   });
-  const needAction = jobRows.filter((r) => r.insight.tag === 'Action needed').length;
-  const shownRows = showAllJobs ? jobRows : jobRows.slice(0, JOBS_PAGE);
+  const actionNeededCount = jobRows.filter((row) => row.insight.tag === 'Action needed').length;
+  const visibleJobRows = isShowingAllJobs ? jobRows : jobRows.slice(0, JOBS_PAGE_SIZE);
 
-  const teamPill = (name: string, color: string) =>
-    name ? <span className="hm-team" style={{ '--team-color': color } as CSSProperties}>{name}</span> : null;
+  // Texto de la lista de tareas cuando no hay filas (o no se pudieron cargar).
+  const taskEmptyText = (() => {
+    if (homeTasks.error) return 'Could not load the tasks.';
+    if (!homeTasks.loaded) return 'Loading tasks…';
+    return homeTasks.rights.seesAll ? 'No open tasks for managers.' : 'No tasks assigned to you. Enjoy the quiet.';
+  })();
 
   return (
     <div className="fade-in hm-page">
       <HomeHeader
-        title={`${greeting(d.now)}, ${me?.firstName || 'there'}`}
-        subtitle={headerDate(d.now)}
+        title={`${greeting(homeData.now)}, ${currentUser?.firstName || 'there'}`}
+        subtitle={headerDate(homeData.now)}
         onOpenMenu={onOpenMenu}
       />
 
@@ -213,10 +242,10 @@ export default function ManagerView({
         <section className="hm-brief" aria-label="Your day in 30 seconds">
           <h2 className="hm-brief-title"><Sparkles size={18} /> Your day in 30 seconds</h2>
           <ul className="hm-brief-list">
-            {brief.map((b) => (
-              <li key={b.tag} className="hm-brief-line">
-                <span className={`hm-btag ${b.tone}`}>{b.tag}</span>
-                <span>{b.text}</span>
+            {dailyBriefLines.map((line) => (
+              <li key={line.tag} className="hm-brief-line">
+                <span className={`hm-btag ${line.tone}`}>{line.tag}</span>
+                <span>{line.text}</span>
               </li>
             ))}
           </ul>
@@ -224,39 +253,39 @@ export default function ManagerView({
 
         <section className="hm-card hm-shift" aria-label="My shift">
           <h2 className="hm-card-title">My shift</h2>
-          {myOpen ? (
-            <p className="hm-clock on"><span className="hm-dot on" /> Clocked in since {fmtClock(myOpen.inAt)}</p>
+          {openClockEntry ? (
+            <p className="hm-clock on"><span className="hm-dot on" /> Clocked in since {fmtClock(openClockEntry.inAt)}</p>
           ) : (
             <p className="hm-clock"><span className="hm-dot" /> Not clocked in</p>
           )}
-          <p className="hm-muted">{myHours} h this week</p>
+          <p className="hm-muted">{hoursThisWeek} h this week</p>
           <button
             type="button"
-            className={`hm-clock-btn${myOpen ? ' out' : ''}`}
-            disabled={!me || busy === 'clock'}
-            onClick={toggleClock}
+            className={`hm-clock-btn${openClockEntry ? ' out' : ''}`}
+            disabled={!currentUser || pendingActionIds.has(CLOCK_ACTION_ID)}
+            onClick={handleToggleClock}
           >
-            {myOpen ? 'Clock out' : 'Clock in'}
+            {openClockEntry ? 'Clock out' : 'Clock in'}
           </button>
         </section>
       </div>
 
       <div className="hm-grid hm-grid-wide">
-        {ht.canView && (
-          <section className="hm-card" aria-label={ht.rights.seesAll ? 'Manager tasks' : 'My tasks'}>
+        {homeTasks.canView && (
+          <section className="hm-card" aria-label={homeTasks.rights.seesAll ? 'Manager tasks' : 'My tasks'}>
             <div className="hm-card-head">
-              <h2 className="hm-card-title">{ht.rights.seesAll ? 'Manager tasks' : 'My tasks'}</h2>
-              <span className="hm-muted">{ht.loaded ? `${openTasks.length} open` : '…'}</span>
+              <h2 className="hm-card-title">{homeTasks.rights.seesAll ? 'Manager tasks' : 'My tasks'}</h2>
+              <span className="hm-muted">{homeTasks.loaded ? `${visibleOpenTasks.length} open` : '…'}</span>
             </div>
             <TaskChecklist
-              tasks={openTasks}
-              today={todayYmd}
-              meId={meId}
-              showAssignee={ht.rights.seesAll}
-              busyId={ht.actions.busyId}
-              canComplete={!!me}
-              onComplete={ht.actions.complete}
-              emptyText={!ht.loaded ? 'Loading tasks…' : ht.rights.seesAll ? 'No open tasks for managers.' : 'No tasks assigned to you. Enjoy the quiet.'}
+              tasks={visibleOpenTasks}
+              today={todayIsoDate}
+              meId={currentUserId}
+              showAssignee={homeTasks.rights.seesAll}
+              busyId={homeTasks.actions.busyId}
+              canComplete={!!currentUser}
+              onComplete={homeTasks.actions.complete}
+              emptyText={taskEmptyText}
             />
           </section>
         )}
@@ -264,33 +293,33 @@ export default function ManagerView({
         <section className="hm-card" aria-label="Houses today">
           <div className="hm-card-head">
             <h2 className="hm-card-title">Houses Today</h2>
-            <span className="hm-muted">{d.todayJobs.length} jobs</span>
+            <span className="hm-muted">{homeData.todayJobs.length} jobs</span>
           </div>
-          {d.todayJobs.length === 0 ? <p className="hm-empty">No houses scheduled today.</p> : (
-            <ul className="hm-today hm-scroll-list">
-              {d.todayJobs.map((j) => (
-                <li key={j.prop.id} className={`hm-slot${j.state === 'nocrew' ? ' alert' : ''}`}>
-                  <span className="hm-slot-time">{j.time || '—'}</span>
-                  <button type="button" className="hm-slot-main" onClick={() => onOpenHouseDetail(j.prop)}>
-                    <span className="hm-slot-title">{j.client}</span>
-                    <span className="hm-slot-sub">{j.prop.address}</span>
-                    <span className={`hm-slot-sub${j.state === 'nocrew' ? ' warn' : ''}`}>
-                      {j.state === 'nocrew' ? 'No crew assigned' : [j.type, j.teamName].filter(Boolean).join(' · ')}
+          {homeData.todayJobs.length === 0 ? <p className="hm-empty">No houses scheduled today.</p> : (
+            <ul className="hm-scroll-list hm-today">
+              {homeData.todayJobs.map((job) => (
+                <li key={job.prop.id} className={`hm-slot${job.state === 'nocrew' ? ' alert' : ''}`}>
+                  <span className="hm-slot-time">{job.time || '—'}</span>
+                  <button type="button" className="hm-slot-main" onClick={() => onOpenHouseDetail(job.prop)}>
+                    <span className="hm-slot-title">{job.client}</span>
+                    <span className="hm-slot-sub">{job.prop.address}</span>
+                    <span className={`hm-slot-sub${job.state === 'nocrew' ? ' warn' : ''}`}>
+                      {job.state === 'nocrew' ? 'No crew assigned' : [job.type, job.teamName].filter(Boolean).join(' · ')}
                     </span>
                   </button>
-                  {j.state === 'nocrew' && canEditHouses ? (
+                  {job.state === 'nocrew' && canEditHouses ? (
                     <select
                       className="hm-assign"
                       value=""
-                      disabled={busy === j.prop.id}
-                      aria-label={`Assign crew to ${j.client}`}
-                      onChange={(e) => assignTeam(j, e.target.value)}
+                      disabled={pendingActionIds.has(job.prop.id)}
+                      aria-label={`Assign crew to ${job.client}`}
+                      onChange={(event) => handleAssignTeam(job, event.target.value)}
                     >
                       <option value="">Assign</option>
-                      {d.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      {homeData.teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                     </select>
                   ) : (
-                    <span className={`hm-pill ${STATE_TONE[j.state]}`}>{TODAY_STATE_LABEL[j.state]}</span>
+                    <span className={`hm-pill ${JOB_STATE_TONE[job.state]}`}>{TODAY_STATE_LABEL[job.state]}</span>
                   )}
                 </li>
               ))}
@@ -303,24 +332,24 @@ export default function ManagerView({
         <section className="hm-card" aria-label="Quality check">
           <div className="hm-card-head">
             <h2 className="hm-card-title"><ClipboardCheck size={18} className="hm-ic qc" /> Quality check</h2>
-            <span className="hm-muted">{d.waitingQc.length} waiting</span>
+            <span className="hm-muted">{homeData.waitingQc.length} waiting</span>
           </div>
-          {d.waitingQc.length === 0 ? <p className="hm-empty">Nothing waiting for inspection.</p> : (
+          {homeData.waitingQc.length === 0 ? <p className="hm-empty">Nothing waiting for inspection.</p> : (
             <ul className="hm-qc hm-scroll-list">
-              {d.waitingQc.map((j) => (
-                <li key={j.prop.id} className="hm-qc-row">
-                  <button type="button" className="hm-qc-main" onClick={() => onOpenHouseDetail(j.prop)}>
-                    <span className="hm-slot-title">{j.client} · {j.prop.address}</span>
+              {homeData.waitingQc.map((job) => (
+                <li key={job.prop.id} className="hm-qc-row">
+                  <button type="button" className="hm-qc-main" onClick={() => onOpenHouseDetail(job.prop)}>
+                    <span className="hm-slot-title">{job.client} · {job.prop.address}</span>
                     <span className="hm-slot-sub">
-                      {[j.type, j.prop.employeeFinishedAt ? `finished ${finishedLabel(j.prop.employeeFinishedAt, d.today)}` : j.statusName].filter(Boolean).join(' · ')}
+                      {[job.type, job.prop.employeeFinishedAt ? `finished ${getFinishedLabel(job.prop.employeeFinishedAt, homeData.today)}` : job.statusName].filter(Boolean).join(' · ')}
                     </span>
                   </button>
-                  {teamPill(j.teamName, j.teamColor)}
+                  <TeamPill name={job.teamName} color={job.teamColor} />
                   {canInspect && (
                     <span className="hm-qc-actions">
-                      <button type="button" className="hm-btn pass" disabled={busy === j.prop.id} onClick={() => quickPass(j)}>Pass</button>
-                      {onInspect && (
-                        <button type="button" className="hm-btn fail" onClick={() => onInspect(j.prop)} title="Abre la inspección completa">Did not pass</button>
+                      <button type="button" className="hm-btn pass" disabled={pendingActionIds.has(job.prop.id)} onClick={() => handleQuickPass(job)}>Pass</button>
+                      {onOpenInspection && (
+                        <button type="button" className="fail hm-btn" onClick={() => onOpenInspection(job.prop)} title="Abre la inspección completa">Did not pass</button>
                       )}
                     </span>
                   )}
@@ -332,23 +361,23 @@ export default function ManagerView({
 
         <section className="hm-card hm-recall-card" aria-label="On recall">
           <div className="hm-card-head">
-            <h2 className="hm-card-title"><RotateCcw size={18} className="hm-ic bad" /> On recall</h2>
-            {d.recalls.length > 0 && <span className="hm-pill bad">{d.recalls.length} open</span>}
+            <h2 className="hm-card-title"><RotateCcw size={18} className="bad hm-ic" /> On recall</h2>
+            {homeData.recalls.length > 0 && <span className="bad hm-pill">{homeData.recalls.length} open</span>}
           </div>
-          {d.recalls.length === 0 ? <p className="hm-empty">No houses on recall.</p> : (
+          {homeData.recalls.length === 0 ? <p className="hm-empty">No houses on recall.</p> : (
             <ul className="hm-recalls hm-scroll-list">
-              {d.recalls.map((r) => (
-                <li key={r.prop.id} className="hm-recall">
+              {homeData.recalls.map((recall) => (
+                <li key={recall.prop.id} className="hm-recall">
                   <div className="hm-recall-top">
-                    <button type="button" className="hm-link-title" onClick={() => onOpenHouseDetail(r.prop)}>
-                      {r.client} · {r.prop.address}
+                    <button type="button" className="hm-link-title" onClick={() => onOpenHouseDetail(recall.prop)}>
+                      {recall.client} · {recall.prop.address}
                     </button>
-                    {teamPill(r.teamName, r.teamColor)}
+                    <TeamPill name={recall.teamName} color={recall.teamColor} />
                   </div>
-                  {r.failed.length > 0 && <p className="hm-recall-failed">Failed: {r.failed.join(', ').toLowerCase()}</p>}
-                  <p className={`hm-recall-detail ${r.reclean}`}>{r.detail}</p>
-                  {r.reclean === 'open' && canEditHouses && (
-                    <button type="button" className="hm-btn danger" onClick={() => onOpenHouseEdit(r.prop)}>Schedule re-clean</button>
+                  {recall.failed.length > 0 && <p className="hm-recall-failed">Failed: {recall.failed.join(', ').toLowerCase()}</p>}
+                  <p className={`hm-recall-detail ${recall.reclean}`}>{recall.detail}</p>
+                  {recall.reclean === 'open' && canEditHouses && (
+                    <button type="button" className="danger hm-btn" onClick={() => onOpenHouseEdit(recall.prop)}>Schedule re-clean</button>
                   )}
                 </li>
               ))}
@@ -357,19 +386,19 @@ export default function ManagerView({
         </section>
       </div>
 
-      {ht.actions.undo && <UndoToast title={ht.actions.undo.task.title} onUndo={ht.actions.undoComplete} />}
+      {homeTasks.actions.undo && <UndoToast title={homeTasks.actions.undo.task.title} onUndo={homeTasks.actions.undoComplete} />}
 
       <section className="hm-card hm-jobs" aria-label="All jobs today">
         <h2 className="hm-card-title hm-jobs-title">All jobs</h2>
-        <button type="button" className="hm-jobs-group" aria-expanded={jobsOpen} onClick={() => setJobsOpen((o) => !o)}>
+        <button type="button" className="hm-jobs-group" aria-expanded={isJobsTableOpen} onClick={() => setIsJobsTableOpen((isOpen) => !isOpen)}>
           <span className="hm-jobs-group-title">
-            {jobsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            {groupByDate([d.today], (x) => x, 'day')[0]?.label}
+            {isJobsTableOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {groupByDate([homeData.today], (item) => item, 'day')[0]?.label}
             <span className="hm-count">{jobRows.length} jobs</span>
           </span>
-          {needAction > 0 && <span className="hm-jobs-ai"><Sparkles size={13} /> {needAction} need action</span>}
+          {actionNeededCount > 0 && <span className="hm-jobs-ai"><Sparkles size={13} /> {actionNeededCount} need action</span>}
         </button>
-        {jobsOpen && (
+        {isJobsTableOpen && (
           <div className="hm-table-scroll">
             <table className="hm-table">
               <thead>
@@ -378,21 +407,21 @@ export default function ManagerView({
                 </tr>
               </thead>
               <tbody>
-                {shownRows.length === 0 ? (
+                {visibleJobRows.length === 0 ? (
                   <tr><td colSpan={8} className="hm-empty-cell">No jobs today.</td></tr>
-                ) : shownRows.map(({ j, qc, insight }) => (
-                  <tr key={j.prop.id} className="hm-row" onClick={() => onOpenHouseDetail(j.prop)}>
-                    <td><div className="strong">{formatDate(j.prop.scheduleDate)}</div><div className="hm-muted">{j.time}</div></td>
+                ) : visibleJobRows.map(({ job, qc, insight }) => (
+                  <tr key={job.prop.id} className="hm-row" onClick={() => onOpenHouseDetail(job.prop)}>
+                    <td><div className="strong">{formatDate(job.prop.scheduleDate)}</div><div className="hm-muted">{job.time}</div></td>
                     <td className="hm-client">
-                      <div className="strong">{j.client}</div>
-                      <div className="hm-muted">{j.prop.address}</div>
-                      {j.prop.note && <div className="hm-muted hm-ellipsis">{j.prop.note}</div>}
+                      <div className="strong">{job.client}</div>
+                      <div className="hm-muted">{job.prop.address}</div>
+                      {job.prop.note && <div className="hm-ellipsis hm-muted">{job.prop.note}</div>}
                     </td>
-                    <td>{j.type}</td>
-                    <td>{teamPill(j.teamName, j.teamColor) || <span className="hm-muted">Unassigned</span>}</td>
-                    <td><span className="hm-status" style={{ '--st-color': j.statusColor } as CSSProperties}>{j.statusName || '—'}</span></td>
+                    <td>{job.type}</td>
+                    <td>{job.teamName ? <TeamPill name={job.teamName} color={job.teamColor} /> : <span className="hm-muted">Unassigned</span>}</td>
+                    <td><span className="hm-status" style={{ '--st-color': job.statusColor } as CSSProperties}>{job.statusName || '—'}</span></td>
                     <td>{qc.state === 'none' ? <span className="hm-muted">—</span> : <span className={`hm-pill ${qc.tone}`}>{qc.label}</span>}</td>
-                    <td>{j.prop.invoiceStatus ? <span className={`hm-pill ${BILLING_TONE[String(j.prop.invoiceStatus).toLowerCase()] || 'muted'}`}>{j.prop.invoiceStatus}</span> : <span className="hm-muted">—</span>}</td>
+                    <td>{job.prop.invoiceStatus ? <span className={`hm-pill ${BILLING_TONE[String(job.prop.invoiceStatus).toLowerCase()] ?? 'muted'}`}>{job.prop.invoiceStatus}</span> : <span className="hm-muted">—</span>}</td>
                     <td className="hm-action">
                       <span className={`hm-atag ${INSIGHT_TONE[insight.tag]}`}>{insight.tag}</span>
                       <div>{insight.text}</div>
@@ -403,9 +432,9 @@ export default function ManagerView({
             </table>
           </div>
         )}
-        {jobsOpen && jobRows.length > JOBS_PAGE && (
-          <button type="button" className="hm-more" onClick={() => setShowAllJobs((s) => !s)}>
-            {showAllJobs ? 'Show less' : `Show all ${jobRows.length} jobs`}
+        {isJobsTableOpen && jobRows.length > JOBS_PAGE_SIZE && (
+          <button type="button" className="hm-more" onClick={() => setIsShowingAllJobs((isShowing) => !isShowing)}>
+            {isShowingAllJobs ? 'Show less' : `Show all ${jobRows.length} jobs`}
           </button>
         )}
       </section>
@@ -414,11 +443,11 @@ export default function ManagerView({
 }
 
 /** "10:40" si terminó hoy; "yesterday" o la fecha si fue antes. */
-function finishedLabel(iso: string, today: Date): string {
-  const f = new Date(iso);
-  if (isNaN(f.getTime())) return '';
-  const days = Math.round((today.getTime() - startOfDay(f).getTime()) / 86400000);
-  if (days <= 0) return f.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  if (days === 1) return 'yesterday';
-  return formatDate(f);
+function getFinishedLabel(finishedIso: string, today: Date): string {
+  const finishedAt = new Date(finishedIso);
+  if (Number.isNaN(finishedAt.getTime())) return '';
+  const daysAgo = Math.round((today.getTime() - startOfDay(finishedAt).getTime()) / 86400000);
+  if (daysAgo <= 0) return finishedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (daysAgo === 1) return 'yesterday';
+  return formatDate(finishedAt);
 }

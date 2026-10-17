@@ -49,6 +49,9 @@ function hash(text: string): number {
 /** Color estable para un id (proyectos y avatares). */
 export const colorFor = (id: string): string => PALETTE[hash(id || '?') % PALETTE.length];
 
+/** "Sandy Martinez" → "Sandy" (si no hay espacio, el nombre completo). */
+export const getFirstName = (name: string): string => name.split(' ')[0] || name;
+
 /** Nombres cortos de varias personas: "Me, Sandy" o "Me, Sandy +2". */
 export function namesSummary(names: string[], maxShown = 2): string {
   const shown = names.slice(0, maxShown).join(', ');

@@ -131,6 +131,7 @@
   justify-content: center;
   gap: 8px;
 }
+.otl-empty.error { border-color: #fecaca; color: #b91c1c; }
 .otl-spin { animation: otl-spin 0.8s linear infinite; }
 @keyframes otl-spin { to { transform: rotate(360deg); } }
 

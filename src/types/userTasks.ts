@@ -29,13 +29,16 @@ export interface Repeat {
 
 /** Estado del visto bueno de una tarea:
  *  draft = necesita OK pero aún no se envía · pending = esperando la respuesta ·
- *  approved = aprobada · changes = pidieron cambios. */
-export type UserTaskApprovalStatus = 'draft' | 'pending' | 'approved' | 'changes';
+ *  approved = aprobada · changes_requested = pidieron cambios. */
+export type UserTaskApprovalStatus = 'draft' | 'pending' | 'approved' | 'changes_requested';
+
+/** Respuesta de quien da el visto bueno. */
+export type ApprovalDecision = Extract<UserTaskApprovalStatus, 'approved' | 'changes_requested'>;
 
 /** Map `approval` de una tarea (null = no necesita visto bueno). La tarea no se
  *  puede marcar hecha hasta que esté `approved`. */
 export interface UserTaskApproval {
-  status: UserTaskApprovalStatus; //    draft · pending · approved · changes
+  status: UserTaskApprovalStatus; //    draft · pending · approved · changes_requested
   approverUserId: string; //            FK → system_users: quién da el OK
   approverUserName: string; //          copia del nombre de quien aprueba
   requestedByUserId: string | null; //  FK → system_users: quién la envió
@@ -101,13 +104,19 @@ export interface LegacyTaskAssignee {
   assigneeUserName?: string; //         copia de su nombre
 }
 
+/** `approval` como puede estar guardado: hasta 10/2026 "pidieron cambios" se
+ *  guardaba como 'changes' (el service lo lee como 'changes_requested'). */
+export type StoredUserTaskApproval = Omit<UserTaskApproval, 'status'> & {
+  status: UserTaskApprovalStatus | 'changes';
+};
+
 /** Cómo está guardada una tarea en Firestore: sin `id` (es el del documento),
  *  con `assigneeUserIds` (los ids de `assignees`, solo para la consulta
- *  array-contains; lo arma el service) y, si es vieja, con la persona en el
- *  formato de antes. */
-export type StoredUserTask = Omit<UserTask, 'id' | 'assignees'>
+ *  array-contains; lo arma el service) y, si es vieja, con la persona y el
+ *  visto bueno en el formato de antes. */
+export type StoredUserTask = Omit<UserTask, 'id' | 'assignees' | 'approval'>
   & Partial<Pick<UserTask, 'assignees'>>
-  & { assigneeUserIds?: string[] }
+  & { approval: StoredUserTaskApproval | null; assigneeUserIds?: string[] }
   & LegacyTaskAssignee;
 
 /** Persona a la que se le puede asignar una tarea. */

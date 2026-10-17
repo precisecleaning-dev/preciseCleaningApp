@@ -12,7 +12,7 @@ import { formatDate } from '../../../utils/dateFormat';
 import type { TaskPatch } from '../../../services/userTasksService';
 import { lateLabel, ymdToDate } from '../opsDates';
 import {
-  DURATION_OPTIONS, REPEAT_OPTIONS, repeatValue, WEEKDAY_LETTERS, WEEKDAY_NAMES,
+  DURATION_OPTIONS, getFirstName, REPEAT_OPTIONS, repeatValue, WEEKDAY_LETTERS, WEEKDAY_NAMES,
 } from '../opsOptions';
 import AssigneePicker from './AssigneePicker';
 import OpsAvatar from './OpsAvatar';
@@ -21,37 +21,39 @@ interface TaskFieldsProps {
   task: Pick<UserTask,
     'status' | 'dueDate' | 'dueTime' | 'durationMinutes' | 'repeat' | 'priorityId' | 'assignees'
     | 'projectId' | 'projectTitle' | 'createdByUserId' | 'createdByUserName' | 'createdAt'>;
-  people: AssignableUser[];
+  assignableUsers: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
-  me: { id: string; name: string };
+  currentUser: { id: string; name: string };
   canEdit: boolean;
   /** Cambiar "Assignee" (las personas): quien la asignó (o Edit, si no es suya). */
   canReassign: boolean;
   onPatch: (patch: TaskPatch) => void;
 }
 
-const firstName = (name: string) => name.split(' ')[0];
-
-const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassign, onPatch }: TaskFieldsProps) => {
-  const handleRepeatChange = (freq: '' | RepeatFreq) => {
-    if (!freq) return onPatch({ repeat: null });
-    if (freq === 'weekly') {
-      const day = task.dueDate ? ymdToDate(task.dueDate).getDay() : new Date().getDay();
-      return onPatch({ repeat: { freq, days: [day] } });
+const TaskFields = ({
+  task, assignableUsers, projects, priorities, currentUser, canEdit, canReassign, onPatch,
+}: TaskFieldsProps) => {
+  const handleRepeatChange = (frequency: '' | RepeatFreq) => {
+    if (!frequency) return onPatch({ repeat: null });
+    if (frequency === 'weekly') {
+      const dueWeekday = task.dueDate ? ymdToDate(task.dueDate).getDay() : new Date().getDay();
+      return onPatch({ repeat: { freq: frequency, days: [dueWeekday] } });
     }
-    onPatch({ repeat: { freq } });
+    onPatch({ repeat: { freq: frequency } });
   };
 
   const handleToggleDay = (day: number) => {
-    const days = task.repeat?.days ?? [];
-    const nextDays = days.includes(day) ? days.filter((current) => current !== day) : [...days, day].sort();
+    const selectedDays = task.repeat?.days ?? [];
+    const nextDays = selectedDays.includes(day)
+      ? selectedDays.filter((selectedDay) => selectedDay !== day)
+      : [...selectedDays, day].sort((first, second) => first - second);
     if (nextDays.length === 0) return; // al menos un día
     onPatch({ repeat: { freq: 'weekly', days: nextDays } });
   };
 
-  const handleDueDateChange = (iso: string) => {
-    if (iso === '' || /^\d{4}-\d{2}-\d{2}$/.test(iso)) onPatch({ dueDate: iso });
+  const handleDueDateChange = (isoDate: string) => {
+    if (isoDate === '' || /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) onPatch({ dueDate: isoDate });
   };
 
   const handleAssigneesChange = (assignees: TaskAssignee[]) => onPatch({ assignees });
@@ -61,15 +63,18 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
     onPatch({ projectId: project?.id ?? null, projectTitle: project?.title ?? null });
   };
 
-  const late = task.status === 'open' ? lateLabel(task.dueDate) : '';
-  const priority = priorities.find((option) => option.id === task.priorityId);
-  const knownProject = !task.projectId || projects.some((project) => project.id === task.projectId);
-  const knownDuration = DURATION_OPTIONS.some((option) => option.value === task.durationMinutes);
-  const assignedByName = task.createdByUserId === me.id
-    ? `Me (${firstName(task.createdByUserName || me.name)})`
+  const overdueLabel = task.status === 'open' ? lateLabel(task.dueDate) : '';
+  const selectedPriority = priorities.find((option) => option.id === task.priorityId);
+  const isKnownProject = !task.projectId || projects.some((project) => project.id === task.projectId);
+  const isKnownDuration = DURATION_OPTIONS.some((option) => option.value === task.durationMinutes);
+  const selectedDayCount = task.repeat?.days?.length ?? 0;
+  const assignedByLabel = task.createdByUserId === currentUser.id
+    ? `Me (${getFirstName(task.createdByUserName || currentUser.name)})`
     : task.createdByUserName || '—';
-  const assigneeNames = task.assignees
-    .map((assignee) => (assignee.userId === me.id ? `Me (${firstName(assignee.userName || me.name)})` : assignee.userName))
+  const assigneesLabel = task.assignees
+    .map((assignee) => (assignee.userId === currentUser.id
+      ? `Me (${getFirstName(assignee.userName || currentUser.name)})`
+      : assignee.userName))
     .join(', ') || '—';
   const firstAssignee = task.assignees[0] ?? { userId: '', userName: '' };
 
@@ -81,7 +86,7 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
           <label className="task-panel-field">
             <span className="task-panel-field-lbl">Repeat</span>
             <select className="task-panel-input" value={repeatValue(task.repeat)} disabled={!canEdit}
-              onChange={(e) => handleRepeatChange(e.target.value as '' | RepeatFreq)}>
+              onChange={(event) => handleRepeatChange(event.target.value as '' | RepeatFreq)}>
               {REPEAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
@@ -92,31 +97,32 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
               value={task.dueTime}
               disabled={!canEdit}
               aria-label="Time"
-              onChange={(hm) => onPatch({ dueTime: hm })}
+              onChange={(time) => onPatch({ dueTime: time })}
             />
           </label>
           <label className="task-panel-field">
             <span className="task-panel-field-lbl">How long</span>
             <select className="task-panel-input" value={task.durationMinutes} disabled={!canEdit}
-              onChange={(e) => onPatch({ durationMinutes: Number(e.target.value) })}>
-              {!knownDuration && <option value={task.durationMinutes}>{task.durationMinutes} min</option>}
+              onChange={(event) => onPatch({ durationMinutes: Number(event.target.value) })}>
+              {!isKnownDuration && <option value={task.durationMinutes}>{task.durationMinutes} min</option>}
               {DURATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
         </div>
         {task.repeat?.freq === 'weekly' && (
           <div className="task-panel-days" role="group" aria-label="Repeat on">
-            {WEEKDAY_LETTERS.map((letter, day) => {
-              const isOn = !!task.repeat?.days?.includes(day);
+            {WEEKDAY_LETTERS.map((letter, weekdayIndex) => {
+              const isSelected = !!task.repeat?.days?.includes(weekdayIndex);
+              const isLastSelected = isSelected && selectedDayCount === 1;
               return (
                 <button
-                  key={WEEKDAY_NAMES[day]}
+                  key={WEEKDAY_NAMES[weekdayIndex]}
                   type="button"
-                  className={`task-panel-day${isOn ? ' on' : ''}`}
-                  aria-pressed={isOn}
-                  aria-label={WEEKDAY_NAMES[day]}
-                  disabled={!canEdit}
-                  onClick={() => handleToggleDay(day)}
+                  className={`task-panel-day${isSelected ? ' selected' : ''}`}
+                  aria-pressed={isSelected}
+                  aria-label={WEEKDAY_NAMES[weekdayIndex]}
+                  disabled={!canEdit || isLastSelected}
+                  onClick={() => handleToggleDay(weekdayIndex)}
                 >
                   {letter}
                 </button>
@@ -139,16 +145,16 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
                 onChange={handleDueDateChange}
               />
             </span>
-            {late && <span className="task-panel-late">{late}</span>}
+            {overdueLabel && <span className="task-panel-late">{overdueLabel}</span>}
           </dd>
         </div>
         <div className="task-panel-prop">
           <dt>Priority</dt>
           <dd className="task-panel-with-dot">
-            <span className={`task-panel-dot${priority ? '' : ' none'}`}
-              style={{ '--dot-color': priority?.color || '#cbd5e1' } as CSSProperties} />
+            <span className={`task-panel-dot${selectedPriority ? '' : ' none'}`}
+              style={{ '--dot-color': selectedPriority?.color || '#cbd5e1' } as CSSProperties} />
             <select className="slim task-panel-input" value={task.priorityId ?? ''} disabled={!canEdit}
-              onChange={(e) => onPatch({ priorityId: e.target.value || null })}>
+              onChange={(event) => onPatch({ priorityId: event.target.value || null })}>
               <option value="">None</option>
               {priorities.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
@@ -159,7 +165,7 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
           <dt>Assigned by</dt>
           <dd className="task-panel-with-dot">
             <OpsAvatar id={task.createdByUserId} name={task.createdByUserName} size="sm" />
-            <span className="task-panel-readonly">{assignedByName}</span>
+            <span className="task-panel-readonly">{assignedByLabel}</span>
             {task.createdAt && <span className="task-panel-readonly-sub">{formatDate(task.createdAt)}</span>}
           </dd>
         </div>
@@ -170,14 +176,14 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
             {canReassign ? (
               <AssigneePicker
                 assignees={task.assignees}
-                assignableUsers={people}
-                currentUserId={me.id}
+                assignableUsers={assignableUsers}
+                currentUserId={currentUser.id}
                 label="Assignee"
                 onAssigneesChange={handleAssigneesChange}
               />
             ) : (
               // Se la asignó otra persona: no la puede pasar a alguien más.
-              <span className="task-panel-readonly">{assigneeNames}</span>
+              <span className="task-panel-readonly">{assigneesLabel}</span>
             )}
           </dd>
         </div>
@@ -185,9 +191,9 @@ const TaskFields = ({ task, people, projects, priorities, me, canEdit, canReassi
           <dt>Project</dt>
           <dd>
             <select className="slim task-panel-input" value={task.projectId ?? ''} disabled={!canEdit}
-              onChange={(e) => handleProjectChange(e.target.value)}>
+              onChange={(event) => handleProjectChange(event.target.value)}>
               <option value="">No project</option>
-              {!knownProject && <option value={task.projectId ?? ''}>{task.projectTitle || '—'}</option>}
+              {!isKnownProject && <option value={task.projectId ?? ''}>{task.projectTitle || '—'}</option>}
               {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
             </select>
           </dd>

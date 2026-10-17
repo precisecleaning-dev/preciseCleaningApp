@@ -150,9 +150,9 @@
   font-weight: 800;
   cursor: pointer;
 }
-.task-panel-day.on { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.task-panel-day.selected { background: #6d28d9; border-color: #6d28d9; color: #fff; }
 .task-panel-day:hover:not(:disabled) { border-color: #6d28d9; }
-.task-panel-day.on:hover:not(:disabled) { background: #5b21b6; }
+.task-panel-day.selected:hover:not(:disabled) { background: #5b21b6; }
 .task-panel-day:disabled { cursor: default; opacity: 0.7; }
 
 /* ---- Datos ---- */
@@ -353,7 +353,7 @@
   background: #f5f3ff;
 }
 .task-panel-approval.approved { border-color: #bbf7d0; background: #f0fdf4; }
-.task-panel-approval.changes { border-color: #fecaca; background: #fef2f2; }
+.task-panel-approval.changes_requested { border-color: #fecaca; background: #fef2f2; }
 .task-panel-approval-title {
   margin: 0;
   font-size: 11px;
@@ -363,7 +363,7 @@
   color: #5b21b6;
 }
 .task-panel-approval.approved .task-panel-approval-title { color: #15803d; }
-.task-panel-approval.changes .task-panel-approval-title { color: #b91c1c; }
+.task-panel-approval.changes_requested .task-panel-approval-title { color: #b91c1c; }
 .task-panel-approval-hint { margin: 0; font-size: 13px; color: #475569; }
 .task-panel-approval-state { margin: 0; font-size: 13px; color: #334155; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .task-panel-approval-state.ok { color: #15803d; }

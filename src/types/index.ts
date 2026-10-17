@@ -330,7 +330,7 @@ export type YmdDate = string;
 export type IsoDateTime = string;
 
 /** user_priorities/{userId} — Top 3 de proyectos de cada gerente. */
-export interface OpsPriorities {
+export interface UserPriorities {
   id: string; //                        PK · FK = id del gerente en system_users
   projectIds: string[]; //              FK → task_projects (máximo 3, en orden)
   updatedAt: IsoDateTime; //            última vez que cambió el top 3

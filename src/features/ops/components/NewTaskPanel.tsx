@@ -6,7 +6,9 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type { AssignableUser, Priority, TaskAssignee, TaskProject } from '../../../types/index';
-import { draftApproval, type TaskInput, type TaskPatch } from '../../../services/userTasksService';
+import {
+  DEFAULT_DURATION_MINUTES, draftApproval, MAX_TITLE_LENGTH, type TaskInput, type TaskPatch,
+} from '../../../services/userTasksService';
 import { todayIso } from '../../../utils/dateFormat';
 import TaskDrawer from './TaskDrawer';
 import TaskFields from './TaskFields';
@@ -33,22 +35,22 @@ const NewTaskPanel = ({
     assignees: [defaultAssignee],
     dueDate: todayIso(),
     dueTime: '',
-    durationMinutes: 30,
+    durationMinutes: DEFAULT_DURATION_MINUTES,
     priorityId: null,
     projectId: null,
     projectTitle: null,
     repeat: null,
   }));
-  const [approverId, setApproverId] = useState('');
+  const [approverUserId, setApproverUserId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const handlePatch = (patch: TaskPatch) => setDraft((current) => ({ ...current, ...patch }));
+  const updateDraft = (patch: TaskPatch) => setDraft((current) => ({ ...current, ...patch }));
 
   const handleCreate = async () => {
     const title = draft.title.trim();
     if (!title || isSaving) return;
     setIsSaving(true);
-    const approver = approvers.find((person) => person.id === approverId);
+    const approver = approvers.find((person) => person.id === approverUserId);
     try {
       // onCreate (useTaskActions.add) avisa con un alert si no se pudo guardar.
       const wasCreated = await onCreate({
@@ -69,7 +71,7 @@ const NewTaskPanel = ({
   };
 
   // TaskFields muestra "Assigned by": quien crea la tarea, sin fecha todavía.
-  const fieldsTask = {
+  const taskPreview = {
     ...draft,
     status: 'open' as const,
     createdByUserId: me.id,
@@ -78,7 +80,7 @@ const NewTaskPanel = ({
   };
   const canCreate = !!draft.title.trim() && !isSaving;
 
-  const footer = (
+  const footerActions = (
     <>
       <button type="button" className="ghost task-panel-btn" onClick={onClose} disabled={isSaving}>
         Cancel
@@ -90,27 +92,33 @@ const NewTaskPanel = ({
   );
 
   return (
-    <TaskDrawer kicker="New task" ariaLabel="New task" initialFocusRef={titleRef} footer={footer} onClose={onClose}>
+    <TaskDrawer
+      headerLabel="New task"
+      ariaLabel="New task"
+      initialFocusRef={titleRef}
+      footerActions={footerActions}
+      onClose={onClose}
+    >
       <input
         ref={titleRef}
         className="task-panel-title"
         value={draft.title}
         placeholder="What needs to get done?"
         aria-label="Task title"
-        maxLength={200}
-        onChange={(e) => handlePatch({ title: e.target.value })}
+        maxLength={MAX_TITLE_LENGTH}
+        onChange={(event) => updateDraft({ title: event.target.value })}
         onKeyDown={handleTitleKeyDown}
       />
 
       <TaskFields
-        task={fieldsTask}
-        people={people}
+        task={taskPreview}
+        assignableUsers={people}
         projects={projects}
         priorities={priorities}
-        me={me}
+        currentUser={me}
         canEdit
         canReassign
-        onPatch={handlePatch}
+        onPatch={updateDraft}
       />
 
       <section className="task-panel-approval" aria-label="Approval">
@@ -118,7 +126,8 @@ const NewTaskPanel = ({
         <p className="task-panel-approval-hint">Who needs to OK this before it&apos;s done? (e.g. a social media post)</p>
         <label className="task-panel-approval-for">
           <span>For</span>
-          <select className="slim task-panel-input" value={approverId} onChange={(e) => setApproverId(e.target.value)}
+          <select className="slim task-panel-input" value={approverUserId}
+            onChange={(event) => setApproverUserId(event.target.value)}
             aria-label="Who approves">
             <option value="">No approval needed</option>
             {approvers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}

@@ -2689,5 +2689,33 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Crear: `NewTaskPanel` (borrador local, se guarda con "Add task"); comparte `TaskDrawer` (marco) y
   `TaskFields` (campos) con `TaskPanel`. Si elige quién aprueba, la tarea nace con el visto bueno
   "por enviar" (`draftApproval`), como la casilla "Needs OK" de antes.
-- **Pendiente:** el top 3 (`user_priorities`) ya no tiene pantalla, pero siguen `usePriorities`,
-  `savePriorities`, `prioritiesService`, el tipo `OpsPriorities` y su regla. Decidir si se borran.
+- **Pendiente:** el top 3 (`user_priorities`) ya no tiene pantalla, pero siguen `useTopProjectIds`
+  (antes `usePriorities`), `savePriorities`, `prioritiesService`, el tipo `UserPriorities` (antes
+  `OpsPriorities`) y su regla. Decidir si se borran.
+- Review del PR: `userTasksService.create`/`update` validan el título (no vacío, ≤ `MAX_TITLE_LENGTH`)
+  y la duración (entero ≥ 0) con `assertValidTaskFields`; la pantalla ya los limita, pero el service
+  es la última puerta antes de Firestore. `MAX_TITLE_LENGTH` y `DEFAULT_DURATION_MINUTES` viven en el
+  service y los usan los paneles. Las reglas propuestas todavía no validan el título (pendiente).
+- Review del PR: el visto bueno "pidieron cambios" ahora se guarda como `approval.status =
+  'changes_requested'` (antes `'changes'`); tipo `ApprovalDecision` en `types/userTasks.ts`. Sin
+  migración: el converter (`toApproval` en `userTasksService`) lee `'changes'` como `'changes_requested'`.
+  No quitarlo mientras haya tareas viejas con `'changes'`. Las clases CSS siguen el valor
+  (`.changes_requested` en TaskPanel.css y TaskRow.css).
+- Review del PR (TaskListView): en "Waiting for your OK" la fila va sin `onMarkDone` (TaskRow no
+  dibuja la casilla): quien da el visto bueno abre la tarea y aprueba o pide cambios, no la cierra.
+  `useLiveTask` devuelve `loaded`: si la tarea abierta se borró o no se pudo leer, la vista avisa
+  ("This task was deleted." / "Could not open the task…") en vez de dejar `selectedTaskId` apuntando
+  a nada. No avisa mientras se borra desde el mismo panel (`actions.busyId === selectedTaskId`): el
+  listener la ve borrada antes de que termine `remove`. El error del panel ya no reemplaza la lista.
+- Review del PR (Manager): el "Pass" rápido ya no escribe `quality_checks` desde la vista. Hace lo
+  mismo que el resultado "Invoice" de la inspección completa (decisión de Omar, 10/2026): en un batch
+  (`qualityChecks.saveBatch` + `addStatusChange`) el reporte (`outcome: 'invoice'`, `quickPass: true`,
+  fecha con `todayIso()`), la casa a "Quality Check" salvo que ya esté en Invoice, `invoiceHold: false`
+  si estaba retenida y su `status_history`. Antes solo creaba el reporte y la casa no cambiaba de
+  status (las métricas de status_history no lo veían). ManagerView ya no importa firebase/firestore.
+- Review del PR (Owner): se quitaron "Updated …" y el botón "Refresh" del resumen (decisión de Omar):
+  solo cambiaban la hora mostrada; los datos ya llegan en vivo. "% vs. mes anterior" compara contra el
+  mismo día del mes anterior topado a los días que tuvo (antes topado a 28: del 29 al 31 salía
+  inflado). El filtro por persona vuelve a "All" en el render si la persona ya no está en los chips.
+  Sin `eslint-disable` de exhaustive-deps: los periodos salen de un `useMemo([now])` (`now` es estado
+  de `useHomeData`) y `fin.sum` se pasa como dependencia (cambia cuando llegan billingServices/payroll).

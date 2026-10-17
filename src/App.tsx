@@ -616,7 +616,7 @@ export default function App() {
                 currentUser={effectiveUser}
                 activeRole={activeRole}
                 isSuperAdmin={isSuperAdmin}
-                onInspect={handleCheckHouse}
+                onOpenInspection={handleCheckHouse}
                 onOpenHouseDetail={openHouseDetail}
                 onOpenHouseEdit={openHouseEdit}
               />

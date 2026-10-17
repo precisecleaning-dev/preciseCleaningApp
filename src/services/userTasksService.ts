@@ -33,7 +33,7 @@ import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  Repeat, StoredUserTask, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  ApprovalDecision, Repeat, StoredUserTask, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
@@ -51,6 +51,13 @@ const assigneeFields = (assignees: TaskAssignee[]): Pick<StoredUserTask, 'assign
   assigneeUserIds: assignees.map((assignee) => assignee.userId),
 });
 
+/** El visto bueno guardado, con "pidieron cambios" en el formato actual
+ *  ('changes' hasta 10/2026 → 'changes_requested'). */
+const toApproval = (approval: StoredUserTask['approval']): UserTaskApproval | null => {
+  if (!approval) return null;
+  return { ...approval, status: approval.status === 'changes' ? 'changes_requested' : approval.status };
+};
+
 /** Como typedConverter (el id es el del documento), y además escribe
  *  `assigneeUserIds` y lee la persona del formato viejo (assigneeUserId) como
  *  `assignees`: el resto de la app solo ve `assignees`. */
@@ -62,7 +69,7 @@ const userTaskConverter: FirestoreDataConverter<UserTask, StoredUserTask> = {
   fromFirestore(snap: QueryDocumentSnapshot): UserTask {
     const { assigneeUserId, assigneeUserName, assigneeUserIds: _assigneeUserIds, ...data } = snap.data() as StoredUserTask;
     const legacyAssignees = assigneeUserId ? [{ userId: assigneeUserId, userName: assigneeUserName ?? '' }] : [];
-    return { ...data, id: snap.id, assignees: data.assignees ?? legacyAssignees };
+    return { ...data, id: snap.id, assignees: data.assignees ?? legacyAssignees, approval: toApproval(data.approval) };
   },
 };
 
@@ -73,10 +80,10 @@ export const userTaskRef = (taskId: string): DocumentReference<UserTask, StoredU
   doc(db, COLLECTIONS.userTasks, taskId).withConverter(userTaskConverter);
 
 /** Campo de la persona en el formato viejo (para escuchar las tareas de antes). */
-export const LEGACY_ASSIGNEE_FIELD = 'assigneeUserId';
+export const LEGACY_ASSIGNEE_FIELD = 'assigneeUserId' as const;
 
 /** Borra la persona del formato viejo (va junto con las listas nuevas). */
-const DROP_LEGACY_ASSIGNEE = { assigneeUserId: deleteField(), assigneeUserName: deleteField() };
+const DROP_LEGACY_ASSIGNEE = { [LEGACY_ASSIGNEE_FIELD]: deleteField(), assigneeUserName: deleteField() };
 
 /** Carpeta de Storage de los adjuntos de una tarea. La hora va delante para
  *  que dos archivos con el mismo nombre no se pisen. */
@@ -120,6 +127,28 @@ type UserTaskFilters = Partial<Pick<UserTask, 'status' | 'createdByUserId' | 'pr
 // Ayudas internas
 // ---------------------------------------------------------------------------
 const nowIso = () => new Date().toISOString();
+
+/** Largo máximo del título de una tarea (lo usan el campo del panel y la validación de abajo). */
+export const MAX_TITLE_LENGTH = 200;
+
+/** Duración con la que se propone una tarea nueva, en minutos. */
+export const DEFAULT_DURATION_MINUTES = 30;
+
+/** Revisa el título y la duración antes de escribir. La pantalla ya los
+ *  limita, pero el service es la última puerta antes de Firestore. */
+function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durationMinutes'>>): void {
+  if (fields.title !== undefined) {
+    const title = fields.title.trim();
+    if (!title) throw new Error('La tarea necesita un título.');
+    if (title.length > MAX_TITLE_LENGTH) {
+      throw new Error(`El título no puede pasar de ${MAX_TITLE_LENGTH} caracteres.`);
+    }
+  }
+  if (fields.durationMinutes !== undefined) {
+    const isValidDuration = Number.isInteger(fields.durationMinutes) && fields.durationMinutes >= 0;
+    if (!isValidDuration) throw new Error('La duración debe ser un número entero de minutos (0 = no aplica).');
+  }
+}
 
 /** Lo que una tarea aporta a los contadores de su proyecto. */
 const contribution = (t: Pick<UserTask, 'status' | 'durationMinutes'>): Required<ProjectCounterDelta> => ({
@@ -183,6 +212,7 @@ export const userTasksService = {
   /** Crea una tarea abierta y suma 1 tarea (y sus minutos) a su proyecto.
    *  Devuelve el id nuevo. */
   async create(input: TaskInput, actor: Actor, known: KnownProjects): Promise<string> {
+    assertValidTaskFields(input);
     const taskRef = doc(userTasksCol);
     const batch = writeBatch(db);
     batch.set(taskRef, { ...newTaskData(input, actor), id: taskRef.id });
@@ -195,6 +225,7 @@ export const userTasksService = {
    *  proyecto o la duración. `task` es la versión en vivo. Si cambian las
    *  personas, borra también el formato viejo (una sola persona). */
   async update(task: UserTask, patch: TaskPatch, known: KnownProjects): Promise<void> {
+    assertValidTaskFields(patch);
     const batch = writeBatch(db);
     const changes = patch.assignees
       ? { ...patch, ...assigneeFields(patch.assignees), ...DROP_LEGACY_ASSIGNEE }
@@ -301,10 +332,10 @@ export const userTasksService = {
   },
 
   /** Respuesta de quien aprueba: OK o pedir cambios (con nota). */
-  async decideApproval(task: UserTask, decision: 'approved' | 'changes', note: string, actor: Actor): Promise<void> {
+  async decideApproval(task: UserTask, decision: ApprovalDecision, note: string, actor: Actor): Promise<void> {
     if (!task.approval) return;
     await updateDoc(userTaskRef(task.id), {
-      approval: { ...task.approval, status: decision, decidedAt: nowIso(), note: decision === 'changes' ? note : '' },
+      approval: { ...task.approval, status: decision, decidedAt: nowIso(), note: decision === 'changes_requested' ? note : '' },
       comments: arrayUnion(
         commentEntry(decision === 'approved' ? 'Approved.' : `Asked for changes${note ? `: ${note}` : '.'}`, actor),
       ),

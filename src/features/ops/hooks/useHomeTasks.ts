@@ -7,15 +7,15 @@ import { useMemo } from 'react';
 import type { Role, SystemUser } from '../../../types/index';
 import { useLiveCollection } from '../../../shared/data/liveCollections';
 import { canViewTaskList, taskListRights, userName } from '../opsPermissions';
-import { EVERYONE, useOpenTasks } from './useOpsData';
+import { ALL_USERS, useOpenTasks } from './useOpsData';
 import { useTaskActions } from './useTaskActions';
 
 export function useHomeTasks(me: SystemUser | null, role: Role | null | undefined, isSuperAdmin: boolean) {
   const canView = canViewTaskList(role, isSuperAdmin);
   const rights = taskListRights(role, isSuperAdmin);
   const meId = me?.id || '';
-  const source = canView && meId ? (rights.seesAll ? EVERYONE : meId) : null;
-  const { tasks, loaded } = useOpenTasks(source);
+  const source = canView && meId ? (rights.seesAll ? ALL_USERS : meId) : null;
+  const { tasks, loaded, error } = useOpenTasks(source);
   // Los proyectos hacen falta para ajustar sus contadores al marcar o borrar.
   const { data: projects } = useLiveCollection('taskProjects', canView);
   const known = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
@@ -28,5 +28,5 @@ export function useHomeTasks(me: SystemUser | null, role: Role | null | undefine
       || a.title.localeCompare(b.title)),
     [tasks],
   );
-  return { canView, rights, tasks: sorted, loaded, actions };
+  return { canView, rights, tasks: sorted, loaded, error, actions };
 }
