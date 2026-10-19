@@ -13,6 +13,7 @@
 .ops-row.daily { border-left-color: #0d9488; }
 .ops-row.today { border-left-color: #2546d8; }
 .ops-row.overdue { border-left-color: #dc2626; }
+.ops-row.done { border-left-color: #15803d; }
 .ops-row:hover { box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06); }
 .ops-row.selected { border-color: #93a5f5; box-shadow: 0 0 0 3px rgba(37, 70, 216, 0.12); }
 .ops-row.selected.overdue { border-left-color: #dc2626; }
@@ -77,6 +78,8 @@
 .ops-meta-from { color: #5b6475; }
 .ops-meta-due { font-weight: 600; }
 .ops-meta-due.late { color: #dc2626; }
+/* Pestaña Done: cuándo se marcó hecha. */
+.ops-meta-done { color: #15803d; font-weight: 600; }
 .ops-meta-count { display: inline-flex; align-items: center; gap: 3px; color: #64748b; }
 
 .ops-badge {

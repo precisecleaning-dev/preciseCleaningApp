@@ -1,4 +1,4 @@
-/* "Repeat" de una tarea (TaskRepeatPicker.tsx): frecuencia, días y cuántas veces */
+/* "Repeat" de una tarea (TaskRepeatPicker.tsx): No / Yes, Every day o Every day except y sus días */
 .task-repeat { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 
 .task-repeat-days { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -21,9 +21,9 @@
 .task-repeat-day.selected { background: #6d28d9; border-color: #6d28d9; color: #fff; }
 .task-repeat-day.selected:hover:not(:disabled) { background: #5b21b6; }
 
-.task-repeat-ends { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
-.task-repeat-ends > .task-panel-field-lbl { margin-right: 4px; }
-.task-repeat-end {
+.task-repeat-options { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+.task-repeat-options > .task-panel-field-lbl { margin-right: 4px; }
+.task-repeat-option {
   background: #fff;
   border: 1px solid #d5dbe6;
   border-radius: 999px;
@@ -34,9 +34,7 @@
   min-height: 32px;
   padding: 0 12px;
 }
-.task-repeat-end:disabled { cursor: default; opacity: 0.7; }
-.task-repeat-end:hover:not(:disabled) { border-color: #6d28d9; }
-.task-repeat-end.selected { background: #ede9fe; border-color: #6d28d9; color: #5b21b6; }
-/* Más específico que .task-panel-input (width: 100%). */
-.task-repeat-ends .task-repeat-times { flex: 0 0 auto; width: 76px; }
-.task-repeat-times-lbl { color: #5b6475; font-size: 13px; font-weight: 600; }
+.task-repeat-option:disabled { cursor: default; opacity: 0.7; }
+.task-repeat-option:hover:not(:disabled) { border-color: #6d28d9; }
+.task-repeat-option.selected { background: #ede9fe; border-color: #6d28d9; color: #5b21b6; }
+.task-repeat-option.selected:disabled { opacity: 1; }

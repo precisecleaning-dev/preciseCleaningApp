@@ -2843,3 +2843,68 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
     cargada (si no, se creaba un checklist nuevo que tapaba al anterior). Con el checklist en caché y
     sin red, Guardar deja el cambio en espera (Firestore lo sube solo), avisa y cierra el modal.
   · HouseForm sin red: `addDoc` espera la señal y guarda una sola vez (no se tocó).
+- Task list · pestaña "Done" (pedido de Omar, 10/2026): las hechas NO se escuchan en vivo (su historial
+  crece sin fin); `userTasksService.getDonePage` las pide por páginas de 20 (status == done, orderBy
+  doneAt desc, startAfter) solo con la pestaña abierta (`useDoneTasks`). Pide 3 índices compuestos de
+  `user_tasks` (en security/firestore.indexes.json): assigneeUserIds CONTAINS + status + doneAt,
+  createdByUserId + status + doneAt y status + doneAt. **Pendiente:** crearlos en la consola de
+  Firebase; sin ellos la pestaña dice "Could not load the done tasks" (el link para crearlos sale en
+  la consola del navegador). Las tareas viejas de una sola persona (assigneeUserId) o sin doneAt no
+  salen. Reabrir una desde el panel vuelve a pedir la primera página.
+- Task list · "My projects": los proyectos activos que la persona tiene a cargo Y aquellos donde tiene
+  tareas abiertas asignadas o que asignó (decisión de Omar, 10/2026).
+- Menú · círculo de "Task List" (`useTaskListBadgeCount` en App.tsx): tareas abiertas asignadas a la
+  persona (effectiveUser) + las que esperan su OK, sin repetir. Usa las mismas consultas que la vista
+  (el SDK las comparte). Solo si el rol puede ver Task List.
+- Task list · pestañas (pedido de Omar, 10/2026; `features/ops/taskListTabs.ts`): Overdue, Daily (las
+  que vencen HOY, también las que se repiten), Needs Approval (las que espero aprobar yo + las de la
+  lista que esperan un OK: por enviar, enviadas o con cambios), This week, Later, No date, ALL (todas
+  las abiertas de la lista por `createdAt` desc) y Done. Las que no tienen tareas no se ven (ALL y Done
+  siempre). El orden es uno para todos y lo cambia quien tiene Edit en Task List:
+  `app_settings/task_list_tabs` (`taskListTabsService`, `useTaskListTabOrder`; regla en
+  security/firestore.rules). **Pendiente:** publicar esa regla en la consola de Firebase; sin ella,
+  guardar el orden da "permission-denied" y la lista sigue con el orden de fábrica.
+- Task list · diarias: una tarea que se repite ("Every day" / "Every day except") vence el día que
+  toca. Al completarla se crea la siguiente con la fecha siguiente y NO sale en las pendientes (ni en
+  el círculo del menú ni en Owner/Manager) hasta ese día (`isUpcomingDailyRepeat`); en ALL y en el
+  calendario sí. Activar Repeat en una tarea sin fecha le pone hoy.
+- Task list · Repeat Sí/No: "Every day except" se guarda como `freq: 'weekly'` con los días que SÍ
+  tocan (no se agregó otra frecuencia: así `nextOccurrence` y las versiones viejas de la app siguen
+  funcionando). Las viejas 'weekdays' se leen "except Sat, Sun"; las 'monthly' dicen "Every month"
+  hasta que alguien las cambie; las viejas con fin (`timesLeft`) siguen contando hasta editarlas
+  ("Ends" se quitó de la pantalla).
+- Proyectos: "New project" abre solo el formulario (sin la lista) con las tareas que se crean junto con
+  el proyecto en UN batch (`userTasksService.createProjectWithTasks`: el proyecto nace con sus
+  contadores sumados, sin `increment()`, máx. 50 tareas). Esas tareas van sin fecha. El botón
+  "Projects" sigue abriendo la lista (editar, archivar, borrar).
+- Proyectos · ventana de tareas (clic en la tarjeta): con Scope "All" escucha `projectId == x &&
+  status == open` (solo igualdades, sin índice compuesto); con "Own" las reglas rechazan esa consulta,
+  así que muestra las que la persona ya tiene cargadas. Mientras hay una tarea abierta la ventana se
+  esconde (el panel de la tarea está debajo de los modales) y vuelve al cerrarla.
+- Task list · calendario: tocar un día filtra la lista (tareas cargadas, asignadas y dadas a otros,
+  igual que los puntos del calendario, sin importar "Assigned to/by") y los proyectos (con tareas ese
+  día o que vencen ese día).
+- Task list · orden (pedido de Omar, 10/2026): TODAS las pestañas, la ventana del proyecto y el filtro del
+  calendario van con la tarea más reciente arriba (`compareByNewest`: `createdAt` desc, fecha y hora).
+  Done va por `doneAt` desc. `compareByDue` queda solo para la "Next" de la tarjeta del proyecto.
+- Proyectos · ventana de tareas: muestra TODAS las abiertas del proyecto, también las diarias de otro
+  día (si no, un proyecto "4/5 done" decía "no pending tasks").
+- Task list · Done por páginas: se ve una página de 20 a la vez (Previous / Next, `useDoneTasks`); las ya
+  leídas se guardan para volver atrás sin pedirlas otra vez. Si Firestore rechaza la consulta, la
+  pestaña dice el motivo por su `code` (failed-precondition = falta el índice, con el link para
+  crearlo; permission-denied = reglas; sin red) y "Try again", en vez de "Check your connection".
+- Task list · ALL va SIEMPRE primero (pedido de Omar, 10/2026): `normalizeTabOrder` lo pone al inicio
+  aunque el orden guardado diga otra cosa y en la ventana de orden su fila no se mueve.
+- Menú contraído: sin el círculo de pendientes de Task List (pedido de Omar).
+- Proyectos · permisos: módulo "Projects" en Roles (View = ver "My projects" y la lista, Add = crear,
+  Edit = editar/archivar, Delete = borrar). Un rol que NO lo declara lo hereda de Task List (View de
+  Task List; Add y Edit = Edit de Task List; Delete = Delete de Task List), igual en la app
+  (`taskProjectRights`), en Roles (se muestra lo heredado para que guardar no quite nada) y en las
+  reglas (`functions/src/userAccess.ts` arma `m.Projects`). **Pendiente:** desplegar la función que
+  arma `user_access` y publicar la regla de `task_projects`; hasta entonces las reglas de la consola
+  siguen con las de antes.
+- Proyectos · borrar: el bote se ve siempre con Delete. Un proyecto con tareas se borra y sus tareas
+  (abiertas y hechas) quedan sin proyecto (`userTasksService.deleteProjectKeepingTasks`, decisión de
+  Omar, 10/2026). Necesita Scope "All" (con "Own" las reglas no dejan pedir las tareas de otros).
+- Projects (lista): pestañas Active · Done · Archived y botón para ver las tareas de cada proyecto
+  (también de los archivados).

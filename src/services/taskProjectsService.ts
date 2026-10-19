@@ -58,6 +58,8 @@ export interface ProjectCounterDelta {
   openMinutes?: number;
 }
 
+const NO_COUNTERS: Required<ProjectCounterDelta> = { taskCount: 0, doneCount: 0, openMinutes: 0 };
+
 /** Ids de los proyectos que existen (lista en vivo). */
 export type KnownProjects = ReadonlySet<string>;
 
@@ -74,25 +76,33 @@ export function bumpProjectCounters(
   if (Object.keys(data).length > 0) batch.update(taskProjectRef(projectId), data);
 }
 
+/** Referencia para un proyecto nuevo (el id lo pone Firestore). */
+export const newProjectRef = (): DocumentReference<TaskProject> => doc(taskProjectsCol);
+
+/** Datos de un proyecto nuevo, sin comentarios. `counters` = lo que ya suman
+ *  las tareas que se crean con él en el mismo batch (sin tareas, todo en cero). */
+export const buildNewProject = (
+  projectId: string, input: ProjectInput, actor: ProjectActor, counters: Required<ProjectCounterDelta> = NO_COUNTERS,
+): TaskProject => ({
+  ...input,
+  id: projectId,
+  repeat: null,
+  ...counters,
+  comments: [],
+  doneAt: input.status === 'done' ? nowIso() : null,
+  createdByUserId: actor.id,
+  createdAt: nowIso(),
+});
+
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 export const taskProjectsService = {
-  /** Crea un proyecto con contadores en cero y sin comentarios. Devuelve su id. */
+  /** Crea un proyecto con contadores en cero y sin comentarios. Devuelve su id.
+   *  (Con tareas desde el inicio: userTasksService.createProjectWithTasks.) */
   async create(input: ProjectInput, actor: ProjectActor): Promise<string> {
-    const projectRef = doc(taskProjectsCol);
-    await setDoc(projectRef, {
-      ...input,
-      id: projectRef.id,
-      repeat: null,
-      taskCount: 0,
-      doneCount: 0,
-      openMinutes: 0,
-      comments: [],
-      doneAt: input.status === 'done' ? nowIso() : null,
-      createdByUserId: actor.id,
-      createdAt: nowIso(),
-    });
+    const projectRef = newProjectRef();
+    await setDoc(projectRef, buildNewProject(projectRef.id, input, actor));
     return projectRef.id;
   },
 
@@ -109,9 +119,10 @@ export const taskProjectsService = {
     });
   },
 
-  /** Solo se borra un proyecto SIN tareas (los demás se archivan). */
+  /** Borra un proyecto SIN tareas. Con tareas: userTasksService.deleteProjectKeepingTasks
+   *  (sus tareas quedan sin proyecto). */
   async delete(project: TaskProject): Promise<void> {
-    if ((project.taskCount || 0) > 0) throw new Error('El proyecto tiene tareas: archívalo en vez de borrarlo.');
+    if ((project.taskCount || 0) > 0) throw new Error('El proyecto tiene tareas: usa userTasksService.deleteProjectKeepingTasks.');
     await deleteDoc(taskProjectRef(project.id));
   },
 

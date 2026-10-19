@@ -104,6 +104,16 @@ export function shortTime(hourMinute: string): string {
   return `${hours % 12 || 12}${minutes === '00' ? '' : `:${minutes}`} ${hours < 12 ? 'AM' : 'PM'}`;
 }
 
+// Duración en minutos para mostrar: 90 → "1 h 30 min"; 15 → "15 min"; 120 → "2 h".
+// Sin valor o negativa → "0 min". (La usa el campo "Duration" del Task list.)
+export function formatDuration(durationMinutes: number): string {
+  const totalMinutes = Math.max(0, Math.round(durationMinutes || 0));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+}
+
 // Fecha para nombres de archivo: MM-DD-YYYY (las barras no se permiten).
 export function formatDateForFile(value: unknown): string {
   return formatDate(value).replace(/\//g, '-');

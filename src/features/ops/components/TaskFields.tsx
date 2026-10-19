@@ -8,9 +8,9 @@ import type {
 } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
 import TimeInput from '../../../shared/components/TimeInput';
-import { formatDate } from '../../../utils/dateFormat';
+import { formatDate, todayIso } from '../../../utils/dateFormat';
 import type { TaskPatch } from '../../../services/userTasksService';
-import { lateLabel } from '../opsDates';
+import { isDailyRepeat, lateLabel } from '../opsDates';
 import { DURATION_OPTIONS, getFirstName } from '../opsOptions';
 import AssigneePicker from './AssigneePicker';
 import OpsAvatar from './OpsAvatar';
@@ -33,7 +33,11 @@ interface TaskFieldsProps {
 const TaskFields = ({
   task, assignableUsers, projects, priorities, currentUser, canEdit, canReassign, onPatch,
 }: TaskFieldsProps) => {
-  const handleRepeatChange = (repeat: Repeat | null) => onPatch({ repeat });
+  // Una diaria vence el día que toca: sin fecha, empieza hoy.
+  const handleRepeatChange = (repeat: Repeat | null) => {
+    const shouldStartToday = !task.dueDate && isDailyRepeat(repeat);
+    onPatch(shouldStartToday ? { repeat, dueDate: todayIso() } : { repeat });
+  };
 
   const handleDueDateChange = (isoDate: string) => {
     if (isoDate === '' || /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) onPatch({ dueDate: isoDate });
@@ -76,7 +80,7 @@ const TaskFields = ({
             />
           </label>
           <label className="task-panel-field">
-            <span className="task-panel-field-lbl">How long</span>
+            <span className="task-panel-field-lbl">Duration</span>
             <select className="task-panel-input" value={task.durationMinutes} disabled={!canEdit}
               onChange={(event) => onPatch({ durationMinutes: Number(event.target.value) })}>
               {!isKnownDuration && <option value={task.durationMinutes}>{task.durationMinutes} min</option>}
@@ -86,7 +90,6 @@ const TaskFields = ({
         </div>
         <TaskRepeatPicker
           repeat={task.repeat}
-          dueDate={task.dueDate}
           canEdit={canEdit}
           onRepeatChange={handleRepeatChange}
         />

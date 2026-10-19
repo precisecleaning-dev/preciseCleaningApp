@@ -42,18 +42,18 @@ const PEOPLE = {
     active: true, admin: false, fin: true, roleId: 'r-owner', userId: 'u-owner',
     m: {
       Owner: R(), Manager: R(), Houses: ALL, Payroll: R(), Invoices: R(), Settings: R(),
-      'System Users': R(), 'Roles & Permissions': R(), 'Task List': ALL,
+      'System Users': R(), 'Roles & Permissions': R(), 'Task List': ALL, 'Projects': ALL,
       'Recycle Bin': R(), 'Activity Log': R(), 'Company Settings': R(),
     },
   },
   'sandy@precise.test': {
     active: true, admin: false, fin: true, roleId: 'r-manager', userId: 'u-sandy',
-    m: { Manager: R(), Houses: R(true, true, true, false), 'Task List': ALL, 'Quality Check': R() },
+    m: { Manager: R(), Houses: R(true, true, true, false), 'Task List': ALL, 'Projects': ALL, 'Quality Check': R() },
   },
   // Task List con Scope "Own" (o: true): solo sus tareas.
   'employee@precise.test': {
     active: true, admin: false, fin: false, roleId: 'r-employee', userId: 'u-emp',
-    m: { 'Task List': { ...R(true, true, false, false), o: true } },
+    m: { 'Task List': { ...R(true, true, false, false), o: true }, 'Projects': R(true, false, false, false) },
   },
   'cleaner@precise.test': {
     active: true, admin: false, fin: false, roleId: 'r-cleaner', userId: 'u-cleaner',
@@ -291,6 +291,22 @@ describe('Task list y reloj', () => {
     await assertFails(setDoc(doc(as('cleaner@precise.test'), 'task_projects', 'pr3'), { title: 'x' }));
   });
 
+  test('proyectos según "Projects": crear (Add), editar (Edit), borrar (Delete); contadores para todos', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'user_access', 'employee@precise.test'), {
+        ...PEOPLE['employee@precise.test'],
+        m: { ...PEOPLE['employee@precise.test'].m, 'Projects': R(true, true, false, false) },
+      });
+      await setDoc(doc(ctx.firestore(), 'task_projects', 'pr9'), { title: 'Old', taskCount: 0, doneCount: 0, openMinutes: 0 });
+    });
+    const employee = as('employee@precise.test');
+    await assertSucceeds(setDoc(doc(employee, 'task_projects', 'pr10'), { title: 'Mine' }));
+    await assertFails(updateDoc(doc(employee, 'task_projects', 'pr9'), { title: 'Renamed' }));
+    await assertSucceeds(updateDoc(doc(employee, 'task_projects', 'pr9'), { taskCount: 1 }));
+    await assertFails(deleteDoc(doc(employee, 'task_projects', 'pr9')));
+    await assertSucceeds(deleteDoc(doc(as('sandy@precise.test'), 'task_projects', 'pr9')));
+  });
+
   test('tareas con Scope "Own": solo las propias', async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
@@ -438,5 +454,13 @@ describe('hallazgos de la revisión', () => {
       });
     });
     await assertSucceeds(setDoc(doc(as('owner@precise.test'), 'app_settings', 'houses_form_config'), { visibility: {} }));
+  });
+
+  test('orden de las pestañas del Task list: quien edita Task List', async () => {
+    const tabOrder = ['overdue', 'daily', 'approval', 'week', 'later', 'nodate', 'all', 'done'];
+    await assertSucceeds(setDoc(doc(as('sandy@precise.test'), 'app_settings', 'task_list_tabs'), { tabOrder }));
+    await assertFails(setDoc(doc(as('employee@precise.test'), 'app_settings', 'task_list_tabs'), { tabOrder }));
+    await assertFails(setDoc(doc(as('employee@precise.test'), 'app_settings', 'photo_config'), { quality: 1 }));
+    await assertSucceeds(getDoc(doc(as('employee@precise.test'), 'app_settings', 'task_list_tabs')));
   });
 });

@@ -4,7 +4,7 @@
   left: 50%;
   bottom: calc(20px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  z-index: 1100;
+  z-index: 10000; /* sobre los modales (.modal-overlay-centered: 9999), p. ej. la ventana de un proyecto */
   display: flex;
   align-items: center;
   gap: 14px;

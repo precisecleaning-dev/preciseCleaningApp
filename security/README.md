@@ -8,7 +8,7 @@ aquí. Es la propuesta para revisar, probar y publicar a mano cuando se decida.
 | `firestore.rules` | Reglas de Firestore por módulo y rol. |
 | `storage.rules` | Reglas de Storage: solo usuarios activos de la lista. |
 | `tests/firestore.rules.test.mjs` | 28 pruebas contra el emulador (`npm run test:rules`). |
-| `firestore.indexes.json` | Índices compuestos que pide el código (hoy solo la bitácora: `activity_logs` filtrada por usuario o acción y ordenada por `ts`). Lo demás usa índices de un solo campo, que Firestore crea solo. |
+| `firestore.indexes.json` | Índices compuestos que pide el código: la bitácora (`activity_logs` filtrada por usuario o acción y ordenada por `ts`) y la pestaña Done del Task list (`user_tasks` hechas, por persona asignada, por quien la asignó o todas, ordenadas por `doneAt`). Lo demás usa índices de un solo campo, que Firestore crea solo. |
 | `../functions/src/userAccess.ts` | Funciones que mantienen el espejo `user_access/{email}`. |
 
 ## Por qué hace falta `user_access`
@@ -67,6 +67,12 @@ todo. Con esta propuesta:
    - Payroll, Settings, Users, Roles, Customers, Task List y Recycle Bin solo los usa
      quien ve ese módulo.
    - Houses distingue agregar, editar y borrar, como ya lo hace la app.
+   - El orden de las pestañas del Task list (`app_settings/task_list_tabs`) lo
+     cambia quien tiene Edit en Task List; lo leen todos.
+   - Los proyectos del Task list (`task_projects`) siguen el módulo "Projects" de
+     Roles: Add crea, Edit edita y archiva, Delete borra. Un rol que no lo declara
+     lo hereda de Task List (`functions/src/userAccess.ts`). Los contadores y los
+     comentarios los puede ajustar cualquiera con Task List.
 4. **El equipo de campo** (solo "ver" Houses) solo puede escribir en la casa
    Start/Finish, notas y fotos. Quality Check solo mueve el status y retiene la factura.
 5. **El correo solo sale hacia el correo de la empresa** (`settings_company/main.email`)

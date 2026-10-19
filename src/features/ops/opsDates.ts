@@ -1,15 +1,17 @@
 // src/features/ops/opsDates.ts
 // ============================================================================
-// Fechas del Task list: secciones (Daily / Overdue / Today / This week / Later /
-// No date), etiquetas y la siguiente repetición de una tarea.
+// Fechas del Task list: sección de una tarea por su vencimiento (Overdue,
+// Daily = hoy, This week, Later, No date), etiquetas, repeticiones y la
+// siguiente fecha de una tarea que se repite. Las pestañas: taskListTabs.ts.
 // Se guarda AAAA-MM-DD; en pantalla SIEMPRE MM/DD/AAAA y h:mm AM/PM.
 // La semana va de lunes a domingo (igual que utils/periods.ts).
 // ============================================================================
-import type { Repeat, UserTask, YmdDate } from '../../types/index';
+import type { Repeat, TaskListTabId, UserTask, YmdDate } from '../../types/index';
 import { formatDate, formatHm, todayIso } from '../../utils/dateFormat';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
 /** "2026-10-13" → Date local (mediodía: sin saltos por horario de verano). */
 export function ymdToDate(ymd: YmdDate): Date {
@@ -38,48 +40,40 @@ function endOfWeek(ymd: YmdDate): YmdDate {
   return addDays(ymd, day === 0 ? 0 : 7 - day);
 }
 
-/** Sección (pestaña) de la lista. 'daily' = las que se repiten todos los días
- *  o de lunes a viernes; las demás van por su fecha de vencimiento. */
-export type TaskSection = 'daily' | 'overdue' | 'today' | 'week' | 'later' | 'nodate';
+/** Sección por fecha de vencimiento (las vistas Owner y Manager y la fila). */
+export type DueSection = 'overdue' | 'today' | 'week' | 'later' | 'nodate';
 
-export const SECTION_ORDER: TaskSection[] = ['daily', 'overdue', 'today', 'week', 'later', 'nodate'];
+/** Pestaña por fecha de una tarea abierta: 'daily' = vence hoy (también las
+ *  que se repiten a diario). */
+export type TaskSection = Extract<TaskListTabId, 'overdue' | 'daily' | 'week' | 'later' | 'nodate'>;
 
-export const SECTION_LABEL: Record<TaskSection, string> = {
-  daily: 'Daily',
-  overdue: 'Overdue',
-  today: 'Today',
-  week: 'This week',
-  later: 'Later',
-  nodate: 'No date',
+/** Diaria que vence otro día: la crea la anterior al completarse y aparece en
+ *  las pendientes el día que le toca (en "ALL" sí se ve). */
+export const isUpcomingDailyRepeat = (task: Pick<UserTask, 'dueDate' | 'repeat'>, today: YmdDate = todayIso()): boolean =>
+  isDailyRepeat(task.repeat) && !!task.dueDate && task.dueDate > today;
+
+/** Pestaña por fecha de una tarea (null = diaria de otro día: todavía no se muestra).
+ *  Las diarias viejas sin fecha van en Daily. */
+export const taskSectionOf = (task: Pick<UserTask, 'dueDate' | 'repeat'>, today: YmdDate = todayIso()): TaskSection | null => {
+  if (isUpcomingDailyRepeat(task, today)) return null;
+  if (!task.dueDate && isDailyRepeat(task.repeat)) return 'daily';
+  const dueSection = sectionOf(task.dueDate, today);
+  return dueSection === 'today' ? 'daily' : dueSection;
 };
 
-/** ¿Se repite todos los días o de lunes a viernes? (van en la pestaña Daily). */
-export const isDailyRepeat = (repeat: Repeat | null | undefined): boolean =>
-  repeat?.freq === 'daily' || repeat?.freq === 'weekdays';
-
-/** Sección de una tarea en la lista: Daily si se repite a diario; si no, por vencimiento. */
-export const taskSectionOf = (task: Pick<UserTask, 'dueDate' | 'repeat'>, today: YmdDate = todayIso()): TaskSection =>
-  (isDailyRepeat(task.repeat) ? 'daily' : sectionOf(task.dueDate, today));
-
-/** Orden dentro de una sección: por fecha, luego por hora (sin hora al final) y
- *  por fecha de creación. */
+/** Por vencimiento: fecha, luego hora (sin hora al final) y fecha de creación.
+ *  (La "siguiente tarea" de un proyecto; las listas van por compareByNewest.) */
 export const compareByDue = (firstTask: UserTask, secondTask: UserTask): number =>
   (firstTask.dueDate || '9999').localeCompare(secondTask.dueDate || '9999')
   || (firstTask.dueTime || '99:99').localeCompare(secondTask.dueTime || '99:99')
   || (firstTask.createdAt ?? '').localeCompare(secondTask.createdAt ?? '');
 
-/** Tareas agrupadas por sección (cada grupo ordenado con `compareByDue`). */
-export function groupTasksBySection(tasks: UserTask[], today: YmdDate = todayIso()): Record<TaskSection, UserTask[]> {
-  const tasksBySection: Record<TaskSection, UserTask[]> = {
-    daily: [], overdue: [], today: [], week: [], later: [], nodate: [],
-  };
-  tasks.forEach((task) => tasksBySection[taskSectionOf(task, today)].push(task));
-  Object.values(tasksBySection).forEach((sectionTasks) => sectionTasks.sort(compareByDue));
-  return tasksBySection;
-}
+/** De la más reciente a la más vieja: fecha y hora de creación (ISO). */
+export const compareByNewest = (firstTask: UserTask, secondTask: UserTask): number =>
+  (secondTask.createdAt ?? '').localeCompare(firstTask.createdAt ?? '');
 
-/** Sección por fecha de vencimiento (nunca devuelve 'daily'). */
-export function sectionOf(dueDate: YmdDate, today: YmdDate = todayIso()): TaskSection {
+/** Sección por fecha de vencimiento. */
+export function sectionOf(dueDate: YmdDate, today: YmdDate = todayIso()): DueSection {
   if (!dueDate) return 'nodate';
   if (dueDate < today) return 'overdue';
   if (dueDate === today) return 'today';
@@ -87,21 +81,11 @@ export function sectionOf(dueDate: YmdDate, today: YmdDate = todayIso()): TaskSe
   return 'later';
 }
 
-/** Cómo se lee una repetición diaria en la fila ("Every day", "Every weekday"). */
-const DAILY_REPEAT_LABEL: Partial<Record<Repeat['freq'], string>> = {
-  daily: 'Every day',
-  weekdays: 'Every weekday',
-};
-
-/** Etiqueta corta del vencimiento para la fila de la lista. Las diarias dicen
- *  "Every day · 8:00 AM" (salvo que estén atrasadas: ahí se ve la fecha). */
-export function dueLabel(
-  dueDate: YmdDate, dueTime: string, today: YmdDate = todayIso(), repeat: Repeat | null = null,
-): string {
+/** Etiqueta corta del vencimiento para la fila de la lista. (La repetición
+ *  va aparte, en su etiqueta: "Every day".) */
+export function dueLabel(dueDate: YmdDate, dueTime: string, today: YmdDate = todayIso()): string {
   const time = formatHm(dueTime);
   const section = sectionOf(dueDate, today);
-  const dailyLabel = repeat ? DAILY_REPEAT_LABEL[repeat.freq] : undefined;
-  if (dailyLabel && section !== 'overdue') return time ? `${dailyLabel} · ${time}` : dailyLabel;
   if (section === 'nodate') return time ? `No date · ${time}` : 'No date';
   if (section === 'today') return time ? `Today · ${time}` : 'Today';
   if (section === 'overdue') return `Overdue · ${formatDate(dueDate)}`;
@@ -118,25 +102,45 @@ export function lateLabel(dueDate: YmdDate, today: YmdDate = todayIso()): string
   return `${n} day${n === 1 ? '' : 's'} late`;
 }
 
-/** 90 → "1 h 30 min"; 15 → "15 min". */
-export function formatMinutes(min: number): string {
-  const total = Math.max(0, Math.round(min || 0));
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  if (h === 0) return `${m} min`;
-  return m === 0 ? `${h} h` : `${h} h ${m} min`;
-}
-
-export const REPEAT_LABEL: Record<Repeat['freq'], string> = {
-  daily: 'Daily',
-  weekdays: 'Weekdays',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
+/** Días de la semana que NO toca una repetición (0 = domingo … 6 = sábado):
+ *  "Every day" → []; las viejas "Every weekday" → sábado y domingo; las de
+ *  ciertos días ('weekly') → los días que no se eligieron. */
+export const repeatExceptDays = (repeat: Repeat): number[] => {
+  if (repeat.freq === 'weekdays') return [0, 6];
+  if (repeat.freq === 'weekly' && repeat.days?.length) {
+    return ALL_WEEKDAYS.filter((weekday) => !repeat.days?.includes(weekday));
+  }
+  return [];
 };
 
-/** Etiqueta de la repetición en la fila: "Weekly" o, si tiene fin, "Weekly · 3 left". */
+/** Repetición que se guarda para "Every day" (sin días) o "Every day except"
+ *  esos días. "Except" se guarda como 'weekly' con los días que SÍ tocan: así
+ *  la siguiente fecha la calcula `nextOccurrence` sin cambios. */
+export const repeatFromExceptDays = (exceptDays: number[]): Repeat => {
+  const allowedDays = ALL_WEEKDAYS.filter((weekday) => !exceptDays.includes(weekday));
+  return exceptDays.length === 0 || allowedDays.length === 0
+    ? { freq: 'daily' }
+    : { freq: 'weekly', days: allowedDays };
+};
+
+/** ¿Es "Every day" o "Every day except"? (Daily). Solo las viejas mensuales no. */
+export const isDailyRepeat = (repeat: Repeat | null | undefined): boolean =>
+  !!repeat && repeat.freq !== 'monthly';
+
+/** "Every day", "Every day except Sat, Sun" o, en las viejas mensuales, "Every month". */
+export const repeatSummary = (repeat: Repeat): string => {
+  if (!isDailyRepeat(repeat)) return 'Every month';
+  const exceptDays = repeatExceptDays(repeat);
+  if (exceptDays.length === 0) return 'Every day';
+  // De lunes a domingo: "except Sat, Sun".
+  const mondayFirstDays = [...exceptDays].sort((firstDay, secondDay) => ((firstDay + 6) % 7) - ((secondDay + 6) % 7));
+  return `Every day except ${mondayFirstDays.map((weekday) => WEEKDAYS[weekday]).join(', ')}`;
+};
+
+/** Etiqueta de la repetición en la fila. Las viejas con fin ("After N times")
+ *  siguen contando hasta que alguien las edite: "Every day · 3 left". */
 export const repeatBadgeLabel = (repeat: Repeat): string =>
-  (repeat.timesLeft ? `${REPEAT_LABEL[repeat.freq]} · ${repeat.timesLeft} left` : REPEAT_LABEL[repeat.freq]);
+  (repeat.timesLeft ? `${repeatSummary(repeat)} · ${repeat.timesLeft} left` : repeatSummary(repeat));
 
 /**
  * Siguiente fecha de una tarea que se repite. Se cuenta desde la fecha de

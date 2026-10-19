@@ -194,11 +194,13 @@ service cloud.firestore {
     match /app_settings/{docId} {
       allow read: if active();
       // photo_config (Settings / Photo Settings); houses_form_config (botón de
-      // configurar campos del formulario de Houses: editar Roles & Permissions).
+      // configurar campos del formulario de Houses: editar Roles & Permissions);
+      // task_list_tabs (orden de las pestañas del Task list: editar Task List).
       // gcal_sync lo escriben solo las funciones.
       allow write: if docId != 'gcal_sync'
         && (has('Settings') || has('Photo Settings')
-            || (docId == 'houses_form_config' && canDo('Roles & Permissions', 'e')));
+            || (docId == 'houses_form_config' && canDo('Roles & Permissions', 'e'))
+            || (docId == 'task_list_tabs' && canDo('Task List', 'e')));
     }
 
     match /customers/{customerId} {
@@ -373,11 +375,13 @@ service cloud.firestore {
       allow read: if has('Task List');
       // Los contadores (taskCount, doneCount, openMinutes) viajan en el batch
       // de cada tarea, y comentar es para todos: cualquiera con Task List los
-      // ajusta. Lo demás del proyecto, solo quien tiene Edit.
-      allow update: if canDo('Task List', 'e')
+      // ajusta. Lo demás del proyecto según el módulo "Projects" de Roles
+      // (Add = crear, Edit = editar y cambiar estado, Delete = borrar); un rol
+      // que no lo declara lo hereda de Task List (functions/src/userAccess.ts).
+      allow update: if canDo('Projects', 'e')
         || (has('Task List') && onlyChanges(['taskCount', 'doneCount', 'openMinutes', 'comments']));
-      allow create: if canDo('Task List', 'e');
-      allow delete: if canDo('Task List', 'd');
+      allow create: if canDo('Projects', 'a');
+      allow delete: if canDo('Projects', 'd');
     }
 
     match /user_priorities/{userId} {

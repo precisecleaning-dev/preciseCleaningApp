@@ -88,8 +88,11 @@
 }
 .otl-section-title.daily { color: #0d9488; }
 .otl-section-title.overdue { color: #dc2626; }
-.otl-section-title.today { color: #2546d8; }
 .otl-section-title.approval { color: #6d28d9; }
+.otl-section-title.done { color: #15803d; }
+/* Páginas de la pestaña Done (Previous · Page N · Next). */
+.otl-pagination { align-items: center; display: flex; gap: 12px; justify-content: center; padding-top: 4px; }
+.otl-pagination-page { color: #475569; font-size: 13px; font-weight: 700; }
 .otl-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .otl-empty {
   margin: 0;
@@ -105,6 +108,11 @@
   gap: 8px;
 }
 .otl-empty.error { border-color: #fecaca; color: #b91c1c; }
+/* Error de la pestaña Done: el motivo y los botones debajo. */
+.otl-done-error { flex-direction: column; }
+.otl-done-error-text { margin: 0; max-width: 60ch; }
+.otl-done-error-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.otl-done-error-link { color: #2546d8; font-weight: 700; }
 .otl-spin { animation: otl-spin 0.8s linear infinite; }
 @keyframes otl-spin { to { transform: rotate(360deg); } }
 

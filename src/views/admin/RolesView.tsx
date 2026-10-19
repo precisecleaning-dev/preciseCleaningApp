@@ -7,6 +7,7 @@ import { db } from '../../config/firebase';
 import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import './RolesView.css';
 import MenuButton from '../../shared/components/MenuButton';
+import { inheritedTaskProjectRights } from '../../features/ops/opsPermissions';
 
 interface RolesViewProps {
   onOpenMenu: () => void;
@@ -32,6 +33,12 @@ const DEFAULT_MODULES = [
   // ⭐ Task list de gerentes (tareas, proyectos y top 3). Sin declarar, la
   //    vista la ven quienes tienen Manager u Owner (ver opsPermissions.ts).
   'Task List',
+  // ⭐ Permiso especial, no es una vista: proyectos del Task list. View = ver
+  //    "My projects" y la lista de Projects · Add = crearlos · Edit = editarlos
+  //    y cambiar su estado · Delete = borrarlos (sus tareas quedan sin
+  //    proyecto). Un rol que no lo declara lo hereda de "Task List" (ver
+  //    opsPermissions.taskProjectRights).
+  'Projects',
   // --- Operacion diaria ---
   'Houses',
   'Pipeline',
@@ -146,6 +153,19 @@ export default function RolesView({ onOpenMenu, roles }: RolesViewProps) {
             allowedStatusIds: existing.allowedStatusIds || [],
             hiddenGroups: existing.hiddenGroups || [],
             readOnlyFields: existing.readOnlyFields || []
+          };
+        }
+        // ⭐ "Projects" sin declarar: se muestra lo que el rol ya tiene por
+        //    herencia de "Task List", para que guardar el rol no le quite nada.
+        const inheritedProjectRights = mod === 'Projects' ? inheritedTaskProjectRights(role) : null;
+        if (inheritedProjectRights) {
+          return {
+            module: mod,
+            ...inheritedProjectRights,
+            scope: 'All' as const,
+            allowedStatusIds: [],
+            hiddenGroups: [],
+            readOnlyFields: []
           };
         }
         return {

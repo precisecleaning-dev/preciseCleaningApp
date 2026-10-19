@@ -1,0 +1,30 @@
+/* Filtro por día del calendario en el Task list (DateFilterChip.tsx) */
+.date-filter-chip {
+  align-items: center;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  color: #1e3a8a;
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 8px 8px 12px;
+}
+.date-filter-chip-text { flex: 1 1 auto; min-width: 0; }
+.date-filter-chip-clear {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  color: #1e3a8a;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 12px;
+}
+.date-filter-chip-clear:hover { background: #e0e7ff; }

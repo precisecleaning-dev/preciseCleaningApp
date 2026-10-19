@@ -84,6 +84,7 @@ const LEGACY: Record<string, string[]> = {
   "Quality Check Reports": ["Quality Check"],
   "QC Dashboard": ["Quality Check"],
   "Task List": ["Manager", "Owner"],
+  "Projects": ["Task List"],
   "Activity Log": ["Settings"],
   "Recycle Bin": ["Settings"],
   "Company Settings": ["Settings"],
@@ -116,6 +117,14 @@ export function computeAccess(userId: string, user: UserDoc, role: RoleDoc | nul
       // (y ve las tareas de todos).
       const any = inherited.some((r) => r.v);
       m[module] = { v: any, a: any, e: any, d: any, o: false };
+      return;
+    }
+    if (module === "Projects") {
+      // opsPermissions.ts (taskProjectRights): sin declarar, crear y editar
+      // proyectos es el Edit de Task List y borrarlos su Delete (como antes).
+      // "Task List" ya está en `m`: va antes en LEGACY.
+      const taskList = m["Task List"] ?? NONE;
+      m[module] = { v: taskList.v, a: taskList.e, e: taskList.e, d: taskList.d, o: false };
       return;
     }
     m[module] = inherited.reduce(

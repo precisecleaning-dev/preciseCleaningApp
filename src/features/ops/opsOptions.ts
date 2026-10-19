@@ -1,24 +1,15 @@
 // src/features/ops/opsOptions.ts
 // Opciones de los selectores del Task list y colores derivados (sin campos
 // nuevos en Firestore: el color de un proyecto o de un avatar sale de su id).
-import type { Repeat, RepeatFreq } from '../../types/index';
-import { formatMinutes } from './opsDates';
+import { formatDuration } from '../../utils/dateFormat';
 
-/** "How long": 0 = no aplica (la fila no muestra duración ni suma minutos al proyecto). */
+/** "Duration": 0 = no aplica (la fila no muestra duración ni suma minutos al proyecto). */
 export const DURATION_OPTIONS = [
   { value: 0, label: 'N/A' },
   ...[5, 10, 15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => ({
     value: minutes,
-    label: formatMinutes(minutes),
+    label: formatDuration(minutes),
   })),
-];
-
-export const REPEAT_OPTIONS: { value: '' | RepeatFreq; label: string }[] = [
-  { value: '', label: 'Does not repeat' },
-  { value: 'daily', label: 'Every day' },
-  { value: 'weekdays', label: 'Every weekday' },
-  { value: 'weekly', label: 'Every week' },
-  { value: 'monthly', label: 'Every month' },
 ];
 
 export const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -27,8 +18,6 @@ export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-export const repeatValue = (repeat: Repeat | null | undefined): '' | RepeatFreq => repeat?.freq ?? '';
 
 /** Colores de proyecto: en Firestore se guarda el NOMBRE (`project.color`); el
  *  hex vive aquí. Son los mismos de la paleta automática de abajo. */
