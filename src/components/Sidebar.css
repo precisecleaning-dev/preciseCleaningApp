@@ -17,6 +17,9 @@
 .nav-item { display: flex; align-items: center; gap: 13px; padding: 6px 20px; color: #94a3b8; cursor: pointer; transition: all 0.2s; border: none; background: transparent; width: 100%; text-align: left; font-size: 0.86rem; font-weight: 500; line-height: 1.2; white-space: nowrap; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .nav-item:hover { color: white; background-color: rgba(255,255,255,0.05); }
 .nav-item.active { color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); border-right: 3px solid #3b82f6; }
+/* Círculo con lo pendiente (Task List). Con el menú contraído no se muestra (pedido de Omar, 10/2026). */
+.nav-badge { align-items: center; background: #ef4444; border-radius: 999px; color: #ffffff; display: inline-flex; flex-shrink: 0; font-size: 0.68rem; font-weight: 800; height: 18px; justify-content: center; line-height: 1; margin-left: auto; min-width: 18px; padding: 0 5px; }
+.sidebar-container.closed .nav-badge { display: none; }
 .menu-label { color: #475569; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; padding: 0 20px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; }
 .menu-label.spaced { margin-top: 10px; }
 

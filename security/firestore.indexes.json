@@ -24,6 +24,32 @@
         { "fieldPath": "action", "order": "ASCENDING" },
         { "fieldPath": "ts", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "user_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assigneeUserIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "doneAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "user_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdByUserId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "doneAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "user_tasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "doneAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

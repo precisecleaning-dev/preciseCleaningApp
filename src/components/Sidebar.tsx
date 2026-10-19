@@ -7,6 +7,9 @@ import type { Role, Permission } from '../types/index';
 import type { TabOptions } from '../App';
 import { prefetchHandlers } from '../utils/viewPrefetch';
 import { canViewTaskList } from '../features/ops/opsPermissions';
+import { APP_VERSION } from '../hooks/useVersionCheck';
+import SessionActions from '../shared/components/SessionActions';
+import { PHONE_QUERY, useMediaQuery } from '../shared/hooks/useMediaQuery';
 import './Sidebar.css';
 
 interface NavItemConfig {
@@ -16,11 +19,12 @@ interface NavItemConfig {
   visible: boolean;
   /** Override opcional: si no se pasa, el click hace handleNavClick(tab). */
   onClick?: () => void;
+  /** Círculo con lo pendiente (0 o sin valor = no se muestra). */
+  badgeCount?: number;
 }
 
-import { APP_VERSION } from '../hooks/useVersionCheck';
-import SessionActions from '../shared/components/SessionActions';
-import { PHONE_QUERY, useMediaQuery } from '../shared/hooks/useMediaQuery';
+/** Más de esto se muestra como "99+". */
+const MAX_BADGE_COUNT = 99;
 
 interface SidebarProps {
   /** ⭐ Abre el selector "Ver como otro usuario". Si no se pasa, el boton no
@@ -38,12 +42,14 @@ interface SidebarProps {
   onSettingsClick: () => void;
   activeRole: Role | null;
   isSuperAdmin: boolean;
+  /** Tareas pendientes de la persona (abiertas asignadas + esperan su OK): círculo en "Task List". */
+  taskListBadgeCount?: number;
 }
 
-export default function Sidebar({
+const Sidebar = ({
   isSidebarOpen, setIsSidebarOpen, activeTab, setActiveTab, onSettingsClick, activeRole, isSuperAdmin,
-  updateAvailable, onViewAsUser, isViewingAsUser = false,
-}: SidebarProps) {
+  updateAvailable, onViewAsUser, isViewingAsUser = false, taskListBadgeCount = 0,
+}: SidebarProps) => {
   // Notificaciones / Ver como / Log Out van en el pie solo en el teléfono; en
   // la computadora están en la barra de arriba (App).
   const isPhone = useMediaQuery(PHONE_QUERY);
@@ -108,7 +114,10 @@ export default function Sidebar({
     { tab: 'manager', label: 'Manager', icon: UserCog, visible: canView('Manager') },
     // ⭐ TASK LIST — tareas y proyectos de los gerentes. Permiso propio
     //    "Task List"; sin declarar, lo ven quienes tienen Manager u Owner.
-    { tab: 'task_list', label: 'Task List', icon: ListChecks, visible: canViewTaskList(activeRole, isSuperAdmin) },
+    {
+      tab: 'task_list', label: 'Task List', icon: ListChecks, visible: canViewTaskList(activeRole, isSuperAdmin),
+      badgeCount: taskListBadgeCount,
+    },
     // ⭐ HOUSES — check propio
     { tab: 'houses', label: 'Overview', icon: Home, visible: canView('Houses') },
     { tab: 'pipeline', label: 'Pipeline', icon: LayoutGrid, visible: canViewOrLegacy('Pipeline', canView('Houses')) },
@@ -169,23 +178,30 @@ export default function Sidebar({
     },
   ];
 
-  const renderNavItem = (item: NavItemConfig) => (
-    <li key={item.tab}>
-      {/* ⭐ prefetchHandlers descarga el modulo al pasar el mouse (escritorio) o
-          al APOYAR el dedo (movil), antes del click. Entre pointerdown y click
-          hay ~90ms: suficiente para adelantar la descarga y que el cambio de
-          vista se sienta instantaneo. Ver src/utils/viewPrefetch.ts. */}
-      <button
-        className={`nav-item ${activeTab === item.tab ? 'active' : ''}`}
-        onClick={item.onClick ?? (() => handleNavClick(item.tab))}
-        aria-current={activeTab === item.tab ? 'page' : undefined}
-        {...prefetchHandlers(item.tab)}
-      >
-        <item.icon size={18} className="nav-icon" />
-        {isSidebarOpen && <span className="nav-text">{item.label}</span>}
-      </button>
-    </li>
-  );
+  const renderNavItem = (item: NavItemConfig) => {
+    const badgeCount = item.badgeCount ?? 0;
+    const badgeText = badgeCount > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : String(badgeCount);
+    return (
+      <li key={item.tab}>
+        {/* ⭐ prefetchHandlers descarga el modulo al pasar el mouse (escritorio) o
+            al APOYAR el dedo (movil), antes del click. Entre pointerdown y click
+            hay ~90ms: suficiente para adelantar la descarga y que el cambio de
+            vista se sienta instantaneo. Ver src/utils/viewPrefetch.ts. */}
+        <button
+          className={`nav-item ${activeTab === item.tab ? 'active' : ''}`}
+          onClick={item.onClick ?? (() => handleNavClick(item.tab))}
+          aria-current={activeTab === item.tab ? 'page' : undefined}
+          {...prefetchHandlers(item.tab)}
+        >
+          <item.icon size={18} className="nav-icon" />
+          {isSidebarOpen && <span className="nav-text">{item.label}</span>}
+          {badgeCount > 0 && (
+            <span className="nav-badge" aria-label={`${badgeCount} pending`}>{badgeText}</span>
+          )}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <>
@@ -240,4 +256,6 @@ export default function Sidebar({
       </aside>
     </>
   );
-}
+};
+
+export default Sidebar;

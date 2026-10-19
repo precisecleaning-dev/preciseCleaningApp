@@ -1,6 +1,7 @@
 // Calendario del mes en "My projects": un punto azul los días con tareas
 // abiertas y uno rojo si alguna de ese día ya está vencida. Hoy va marcado.
-// Las flechas cambian de mes.
+// Las flechas cambian de mes. Tocar un día filtra el Task list a ese día
+// (otra vez el mismo día quita el filtro).
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { UserTask } from '../../../types/index';
@@ -14,11 +15,15 @@ interface TaskCalendarProps {
   tasks: UserTask[];
   /** Hoy, AAAA-MM-DD. */
   todayIsoDate: string;
+  /** Día por el que se está filtrando (null = ninguno). */
+  selectedIsoDate: string | null;
+  /** null = quitar el filtro. */
+  onSelectDate: (isoDate: string | null) => void;
 }
 
 const padTwoDigits = (value: number) => String(value).padStart(2, '0');
 
-const TaskCalendar = ({ tasks, todayIsoDate }: TaskCalendarProps) => {
+const TaskCalendar = ({ tasks, todayIsoDate, selectedIsoDate, onSelectDate }: TaskCalendarProps) => {
   // 0 = el mes de hoy; -1 = el anterior; 1 = el siguiente.
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -41,7 +46,11 @@ const TaskCalendar = ({ tasks, todayIsoDate }: TaskCalendarProps) => {
     const taskCount = taskCountByDate.get(isoDate) ?? 0;
     const isOverdue = taskCount > 0 && isoDate < todayIsoDate;
     const taskSummary = taskCount > 0 ? ` · ${taskCount} task${taskCount === 1 ? '' : 's'}${isOverdue ? ' overdue' : ''}` : '';
-    const dayClasses = [isoDate < todayIsoDate ? 'past' : '', isoDate === todayIsoDate ? 'today' : '']
+    const dayClasses = [
+      isoDate < todayIsoDate ? 'past' : '',
+      isoDate === selectedIsoDate ? 'selected' : '',
+      isoDate === todayIsoDate ? 'today' : '',
+    ]
       .filter(Boolean)
       .join(' ');
     return { dayOfMonth, isoDate, taskCount, isOverdue, dayClasses, ariaLabel: `${formatDate(isoDate)}${taskSummary}` };
@@ -74,16 +83,19 @@ const TaskCalendar = ({ tasks, todayIsoDate }: TaskCalendarProps) => {
           <span key={`blank-${blankIndex}`} className="task-calendar-blank" aria-hidden="true" />
         ))}
         {calendarDays.map((calendarDay) => (
-          <span
+          <button
             key={calendarDay.isoDate}
+            type="button"
             className={`task-calendar-day${calendarDay.dayClasses ? ` ${calendarDay.dayClasses}` : ''}`}
             aria-label={calendarDay.ariaLabel}
+            aria-pressed={calendarDay.isoDate === selectedIsoDate}
+            onClick={() => onSelectDate(calendarDay.isoDate === selectedIsoDate ? null : calendarDay.isoDate)}
           >
             {calendarDay.dayOfMonth}
             {calendarDay.taskCount > 0 && (
               <span className={`task-calendar-dot${calendarDay.isOverdue ? ' overdue' : ''}`} />
             )}
-          </span>
+          </button>
         ))}
       </div>
     </div>

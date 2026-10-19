@@ -1,4 +1,4 @@
-/* Pestañas de las secciones de la lista (TaskSectionTabs.tsx) */
+/* Pestañas de la lista (TaskSectionTabs.tsx) y el botón para ordenarlas */
 .task-section-tabs {
   border-bottom: 1px solid #e3e7ef;
   display: flex;
@@ -32,6 +32,25 @@
   padding: 1px 7px;
 }
 
+.task-section-tabs-order {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #5b6475;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  margin-left: auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 10px;
+}
+.task-section-tabs-order:hover { background: #f1f5f9; color: #0f172a; }
+
 .task-section-tab.active { border-bottom-color: #2546d8; color: #2546d8; }
+.task-section-tab.approval.active { border-bottom-color: #6d28d9; color: #6d28d9; }
 .task-section-tab.daily.active { border-bottom-color: #0d9488; color: #0d9488; }
+.task-section-tab.done.active { border-bottom-color: #15803d; color: #15803d; }
 .task-section-tab.overdue.active { border-bottom-color: #dc2626; color: #dc2626; }

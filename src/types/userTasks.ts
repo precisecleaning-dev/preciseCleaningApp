@@ -8,24 +8,26 @@
 // (IsoDateTime). Todo campo que guarda un usuario termina en UserId / UserName
 // (UserIds / UserNames si guarda varios, como las personas asignadas).
 // ============================================================================
+import type { QueryDocumentSnapshot } from 'firebase/firestore';
 import type { IsoDateTime, YmdDate } from './index';
 
-/** Estado de una tarea. Las hechas no se descargan en la lista (solo las abiertas). */
+/** Estado de una tarea. La lista descarga solo las abiertas; las hechas se piden
+ *  por páginas en la pestaña Done (userTasksService.getDonePage). */
 export type UserTaskStatus = 'open' | 'done';
 
 /** Cada cuánto se repite una tarea o un proyecto. */
 export type RepeatFreq =
-  | 'daily' //     todos los días
-  | 'weekdays' //  de lunes a viernes
-  | 'weekly' //    ciertos días de la semana (ver `days`)
-  | 'monthly'; //  el mismo día de cada mes
+  | 'daily' //     "Every day"
+  | 'weekdays' //  de lunes a viernes (viejo: se lee "Every day except Sat, Sun")
+  | 'weekly' //    "Every day except": los días que SÍ tocan van en `days`
+  | 'monthly'; //  el mismo día de cada mes (viejo: ya no se elige)
 
 /** Map `repeat` de una tarea. `null` = no se repite. (Los proyectos guardan
  *  solo la frecuencia: `repeat: RepeatFreq | null`.) */
 export interface Repeat {
   freq: RepeatFreq; //                  frecuencia de la repetición
-  days?: number[]; //                   solo con 'weekly': 0 = domingo … 6 = sábado
-  timesLeft?: number | null; //         veces que falta hacerla, contando esta (null o sin campo = siempre)
+  days?: number[]; //                   solo con 'weekly': días en que toca, 0 = domingo … 6 = sábado
+  timesLeft?: number | null; //         viejo "After N times": veces que falta, contando esta (null o sin campo = siempre)
 }
 
 /** Estado del visto bueno de una tarea:
@@ -132,4 +134,53 @@ export interface AssignableUser {
   name: string;
   /** "Me" para quien está usando la app. */
   label: string;
+}
+
+/** Relación de una persona con las tareas: las que tiene asignadas o las que asignó. */
+export type TaskRelation = 'assigned' | 'created';
+
+/** Pestaña de arriba del Task list: las que le asignaron a la persona o las que ella asignó a otros. */
+export type AssignmentTab = 'assignedTo' | 'assignedBy';
+
+/** De dónde salen las tareas abiertas de un listener: de una persona (las que
+ *  tiene asignadas o las que creó) o de un proyecto (todas las de ese proyecto). */
+export type OpenTasksSource = TaskRelation | 'project';
+
+/** Marca para pedir la página siguiente de las tareas hechas (último documento leído). */
+export type DoneTasksCursor = QueryDocumentSnapshot<UserTask, StoredUserTask>;
+
+/** Una página de tareas hechas, de la más reciente (doneAt) a la más vieja. */
+export interface DoneTasksPage {
+  tasks: UserTask[];
+  cursor: DoneTasksCursor | null;
+  hasMore: boolean;
+}
+
+/** Lo que devuelve useDoneTasks: la página de hechas que se ve y cómo moverse. */
+export interface DoneTasksResult {
+  tasks: UserTask[]; //                 tareas de la página que se ve
+  pageNumber: number; //                1 = las 20 más recientes
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+  isLoading: boolean; //                primera página en camino
+  isLoadingPage: boolean; //            página siguiente en camino
+  error: Error | null; //               no se pudo leer la primera página (con su `code` de Firestore)
+  nextPageError: Error | null; //       no se pudo leer la página siguiente (se sigue viendo la actual)
+  goToPreviousPage: () => void;
+  goToNextPage: () => void;
+  reload: () => void; //                vuelve a pedir desde la primera página
+}
+
+/** Pestaña de la lista del Task list: por vencimiento (overdue, daily = hoy y
+ *  las diarias de hoy, week, later, nodate), las que esperan un visto bueno
+ *  (approval), todas las abiertas (all) y las hechas (done). */
+export type TaskListTabId = 'overdue' | 'daily' | 'approval' | 'week' | 'later' | 'nodate' | 'all' | 'done';
+
+/** Documento app_settings/task_list_tabs: orden de las pestañas, el mismo para
+ *  todos. Lo cambia quien tiene Edit en Task List. */
+export interface TaskListTabsSettings {
+  tabOrder: TaskListTabId[]; //         pestañas en el orden en que se muestran
+  updatedAt: string; //                 ISO del último cambio
+  updatedByUserId: string; //           quién lo cambió
+  updatedByUserName: string;
 }

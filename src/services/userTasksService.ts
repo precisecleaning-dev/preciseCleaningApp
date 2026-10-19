@@ -23,7 +23,8 @@
 // la lista de una persona escucha los dos formatos (useOpsData.ts).
 // ============================================================================
 import {
-  arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where, writeBatch,
+  arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, limit, orderBy, query, startAfter, updateDoc,
+  where, writeBatch,
   type CollectionReference, type DocumentReference, type FirestoreDataConverter, type QueryConstraint,
   type QueryDocumentSnapshot, type UpdateData, type WithFieldValue,
 } from 'firebase/firestore';
@@ -33,11 +34,14 @@ import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  Actor, ApprovalDecision, Repeat, StoredUserTask, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  Actor, ApprovalDecision, DoneTasksCursor, DoneTasksPage, Repeat, StoredUserTask, TaskProject, TaskRelation, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
-import { bumpProjectCounters, type KnownProjects, type ProjectCounterDelta } from './taskProjectsService';
+import {
+  buildNewProject, bumpProjectCounters, newProjectRef, taskProjectRef, type KnownProjects, type ProjectCounterDelta,
+  type ProjectInput,
+} from './taskProjectsService';
 
 export type { KnownProjects } from './taskProjectsService';
 
@@ -120,6 +124,10 @@ type UserTaskFilters = Partial<Pick<UserTask, 'status' | 'createdByUserId' | 'pr
 // ---------------------------------------------------------------------------
 // Ayudas internas
 // ---------------------------------------------------------------------------
+/** Tareas hechas por página en la pestaña Done. */
+const DONE_PAGE_SIZE = 20;
+/** Tandas que se leen como mucho para llenar una página de Done ("Assigned by" descarta algunas). */
+const MAX_DONE_BATCHES = 5;
 const nowIso = () => new Date().toISOString();
 
 /** Largo máximo del título de una tarea (lo usan el campo del panel y la validación de abajo). */
@@ -128,8 +136,14 @@ export const MAX_TITLE_LENGTH = 200;
 /** Duración con la que se propone una tarea nueva, en minutos. */
 export const DEFAULT_DURATION_MINUTES = 30;
 
-/** Máximo de veces que se puede repetir una tarea con "After N times". */
-export const MAX_REPEAT_TIMES = 365;
+/** Tareas que se desligan por batch al borrar su proyecto (el límite es 500 escrituras). */
+const UNLINK_CHUNK_SIZE = 450;
+
+/** Tareas que se pueden crear junto con un proyecto nuevo (un batch admite 500 escrituras). */
+export const MAX_TASKS_WITH_NEW_PROJECT = 50;
+
+/** Máximo de veces que se puede repetir una tarea con el viejo "After N times". */
+const MAX_REPEAT_TIMES = 365;
 
 /** Revisa el título y la duración antes de escribir. La pantalla ya los
  *  limita, pero el service es la última puerta antes de Firestore. */
@@ -219,6 +233,55 @@ async function removeStoredFile(path: string): Promise<void> {
 // Service
 // ---------------------------------------------------------------------------
 export const userTasksService = {
+  /** Una página de tareas HECHAS, de la más reciente a la más vieja (doneAt).
+   *  `userId` null = las de todos. Filtra, ordena y limita en el servidor
+   *  (como activityLogService); pide un índice compuesto por consulta (ver
+   *  security/firestore.indexes.json). Las tareas viejas de una sola persona
+   *  (assigneeUserId) o sin doneAt no salen.
+   *  Con 'created' ("Assigned by") no cuentan las que la persona se asignó
+   *  solo a sí misma: ese filtro no cabe en la consulta, así que se siguen
+   *  leyendo tandas hasta llenar la página (si no, una página podía traer 3
+   *  de 20 con "Next" activo). Como mucho MAX_DONE_BATCHES tandas por página. */
+  async getDonePage(relation: TaskRelation, userId: string | null, cursor: DoneTasksCursor | null): Promise<DoneTasksPage> {
+    const personFilters: QueryConstraint[] = [];
+    if (userId && relation === 'created') personFilters.push(where('createdByUserId', '==', userId));
+    if (userId && relation === 'assigned') personFilters.push(where('assigneeUserIds', 'array-contains', userId));
+    const isShownInPage = (task: UserTask): boolean =>
+      relation !== 'created' || !userId || task.assignees.some((assignee) => assignee.userId !== userId);
+    const pageTasks: UserTask[] = [];
+    // pageCursor = última tarea que entra en ESTA página (la siguiente empieza
+    // después); readCursor = último documento leído.
+    let pageCursor = cursor;
+    let readCursor = cursor;
+    for (let batchIndex = 0; batchIndex < MAX_DONE_BATCHES; batchIndex += 1) {
+      const snapshot = await getDocs(query(
+        userTasksCol,
+        ...personFilters,
+        where('status', '==', 'done'),
+        orderBy('doneAt', 'desc'),
+        ...(readCursor ? [startAfter(readCursor)] : []),
+        limit(DONE_PAGE_SIZE + 1),
+      ));
+      for (const taskDoc of snapshot.docs) {
+        readCursor = taskDoc;
+        const task = taskDoc.data();
+        const isPageFull = pageTasks.length === DONE_PAGE_SIZE;
+        if (isShownInPage(task)) {
+          // Una más que se muestra después de llenar la página: hay página siguiente.
+          if (isPageFull) return { tasks: pageTasks, cursor: pageCursor, hasMore: true };
+          pageTasks.push(task);
+          pageCursor = taskDoc;
+        } else if (!isPageFull) {
+          pageCursor = taskDoc;
+        }
+      }
+      const isLastBatch = snapshot.docs.length <= DONE_PAGE_SIZE;
+      if (isLastBatch) return { tasks: pageTasks, cursor: pageCursor, hasMore: false };
+    }
+    // Muchas seguidas que no se muestran: se corta aquí y "Next" sigue buscando.
+    return { tasks: pageTasks, cursor: pageCursor, hasMore: true };
+  },
+
   /** Crea una tarea abierta y suma 1 tarea (y sus minutos) a su proyecto.
    *  Devuelve el id nuevo. */
   async create(input: TaskInput, actor: Actor, known: KnownProjects): Promise<string> {
@@ -229,6 +292,54 @@ export const userTasksService = {
     bumpProjectCounters(batch, input.projectId, contribution({ status: 'open', durationMinutes: input.durationMinutes }), known);
     await batch.commit();
     return taskRef.id;
+  },
+
+  /** Crea un proyecto con sus primeras tareas (abiertas) en UN batch: o se
+   *  crea todo o nada. El proyecto nace con sus contadores ya sumados (no hace
+   *  falta increment(): el documento se crea en el mismo batch). Devuelve el
+   *  id del proyecto. */
+  async createProjectWithTasks(projectInput: ProjectInput, taskInputs: TaskInput[], actor: Actor): Promise<string> {
+    if (taskInputs.length > MAX_TASKS_WITH_NEW_PROJECT) {
+      throw new Error(`Se pueden crear hasta ${MAX_TASKS_WITH_NEW_PROJECT} tareas junto con el proyecto.`);
+    }
+    taskInputs.forEach(assertValidTaskFields);
+    const projectRef = newProjectRef();
+    const batch = writeBatch(db);
+    const projectTaskInputs = taskInputs.map((input) => ({ ...input, projectId: projectRef.id, projectTitle: projectInput.title }));
+    const projectCounters = projectTaskInputs.reduce<Required<ProjectCounterDelta>>((counters, input) => {
+      const taskContribution = contribution({ status: 'open', durationMinutes: input.durationMinutes });
+      return {
+        taskCount: counters.taskCount + taskContribution.taskCount,
+        doneCount: counters.doneCount + taskContribution.doneCount,
+        openMinutes: counters.openMinutes + taskContribution.openMinutes,
+      };
+    }, { taskCount: 0, doneCount: 0, openMinutes: 0 });
+    batch.set(projectRef, buildNewProject(projectRef.id, projectInput, actor, projectCounters));
+    projectTaskInputs.forEach((input) => {
+      const taskRef = doc(userTasksCol);
+      batch.set(taskRef, { ...newTaskData(input, actor), id: taskRef.id });
+    });
+    await batch.commit();
+    return projectRef.id;
+  },
+
+  /** Borra un proyecto que tiene tareas: sus tareas (abiertas y hechas) se
+   *  quedan, sin proyecto (decisión de Omar, 10/2026). Va en tandas de
+   *  UNLINK_CHUNK_SIZE; el proyecto se borra en la última, así que si algo
+   *  falla el proyecto sigue ahí y se puede volver a intentar. Solo con Scope
+   *  "All": con "Own" las reglas no dejan pedir las tareas de otros. */
+  async deleteProjectKeepingTasks(project: Pick<TaskProject, 'id'>): Promise<void> {
+    const projectTasks = await userTasksService.getAll({ projectId: project.id });
+    const taskChunks = Array.from(
+      { length: Math.max(1, Math.ceil(projectTasks.length / UNLINK_CHUNK_SIZE)) },
+      (_, chunkIndex) => projectTasks.slice(chunkIndex * UNLINK_CHUNK_SIZE, (chunkIndex + 1) * UNLINK_CHUNK_SIZE),
+    );
+    for (const [chunkIndex, chunkTasks] of taskChunks.entries()) {
+      const batch = writeBatch(db);
+      chunkTasks.forEach((task) => batch.update(userTaskRef(task.id), { projectId: null, projectTitle: null }));
+      if (chunkIndex === taskChunks.length - 1) batch.delete(taskProjectRef(project.id));
+      await batch.commit();
+    }
   },
 
   /** Guarda solo los campos cambiados y ajusta los contadores si cambió el

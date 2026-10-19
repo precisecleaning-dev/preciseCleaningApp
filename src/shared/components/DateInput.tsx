@@ -24,6 +24,8 @@ interface DateInputProps {
   disabled?: boolean;
   id?: string;
   'aria-label'?: string;
+  /** Texto de ayuda del campo vacío ('' = sin texto; p. ej. el formulario de proyectos). */
+  placeholder?: string;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -83,7 +85,9 @@ const isoOrEmpty = (value: string | null | undefined): string => {
   return toIso(shown) || '';
 };
 
-export default function DateInput({ value, onChange, className = '', disabled, id, 'aria-label': ariaLabel }: DateInputProps) {
+export default function DateInput({
+  value, onChange, className = '', disabled, id, 'aria-label': ariaLabel, placeholder = 'MM/DD/YYYY',
+}: DateInputProps) {
   // Mientras se escribe se muestra el borrador; fuera de foco, el valor guardado.
   const [draft, setDraft] = useState<string | null>(null);
   // Valor al entrar al campo: si se sale con una fecha incompleta, se vuelve a él.
@@ -130,7 +134,7 @@ export default function DateInput({ value, onChange, className = '', disabled, i
         className={`${className} dti-text`.trim()}
         inputMode="numeric"
         autoComplete="off"
-        placeholder="MM/DD/YYYY"
+        placeholder={placeholder || undefined}
         aria-label={ariaLabel}
         value={shown}
         disabled={disabled}

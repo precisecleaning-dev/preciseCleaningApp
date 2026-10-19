@@ -1,11 +1,12 @@
 // Tarjeta de una tarea en la lista: casilla para marcarla hecha, título, datos
 // (personas, quién la asignó, vencimiento, repetición, duración, proyecto,
-// comentarios, archivos) y el botón "Open". El borde izquierdo toma el color de
-// su sección (Daily, Overdue, Today).
+// comentarios, archivos) y el botón "Open". El borde izquierdo es rojo si está
+// vencida, verde azulado si se repite a diario y azul si vence hoy.
 import type { CSSProperties } from 'react';
 import { BadgeCheck, Check, ChevronRight, Clock, Hourglass, MessageSquare, Paperclip } from 'lucide-react';
 import type { UserTaskApproval, UserTask } from '../../../types/index';
-import { dueLabel, formatMinutes, repeatBadgeLabel, sectionOf, taskSectionOf, type TaskSection } from '../opsDates';
+import { dueLabel, isDailyRepeat, repeatBadgeLabel, sectionOf } from '../opsDates';
+import { formatDate, formatDuration } from '../../../utils/dateFormat';
 import { getFirstName } from '../opsOptions';
 import { isAwaitingApproval } from '../opsPermissions';
 import ActionButton from './ActionButton';
@@ -28,22 +29,25 @@ interface TaskRowProps {
   isSelected: boolean;
   isBusy: boolean;
   onOpen: (task: UserTask) => void;
-  /** Sin `onMarkDone` la fila no lleva casilla (en "Waiting for your OK" quien
-   *  da el visto bueno revisa la tarea, no la marca hecha). */
+  /** Sin `onMarkDone` la fila no lleva casilla (en "Needs Approval", las que
+   *  esperan MI OK: quien da el visto bueno revisa la tarea, no la marca hecha;
+   *  en "Done" ya está hecha). */
   onMarkDone?: (task: UserTask) => void;
+  /** Tarea hecha (pestaña Done): muestra "Done MM/DD/AAAA" en vez del vencimiento
+   *  y no toma el color de su sección. */
+  isDoneRow?: boolean;
 }
 
 /** Avatares que se ven en la fila (el resto lo cuenta la etiqueta: "+2"). */
 const MAX_VISIBLE_AVATARS = 3;
 
-/** Clase de la fila según su sección ('' = sin color propio). */
-const SECTION_ROW_CLASS: Record<TaskSection, string> = {
-  daily: 'daily',
-  overdue: 'overdue',
-  today: 'today',
-  week: '',
-  later: '',
-  nodate: '',
+/** Color del borde de la fila: vencida (rojo), diaria (verde azulado) o de hoy
+ *  (azul); '' = sin color propio. */
+const getRowTone = (task: UserTask, todayIsoDate: string): string => {
+  const dueSection = sectionOf(task.dueDate, todayIsoDate);
+  if (dueSection === 'overdue') return 'overdue';
+  if (isDailyRepeat(task.repeat)) return 'daily';
+  return dueSection === 'today' ? 'today' : '';
 };
 
 const getApproverFirstName = (approval: UserTaskApproval): string =>
@@ -69,15 +73,14 @@ function getMarkDoneBlockedReason(task: UserTask): string | null {
 
 const TaskRow = ({
   task, todayIsoDate, assigneesLabel, assignedByName, projectTitle, projectColor, isSelected, isBusy, onOpen,
-  onMarkDone,
+  onMarkDone, isDoneRow = false,
 }: TaskRowProps) => {
   const dueSection = sectionOf(task.dueDate, todayIsoDate);
-  const rowSection = taskSectionOf(task, todayIsoDate);
   const attachmentCount = task.attachments?.length ?? 0;
   const commentCount = task.comments?.length ?? 0;
   const visibleAssignees = task.assignees.slice(0, MAX_VISIBLE_AVATARS);
   const markDoneBlockedReason = getMarkDoneBlockedReason(task);
-  const stateClasses = [SECTION_ROW_CLASS[rowSection], isSelected ? 'selected' : '']
+  const stateClasses = [isDoneRow ? 'done' : getRowTone(task, todayIsoDate), isSelected ? 'selected' : '']
     .filter(Boolean)
     .sort();
   const rowClassName = ['ops-row', ...stateClasses].join(' ');
@@ -107,9 +110,13 @@ const TaskRow = ({
             {assigneesLabel}
           </span>
           {assignedByName && <span className="ops-meta-from">From {assignedByName}</span>}
-          <span className={`ops-meta-due${dueSection === 'overdue' ? ' late' : ''}`}>
-            {dueLabel(task.dueDate, task.dueTime, todayIsoDate, task.repeat)}
-          </span>
+          {isDoneRow ? (
+            <span className="ops-meta-done">Done {formatDate(task.doneAt)}</span>
+          ) : (
+            <span className={`ops-meta-due${dueSection === 'overdue' ? ' late' : ''}`}>
+              {dueLabel(task.dueDate, task.dueTime, todayIsoDate)}
+            </span>
+          )}
           {task.approval && (
             <span className={`approval ops-badge ${task.approval.status}`}>
               {task.approval.status === 'approved' ? <BadgeCheck size={11} /> : <Hourglass size={11} />}
@@ -119,7 +126,7 @@ const TaskRow = ({
           {task.repeat && <span className="ops-badge repeat">{repeatBadgeLabel(task.repeat)}</span>}
           {task.durationMinutes > 0 && (
             <span className="ops-badge time">
-              <Clock size={11} /> {formatMinutes(task.durationMinutes)}
+              <Clock size={11} /> {formatDuration(task.durationMinutes)}
             </span>
           )}
           {task.projectId && projectTitle && (

@@ -34,3 +34,20 @@ export interface TaskProject {
   createdByUserId: string; //           FK → system_users: quién lo creó
   createdAt: IsoDateTime; //            cuándo se creó
 }
+
+/** Tarea que se escribe en el formulario de un proyecto nuevo: se crea junto
+ *  con el proyecto al guardarlo (userTasksService.createProjectWithTasks). */
+export interface ProjectTaskDraft {
+  draftId: string; //                   id local de la fila del formulario (no es de Firestore)
+  title: string; //                     título de la tarea
+  assigneeUserId: string; //            FK → system_users: a quién va
+}
+
+/** Qué puede hacer un rol con los proyectos del Task list (módulo "Projects"
+ *  de Roles; sin declararlo, se hereda de "Task List"). */
+export interface TaskProjectRights {
+  canView: boolean; //                  ver "My projects" y la lista de Projects
+  canAdd: boolean; //                   crear proyectos
+  canEdit: boolean; //                  editarlos y cambiar su estado (archivar)
+  canDelete: boolean; //                borrarlos (sus tareas quedan sin proyecto)
+}

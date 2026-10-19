@@ -1,4 +1,4 @@
-/* Modales del Task list: Projects. La base (.modal-overlay-centered,
+/* Modales del Task list: Projects y el orden de las pestañas. La base (.modal-overlay-centered,
    .modal-50) es global (index.css). */
 .opm, .opm * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
 .opm-head {
@@ -127,8 +127,44 @@
 .opm-icon.danger { color: #b91c1c; }
 .opm-icon.danger:hover { background: #fef2f2; border-color: #fecaca; }
 
+.opm-icon:disabled { cursor: default; opacity: 0.4; }
+
+/* Orden de las pestañas (TaskTabOrderModal.tsx) */
+.opm-hint { color: #5b6475; font-size: 13px; margin: 0; }
+.opm-tab-item { align-items: center; }
+.opm-tab-fixed { color: #64748b; flex-shrink: 0; font-size: 12px; font-weight: 700; }
+.opm-tab-position {
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 50%;
+  color: #475569;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+.opm-btn-start { margin-right: auto; }
+
+/* Proyecto nuevo: botón desde la lista y tareas que se crean con él (ProjectTaskDraftList.tsx) */
+.opm-new-project { display: flex; justify-content: flex-end; }
+.opm-task-drafts { border: 0; margin: 0; padding: 0; }
+.opm-task-draft-list { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0 0 8px; padding: 0; }
+.opm-task-draft { align-items: center; display: grid; gap: 8px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; }
+.opm-task-draft-add { display: flex; }
+.opm-form-error { color: #b91c1c; font-size: 13px; font-weight: 600; margin: 0; }
+
+/* Ventana de las tareas de un proyecto (ProjectTasksModal.tsx) */
+.opm-project-head { min-width: 0; }
+.opm-project-title { align-items: center; display: flex; gap: 8px; overflow-wrap: anywhere; }
+.opm-project-title .opm-dot { margin-top: 0; }
+
 @media (max-width: 640px) {
   .opm-two { grid-template-columns: 1fr; }
   .opm-item { flex-wrap: wrap; }
   .opm-item-actions { width: 100%; justify-content: flex-end; }
+  .opm-task-draft { grid-template-columns: minmax(0, 1fr) auto; }
+  .opm-task-draft-title { grid-column: 1 / -1; }
 }

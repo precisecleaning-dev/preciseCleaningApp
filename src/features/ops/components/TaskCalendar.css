@@ -37,9 +37,11 @@
 .task-calendar-weekday { color: #5b6475; font-size: 12px; font-weight: 700; padding-bottom: 4px; text-decoration: none; }
 .task-calendar-day {
   align-items: center;
+  background: transparent;
   border: 2px solid transparent;
   border-radius: 10px;
   color: #0f172a;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   font-size: 14px;
@@ -47,9 +49,15 @@
   gap: 2px;
   justify-content: center;
   min-height: 40px;
+  min-width: 0;
+  padding: 0;
 }
+.task-calendar-day:hover { background: #f1f5f9; }
 .task-calendar-day.past { color: #94a3b8; }
 .task-calendar-day.today { border-color: #2546d8; color: #0f172a; font-weight: 800; }
+.task-calendar-day.selected { background: #2546d8; color: #fff; }
+.task-calendar-day.selected .task-calendar-dot { background: #fff; }
+.task-calendar-day.selected .task-calendar-dot.overdue { background: #fecaca; }
 
 .task-calendar-dot { background: #2546d8; border-radius: 50%; display: inline-block; height: 6px; width: 6px; }
 .task-calendar-dot.overdue { background: #dc2626; }

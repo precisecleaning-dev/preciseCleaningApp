@@ -2,11 +2,14 @@
 // Acciones del Task list con su aviso de error, el estado "guardando" y el
 // "Undo" de unos segundos después de marcar una tarea hecha.
 import { useEffect, useRef, useState } from 'react';
-import type { Actor, ApprovalDecision, UserTaskApproval, TaskAttachment, TaskProject, TaskProjectStatus, UserTask } from '../../../types/index';
+import type {
+  Actor, ApprovalDecision, UserTaskApproval, TaskAttachment, TaskListTabId, TaskProject, TaskProjectStatus, UserTask,
+} from '../../../types/index';
 import {
   userTasksService, type KnownProjects, type TaskInput, type TaskPatch,
 } from '../../../services/userTasksService';
 import { taskProjectsService, type ProjectInput } from '../../../services/taskProjectsService';
+import { taskListTabsService } from '../../../services/taskListTabsService';
 import { setPriorities } from '../services/prioritiesService';
 import { isAwaitingApproval } from '../opsPermissions';
 
@@ -133,17 +136,27 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
     removeFile: (taskId: string, attachment: TaskAttachment) =>
       run(taskId, 'No se pudo quitar el archivo', () => userTasksService.removeAttachment(taskId, attachment)),
 
-    saveProject: async (input: ProjectInput, project: TaskProject | null): Promise<boolean> =>
+    /** Edita `project` o, si es null, crea uno nuevo; con `newProjectTasks`
+     *  las crea junto con él (todo o nada). */
+    saveProject: async (input: ProjectInput, project: TaskProject | null, newProjectTasks: TaskInput[] = []): Promise<boolean> =>
       (await run('project', 'No se pudo guardar el proyecto', async () => {
         if (project) await taskProjectsService.update(project, input);
+        else if (newProjectTasks.length > 0) await userTasksService.createProjectWithTasks(input, newProjectTasks, actor);
         else await taskProjectsService.create(input, actor);
       })).ok,
 
     setProjectStatus: (project: TaskProject, status: TaskProjectStatus) =>
       run(project.id, 'No se pudo cambiar el estado', () => taskProjectsService.update(project, { status })),
 
+    /** Borra el proyecto; si tiene tareas, quedan sin proyecto. */
     removeProject: (project: TaskProject) =>
-      run(project.id, 'No se pudo borrar el proyecto', () => taskProjectsService.delete(project)),
+      run(project.id, 'No se pudo borrar el proyecto', () => ((project.taskCount || 0) > 0
+        ? userTasksService.deleteProjectKeepingTasks(project)
+        : taskProjectsService.delete(project))),
+
+    /** Orden de las pestañas para todos (quien edita Task List). */
+    saveTabOrder: async (tabOrder: TaskListTabId[]): Promise<boolean> =>
+      (await run('tab-order', 'No se pudo guardar el orden de las pestañas', () => taskListTabsService.save(tabOrder, actor))).ok,
 
     savePriorities: async (userId: string, projectIds: string[]): Promise<boolean> =>
       (await run('priorities', 'No se pudo guardar el top 3', () => setPriorities(userId, projectIds))).ok,

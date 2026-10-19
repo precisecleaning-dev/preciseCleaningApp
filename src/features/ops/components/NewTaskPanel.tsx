@@ -14,10 +14,10 @@ import TaskDrawer from './TaskDrawer';
 import TaskFields from './TaskFields';
 
 interface NewTaskPanelProps {
-  people: AssignableUser[];
+  assignableUsers: AssignableUser[];
   projects: TaskProject[];
   priorities: Priority[];
-  me: { id: string; name: string };
+  currentUser: { id: string; name: string };
   /** A quién va la tarea al abrir el panel (la persona que se está mirando). */
   defaultAssignee: TaskAssignee;
   /** Quienes pueden dar el visto bueno (sin uno mismo). */
@@ -27,7 +27,7 @@ interface NewTaskPanelProps {
 }
 
 const NewTaskPanel = ({
-  people, projects, priorities, me, defaultAssignee, approvers, onClose, onCreate,
+  assignableUsers, projects, priorities, currentUser, defaultAssignee, approvers, onClose, onCreate,
 }: NewTaskPanelProps) => {
   const titleRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<Omit<TaskInput, 'approval'>>(() => ({
@@ -74,8 +74,8 @@ const NewTaskPanel = ({
   const taskPreview = {
     ...draft,
     status: 'open' as const,
-    createdByUserId: me.id,
-    createdByUserName: me.name,
+    createdByUserId: currentUser.id,
+    createdByUserName: currentUser.name,
     createdAt: '',
   };
   const canCreate = !!draft.title.trim() && !isSaving;
@@ -112,10 +112,10 @@ const NewTaskPanel = ({
 
       <TaskFields
         task={taskPreview}
-        assignableUsers={people}
+        assignableUsers={assignableUsers}
         projects={projects}
         priorities={priorities}
-        currentUser={me}
+        currentUser={currentUser}
         canEdit
         canReassign
         onPatch={updateDraft}

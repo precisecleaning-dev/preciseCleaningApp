@@ -9,16 +9,21 @@
 //   y editar las tareas que les asignaron o que crearon.
 // · canEdit: editar cualquier tarea, crear y editar proyectos y el top 3 de
 //   cualquier gerente (cada quien siempre puede cambiar el suyo).
-// · canDelete: borrar tareas y proyectos.
+// · canDelete: borrar tareas.
+// · Proyectos: módulo aparte "Projects" (taskProjectRights). Sin declararlo,
+//   crear y editar proyectos es el canEdit de Task List y borrarlos su canDelete.
 // · scope: "All" ve las tareas de todos (selector de persona y "Everyone");
 //   "Own" solo las suyas (las que tiene asignadas, las que asignó a otros y
 //   las que esperan su OK).
 //   Rige también en Owner y Manager. Un rol que no declara el módulo ve todas,
 //   como antes. Las reglas propuestas (security/) aplican lo mismo.
 // ============================================================================
-import type { AssignableUser, Permission, Role, SystemUser, TaskAssignee, UserTask } from '../../types/index';
+import type {
+  AssignableUser, Permission, Role, SystemUser, TaskAssignee, TaskProjectRights, UserTask,
+} from '../../types/index';
 
 const TASK_LIST_MODULE = 'Task List';
+const PROJECTS_MODULE = 'Projects';
 
 const perm = (role: Role | null | undefined, module: string): Permission | undefined =>
   role?.permissions?.find((p) => p.module === module);
@@ -47,6 +52,42 @@ export function taskListRights(role: Role | null | undefined, isSuperAdmin: bool
   }
   const legacy = canViewTaskList(role, false);
   return { canEdit: legacy, canDelete: legacy, seesAll: true };
+}
+
+/** Lo que un rol tiene en "Projects" cuando NO lo declara: lo hereda de
+ *  "Task List" (igual que functions/src/userAccess.ts para las reglas). */
+export function inheritedTaskProjectRights(role: Role | null | undefined): TaskProjectRights {
+  const taskList = taskListRights(role, false);
+  return {
+    canView: canViewTaskList(role, false),
+    canAdd: taskList.canEdit,
+    canEdit: taskList.canEdit,
+    canDelete: taskList.canDelete,
+  };
+}
+
+/** Qué puede hacer con los proyectos (módulo "Projects" de Roles). */
+export function taskProjectRights(role: Role | null | undefined, isSuperAdmin: boolean): TaskProjectRights {
+  if (isSuperAdmin) return { canView: true, canAdd: true, canEdit: true, canDelete: true };
+  const declared = perm(role, PROJECTS_MODULE);
+  if (!declared) return inheritedTaskProjectRights(role);
+  return {
+    canView: !!declared.canView,
+    canAdd: !!declared.canAdd,
+    canEdit: !!declared.canEdit,
+    canDelete: !!declared.canDelete,
+  };
+}
+
+/** A quién se propone para dar el visto bueno: el dueño (rol con Owner) o,
+ *  si no hay, un Administrator; si tampoco, el primero de la lista. '' = nadie. */
+export function getDefaultApproverUserId(approvers: AssignableUser[], users: SystemUser[], roles: Role[]): string {
+  const getUserRole = (personId: string) =>
+    roles.find((role) => role.id === users.find((user) => user.id === personId)?.roleId);
+  const defaultApprover = approvers.find((person) =>
+    getUserRole(person.id)?.permissions?.some((permission) => permission.module === 'Owner' && permission.canView))
+    ?? approvers.find((person) => getUserRole(person.id)?.name === 'Administrator');
+  return defaultApprover?.id ?? approvers[0]?.id ?? '';
 }
 
 /** ¿A este usuario se le pueden asignar tareas? (los que tienen la vista). */

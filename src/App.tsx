@@ -56,6 +56,7 @@ import { useLiveCollection, resetLiveCollections } from './shared/data/liveColle
 import { clearMemoryCache } from './shared/utils/memoryCache';
 import { subscribeProperties, useFullHistory } from './shared/data/propertiesWindow';
 import { canViewTaskList } from './features/ops/opsPermissions';
+import { useTaskListBadgeCount } from './features/ops/hooks/useTaskListBadgeCount';
 import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -314,6 +315,10 @@ export default function App() {
   const isSuperAdmin = viewAs
     ? activeRole?.name === 'Administrator'
     : realIsSuperAdmin;
+  // Círculo de "Task List" en el menú: abiertas asignadas + las que esperan su OK.
+  const taskListBadgeCount = useTaskListBadgeCount(
+    canViewTaskList(activeRole, isSuperAdmin) ? effectiveUser?.id ?? null : null,
+  );
 
   // ⭐ ¿Puede usar la herramienta? Permiso propio "View As User", o ser admin.
   const canUseViewAs = realIsSuperAdmin
@@ -461,6 +466,7 @@ export default function App() {
         onSettingsClick={handleSettingsClick}
         activeRole={activeRole} 
         isSuperAdmin={isSuperAdmin}
+        taskListBadgeCount={taskListBadgeCount}
       />
 
       {/* ⭐ `key` por pestaña: fuerza un contenedor nuevo en cada navegacion, que

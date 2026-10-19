@@ -5,9 +5,13 @@
 // Encabezado con la persona y sus tareas abiertas y vencidas · pestañas
 // "Assigned to" (las que le asignaron) y "Assigned by" (las que asignó a otros)
 // · botones "+ Add task" (panel lateral para crear) y "+ New project" ·
-// pestañas por sección (Daily = se repite a diario, Overdue, Today, This week,
-// Later, No date; solo las que tienen tareas), cada una con TaskSection · a la
-// derecha "My projects" (calendario del mes y una tarjeta por proyecto activo)
+// pestañas (taskListTabs.ts: Overdue, Daily = hoy y las diarias, Needs
+// Approval, This week, Later, No date, ALL y Done) en el orden que eligió quien
+// edita Task List (app_settings/task_list_tabs); cada una con TaskSection y
+// "Done" con las hechas por páginas (DoneTaskList) · a la derecha "My
+// projects" (calendario del mes y una tarjeta por proyecto activo; al tocarla
+// se abre la ventana con sus tareas pendientes, ProjectTasksModal; tocar un
+// día del calendario filtra la vista a ese día)
 // · panel lateral de la tarea (horario y repetición, fecha, prioridad, personas,
 // proyecto, archivos y comentarios). Una tarea puede estar asignada a varias personas.
 //
@@ -16,31 +20,41 @@
 // esperan su OK. Datos en user_tasks y task_projects.
 // (El top 3 de proyectos se quitó de esta vista el 10/2026; user_priorities y
 // su service siguen en el código, sin pantalla que los use.)
-// Al marcar hecha una tarea que se repite, sale la siguiente. En "Waiting for
-// your OK" la fila no tiene casilla: quien da el visto bueno solo la revisa.
+// Al marcar hecha una tarea que se repite, sale la siguiente (una diaria
+// aparece el día que le toca). En "Needs Approval" las que esperan MI OK no
+// tienen casilla: quien da el visto bueno solo la revisa.
 // ============================================================================
 import { useMemo, useState } from 'react';
-import { FolderKanban, Loader2, Plus } from 'lucide-react';
-import type { Role, SystemUser, TaskProject, UserTask } from '../../types/index';
-import MenuButton from '../../shared/components/MenuButton';
+import { Loader2, Plus } from 'lucide-react';
+import type { AssignmentTab, Role, SystemUser, TaskListTabId, TaskProject, UserTask } from '../../types/index';
 import { useLiveCollection, useLiveData } from '../../shared/data/liveCollections';
-import { todayIso } from '../../utils/dateFormat';
+import { formatDate, todayIso } from '../../utils/dateFormat';
 import NewTaskPanel from './components/NewTaskPanel';
-import OpsAvatar from './components/OpsAvatar';
 import ProjectsModal from './components/ProjectsModal';
+import ProjectTasksModal from './components/ProjectTasksModal';
 import TaskPanel from './components/TaskPanel';
 import TaskSection from './components/TaskSection';
 import TaskSectionTabs from './components/TaskSectionTabs';
 import ActionButton from './components/ActionButton';
+import AssignmentTabs from './components/AssignmentTabs';
+import TaskListHeader from './components/TaskListHeader';
 import MyProjectsPanel from './components/MyProjectsPanel';
-import { ALL_USERS, useApprovalQueue, useCreatedTasks, useLiveTask, useOpenTasks } from './hooks/useOpsData';
-import { useTaskActions } from './hooks/useTaskActions';
 import {
-  assignablePeople, canReassignTask, isAssignee, isOnlyAssignee, taskListRights, toTaskAssignee, userName,
+  ALL_USERS, useApprovalQueue, useCreatedTasks, useDoneTasks, useLiveTask, useOpenTasks,
+} from './hooks/useOpsData';
+import { useOpenedProjectTasks } from './hooks/useOpenedProjectTasks';
+import { useTaskActions } from './hooks/useTaskActions';
+import { useTaskListLabels } from './hooks/useTaskListLabels';
+import { useTaskListTabOrder } from './hooks/useTaskListTabOrder';
+import {
+  assignablePeople, canReassignTask, getDefaultApproverUserId, isAssignee, taskListRights, taskProjectRights, toTaskAssignee, userName,
 } from './opsPermissions';
-import { getFirstName, namesSummary, projectHex } from './opsOptions';
-import { groupTasksBySection, SECTION_ORDER, type TaskSection as TaskSectionId } from './opsDates';
-import TaskRow from './components/TaskRow';
+import { getFirstName } from './opsOptions';
+import { isUpcomingDailyRepeat } from './opsDates';
+import { groupTasksByTab, TASK_LIST_TAB_LABEL, tasksDueOn, visibleTabsOf } from './taskListTabs';
+import DateFilterChip from './components/DateFilterChip';
+import DoneTaskList from './components/DoneTaskList';
+import TaskTabOrderModal from './components/TaskTabOrderModal';
 import UndoToast from './components/UndoToast';
 import './TaskListView.css';
 
@@ -51,8 +65,11 @@ interface TaskListViewProps {
   isSuperAdmin: boolean;
 }
 
-/** Pestaña de la lista: las que le asignaron o las que asignó a otros. */
-type ListTab = 'assignedTo' | 'assignedBy';
+/** Ventana de Projects abierta: para crear uno o la lista (con `projectId`, editando ese). */
+interface ProjectsModalState {
+  mode: 'create' | 'manage';
+  projectId: string | null;
+}
 
 const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: TaskListViewProps) => {
   const users = useLiveData('users');
@@ -64,6 +81,8 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
   const currentUserId = currentUser?.id ?? '';
   const currentUserName = userName(currentUser) || 'Me';
   const taskListAccess = taskListRights(activeRole, isSuperAdmin);
+  // Proyectos: módulo "Projects" de Roles (sin declararlo, lo de Task List).
+  const projectAccess = taskProjectRights(activeRole, isSuperAdmin);
 
   const [selectedPersonId, setSelectedPersonId] = useState(currentUserId);
   // Scope "Own": siempre las propias, sin selector de persona.
@@ -74,12 +93,17 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     setPreviousCurrentUserId(currentUserId);
     setSelectedPersonId(currentUserId);
   }
-  const [selectedTab, setSelectedTab] = useState<ListTab>('assignedTo');
+  const [selectedAssignmentTab, setSelectedAssignmentTab] = useState<AssignmentTab>('assignedTo');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedSection, setSelectedSection] = useState<TaskSectionId>('daily');
-  const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
-  // Proyecto que la ventana de Projects abre ya en edición (null = para crear uno).
-  const [projectIdToEdit, setProjectIdToEdit] = useState<string | null>(null);
+  // Pestaña elegida (null = la primera que se muestra).
+  const [selectedSectionTabId, setSelectedSectionTabId] = useState<TaskListTabId | null>(null);
+  const [isTabOrderModalOpen, setIsTabOrderModalOpen] = useState(false);
+  const sectionTabOrder = useTaskListTabOrder();
+  const [projectsModalState, setProjectsModalState] = useState<ProjectsModalState | null>(null);
+  // Proyecto cuya ventana de tareas está abierta (tarjeta de "My projects").
+  const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
+  // Día del calendario por el que se filtra la vista (null = sin filtro).
+  const [filterIsoDate, setFilterIsoDate] = useState<string | null>(null);
   const [isNewTaskPanelOpen, setIsNewTaskPanelOpen] = useState(false);
   const todayIsoDate = todayIso();
 
@@ -95,14 +119,10 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     () => assignableUsers.filter((person) => person.id !== currentUserId),
     [assignableUsers, currentUserId],
   );
-  const defaultApproverUserId = useMemo(() => {
-    const getUserRole = (personId: string) =>
-      roles.find((role) => role.id === users.find((user) => user.id === personId)?.roleId);
-    const defaultApprover = approvers.find((person) =>
-      getUserRole(person.id)?.permissions?.some((permission) => permission.module === 'Owner' && permission.canView))
-      ?? approvers.find((person) => getUserRole(person.id)?.name === 'Administrator');
-    return defaultApprover?.id ?? approvers[0]?.id ?? '';
-  }, [approvers, users, roles]);
+  const defaultApproverUserId = useMemo(
+    () => getDefaultApproverUserId(approvers, users, roles),
+    [approvers, users, roles],
+  );
 
   const projectsById = useMemo(() => new Map(projects.map((project) => [project.id, project] as const)), [projects]);
   const knownProjectIds = useMemo(() => new Set(projectsById.keys()), [projectsById]);
@@ -113,7 +133,7 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     [projects],
   );
 
-  const actions = useTaskActions({ id: currentUserId, name: currentUserName }, knownProjectIds);
+  const taskActions = useTaskActions({ id: currentUserId, name: currentUserName }, knownProjectIds);
   const isEveryoneView = viewedUserId === ALL_USERS;
   const assignedToResult = useOpenTasks(viewedUserId || null);
   // Las que asignó a otros (las que se asignó solo a sí mismo ya salen en
@@ -124,35 +144,79 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     [createdTasksResult.tasks, viewedUserId],
   );
   // Con "Everyone" no hay pestañas: se ven todas las abiertas.
-  const visibleTab: ListTab = isEveryoneView ? 'assignedTo' : selectedTab;
-  const { tasks, loaded, error: listError } = visibleTab === 'assignedBy'
+  const visibleAssignmentTab: AssignmentTab = isEveryoneView ? 'assignedTo' : selectedAssignmentTab;
+  const { tasks, loaded: isListLoaded, error: listError } = visibleAssignmentTab === 'assignedBy'
     ? { tasks: assignedByTasks, loaded: createdTasksResult.loaded, error: createdTasksResult.error }
     : assignedToResult;
-  // Lo que otros esperan que YO apruebe (se muestra arriba en "mis tareas").
+  // Lo que otros esperan que YO apruebe (va en "Needs Approval" de "mis tareas").
   const approvalQueue = useApprovalQueue(viewedUserId === currentUserId ? currentUserId : null);
-  const approvalTasks = approvalQueue.tasks.filter((task) => !isAssignee(task, currentUserId));
-  // Un listener que falla no se muestra como "no hay tareas".
-  const loadError = listError ?? approvalQueue.error;
-  const overdueTaskCount = tasks.filter((task) => !!task.dueDate && task.dueDate < todayIsoDate).length;
+  const tasksToApprove = useMemo(
+    () => (visibleAssignmentTab === 'assignedTo' ? approvalQueue.tasks.filter((task) => !isAssignee(task, currentUserId)) : []),
+    [visibleAssignmentTab, approvalQueue.tasks, currentUserId],
+  );
+  const tasksToApproveIds = new Set(tasksToApprove.map((task) => task.id));
+  // Un listener que falla no se muestra como "no hay tareas". Si solo falla el
+  // de las aprobaciones, la lista se ve igual y se avisa aparte.
+  const loadError = listError;
+  const hasApprovalQueueError = visibleAssignmentTab === 'assignedTo' && !!approvalQueue.error;
+  // Pendientes: sin las diarias de otro día (aparecen el día que les toca).
+  const isPendingToday = (task: UserTask) => !isUpcomingDailyRepeat(task, todayIsoDate);
+  const pendingTasks = tasks.filter(isPendingToday);
+  const assignedToPendingCount = assignedToResult.tasks.filter(isPendingToday).length;
+  const assignedByPendingCount = assignedByTasks.filter(isPendingToday).length;
 
-  // Pestañas por sección: solo las que tienen tareas. Si la elegida se queda
-  // sin tareas, se ve la primera que tenga.
-  const tasksBySection = useMemo(() => groupTasksBySection(tasks, todayIsoDate), [tasks, todayIsoDate]);
-  const sectionCounts = SECTION_ORDER
-    .map((section) => ({ section, taskCount: tasksBySection[section].length }))
-    .filter((sectionCount) => sectionCount.taskCount > 0);
-  const isSelectedSectionAvailable = sectionCounts.some((sectionCount) => sectionCount.section === selectedSection);
-  const visibleSection = isSelectedSectionAvailable ? selectedSection : sectionCounts[0]?.section ?? selectedSection;
+  // Pestañas en el orden elegido; las que no tienen tareas no se ven (ALL y
+  // Done siempre). Si la elegida se queda sin tareas, se ve la primera.
+  const tasksBySectionTab = useMemo(
+    () => groupTasksByTab(tasks, tasksToApprove, todayIsoDate),
+    [tasks, tasksToApprove, todayIsoDate],
+  );
+  const visibleSectionTabs = visibleTabsOf(sectionTabOrder, tasksBySectionTab);
+  const isSelectedTabVisible = visibleSectionTabs.some((tab) => tab.tabId === selectedSectionTabId);
+  const visibleSectionTabId: TaskListTabId = (isSelectedTabVisible ? selectedSectionTabId : null) ?? visibleSectionTabs[0]?.tabId ?? 'all';
+  // Pestaña "Done" abierta: solo entonces se piden las tareas hechas.
+  const isDoneTabSelected = visibleSectionTabId === 'done';
+  const visibleSectionTasks = visibleSectionTabId === 'done' ? [] : tasksBySectionTab[visibleSectionTabId];
 
-  // "My projects": los proyectos activos de la persona que se mira (con
-  // "Everyone", todos) y las tareas abiertas que se tienen cargadas (asignadas
-  // y dadas a otros) para el calendario y el avance.
-  const panelProjects = activeProjects.filter((project) => isEveryoneView || project.ownerUserId === viewedUserId);
+  // Hechas de la pestaña elegida. Como en las abiertas, "Assigned by" deja fuera
+  // las que la persona se asignó solo a sí misma (lo filtra getDonePage).
+  const doneTasksResult = useDoneTasks(
+    visibleAssignmentTab === 'assignedBy' ? 'created' : 'assigned', viewedUserId || null, isDoneTabSelected,
+  );
+  const overdueTaskCount = tasksBySectionTab.overdue.length;
+
+  // "My projects": las tareas abiertas que se tienen cargadas (asignadas y dadas
+  // a otros) van al calendario y al avance; los proyectos activos son los que
+  // la persona que se mira tiene a cargo Y aquellos donde tiene tareas abiertas
+  // o que asignó (decisión de Omar, 10/2026: antes solo los que tenía a cargo,
+  // y quien solo trabajaba en proyectos de otros veía "No active projects").
+  // Con "Everyone", todos.
   const loadedOpenTasks = useMemo(() => {
     const tasksById = new Map<string, UserTask>();
     [...assignedToResult.tasks, ...createdTasksResult.tasks].forEach((task) => tasksById.set(task.id, task));
     return [...tasksById.values()];
   }, [assignedToResult.tasks, createdTasksResult.tasks]);
+  const projectIdsWithTasks = new Set(loadedOpenTasks.map((task) => task.projectId).filter(Boolean));
+  // Con un día del calendario elegido, la vista entera se filtra a ese día: las
+  // tareas cargadas (asignadas y dadas a otros, como los puntos del calendario)
+  // que vencen ese día, y los proyectos con alguna de ellas o que vencen ese día.
+  const dateFilteredTasks = filterIsoDate ? tasksDueOn(loadedOpenTasks, filterIsoDate) : [];
+  const dateFilteredProjectIds = new Set(dateFilteredTasks.map((task) => task.projectId).filter(Boolean));
+  const panelProjects = activeProjects
+    .filter((project) => isEveryoneView || project.ownerUserId === viewedUserId || projectIdsWithTasks.has(project.id))
+    .filter((project) => !filterIsoDate || dateFilteredProjectIds.has(project.id) || project.dueDate === filterIsoDate);
+
+  // Ventana de un proyecto (con Scope "Own", solo las que ya están cargadas).
+  const openedProjectTasks = useOpenedProjectTasks({
+    openedProjectId,
+    projectsById,
+    canQueryAllTasks: taskListAccess.seesAll,
+    loadedOpenTasks: {
+      tasks: loadedOpenTasks,
+      loaded: assignedToResult.loaded && createdTasksResult.loaded,
+      error: assignedToResult.error ?? createdTasksResult.error,
+    },
+  });
 
   const liveTask = useLiveTask(selectedTaskId);
   const openedTask = liveTask.task;
@@ -164,7 +228,7 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     if (!liveTask.loaded) return 'loading';
     if (openedTask) return 'ready';
     // Borrada desde este panel: el listener la ve borrada antes de que termine el borrado.
-    return actions.busyId === selectedTaskId ? 'closing' : 'deleted';
+    return taskActions.busyId === selectedTaskId ? 'closing' : 'deleted';
   })();
 
   const viewedUser = users.find((user) => user.id === viewedUserId)
@@ -174,77 +238,88 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
     ? 'All managers'
     : roles.find((role) => role.id === viewedUser?.roleId)?.name ?? '';
   // La tarea nueva va para la persona que se está mirando (con "Everyone", para uno mismo).
-  const newTaskUser = assignableUsers.find((person) => person.id === (isEveryoneView ? currentUserId : viewedUserId));
-  const newTaskAssignee = newTaskUser
-    ? toTaskAssignee(newTaskUser)
+  const newTaskAssigneeUser = assignableUsers.find((person) => person.id === (isEveryoneView ? currentUserId : viewedUserId));
+  const newTaskAssignee = newTaskAssigneeUser
+    ? toTaskAssignee(newTaskAssigneeUser)
     : { userId: currentUserId, userName: currentUserName };
 
-  /** "Me, Sandy +1": las personas de la tarea, con su nombre en vivo si existe. */
-  const getAssigneesLabel = (task: UserTask) => {
-    const names = task.assignees.map((assignee) => {
-      if (assignee.userId === currentUserId) return 'Me';
-      const user = users.find((systemUser) => systemUser.id === assignee.userId);
-      return getFirstName(user ? userName(user) : assignee.userName);
-    });
-    return namesSummary(names);
-  };
-  // "From X": quién la asignó, si no se la asignó solo a sí mismo ni es la que se mira.
-  const getAssignedByName = (task: UserTask): string | null => {
-    if (!task.createdByUserId || isOnlyAssignee(task, task.createdByUserId) || task.createdByUserId === viewedUserId) {
-      return null;
-    }
-    if (task.createdByUserId === currentUserId) return 'Me';
-    const user = users.find((systemUser) => systemUser.id === task.createdByUserId);
-    return getFirstName(user ? userName(user) : task.createdByUserName) || null;
-  };
-  const getProjectTitle = (task: UserTask) =>
-    (task.projectId ? projectsById.get(task.projectId)?.title ?? task.projectTitle : null);
-  const getProjectColor = (task: UserTask) =>
-    projectHex(task.projectId ? projectsById.get(task.projectId) : null, task.projectId ?? '');
+  const { getAssigneesLabel, getAssignedByName, getProjectTitle, getProjectColor } = useTaskListLabels({
+    users, projectsById, currentUserId, viewedUserId,
+  });
   const canEditTask = (task: UserTask) =>
     taskListAccess.canEdit || isAssignee(task, currentUserId) || task.createdByUserId === currentUserId;
+
+  const handleOpenTask = (task: UserTask) => setSelectedTaskId(task.id);
 
   const handleViewedUserChange = (personId: string) => {
     setSelectedPersonId(personId);
     setSelectedTaskId(null);
   };
 
-  const handleToggleDone = (task: UserTask) => {
-    if (task.status === 'done') actions.reopen(task);
-    else actions.complete(task);
+  // Reabrir desde la pestaña Done la saca de la lista: se vuelve a pedir la primera página.
+  const handleToggleDone = async (task: UserTask) => {
+    if (task.status !== 'done') {
+      void taskActions.complete(task);
+      return;
+    }
+    const reopenResult = await taskActions.reopen(task);
+    if (reopenResult.ok && isDoneTabSelected) doneTasksResult.reload();
   };
 
   const handleDeleteTask = async (task: UserTask) => {
     if (!window.confirm(`Delete "${task.title}"? Its comments and files are deleted too.`)) return;
-    if (await actions.remove(task)) setSelectedTaskId(null);
+    if (await taskActions.remove(task)) setSelectedTaskId(null);
   };
 
-  const handleOpenProjectsModal = (projectId: string | null) => {
-    setProjectIdToEdit(projectId);
-    setIsProjectsModalOpen(true);
+  const handleCreateProject = () => setProjectsModalState({ mode: 'create', projectId: null });
+  const handleManageProjects = () => setProjectsModalState({ mode: 'manage', projectId: null });
+
+  const handleEditProject = (project: TaskProject) => {
+    setOpenedProjectId(null);
+    setProjectsModalState({ mode: 'manage', projectId: project.id });
   };
 
+  // Con tareas, el aviso dice que se quedan (sin proyecto).
   const handleDeleteProject = (project: TaskProject) => {
-    if (window.confirm(`Delete the project "${project.title}"?`)) actions.removeProject(project);
+    const taskCount = project.taskCount ?? 0;
+    const tasksNote = taskCount > 0
+      ? `\n\nIts ${taskCount} task${taskCount === 1 ? '' : 's'} will stay, without a project.`
+      : '';
+    if (window.confirm(`Delete the project "${project.title}"?${tasksNote}`)) taskActions.removeProject(project);
+  };
+
+  // Desde la lista de Projects (también los archivados): abre la ventana de sus tareas.
+  const handleOpenProjectTasks = (project: TaskProject) => {
+    setProjectsModalState(null);
+    setOpenedProjectId(project.id);
   };
 
   const listStatus = (() => {
     if (loadError) return 'error';
-    if (!loaded) return 'loading';
-    return tasks.length === 0 ? 'empty' : 'ready';
+    if (!isListLoaded) return 'loading';
+    return visibleSectionTasks.length === 0 ? 'empty' : 'ready';
   })();
 
+  const viewedFirstName = getFirstName(viewedUserName);
+  const isViewingSelf = viewedUserId === currentUserId;
+
   const emptyListMessage = (() => {
-    if (visibleTab === 'assignedTo') return 'No open tasks. Use "Add Task" to create one.';
-    if (viewedUserId === currentUserId) return "You haven't assigned open tasks to anyone.";
-    return `${getFirstName(viewedUserName)} hasn't assigned open tasks to anyone.`;
+    if (tasks.length > 0) return 'No tasks in this tab.';
+    if (visibleAssignmentTab === 'assignedTo') return 'No open tasks. Use "Add Task" to create one.';
+    if (isViewingSelf) return "You haven't assigned open tasks to anyone.";
+    return `${viewedFirstName} hasn't assigned open tasks to anyone.`;
   })();
 
   const projectsPanelTitle = (() => {
     if (isEveryoneView) return 'All projects';
-    if (viewedUserId === currentUserId) return 'My projects';
-    return `${getFirstName(viewedUserName)}'s projects`;
+    if (isViewingSelf) return 'My projects';
+    return `${viewedFirstName}'s projects`;
   })();
+
+  const headerTitle = isEveryoneView ? "Everyone's tasks" : `${viewedFirstName}'s tasks`;
+  const openSummary = isListLoaded ? `${pendingTasks.length} open · ${overdueTaskCount} overdue` : '…';
+  const assignedToTabLabel = isViewingSelf ? 'Assigned to me' : `Assigned to ${viewedFirstName}`;
+  const assignedByTabLabel = isViewingSelf ? 'Assigned by me' : `Assigned by ${viewedFirstName}`;
 
   const openedTaskMessage = openedTaskStatus === 'error'
     ? 'Could not open the task. Check your connection and try again.'
@@ -260,62 +335,42 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
 
   return (
     <div className="fade-in otl">
-      <header className="main-header otl-header">
-        <div className="view-header-title-group">
-          <MenuButton onClick={onOpenMenu} />
-          <div className="otl-who">
-            <OpsAvatar id={isEveryoneView ? 'everyone' : viewedUserId} name={viewedUserName} size="lg" />
-            <div>
-              <h1 className="otl-title">
-                {isEveryoneView ? "Everyone's tasks" : `${getFirstName(viewedUserName)}'s tasks`}
-              </h1>
-              {viewedRoleName && <p className="otl-sub">{viewedRoleName}</p>}
-            </div>
-          </div>
-        </div>
-        <div className="otl-head-actions">
-          <span className="otl-open">{loaded ? `${tasks.length} open · ${overdueTaskCount} overdue` : '…'}</span>
-          {taskListAccess.seesAll && (
-            <select className="otl-select" value={viewedUserId}
-              onChange={(event) => handleViewedUserChange(event.target.value)} aria-label="Whose tasks">
-              {assignableUsers.map((person) => (
-                <option key={person.id} value={person.id}>{person.id === currentUserId ? 'My tasks' : person.name}</option>
-              ))}
-              <option value={ALL_USERS}>Everyone</option>
-            </select>
-          )}
-          <ActionButton variant="outline" icon={<FolderKanban size={16} />} onClick={() => handleOpenProjectsModal(null)}>
-            Projects
-          </ActionButton>
-        </div>
-      </header>
+      <TaskListHeader
+        onOpenMenu={onOpenMenu}
+        viewedUserId={viewedUserId}
+        everyoneOptionId={ALL_USERS}
+        isEveryoneView={isEveryoneView}
+        title={headerTitle}
+        viewedUserName={viewedUserName}
+        viewedRoleName={viewedRoleName}
+        openSummary={openSummary}
+        currentUserId={currentUserId}
+        canChoosePerson={taskListAccess.seesAll}
+        assignableUsers={assignableUsers}
+        onViewedUserChange={handleViewedUserChange}
+        canViewProjects={projectAccess.canView}
+        onManageProjects={handleManageProjects}
+      />
 
       <div className="otl-layout">
         <div className="otl-stack">
-          {!isEveryoneView && (
-            <div className="otl-tabs" role="tablist" aria-label="Tasks">
-              <button type="button" role="tab" aria-selected={visibleTab === 'assignedTo'}
-                className={`otl-tab${visibleTab === 'assignedTo' ? ' active' : ''}`}
-                onClick={() => setSelectedTab('assignedTo')}>
-                {viewedUserId === currentUserId ? 'Assigned to me' : `Assigned to ${getFirstName(viewedUserName)}`}
-                <span className="otl-tab-count">{assignedToResult.loaded ? assignedToResult.tasks.length : '…'}</span>
-              </button>
-              <button type="button" role="tab" aria-selected={visibleTab === 'assignedBy'}
-                className={`otl-tab${visibleTab === 'assignedBy' ? ' active' : ''}`}
-                onClick={() => setSelectedTab('assignedBy')}>
-                {viewedUserId === currentUserId ? 'Assigned by me' : `Assigned by ${getFirstName(viewedUserName)}`}
-                <span className="otl-tab-count">{createdTasksResult.loaded ? assignedByTasks.length : '…'}</span>
-              </button>
-            </div>
+          {!isEveryoneView && !filterIsoDate && (
+            <AssignmentTabs
+              selectedTab={visibleAssignmentTab}
+              assignedToLabel={assignedToTabLabel}
+              assignedByLabel={assignedByTabLabel}
+              assignedToCount={assignedToResult.loaded ? assignedToPendingCount : null}
+              assignedByCount={createdTasksResult.loaded ? assignedByPendingCount : null}
+              onSelectTab={setSelectedAssignmentTab}
+            />
           )}
 
-          <div className="otl-actions">
+          <div className="otl-taskActions">
             <ActionButton size="lg" icon={<Plus size={18} />} onClick={() => setIsNewTaskPanelOpen(true)}>
               Add task
             </ActionButton>
-            {taskListAccess.canEdit && (
-              <ActionButton size="lg" variant="secondary" icon={<Plus size={18} />}
-                onClick={() => handleOpenProjectsModal(null)}>
+            {projectAccess.canAdd && (
+              <ActionButton size="lg" variant="secondary" icon={<Plus size={18} />} onClick={handleCreateProject}>
                 New project
               </ActionButton>
             )}
@@ -328,53 +383,84 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
             </p>
           )}
 
-          {visibleTab === 'assignedTo' && approvalTasks.length > 0 && (
-            <section className="otl-section" aria-label="Waiting for your OK">
-              <h2 className="approval otl-section-title">Waiting for your OK · {approvalTasks.length}</h2>
-              <ul className="otl-rows">
-                {approvalTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    todayIsoDate={todayIsoDate}
-                    assigneesLabel={getAssigneesLabel(task)}
-                    assignedByName={getAssignedByName(task)}
-                    projectTitle={getProjectTitle(task)}
-                    projectColor={getProjectColor(task)}
-                    isSelected={task.id === selectedTaskId}
-                    isBusy={actions.busyId === task.id}
-                    onOpen={(rowTask) => setSelectedTaskId(rowTask.id)}
-                  />
-                ))}
-              </ul>
-            </section>
+          {filterIsoDate && <DateFilterChip isoDate={filterIsoDate} onClear={() => setFilterIsoDate(null)} />}
+          {filterIsoDate && dateFilteredTasks.length === 0 && <p className="otl-empty">No open tasks due that day.</p>}
+          {filterIsoDate && dateFilteredTasks.length > 0 && (
+            <TaskSection
+              title={`Due ${formatDate(filterIsoDate)}`}
+              tone=""
+              tasks={dateFilteredTasks}
+              todayIsoDate={todayIsoDate}
+              selectedTaskId={selectedTaskId}
+              busyTaskId={taskActions.busyId}
+              getProjectTitle={getProjectTitle}
+              getProjectColor={getProjectColor}
+              getAssigneesLabel={getAssigneesLabel}
+              getAssignedByName={getAssignedByName}
+              onOpen={handleOpenTask}
+              onMarkDone={taskActions.complete}
+            />
           )}
 
-          {listStatus === 'error' && (
-            <p className="error otl-empty" role="alert">Could not load the tasks. Check your connection and try again.</p>
-          )}
-          {listStatus === 'loading' && <p className="otl-empty"><Loader2 size={16} className="otl-spin" /> Loading tasks…</p>}
-          {listStatus === 'empty' && <p className="otl-empty">{emptyListMessage}</p>}
-          {listStatus === 'ready' && (
+          {!filterIsoDate && (
             <>
+            {listStatus === 'error' && (
+              <p className="error otl-empty" role="alert">Could not load the tasks. Check your connection and try again.</p>
+            )}
+            {listStatus === 'loading' && <p className="otl-empty"><Loader2 size={16} className="otl-spin" /> Loading tasks…</p>}
+            {hasApprovalQueueError && listStatus !== 'error' && (
+              <p className="error otl-inline-error" role="alert">
+                Could not load the tasks waiting for your OK. The rest of the list is up to date.
+              </p>
+            )}
+            {(listStatus === 'ready' || listStatus === 'empty') && (
               <TaskSectionTabs
-                sectionCounts={sectionCounts}
-                selectedSection={visibleSection}
-                onSelectSection={setSelectedSection}
+                tabs={visibleSectionTabs}
+                selectedTabId={visibleSectionTabId}
+                onSelectTab={setSelectedSectionTabId}
+                onEditTabOrder={taskListAccess.canEdit ? () => setIsTabOrderModalOpen(true) : undefined}
               />
-              <TaskSection
-                section={visibleSection}
-                tasks={tasksBySection[visibleSection]}
+            )}
+            {isDoneTabSelected && listStatus !== 'error' && (
+              <DoneTaskList
+                tasks={doneTasksResult.tasks}
+                pageNumber={doneTasksResult.pageNumber}
+                hasPreviousPage={doneTasksResult.hasPreviousPage}
+                hasNextPage={doneTasksResult.hasNextPage}
+                isLoading={doneTasksResult.isLoading}
+                isLoadingPage={doneTasksResult.isLoadingPage}
+                loadError={doneTasksResult.error}
+                nextPageError={doneTasksResult.nextPageError}
                 todayIsoDate={todayIsoDate}
                 selectedTaskId={selectedTaskId}
-                busyTaskId={actions.busyId}
                 getProjectTitle={getProjectTitle}
                 getProjectColor={getProjectColor}
                 getAssigneesLabel={getAssigneesLabel}
                 getAssignedByName={getAssignedByName}
-                onOpen={(task) => setSelectedTaskId(task.id)}
-                onMarkDone={actions.complete}
+                onOpen={handleOpenTask}
+                onPreviousPage={doneTasksResult.goToPreviousPage}
+                onNextPage={doneTasksResult.goToNextPage}
+                onRetry={doneTasksResult.reload}
               />
+            )}
+            {!isDoneTabSelected && listStatus === 'empty' && <p className="otl-empty">{emptyListMessage}</p>}
+            {!isDoneTabSelected && listStatus === 'ready' && (
+              <TaskSection
+                title={TASK_LIST_TAB_LABEL[visibleSectionTabId]}
+                tone={visibleSectionTabId}
+                tasks={visibleSectionTasks}
+                todayIsoDate={todayIsoDate}
+                selectedTaskId={selectedTaskId}
+                busyTaskId={taskActions.busyId}
+                getProjectTitle={getProjectTitle}
+                getProjectColor={getProjectColor}
+                getAssigneesLabel={getAssigneesLabel}
+                getAssignedByName={getAssignedByName}
+                onOpen={handleOpenTask}
+                onMarkDone={taskActions.complete}
+                isReviewOnly={(task) => tasksToApproveIds.has(task.id)}
+              />
+            )}
             </>
           )}
         </div>
@@ -385,9 +471,12 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
           openTasks={loadedOpenTasks}
           todayIsoDate={todayIsoDate}
           currentUserId={currentUserId}
-          canCreateProject={taskListAccess.canEdit}
-          onOpenProject={(project) => handleOpenProjectsModal(project.id)}
-          onCreateProject={() => handleOpenProjectsModal(null)}
+          selectedIsoDate={filterIsoDate}
+          onSelectDate={setFilterIsoDate}
+          canViewProjects={projectAccess.canView}
+          canCreateProject={projectAccess.canAdd}
+          onOpenProject={(project) => setOpenedProjectId(project.id)}
+          onCreateProject={handleCreateProject}
         />
       </div>
 
@@ -402,52 +491,85 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
           canEdit={canEditTask(openedTask)}
           canReassign={canEditTask(openedTask) && canReassignTask(openedTask, currentUserId, taskListAccess)}
           canDelete={taskListAccess.canDelete}
-          isBusy={actions.busyId === openedTask.id}
-          isUploading={actions.uploading}
+          isBusy={taskActions.busyId === openedTask.id}
+          isUploading={taskActions.uploading}
           onClose={() => setSelectedTaskId(null)}
-          onPatch={(patch) => actions.patch(openedTask, patch)}
+          onPatch={(patch) => taskActions.patch(openedTask, patch)}
           onToggleDone={() => handleToggleDone(openedTask)}
           onDelete={() => handleDeleteTask(openedTask)}
-          onAddComment={(text) => actions.comment(openedTask.id, text)}
-          onAttachFiles={(files) => actions.attach(openedTask.id, files)}
-          onRemoveAttachment={(attachment) => actions.removeFile(openedTask.id, attachment)}
+          onAddComment={(text) => taskActions.comment(openedTask.id, text)}
+          onAttachFiles={(files) => taskActions.attach(openedTask.id, files)}
+          onRemoveAttachment={(attachment) => taskActions.removeFile(openedTask.id, attachment)}
           approvers={approvers}
           defaultApproverUserId={defaultApproverUserId}
-          onSendApproval={(approver) => actions.sendForApproval(openedTask, approver)}
-          onDecideApproval={async (decision, note) => (await actions.decide(openedTask, decision, note)).ok}
-          onSetApproval={(approval) => actions.setApproval(openedTask, approval)}
+          onSendApproval={(approver) => taskActions.sendForApproval(openedTask, approver)}
+          onDecideApproval={async (decision, note) => (await taskActions.decide(openedTask, decision, note)).ok}
+          onSetApproval={(approval) => taskActions.setApproval(openedTask, approval)}
         />
       )}
 
       {isNewTaskPanelOpen && (
         <NewTaskPanel
           key={newTaskAssignee.userId}
-          people={assignableUsers}
+          assignableUsers={assignableUsers}
           projects={activeProjects}
           priorities={priorityCatalog}
-          me={{ id: currentUserId, name: currentUserName }}
+          currentUser={{ id: currentUserId, name: currentUserName }}
           defaultAssignee={newTaskAssignee}
           approvers={approvers}
           onClose={() => setIsNewTaskPanelOpen(false)}
-          onCreate={actions.add}
+          onCreate={taskActions.add}
         />
       )}
 
-      {actions.undo && <UndoToast title={actions.undo.task.title} onUndo={actions.undoComplete} />}
+      {taskActions.undo && <UndoToast title={taskActions.undo.task.title} onUndo={taskActions.undoComplete} />}
 
-      {isProjectsModalOpen && (
+      {isTabOrderModalOpen && (
+        <TaskTabOrderModal
+          tabOrder={sectionTabOrder}
+          onClose={() => setIsTabOrderModalOpen(false)}
+          onSave={taskActions.saveTabOrder}
+        />
+      )}
+
+      {/* Con una tarea abierta la ventana se esconde; al cerrar la tarea, vuelve. */}
+      {openedProjectTasks.openedProject && !selectedTaskId && (
+        <ProjectTasksModal
+          project={openedProjectTasks.openedProject}
+          pendingTasks={openedProjectTasks.openedProjectTasks}
+          isLoading={openedProjectTasks.isLoading}
+          hasLoadError={openedProjectTasks.hasLoadError}
+          todayIsoDate={todayIsoDate}
+          currentUserId={currentUserId}
+          busyTaskId={taskActions.busyId}
+          canEditProject={projectAccess.canEdit}
+          getProjectTitle={getProjectTitle}
+          getProjectColor={getProjectColor}
+          getAssigneesLabel={getAssigneesLabel}
+          getAssignedByName={getAssignedByName}
+          onOpenTask={handleOpenTask}
+          onMarkDone={taskActions.complete}
+          onEditProject={handleEditProject}
+          onClose={() => setOpenedProjectId(null)}
+        />
+      )}
+
+      {projectsModalState && (
         <ProjectsModal
           projects={projects}
-          people={assignableUsers}
+          assignableUsers={assignableUsers}
           teams={teams}
-          defaultOwnerId={currentUserId}
-          canEdit={taskListAccess.canEdit}
-          canDelete={taskListAccess.canDelete}
-          onClose={() => setIsProjectsModalOpen(false)}
-          onSave={actions.saveProject}
-          onStatus={actions.setProjectStatus}
-          onDelete={handleDeleteProject}
-          initialProjectId={projectIdToEdit}
+          defaultOwnerUserId={currentUserId}
+          canAdd={projectAccess.canAdd}
+          canEdit={projectAccess.canEdit}
+          canDelete={projectAccess.canDelete}
+          onClose={() => setProjectsModalState(null)}
+          onSaveProject={taskActions.saveProject}
+          onProjectStatusChange={taskActions.setProjectStatus}
+          onDeleteProject={handleDeleteProject}
+          onOpenProjectTasks={handleOpenProjectTasks}
+          initialMode={projectsModalState.mode}
+          initialProjectId={projectsModalState.projectId}
         />
       )}
     </div>
