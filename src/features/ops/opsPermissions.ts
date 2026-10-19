@@ -79,6 +79,17 @@ export function taskProjectRights(role: Role | null | undefined, isSuperAdmin: b
   };
 }
 
+/** A quién se propone para dar el visto bueno: el dueño (rol con Owner) o,
+ *  si no hay, un Administrator; si tampoco, el primero de la lista. '' = nadie. */
+export function getDefaultApproverUserId(approvers: AssignableUser[], users: SystemUser[], roles: Role[]): string {
+  const getUserRole = (personId: string) =>
+    roles.find((role) => role.id === users.find((user) => user.id === personId)?.roleId);
+  const defaultApprover = approvers.find((person) =>
+    getUserRole(person.id)?.permissions?.some((permission) => permission.module === 'Owner' && permission.canView))
+    ?? approvers.find((person) => getUserRole(person.id)?.name === 'Administrator');
+  return defaultApprover?.id ?? approvers[0]?.id ?? '';
+}
+
 /** ¿A este usuario se le pueden asignar tareas? (los que tienen la vista). */
 function isTaskListUser(user: SystemUser, roles: Role[]): boolean {
   if (user.status === 'Inactive') return false;

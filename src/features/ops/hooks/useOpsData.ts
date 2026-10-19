@@ -12,7 +12,6 @@
 //     Cuando no quede ninguna tarea vieja abierta, se puede quitar esa consulta.
 //   · la tarea abierta en el panel (un documento, aunque ya esté hecha);
 //     (con sus comentarios: van dentro, en comments[]);
-//   · el top 3 de una persona (un documento);
 //   · las tareas que esperan el visto bueno de una persona;
 //   · las HECHAS (pestaña Done): no es un listener, se piden por páginas de
 //     20 (getDocs, de la más reciente a la más vieja) solo con la pestaña
@@ -28,21 +27,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { onSnapshot, query, where, type Query, type SnapshotMetadata } from 'firebase/firestore';
 import type {
-  DoneTasksPage, OpenTasksSource, StoredUserTask, TaskRelation, UserPriorities, UserTask,
+  DoneTasksPage, DoneTasksResult, OpenTasksSource, StoredUserTask, TaskRelation, UserTask,
 } from '../../../types/index';
 import { LEGACY_ASSIGNEE_FIELD, userTaskRef, userTasksCol, userTasksService } from '../../../services/userTasksService';
-import { prioritiesRef } from '../services/prioritiesService';
 
 export const ALL_USERS = '__all__';
 
 const EMPTY_TASKS: UserTask[] = [];
-const EMPTY_PROJECT_IDS: string[] = [];
+
+/** Un error de cualquier tipo como Error (Firestore lanza FirestoreError, que lo es,
+ *  pero un `throw` de otra cosa no). */
+const toError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
 /** Sin red y el dato salió del caché: "vacío" no es confiable (puede no estar en caché). */
 const OFFLINE_LOAD_ERROR = new Error('Sin conexión: no se pudieron cargar las tareas.');
 const isOfflineCacheOnly = (metadata: SnapshotMetadata) =>
   metadata.fromCache && typeof navigator !== 'undefined' && !navigator.onLine;
-const WITH_METADATA = { includeMetadataChanges: true } as const;
+const LISTEN_WITH_METADATA = { includeMetadataChanges: true } as const;
 
 /** Resultado de un listener junto con la clave (persona o tarea) a la que
  *  pertenece: si la clave cambia, el resultado viejo no se muestra. */
@@ -92,7 +93,7 @@ function useOpenTasksBySource(
     };
     const unsubscribers = queries.map((taskQuery, index) => onSnapshot(
       taskQuery,
-      WITH_METADATA,
+      LISTEN_WITH_METADATA,
       (snapshot) => {
         resultsByQuery[index] = snapshot.docs.map((taskDoc) => taskDoc.data());
         isOfflineCacheByQuery[index] = isOfflineCacheOnly(snapshot.metadata);
@@ -159,7 +160,7 @@ export function useLiveTask(taskId: string | null): { task: UserTask | null; loa
     if (!taskId) return;
     return onSnapshot(
       userTaskRef(taskId),
-      WITH_METADATA,
+      LISTEN_WITH_METADATA,
       (snapshot) => {
         const isMissingOffline = !snapshot.exists() && isOfflineCacheOnly(snapshot.metadata);
         setKeyedTask({
@@ -178,27 +179,6 @@ export function useLiveTask(taskId: string | null): { task: UserTask | null; loa
   return { task: currentTask?.value ?? null, loaded: !!currentTask, error: currentTask?.error ?? null };
 }
 
-/** Top 3 de una persona (ids de proyectos, en orden). */
-export function useTopProjectIds(userId: string | null): { projectIds: string[]; error: Error | null } {
-  const [keyedPriorities, setKeyedPriorities] = useState<KeyedState<UserPriorities | null> | null>(null);
-  useEffect(() => {
-    if (!userId || userId === ALL_USERS) return;
-    return onSnapshot(
-      prioritiesRef(userId),
-      (snapshot) => setKeyedPriorities({ key: userId, value: snapshot.exists() ? snapshot.data() : null, error: null }),
-      (error) => {
-        console.error('Error escuchando el top 3:', error);
-        setKeyedPriorities({ key: userId, value: null, error });
-      },
-    );
-  }, [userId]);
-  const currentPriorities = userId && keyedPriorities?.key === userId ? keyedPriorities : null;
-  return {
-    projectIds: currentPriorities?.value?.projectIds ?? EMPTY_PROJECT_IDS,
-    error: currentPriorities?.error ?? null,
-  };
-}
-
 /** Páginas de tareas hechas ya leídas, con la clave (relación + persona) a la que pertenecen. */
 interface DoneTasksPagesState {
   key: string;
@@ -206,44 +186,43 @@ interface DoneTasksPagesState {
   /** Página que se está viendo (0 = la de las más recientes). */
   pageIndex: number;
   error: Error | null;
+  /** No se pudo traer la página siguiente (se sigue viendo la actual). */
+  nextPageError?: Error | null;
 }
 
 /** Tareas HECHAS de `userId` según la relación (ALL_USERS = las de todos), de
  *  20 en 20 por páginas: se ve UNA página a la vez (la primera = las 20 más
- *  recientes). Solo pide datos con `isEnabled` (la pestaña Done abierta) y
+ *  recientes). Solo pide datos con `isDoneTabOpen` (la pestaña Done abierta) y
  *  vuelve a la primera página al cambiar de persona, de relación o con
  *  `reload()` (p. ej. después de reabrir una). Las páginas ya leídas no se
- *  vuelven a pedir al ir hacia atrás. */
-export function useDoneTasks(relation: TaskRelation, userId: string | null, isEnabled: boolean): {
-  tasks: UserTask[]; pageNumber: number; hasPreviousPage: boolean; hasNextPage: boolean;
-  isLoading: boolean; isLoadingPage: boolean; error: Error | null;
-  goToPreviousPage: () => void; goToNextPage: () => void; reload: () => void;
-} {
+ *  vuelven a pedir al ir hacia atrás. Si falla la página siguiente, se queda
+ *  en la actual y lo dice `nextPageError` (la pantalla lo muestra; sin alert). */
+export function useDoneTasks(relation: TaskRelation, userId: string | null, isDoneTabOpen: boolean): DoneTasksResult {
   const [reloadCount, setReloadCount] = useState(0);
   const [donePages, setDonePages] = useState<DoneTasksPagesState | null>(null);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
   const queryUserId = userId === ALL_USERS ? null : userId;
-  const requestKey = `${relation}:${userId}:${reloadCount}`;
+  const donePagesKey = `${relation}:${userId}:${reloadCount}`;
 
   // Primera página: se sincroniza con la consulta de la persona y la relación.
   useEffect(() => {
-    if (!isEnabled || !userId) return;
+    if (!isDoneTabOpen || !userId) return;
     let isCancelled = false;
     const loadFirstPage = async () => {
       try {
         if (typeof navigator !== 'undefined' && !navigator.onLine) throw OFFLINE_LOAD_ERROR;
         const firstPage = await userTasksService.getDonePage(relation, queryUserId, null);
-        if (!isCancelled) setDonePages({ key: requestKey, pages: [firstPage], pageIndex: 0, error: null });
+        if (!isCancelled) setDonePages({ key: donePagesKey, pages: [firstPage], pageIndex: 0, error: null });
       } catch (error) {
         console.error('Error leyendo las tareas hechas:', error);
-        if (!isCancelled) setDonePages({ key: requestKey, pages: [], pageIndex: 0, error: error as Error });
+        if (!isCancelled) setDonePages({ key: donePagesKey, pages: [], pageIndex: 0, error: toError(error) });
       }
     };
     void loadFirstPage();
     return () => { isCancelled = true; };
-  }, [isEnabled, relation, userId, queryUserId, requestKey]);
+  }, [isDoneTabOpen, relation, userId, queryUserId, donePagesKey]);
 
-  const currentDonePages = donePages?.key === requestKey ? donePages : null;
+  const currentDonePages = donePages?.key === donePagesKey ? donePages : null;
   const currentPage = currentDonePages?.pages[currentDonePages.pageIndex] ?? null;
   const pageIndex = currentDonePages?.pageIndex ?? 0;
   const hasNextPage = !!currentDonePages
@@ -253,16 +232,18 @@ export function useDoneTasks(relation: TaskRelation, userId: string | null, isEn
     if (!currentDonePages || !currentPage || !hasNextPage || isLoadingPage) return;
     const nextPageIndex = pageIndex + 1;
     if (nextPageIndex < currentDonePages.pages.length) {
-      setDonePages({ ...currentDonePages, pageIndex: nextPageIndex });
+      setDonePages({ ...currentDonePages, pageIndex: nextPageIndex, nextPageError: null });
       return;
     }
     setIsLoadingPage(true);
     try {
       const nextPage = await userTasksService.getDonePage(relation, queryUserId, currentPage.cursor);
-      setDonePages({ ...currentDonePages, pages: [...currentDonePages.pages, nextPage], pageIndex: nextPageIndex });
+      setDonePages({
+        ...currentDonePages, pages: [...currentDonePages.pages, nextPage], pageIndex: nextPageIndex, nextPageError: null,
+      });
     } catch (error) {
       console.error('Error leyendo la página siguiente de tareas hechas:', error);
-      alert('No se pudo cargar la página siguiente de tareas hechas. Inténtalo de nuevo.');
+      setDonePages({ ...currentDonePages, nextPageError: toError(error) });
     } finally {
       setIsLoadingPage(false);
     }
@@ -270,7 +251,7 @@ export function useDoneTasks(relation: TaskRelation, userId: string | null, isEn
 
   const goToPreviousPage = () => {
     if (!currentDonePages || pageIndex === 0) return;
-    setDonePages({ ...currentDonePages, pageIndex: pageIndex - 1 });
+    setDonePages({ ...currentDonePages, pageIndex: pageIndex - 1, nextPageError: null });
   };
 
   const reload = useCallback(() => setReloadCount((count) => count + 1), []);
@@ -280,9 +261,10 @@ export function useDoneTasks(relation: TaskRelation, userId: string | null, isEn
     pageNumber: pageIndex + 1,
     hasPreviousPage: pageIndex > 0,
     hasNextPage,
-    isLoading: isEnabled && !!userId && currentDonePages === null,
+    isLoading: isDoneTabOpen && !!userId && currentDonePages === null,
     isLoadingPage,
     error: currentDonePages?.error ?? null,
+    nextPageError: currentDonePages?.nextPageError ?? null,
     goToPreviousPage,
     goToNextPage: () => { void goToNextPage(); },
     reload,

@@ -139,6 +139,9 @@ export interface AssignableUser {
 /** Relación de una persona con las tareas: las que tiene asignadas o las que asignó. */
 export type TaskRelation = 'assigned' | 'created';
 
+/** Pestaña de arriba del Task list: las que le asignaron a la persona o las que ella asignó a otros. */
+export type AssignmentTab = 'assignedTo' | 'assignedBy';
+
 /** De dónde salen las tareas abiertas de un listener: de una persona (las que
  *  tiene asignadas o las que creó) o de un proyecto (todas las de ese proyecto). */
 export type OpenTasksSource = TaskRelation | 'project';
@@ -151,6 +154,21 @@ export interface DoneTasksPage {
   tasks: UserTask[];
   cursor: DoneTasksCursor | null;
   hasMore: boolean;
+}
+
+/** Lo que devuelve useDoneTasks: la página de hechas que se ve y cómo moverse. */
+export interface DoneTasksResult {
+  tasks: UserTask[]; //                 tareas de la página que se ve
+  pageNumber: number; //                1 = las 20 más recientes
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+  isLoading: boolean; //                primera página en camino
+  isLoadingPage: boolean; //            página siguiente en camino
+  error: Error | null; //               no se pudo leer la primera página (con su `code` de Firestore)
+  nextPageError: Error | null; //       no se pudo leer la página siguiente (se sigue viendo la actual)
+  goToPreviousPage: () => void;
+  goToNextPage: () => void;
+  reload: () => void; //                vuelve a pedir desde la primera página
 }
 
 /** Pestaña de la lista del Task list: por vencimiento (overdue, daily = hoy y

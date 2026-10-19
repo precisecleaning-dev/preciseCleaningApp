@@ -1004,16 +1004,21 @@
    ⭐ Invoices — pantalla de ALTURA FIJA en escritorio (misma idea que el
    Overview): encabezado, periodo, indicadores y filtros quietos; la tabla
    ocupa el resto con su propio scroll y su barra horizontal SIEMPRE visible.
+   En pantallas bajas (laptop con zoom) el resto no alcanza: la tabla nunca
+   baja de ~4 filas entre el encabezado y el TOTAL fijos, y lo que sobra se
+   desplaza con el scroll de la página. Con min-height: 0 el TOTAL tapaba la
+   única fila.
    ===================================================================== */
 @media (min-width: 901px) and (min-height: 600px) {
   .inv-page.inv-unified {
     height: 100%;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .inv-page.inv-unified > .inv-table-wrap {
     flex: 1 1 auto;
-    min-height: 0;
     max-height: none;
+    min-height: 320px;
   }
 }
 .inv-page.inv-unified .inv-table-wrap {

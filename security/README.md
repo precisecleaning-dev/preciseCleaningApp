@@ -143,6 +143,24 @@ todo. Con esta propuesta:
    - Si algo falla, volver a publicar el respaldo del paso 1. Las reglas cambian en
      menos de un minuto.
 
+## Índices: antes de desplegar la app
+
+Independiente de las reglas. La pestaña Done del Task list
+(`userTasksService.getDonePage`) combina un filtro de persona
+(`assigneeUserIds` array-contains o `createdByUserId ==`), `status == 'done'` y
+`orderBy('doneAt', 'desc')`, y eso pide **3 índices compuestos** de `user_tasks`
+(están en `firestore.indexes.json`). Este archivo no se despliega solo: los
+índices en uso se administran en la consola de Firebase. Si la app sale sin
+ellos, la consulta falla para todos y Done muestra "Done tasks need a Firestore
+index…" con el link para crearlo.
+
+1. En la consola (Firestore → Indexes → Composite) crear los 3 de `user_tasks`
+   de `firestore.indexes.json` (`firebase.json` no apunta a este archivo, así que
+   `firebase deploy` no los crea). También sirve abrir Done una vez y usar el link
+   "Create the index" que muestra: arma cada índice ya lleno.
+2. Esperar a que los 3 digan **Enabled** (tarda unos minutos).
+3. Recién entonces desplegar la versión de la app con la pestaña Done.
+
 ## Pruebas
 
 ```

@@ -17,6 +17,8 @@ interface DoneTaskListProps {
   isLoadingPage: boolean;
   /** Error de Firestore al pedir las hechas (con su `code`), o null. */
   loadError: Error | null;
+  /** No se pudo traer la página siguiente: se sigue viendo la actual y se avisa abajo. */
+  nextPageError: Error | null;
   /** Hoy, AAAA-MM-DD. */
   todayIsoDate: string;
   selectedTaskId: string | null;
@@ -33,12 +35,13 @@ interface DoneTaskListProps {
 /** Link de la consola para crear el índice que falta (viene en el mensaje de Firestore). */
 const INDEX_LINK_PATTERN = /https:\/\/console\.firebase\.google\.com\/\S+/;
 
+/** ¿Falló por falta de señal? (el navegador está sin red o Firestore dice "unavailable"). */
+const isOfflineError = (error: Error & { code?: string }): boolean =>
+  (typeof navigator !== 'undefined' && !navigator.onLine) || error.code === 'unavailable';
+
 /** Por qué no se pudieron leer las hechas, según el código del error de Firestore. */
 const getLoadErrorMessage = (loadError: Error & { code?: string }): string => {
-  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-  if (isOffline || loadError.code === 'unavailable') {
-    return "You're offline. Done tasks will load when the connection is back.";
-  }
+  if (isOfflineError(loadError)) return "You're offline. Done tasks will load when the connection is back.";
   if (loadError.code === 'failed-precondition') {
     return 'Done tasks need a Firestore index that is missing or still being built. Create it with the link and wait until its status is "Enabled".';
   }
@@ -48,8 +51,15 @@ const getLoadErrorMessage = (loadError: Error & { code?: string }): string => {
   return `Could not load the done tasks${loadError.code ? ` (${loadError.code})` : ''}.`;
 };
 
+/** Aviso cuando no llega la página siguiente (se sigue viendo la actual). */
+const getNextPageErrorMessage = (nextPageError: Error & { code?: string }): string => {
+  if (isOfflineError(nextPageError)) return "You're offline. Tap Next again when the connection is back.";
+  return `Could not load the next page${nextPageError.code ? ` (${nextPageError.code})` : ''}. Tap Next to try again.`;
+};
+
 const DoneTaskList = ({
-  tasks, pageNumber, hasPreviousPage, hasNextPage, isLoading, isLoadingPage, loadError, todayIsoDate, selectedTaskId,
+  tasks, pageNumber, hasPreviousPage, hasNextPage, isLoading, isLoadingPage, loadError, nextPageError, todayIsoDate,
+  selectedTaskId,
   getProjectTitle, getProjectColor, getAssigneesLabel, getAssignedByName, onOpen, onPreviousPage, onNextPage, onRetry,
 }: DoneTaskListProps) => {
   if (loadError) {
@@ -102,6 +112,9 @@ const DoneTaskList = ({
             {isLoadingPage ? 'Loading…' : 'Next'}
           </ActionButton>
         </nav>
+      )}
+      {nextPageError && (
+        <p className="error otl-pagination-error" role="alert">{getNextPageErrorMessage(nextPageError)}</p>
       )}
     </section>
   );

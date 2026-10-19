@@ -36,10 +36,16 @@ import * as admin from "firebase-admin";
 // módulo (los imports se evalúan primero).
 const db = () => admin.firestore();
 
+/** Permisos de un módulo en el espejo. Los nombres van cortos a propósito:
+ *  las reglas los leen así (`acc().m.get(módulo, {}).get('e', false)`). */
 export interface Rights {
+  /** View: ver el módulo (canView en Roles). */
   v: boolean;
+  /** Add: crear registros (canAdd en Roles). */
   a: boolean;
+  /** Edit: editar registros (canEdit en Roles). */
   e: boolean;
+  /** Delete: borrar registros (canDelete en Roles). */
   d: boolean;
   /** Scope "Own" del módulo en Roles: solo sus propios registros. Hoy lo usan
    *  las reglas de user_tasks (módulo "Task List"). */
@@ -79,7 +85,7 @@ export interface UserAccess {
 }
 
 /** Módulos que, si el rol no los declara, heredan de otros (como en la app). */
-const LEGACY: Record<string, string[]> = {
+const INHERITED_MODULE_SOURCES: Record<string, string[]> = {
   "Pipeline": ["Houses"],
   "Quality Check Reports": ["Quality Check"],
   "QC Dashboard": ["Quality Check"],
@@ -91,10 +97,18 @@ const LEGACY: Record<string, string[]> = {
   "Photo Settings": ["Settings"],
 };
 
-const NONE: Rights = { v: false, a: false, e: false, d: false, o: false };
+const NO_RIGHTS: Rights = { v: false, a: false, e: false, d: false, o: false };
 
-const rightsOf = (p?: RolePermission): Rights =>
-  p ? { v: !!p.canView, a: !!p.canAdd, e: !!p.canEdit, d: !!p.canDelete, o: p.scope === "Own" } : NONE;
+const toRights = (permission?: RolePermission): Rights =>
+  permission
+    ? {
+      v: !!permission.canView,
+      a: !!permission.canAdd,
+      e: !!permission.canEdit,
+      d: !!permission.canDelete,
+      o: permission.scope === "Own",
+    }
+    : NO_RIGHTS;
 
 /** Clave del espejo: el email tal como viene en el token (minúsculas). */
 export const accessKey = (email: string): string => email.trim().toLowerCase();
@@ -102,52 +116,62 @@ export const accessKey = (email: string): string => email.trim().toLowerCase();
 /** Permisos efectivos de un usuario según su rol (función pura: se prueba sola). */
 export function computeAccess(userId: string, user: UserDoc, role: RoleDoc | null): UserAccess {
   const declared = new Map<string, RolePermission>();
-  (role?.permissions || []).forEach((p) => {
-    if (p && p.module) declared.set(p.module, p);
+  (role?.permissions ?? []).forEach((permission) => {
+    if (permission?.module) declared.set(permission.module, permission);
   });
-  const m: Record<string, Rights> = {};
-  declared.forEach((p, module) => {
-    m[module] = rightsOf(p);
+  const rightsByModule: Record<string, Rights> = {};
+  declared.forEach((permission, module) => {
+    rightsByModule[module] = toRights(permission);
   });
-  Object.entries(LEGACY).forEach(([module, fallbacks]) => {
+  Object.entries(INHERITED_MODULE_SOURCES).forEach(([module, sourceModules]) => {
     if (declared.has(module)) return;
-    const inherited = fallbacks.map((f) => rightsOf(declared.get(f)));
+    const inheritedRights = sourceModules.map((sourceModule) => toRights(declared.get(sourceModule)));
     if (module === "Task List") {
       // opsPermissions.ts: sin declarar, quien ve Manager u Owner tiene todo
       // (y ve las tareas de todos).
-      const any = inherited.some((r) => r.v);
-      m[module] = { v: any, a: any, e: any, d: any, o: false };
+      const canSeeTaskList = inheritedRights.some((rights) => rights.v);
+      rightsByModule[module] = {
+        v: canSeeTaskList, a: canSeeTaskList, e: canSeeTaskList, d: canSeeTaskList, o: false,
+      };
       return;
     }
     if (module === "Projects") {
       // opsPermissions.ts (taskProjectRights): sin declarar, crear y editar
       // proyectos es el Edit de Task List y borrarlos su Delete (como antes).
-      // "Task List" ya está en `m`: va antes en LEGACY.
-      const taskList = m["Task List"] ?? NONE;
-      m[module] = { v: taskList.v, a: taskList.e, e: taskList.e, d: taskList.d, o: false };
+      // "Task List" ya está en `rightsByModule`: va antes en INHERITED_MODULE_SOURCES.
+      const taskListRights = rightsByModule["Task List"] ?? NO_RIGHTS;
+      rightsByModule[module] = {
+        v: taskListRights.v, a: taskListRights.e, e: taskListRights.e, d: taskListRights.d, o: false,
+      };
       return;
     }
-    m[module] = inherited.reduce(
-      (acc, r) => ({ v: acc.v || r.v, a: acc.a || r.a, e: acc.e || r.e, d: acc.d || r.d, o: false }),
-      NONE,
+    rightsByModule[module] = inheritedRights.reduce(
+      (combinedRights, rights) => ({
+        v: combinedRights.v || rights.v,
+        a: combinedRights.a || rights.a,
+        e: combinedRights.e || rights.e,
+        d: combinedRights.d || rights.d,
+        o: false,
+      }),
+      NO_RIGHTS,
     );
   });
-  const admin = role?.name === "Administrator";
+  const isAdmin = role?.name === "Administrator";
   // ¿Puede ver dinero? Las pantallas que lo muestran: Payroll, Invoices,
   // Owner/Manager y Houses cuando el rol no oculta el grupo "financial".
-  const housesHidden = declared.get("Houses")?.hiddenGroups || [];
-  const fin = admin ||
-    ["Payroll", "Invoices", "Owner", "Manager"].some((mod) => m[mod]?.v) ||
-    (!!m["Houses"]?.v && !housesHidden.includes("financial"));
+  const hiddenHouseGroups = declared.get("Houses")?.hiddenGroups ?? [];
+  const canSeeFinancials = isAdmin ||
+    ["Payroll", "Invoices", "Owner", "Manager"].some((moduleName) => rightsByModule[moduleName]?.v) ||
+    (!!rightsByModule["Houses"]?.v && !hiddenHouseGroups.includes("financial"));
   return {
     // Hoy la app deja entrar a un usuario "Inactive"; con las reglas propuestas
     // ya no podrá leer ni escribir nada (ver security/README.md).
-    active: !!role && String(user.status || "") !== "Inactive",
-    admin,
-    fin,
-    roleId: String(user.roleId || ""),
+    active: !!role && String(user.status ?? "") !== "Inactive",
+    admin: isAdmin,
+    fin: canSeeFinancials,
+    roleId: String(user.roleId ?? ""),
     userId,
-    m,
+    m: rightsByModule,
   };
 }
 
@@ -162,9 +186,9 @@ export async function accessForEmail(email: string | undefined): Promise<UserAcc
   if (!email) return null;
   const snap = await db().collection("system_users").where("email", "==", accessKey(email)).limit(1).get();
   if (snap.empty) return null;
-  const doc = snap.docs[0];
-  const user = doc.data() as UserDoc;
-  return computeAccess(doc.id, user, await roleById(user.roleId));
+  const userDoc = snap.docs[0];
+  const user = userDoc.data() as UserDoc;
+  return computeAccess(userDoc.id, user, await roleById(user.roleId));
 }
 
 /** Lanza permission-denied si quien llama no es admin ni tiene `right` en `module`. */
@@ -202,9 +226,9 @@ async function refreshAccessFor(key: string): Promise<void> {
     await db().doc(`user_access/${key}`).delete();
     return;
   }
-  const d = snap.docs[0];
-  const user = d.data() as UserDoc;
-  await writeAccess(d.id, user, await roleById(user.roleId));
+  const userDoc = snap.docs[0];
+  const user = userDoc.data() as UserDoc;
+  await writeAccess(userDoc.id, user, await roleById(user.roleId));
 }
 
 // Usuario creado, editado o borrado → el espejo de su email (y del email
@@ -215,7 +239,7 @@ export const syncuseraccessonuser = onDocumentWritten(
     const before = event.data?.before?.exists ? (event.data.before.data() as UserDoc) : null;
     const after = event.data?.after?.exists ? (event.data.after.data() as UserDoc) : null;
     const keys = new Set(
-      [before?.email, after?.email].filter((e): e is string => !!e).map(accessKey),
+      [before?.email, after?.email].filter((email): email is string => !!email).map(accessKey),
     );
     await Promise.all([...keys].map(refreshAccessFor));
   },
@@ -227,37 +251,43 @@ export const syncuseraccessonrole = onDocumentWritten(
   async (event) => {
     const role = event.data?.after?.exists ? (event.data.after.data() as RoleDoc) : null;
     const users = await db().collection("system_users").where("roleId", "==", event.params.roleId).get();
-    await Promise.all(users.docs.map((d) => writeAccess(d.id, d.data() as UserDoc, role)));
+    await Promise.all(users.docs.map((userDoc) => writeAccess(userDoc.id, userDoc.data() as UserDoc, role)));
     logger.info(`user_access: ${users.size} usuario(s) del rol ${event.params.roleId} recalculados.`);
   },
 );
 
 // Reconstruye todo el espejo (primera vez, o si algo quedó desfasado). Solo admin.
 export const rebuilduseraccess = onCall({ region: "us-central1" }, async (request) => {
-  const me = await accessForEmail(request.auth?.token?.email);
-  if (!me?.admin) throw new HttpsError("permission-denied", "Solo un Administrator puede reconstruir los accesos.");
-  const [users, roles, current] = await Promise.all([
+  const callerAccess = await accessForEmail(request.auth?.token?.email);
+  if (!callerAccess?.admin) {
+    throw new HttpsError("permission-denied", "Solo un Administrator puede reconstruir los accesos.");
+  }
+  const [users, roles, existingAccessDocs] = await Promise.all([
     db().collection("system_users").get(),
     db().collection("settings_roles").get(),
     db().collection("user_access").get(),
   ]);
-  const roleMap = new Map(roles.docs.map((r) => [r.id, r.data() as RoleDoc]));
-  const keep = new Set<string>();
-  const writer = db().bulkWriter();
-  users.docs.forEach((d) => {
-    const user = d.data() as UserDoc;
+  const roleMap = new Map(roles.docs.map((roleDoc) => [roleDoc.id, roleDoc.data() as RoleDoc]));
+  // Emails de los usuarios que existen: sus espejos se reescriben y se conservan.
+  const existingKeys = new Set<string>();
+  const bulkWriter = db().bulkWriter();
+  users.docs.forEach((userDoc) => {
+    const user = userDoc.data() as UserDoc;
     if (!user.email) return;
     const key = accessKey(user.email);
-    keep.add(key);
-    writer.set(db().doc(`user_access/${key}`), {
-      ...computeAccess(d.id, user, roleMap.get(String(user.roleId || "")) || null),
+    existingKeys.add(key);
+    bulkWriter.set(db().doc(`user_access/${key}`), {
+      ...computeAccess(userDoc.id, user, roleMap.get(String(user.roleId ?? "")) ?? null),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
   // Espejos de usuarios que ya no existen.
-  current.docs.forEach((d) => {
-    if (!keep.has(d.id)) writer.delete(d.ref);
+  existingAccessDocs.docs.forEach((accessDoc) => {
+    if (!existingKeys.has(accessDoc.id)) bulkWriter.delete(accessDoc.ref);
   });
-  await writer.close();
-  return { users: keep.size, removed: current.docs.filter((d) => !keep.has(d.id)).length };
+  await bulkWriter.close();
+  return {
+    users: existingKeys.size,
+    removed: existingAccessDocs.docs.filter((accessDoc) => !existingKeys.has(accessDoc.id)).length,
+  };
 });

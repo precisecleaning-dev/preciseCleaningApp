@@ -2908,3 +2908,27 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Omar, 10/2026). Necesita Scope "All" (con "Own" las reglas no dejan pedir las tareas de otros).
 - Projects (lista): pestañas Active · Done · Archived y botón para ver las tareas de cada proyecto
   (también de los archivados).
+- Proyectos · formulario (CR, 10/2026): un proyecto nuevo NO se guarda si alguna tarea escrita no se
+  puede crear (sin título o con una persona que ya no está en la lista); se avisa "Task N needs…" (antes
+  se descartaba en silencio). Cerrar con la X o tocando fuera pregunta si hay cambios sin guardar
+  (Cancel no pregunta: es explícito). El guardado va en try/finally para que el botón no quede
+  deshabilitado si onSaveProject lanza.
+- Task list · Done (CR, 10/2026): si falla la página siguiente, `useDoneTasks` devuelve `nextPageError`
+  y la lista lo muestra bajo la paginación (se sigue viendo la página actual); ya no hay alert.
+  `useTopProjectIds` se borró (ninguna pantalla lo usaba desde que salió el top 3).
+  **Pendiente de despliegue:** los 3 índices compuestos de `user_tasks` deben estar "Enabled" en la consola
+  ANTES de publicar la app con Done (pasos en security/README.md, "Índices: antes de desplegar la app").
+- Task list · Done "Assigned by" (CR, 10/2026): `getDonePage('created', …)` deja fuera las que la persona
+  se asignó solo a sí misma DENTRO del service y sigue leyendo tandas (máx. `MAX_DONE_BATCHES` = 5 de 21)
+  hasta llenar la página de 20; antes se filtraba en la vista y salían páginas de 3 con "Next". No se
+  agregó un campo `assignedToOthers` (pediría migrar las tareas viejas y otro índice): si las lecturas
+  crecen, esa es la alternativa.
+- Task list · si falla solo el listener de aprobaciones, la lista se ve igual y sale el aviso "Could not
+  load the tasks waiting for your OK" (antes escondía toda la lista).
+- TaskListView se partió (CR): TaskListHeader, AssignmentTabs, hooks useTaskListLabels y
+  useOpenedProjectTasks, y opsPermissions.getDefaultApproverUserId.
+- Invoices · altura fija en escritorio (10/2026): la tabla tiene `min-height: 320px` (~4 filas entre el
+  encabezado y el TOTAL fijos) y la página `overflow-y: auto`. Con `min-height: 0` en una laptop baja o
+  con zoom la tabla quedaba de ~50 px y el TOTAL fijo tapaba la única fila. No volver a `min-height: 0`.
+  El Overview (`HousesView.css`, `.hv-unified` / `.ujt-scroll`) usa el mismo patrón y puede tener el mismo
+  problema; no se tocó.

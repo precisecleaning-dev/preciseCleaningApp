@@ -126,6 +126,8 @@ type UserTaskFilters = Partial<Pick<UserTask, 'status' | 'createdByUserId' | 'pr
 // ---------------------------------------------------------------------------
 /** Tareas hechas por página en la pestaña Done. */
 const DONE_PAGE_SIZE = 20;
+/** Tandas que se leen como mucho para llenar una página de Done ("Assigned by" descarta algunas). */
+const MAX_DONE_BATCHES = 5;
 const nowIso = () => new Date().toISOString();
 
 /** Largo máximo del título de una tarea (lo usan el campo del panel y la validación de abajo). */
@@ -235,26 +237,49 @@ export const userTasksService = {
    *  `userId` null = las de todos. Filtra, ordena y limita en el servidor
    *  (como activityLogService); pide un índice compuesto por consulta (ver
    *  security/firestore.indexes.json). Las tareas viejas de una sola persona
-   *  (assigneeUserId) o sin doneAt no salen. */
+   *  (assigneeUserId) o sin doneAt no salen.
+   *  Con 'created' ("Assigned by") no cuentan las que la persona se asignó
+   *  solo a sí misma: ese filtro no cabe en la consulta, así que se siguen
+   *  leyendo tandas hasta llenar la página (si no, una página podía traer 3
+   *  de 20 con "Next" activo). Como mucho MAX_DONE_BATCHES tandas por página. */
   async getDonePage(relation: TaskRelation, userId: string | null, cursor: DoneTasksCursor | null): Promise<DoneTasksPage> {
     const personFilters: QueryConstraint[] = [];
     if (userId && relation === 'created') personFilters.push(where('createdByUserId', '==', userId));
     if (userId && relation === 'assigned') personFilters.push(where('assigneeUserIds', 'array-contains', userId));
-    const constraints: QueryConstraint[] = [
-      ...personFilters,
-      where('status', '==', 'done'),
-      orderBy('doneAt', 'desc'),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(DONE_PAGE_SIZE + 1),
-    ];
-    const snapshot = await getDocs(query(userTasksCol, ...constraints));
-    const hasMore = snapshot.docs.length > DONE_PAGE_SIZE;
-    const pageDocs = hasMore ? snapshot.docs.slice(0, DONE_PAGE_SIZE) : snapshot.docs;
-    return {
-      tasks: pageDocs.map((taskDoc) => taskDoc.data()),
-      cursor: pageDocs[pageDocs.length - 1] ?? null,
-      hasMore,
-    };
+    const isShownInPage = (task: UserTask): boolean =>
+      relation !== 'created' || !userId || task.assignees.some((assignee) => assignee.userId !== userId);
+    const pageTasks: UserTask[] = [];
+    // pageCursor = última tarea que entra en ESTA página (la siguiente empieza
+    // después); readCursor = último documento leído.
+    let pageCursor = cursor;
+    let readCursor = cursor;
+    for (let batchIndex = 0; batchIndex < MAX_DONE_BATCHES; batchIndex += 1) {
+      const snapshot = await getDocs(query(
+        userTasksCol,
+        ...personFilters,
+        where('status', '==', 'done'),
+        orderBy('doneAt', 'desc'),
+        ...(readCursor ? [startAfter(readCursor)] : []),
+        limit(DONE_PAGE_SIZE + 1),
+      ));
+      for (const taskDoc of snapshot.docs) {
+        readCursor = taskDoc;
+        const task = taskDoc.data();
+        const isPageFull = pageTasks.length === DONE_PAGE_SIZE;
+        if (isShownInPage(task)) {
+          // Una más que se muestra después de llenar la página: hay página siguiente.
+          if (isPageFull) return { tasks: pageTasks, cursor: pageCursor, hasMore: true };
+          pageTasks.push(task);
+          pageCursor = taskDoc;
+        } else if (!isPageFull) {
+          pageCursor = taskDoc;
+        }
+      }
+      const isLastBatch = snapshot.docs.length <= DONE_PAGE_SIZE;
+      if (isLastBatch) return { tasks: pageTasks, cursor: pageCursor, hasMore: false };
+    }
+    // Muchas seguidas que no se muestran: se corta aquí y "Next" sigue buscando.
+    return { tasks: pageTasks, cursor: pageCursor, hasMore: true };
   },
 
   /** Crea una tarea abierta y suma 1 tarea (y sus minutos) a su proyecto.
