@@ -2932,3 +2932,16 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   con zoom la tabla quedaba de ~50 px y el TOTAL fijo tapaba la única fila. No volver a `min-height: 0`.
   El Overview (`HousesView.css`, `.hv-unified` / `.ujt-scroll`) usa el mismo patrón y puede tener el mismo
   problema; no se tocó.
+- Task list · nueva tarea con archivos y comentarios (10/2026): el formulario usa los mismos
+  `TaskAttachments` y `TaskComments` que el panel de la tarea, pero en borrador. Los comentarios viajan en
+  el MISMO batch de `userTasksService.create` (`initialComments`, con la hora en que se escribieron; el
+  autor siempre es quien crea). Los archivos se suben DESPUÉS de crear la tarea (`useTaskActions.add` →
+  `attachFiles`): Storage usa `user_tasks/{id}/…` y la regla de update pide la tarea ya creada. Si un
+  archivo falla, la tarea queda creada y se avisa. En el formulario "Post" solo agrega al borrador: lo
+  escrito sin "Post" no se guarda.
+- Task list · Assignee (10/2026): `AssigneePicker` es un campo de búsqueda (chips + texto), ya no un botón
+  desplegable. La lista es la de `assignablePeople` (personas que pueden abrir Task List, más uno mismo)
+  ordenada de la A a la Z por nombre (`compareByUserName`; "Me" queda en su lugar alfabético) y filtrada
+  sin mayúsculas ni acentos (`matchesSearch`). Es `type="text"` a propósito: con `type="search"` Chrome
+  borra el texto con Escape y la lista se volvía a abrir. Marcar agrega al final (la primera asignada no
+  cambia).

@@ -60,6 +60,14 @@ export interface TaskAttachment {
   size: number; //                      tamaño en bytes
 }
 
+/** Archivo elegido en el formulario de nueva tarea (no se guarda en Firestore):
+ *  se sube cuando la tarea ya existe. `preview` es su tarjeta mientras tanto,
+ *  con `url` = vista previa local (blob:) y `path` = id local. */
+export interface PendingTaskFile {
+  file: File;
+  preview: TaskAttachment;
+}
+
 /** Elemento de `comments[]` de una tarea o de un proyecto (sin archivos). Se
  *  identifica por autor + hora (no tiene id propio). `createdAt` es texto ISO:
  *  dentro de un arreglo Firestore no acepta serverTimestamp(). */

@@ -3,7 +3,8 @@
 // "Undo" de unos segundos después de marcar una tarea hecha.
 import { useEffect, useRef, useState } from 'react';
 import type {
-  Actor, ApprovalDecision, UserTaskApproval, TaskAttachment, TaskListTabId, TaskProject, TaskProjectStatus, UserTask,
+  Actor, ApprovalDecision, UserTaskApproval, TaskAttachment, TaskComment, TaskListTabId, TaskProject, TaskProjectStatus,
+  UserTask,
 } from '../../../types/index';
 import {
   userTasksService, type KnownProjects, type TaskInput, type TaskPatch,
@@ -68,14 +69,37 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
     }
   };
 
+  const attachFiles = async (taskId: string, files: File[]) => {
+    if (isOffline()) {
+      warnOffline('No se pudo subir el archivo');
+      return;
+    }
+    setUploading(true);
+    try {
+      for (const file of files) await userTasksService.addAttachment(taskId, file);
+    } catch (err) {
+      fail('No se pudo subir el archivo', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return {
     busyId,
     uploading,
     undo,
     dismissUndo: () => setUndo(null),
 
-    add: async (input: TaskInput): Promise<boolean> =>
-      (await run('new', 'No se pudo agregar la tarea', () => userTasksService.create(input, actor, known))).ok,
+    /** Crea la tarea con los comentarios del formulario y después sube sus
+     *  archivos (Storage necesita el id de la tarea). Si un archivo falla, la
+     *  tarea ya quedó creada: avisa y devuelve true igual. */
+    add: async (input: TaskInput, initialComments: TaskComment[] = [], files: File[] = []): Promise<boolean> => {
+      const creation = await run('new', 'No se pudo agregar la tarea', () =>
+        userTasksService.create(input, actor, known, initialComments));
+      if (!creation.ok) return false;
+      if (files.length > 0) await attachFiles(creation.value, files);
+      return true;
+    },
 
     patch: (task: UserTask, patch: TaskPatch) =>
       run(task.id, 'No se pudo guardar el cambio', () => userTasksService.update(task, patch, known)),
@@ -109,20 +133,7 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
     comment: async (taskId: string, text: string): Promise<boolean> =>
       (await run(taskId, 'No se pudo publicar el comentario', () => userTasksService.addComment(taskId, text, actor))).ok,
 
-    attach: async (taskId: string, files: File[]) => {
-      if (isOffline()) {
-        warnOffline('No se pudo subir el archivo');
-        return;
-      }
-      setUploading(true);
-      try {
-        for (const file of files) await userTasksService.addAttachment(taskId, file);
-      } catch (err) {
-        fail('No se pudo subir el archivo', err);
-      } finally {
-        setUploading(false);
-      }
-    },
+    attach: attachFiles,
 
     sendForApproval: (task: UserTask, approver: Actor) =>
       run(task.id, 'No se pudo enviar para aprobación', () => userTasksService.requestApproval(task, approver, actor)),

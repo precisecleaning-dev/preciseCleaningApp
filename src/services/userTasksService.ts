@@ -198,13 +198,17 @@ export const draftApproval = (approverUserId: string, approverUserName: string):
   note: '',
 });
 
-function newTaskData(input: TaskInput, actor: Actor): NewDoc<UserTask> {
+/** Comentario escrito en el formulario antes de que la tarea exista: guarda su
+ *  texto y la hora en que se escribió (el autor siempre es quien crea la tarea). */
+type InitialComment = Pick<TaskComment, 'text' | 'createdAt'>;
+
+function newTaskData(input: TaskInput, actor: Actor, initialComments: InitialComment[] = []): NewDoc<UserTask> {
   return {
     ...input,
     status: 'open',
     doneAt: null,
     doneByUserId: null,
-    comments: [],
+    comments: initialComments.map(({ text, createdAt }) => ({ userId: actor.id, userName: actor.name, text, createdAt })),
     attachments: [],
     createdByUserId: actor.id,
     createdByUserName: actor.name,
@@ -283,12 +287,13 @@ export const userTasksService = {
   },
 
   /** Crea una tarea abierta y suma 1 tarea (y sus minutos) a su proyecto.
-   *  Devuelve el id nuevo. */
-  async create(input: TaskInput, actor: Actor, known: KnownProjects): Promise<string> {
+   *  `initialComments`: los escritos en el formulario de nueva tarea; se
+   *  guardan en el mismo batch (la tarea nace con ellos). Devuelve el id nuevo. */
+  async create(input: TaskInput, actor: Actor, known: KnownProjects, initialComments: InitialComment[] = []): Promise<string> {
     assertValidTaskFields(input);
     const taskRef = doc(userTasksCol);
     const batch = writeBatch(db);
-    batch.set(taskRef, { ...newTaskData(input, actor), id: taskRef.id });
+    batch.set(taskRef, { ...newTaskData(input, actor, initialComments), id: taskRef.id });
     bumpProjectCounters(batch, input.projectId, contribution({ status: 'open', durationMinutes: input.durationMinutes }), known);
     await batch.commit();
     return taskRef.id;
