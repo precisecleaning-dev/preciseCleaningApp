@@ -75,7 +75,6 @@ export const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     section: "Tabs",
   },
   { id: "btn_tabMedia", label: "Notes & Photos Tab", section: "Tabs" },
-  { id: "btn_tabQualityCheck", label: "Quality Check Tab", section: "Tabs" },
   {
     id: "btn_myHistory",
     label: "Mi historial (casas asignadas)",

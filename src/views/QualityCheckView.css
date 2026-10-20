@@ -320,6 +320,48 @@
   border-color: #fca5a5;
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
 }
+/* ⭐ Pie de la tarjeta: Editar y Eliminar, a mitad de ancho cada uno.
+   Separados del resto por una linea para que se lean como acciones sobre la
+   CASA, no como parte del flujo de inspeccion. */
+.qcv-house-card-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.qcv-house-foot-btn {
+  flex: 1 1 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+.qcv-house-foot-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.qcv-house-foot-btn.delete {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+.qcv-house-foot-btn.delete:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
 .qcv-house-card-title-row {
   display: flex;
   align-items: flex-start;

@@ -1,11 +1,11 @@
 // Tarjeta de una casa en Quality Check: pendiente de inspección, que no pasó
 // (Did Not Pass) o en Recall. Muestra cliente, dirección, fecha, equipo y notas;
-// cambia el status, la agrega o quita de la ruta e inicia (o repite) la
-// inspección. En Recall marca "Correcciones hechas". Tocar la tarjeta abre el
-// detalle de la casa (editar y borrar se hacen desde ahí).
+// cambia el status, la agrega o quita de la ruta, inicia (o repite) la
+// inspección, y la edita o la borra. En Recall marca "Correcciones hechas".
+// Tocar la tarjeta abre el detalle de la casa.
 import type { CSSProperties, MouseEvent } from 'react';
 import {
-  AlertTriangle, CalendarDays, Check, ClipboardCheck, Edit2, MapPin, Repeat, Route, StickyNote, Users,
+  AlertTriangle, CalendarDays, Check, ClipboardCheck, Edit2, MapPin, Repeat, Route, StickyNote, Trash2, Users,
 } from 'lucide-react';
 import type { Property } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
@@ -29,6 +29,8 @@ interface QcHouseCardProps {
   onChangeStatus: (house: Property) => void;
   onToggleRoute: (house: Property) => void;
   onInspect: (house: Property) => void;
+  onEdit: (house: Property) => void;
+  onDelete: (house: Property) => void;
   onMarkCorrectionsDone: (house: Property) => void;
 }
 
@@ -43,7 +45,7 @@ const stopCardClick = (event: MouseEvent) => event.stopPropagation();
 
 const QcHouseCard = ({
   house, variant, clientName, teamName, houseNote, officeNote, statusName, statusColor, isInRoute, isInspectDisabled,
-  corrections, onOpenDetail, onChangeStatus, onToggleRoute, onInspect, onMarkCorrectionsDone,
+  corrections, onOpenDetail, onChangeStatus, onToggleRoute, onInspect, onEdit, onDelete, onMarkCorrectionsDone,
 }: QcHouseCardProps) => {
   const cardModifier = variant === 'pending' ? '' : ` ${variant}`;
   const scheduleText = house.scheduleDate ? formatDate(house.scheduleDate) : 'Sin fecha';
@@ -130,6 +132,16 @@ const QcHouseCard = ({
       <button onClick={handleInspect} disabled={isInspectDisabled} className={`qcv-house-inspect-btn${cardModifier}`}>
         <ClipboardCheck size={17} /> {INSPECT_LABEL[variant]}
       </button>
+
+      {/* Editar / Eliminar al pie y con etiqueta: lejos del toque accidental. */}
+      <div className="qcv-house-card-footer" onClick={stopCardClick}>
+        <button type="button" onClick={() => onEdit(house)} className="qcv-house-foot-btn">
+          <Edit2 size={14} /> Editar
+        </button>
+        <button type="button" onClick={() => onDelete(house)} className="delete qcv-house-foot-btn">
+          <Trash2 size={14} /> Eliminar
+        </button>
+      </div>
     </div>
   );
 };

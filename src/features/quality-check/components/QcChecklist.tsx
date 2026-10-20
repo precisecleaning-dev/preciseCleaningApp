@@ -1,5 +1,5 @@
 // ⭐ Checklist del Quality Check: una sección por área de Settings (en su orden
-//    manual) con sus tareas Pass / Fail, sus fotos y su nota. Cada área se contrae o se
+//    manual) con sus tareas Pass / Fail y sus fotos. Cada área se contrae o se
 //    extiende; "Collapse all" / "Expand all" para todas. Con el permiso
 //    "QC Checklist Setup" (Roles) aparece "Edit checklist": ordenar las áreas
 //    (flechas) y agregar, renombrar o quitar tareas. Esos cambios son del
@@ -14,10 +14,7 @@ import './QcChecklist.css';
 interface QcChecklistProps {
   sections: QcSection[];
   answers: Record<string, Record<string, string> | undefined>;
-  /** Nota de cada área, por id. */
-  sectionNotes: Record<string, string>;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
-  onSectionNotesChange: (section: QcSection, notes: string) => void;
   /** Cuadrícula de fotos de un área (QcPhotoGrid de esa área). */
   renderSectionPhotos: (section: QcSection) => ReactNode;
   /** Permisos de "QC Checklist Setup": Add = agregar · Edit = renombrar y ordenar · Delete = quitar. */
@@ -33,7 +30,7 @@ interface QcChecklistProps {
 }
 
 const QcChecklist = ({
-  sections, answers, sectionNotes, onAnswer, onSectionNotesChange, renderSectionPhotos, canAddTasks, canEditTasks, canRemoveTasks, pendingChecklistIds,
+  sections, answers, onAnswer, renderSectionPhotos, canAddTasks, canEditTasks, canRemoveTasks, pendingChecklistIds,
   onMoveSection, onAddTask, onRenameTask, onRemoveTask,
 }: QcChecklistProps) => {
   const isReorderingSections = pendingChecklistIds.has(CHECKLIST_ORDER_PENDING_ID);
@@ -87,7 +84,6 @@ const QcChecklist = ({
           key={section.id}
           section={section}
           sectionAnswers={answers[section.id] ?? {}}
-          notes={sectionNotes[section.id] ?? ''}
           isCollapsed={collapsedSectionIds.has(section.id)}
           isEditingChecklist={isEditingChecklist}
           canAddTasks={canAddTasks}
@@ -101,7 +97,6 @@ const QcChecklist = ({
           photos={renderSectionPhotos(section)}
           onToggleCollapsed={handleToggleCollapsed}
           onAnswer={onAnswer}
-          onNotesChange={onSectionNotesChange}
           onMoveSection={onMoveSection}
           onAddTask={onAddTask}
           onRenameTask={onRenameTask}

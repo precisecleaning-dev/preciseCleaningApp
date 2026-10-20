@@ -35,6 +35,7 @@ interface Props {
   currentUser?: SystemUser | null;
   // ⭐ Navegación cruzada a Houses (App.tsx monta HousesView en modals-only)
   onOpenHouseDetail?: (house: Property) => void;
+  onOpenHouseEdit?: (house: Property) => void;
 }
 
 type HubTab = 'inspections' | 'routes';
@@ -83,6 +84,7 @@ export default function QualityCheckHub(props: Props) {
           activeRole={props.activeRole}
           isSuperAdmin={props.isSuperAdmin}
           onOpenHouseDetail={props.onOpenHouseDetail}
+          onOpenHouseEdit={props.onOpenHouseEdit}
         />
       )}
       {tab === 'routes' && <QCRoutesTableView onOpenMenu={props.onOpenMenu} />}

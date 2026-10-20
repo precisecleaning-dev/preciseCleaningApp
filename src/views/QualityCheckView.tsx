@@ -20,6 +20,8 @@ import { compressImage } from '../utils/imageCompression';
 import {
   addStatusChange, afterStatusHistoryWrite, changeHouseStatus, houseLogLabel, logStatusChange, statusNameOf,
 } from '../features/houses/services/houseStatus';
+import { useHouseTrash } from '../features/houses/hooks/useHouseTrash';
+import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
 import type { WriteBatch } from '../shared/data/batchWrites';
 import { qualityChecks } from '../features/quality-check/services/qualityChecks';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
@@ -49,7 +51,7 @@ import QcReportsBlock from '../features/quality-check/components/QcReportsBlock'
 import QcPhotoGrid, { type QcPhotoItem } from '../features/quality-check/components/QcPhotoGrid';
 import type { QcNoteItem } from '../features/quality-check/components/QcIncomingNotes';
 import {
-  GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT, OFFICE_SLOT_NAME, qcDataWithFailNotes, syncFailNoteLine,
+  GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT, OFFICE_SLOT_NAME,
   type QcAnswer, type QcExtras, type QcSection, type QcSectionTask,
 } from '../features/quality-check/qcForm';
 import { settingsPlacesService } from '../services/settingsPlacesService';
@@ -146,6 +148,7 @@ interface QualityCheckViewProps {
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   onOpenHouseDetail?: (house: Property) => void; // ⭐ abre el detalle en HousesView
+  onOpenHouseEdit?: (house: Property) => void;   // ⭐ abre el FORMULARIO de edición en HousesView
 }
 
 // Destino del email si la empresa no tiene correo configurado (el que ya usaba la vista).
@@ -329,7 +332,7 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
 }
 
 
-const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail }: QualityCheckViewProps) => {
+const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit }: QualityCheckViewProps) => {
   // ⭐ Reportes de QC y catálogos del store compartido (un listener por
   //    colección para toda la app). Antes: getDocsCacheFirst de quality_checks
   //    y customers, que pintaba del caché pero SIEMPRE repetía la lectura
@@ -375,7 +378,6 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // Áreas en su orden manual (sortOrder; las que no tienen, al final por nombre).
   const places = useMemo(() => sortPlacesByOrder(placesLive.data), [placesLive.data]);
   const tasks = useMemo(() => [...tasksLive.data].sort((a, b) => a.name.localeCompare(b.name)), [tasksLive.data]);
-  const taskNameById = useMemo(() => new Map(tasks.map((task) => [task.id, task.name] as const)), [tasks]);
   const teams = teamsLive.data;
   const customersList = customersLive.data;
   const statuses = statusesLive.data;
@@ -602,6 +604,16 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Resuelve el nombre del cliente desde la colección customers (id o nombre)
   const getClientName = (clientIdOrName?: string | null): string =>
     getRelationName(customersList, clientIdOrName, String(clientIdOrName || 'Unknown'));
+
+  // ⭐ Borrar la casa = mandarla a la papelera con motivo obligatorio, junto con
+  //    sus pagos y servicios (antes se destruía con deleteDoc y la nómina quedaba
+  //    huérfana). Mismo flujo que Houses: features/houses/hooks/useHouseTrash.ts.
+  const houseTrash = useHouseTrash({
+    actor: currentUser,
+    module: 'Quality Check',
+    labelOf: (h) => houseLogLabel(getClientName(h.client), h.address),
+    liveOf: (id) => propById.get(id),
+  });
 
   // ⭐ Ruta de inspección — agregar/quitar casas del drawer lateral
   const isHouseInRoute = (houseId: string): boolean => routeHouseIds.includes(houseId);
@@ -933,8 +945,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
     setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
-    // Las tareas en Fail se ven como líneas "Fail <tarea>" en la nota de su área.
-    setQcData(withSlots(qcDataWithFailNotes(qc.qcData || {}, taskNameById)));
+    setQcData(withSlots(qc.qcData || {}));
     setQcExtras({
       inspectorId: qc.inspectorId || (qc.inspector === myName ? currentUser?.id || '' : ''),
       inspectorName: qc.inspector || myName,
@@ -1081,10 +1092,25 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       return (!isNaN(a) && !isNaN(b) && b >= a) ? Math.round((b - a) / 60000) : null;
     })();
 
-    // Las tareas en Fail ya están en la nota de su área ("Fail <tarea>", al
-    // marcarlas): se guarda qcData tal cual.
+    // ⭐ Punto 8: por cada área, registrar en sus notas QUÉ tareas se marcaron "No"
+    //    (sale en el PDF). Marcador propio para no duplicarse al re-guardar.
+    const NO_MARKER = '⚠ Marcado "No": ';
+    const qcDataWithNoNotes: QcFormData = { ...qcData };
+    qcSections.forEach(s => {
+      const entry = qcDataWithNoNotes[s.id];
+      if (!entry) return;
+      const noNames = s.tasks.filter(t => entry.tasks?.[t.id] === 'No').map(t => t.name);
+      const baseNotes = String(entry.notes || '')
+        .split('\n')
+        .filter(line => !line.startsWith(NO_MARKER))
+        .join('\n')
+        .trim();
+      const autoLine = noNames.length > 0 ? `${NO_MARKER}${noNames.join(', ')}` : '';
+      qcDataWithNoNotes[s.id] = { ...entry, notes: [baseNotes, autoLine].filter(Boolean).join('\n') };
+    });
+
     // ⭐ Resultado (%) con el util compartido: el mismo número que sale en el PDF.
-    const qcScore = computeQCScore(qcData, tasks);
+    const qcScore = computeQCScore(qcDataWithNoNotes, tasks);
     const inspectorName = qcExtras.inspectorName || myName;
     const teamName = editing?.team || getTeamNameForHouse(selectedHouse);
     const recordDate = qcExtras.date || editing?.date || todayIso();
@@ -1104,7 +1130,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       durationMinutes,
       // Áreas con al menos una respuesta (las vistas viejas leen este campo).
       selectedPlaces: qcSections.filter(s => Object.keys(qcData[s.id]?.tasks || {}).length > 0).map(s => s.id),
-      qcData,
+      qcData: qcDataWithNoNotes,
       passRate: qcScore.passRate,
       passRateAnswered: qcScore.totalAnswered,
       passRateVerdict: qcScore.verdict,
@@ -1166,7 +1192,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           }
           if (!sendEmail) return;
           try {
-            const res = await sendQCByEmail(house, qcData, inspectorName, recordDate, teamName);
+            const res = await sendQCByEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName);
             if (res && (res.status === 'error' || res.status === 'no-extension')) alert(`Quality Check de ${label}:\n${mailResultMessage(res, branding.email)}`);
           } catch (e) {
             console.error('No se pudo enviar el email automático:', e);
@@ -1210,7 +1236,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       if (isFinishing) {
         handleCloseForm();
         if (qcExtras.notifyManager && canSeeOfficeNotes) {
-          openNotifyManagerEmail(house, qcData, inspectorName, recordDate, teamName, qcExtras.clientNotes);
+          openNotifyManagerEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName, qcExtras.clientNotes);
         }
       }
     } catch (error) {
@@ -1580,32 +1606,20 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     }
   };
 
-  // ⭐ Pass / Fail de una tarea (null = sin responder). Al entrar o salir de
-  //    Fail se agrega o se quita su línea "Fail <tarea>" en la nota del área,
-  //    en el momento (el inspector la ve mientras marca).
+  // ⭐ Pass / Fail de una tarea (null = sin responder).
   const setTaskValue = (placeId: string, taskId: string, value: QcAnswer | null) => {
-    const taskName = taskNameById.get(taskId) ?? '';
-    setQcData((previousQcData) => {
-      const placeData = previousQcData[placeId] || { tasks: {} };
-      const nextAnswers = { ...(placeData.tasks || {}) };
-      if (value) nextAnswers[taskId] = value; else delete nextAnswers[taskId];
-      const wasFailed = placeData.tasks?.[taskId] === 'No';
-      const isFailed = value === 'No';
-      const currentNotes = String(placeData.notes ?? '');
-      const nextNotes = wasFailed !== isFailed && taskName
-        ? syncFailNoteLine(currentNotes, taskName, isFailed)
-        : currentNotes;
-      return { ...previousQcData, [placeId]: { ...placeData, tasks: nextAnswers, notes: nextNotes } };
+    setQcData(prev => {
+      const place = prev[placeId] || { tasks: {} };
+      const nextTasks = { ...(place.tasks || {}) };
+      if (value) nextTasks[taskId] = value; else delete nextTasks[taskId];
+      return { ...prev, [placeId]: { ...place, tasks: nextTasks } };
     });
     setHasUnsavedChanges(true);
   };
 
-  // ⭐ Nota de un área del checklist (campo al final del área).
-  const setSectionNotes = (section: QcSection, notes: string) => {
-    setQcData((previousQcData) => ({
-      ...previousQcData,
-      [section.id]: { ...(previousQcData[section.id] || { tasks: {} }), notes },
-    }));
+  // ⭐ "Notes for the team": se guardan como las notas del área General.
+  const setTeamNotes = (value: string) => {
+    setQcData(prev => ({ ...prev, [GENERAL_SLOT]: { ...(prev[GENERAL_SLOT] || {}), notes: value } }));
     setHasUnsavedChanges(true);
   };
 
@@ -1772,6 +1786,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       onChangeStatus: openHouseStatusModal,
       onToggleRoute: toggleRouteHouse,
       onInspect: handleStartOrContinueQC,
+      onEdit: (editedHouse: Property) => onOpenHouseEdit?.(editedHouse),
+      onDelete: (deletedHouse: Property) => houseTrash.request(deletedHouse),
       onMarkCorrectionsDone: handleMarkCorrectionsDone,
     };
   };
@@ -1900,7 +1916,6 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           currentUser={currentUser}
           activeRole={activeRole}
           isSuperAdmin={isSuperAdmin}
-          onOpenHouseDetail={onOpenHouseDetail}
         />
       )}
 
@@ -1953,9 +1968,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               onExtras={updateExtras}
               sections={qcSections}
               answers={Object.fromEntries(qcSections.map(sec => [sec.id, qcData[sec.id]?.tasks]))}
-              sectionNotes={Object.fromEntries(qcSections.map((section) => [section.id, String(qcData[section.id]?.notes ?? '')]))}
               onAnswer={setTaskValue}
-              onSectionNotesChange={setSectionNotes}
               renderSectionPhotos={renderSectionPhotos}
               canAddChecklistTasks={canAddChecklistTasks}
               canEditChecklistTasks={canEditChecklistTasks}
@@ -1968,6 +1981,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               generalPhotos={renderPhotoGrid(GENERAL_SLOT, otherPhotoSlots, 'plain')}
               officePhotos={renderPhotoGrid(OFFICE_SLOT, [OFFICE_SLOT], 'card')}
               showOffice={canSeeOfficeNotes}
+              teamNotes={String(qcData[GENERAL_SLOT]?.notes || '')}
+              onTeamNotes={setTeamNotes}
               saving={isSaving}
               saveState={hasUnsavedChanges
                 ? <span className="dirty">Cambios sin guardar</span>
@@ -2030,6 +2045,16 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           prepared={shareReady}
           clientName={shareClient}
           onClose={() => setShareReady(null)}
+        />
+      )}
+
+      {/* ⭐ Borrar con motivo → papelera (mismo diálogo que Houses) */}
+      {houseTrash.target && (
+        <DeleteHouseDialog
+          label={houseTrash.label}
+          busy={houseTrash.busy}
+          onCancel={houseTrash.cancel}
+          onConfirm={(reason) => void houseTrash.confirm(reason)}
         />
       )}
 

@@ -308,17 +308,6 @@ export interface QualityCheckRecord {
  *  reportes de Quality Check (features/quality-check/components/QcReportsSection). */
 export type QcReportRow = QualityCheckRecord & { id: string };
 
-/** Un área de un reporte de QC, resumida para leerla (pestaña "Quality check"
- *  del detalle de la casa): aprobadas / respondidas, su nota y sus fotos. */
-export interface QcReportArea {
-  id: string;
-  name: string;
-  passedCount: number;
-  answeredCount: number;
-  notes: string;
-  photoUrls: string[];
-}
-
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
 export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
 
@@ -341,6 +330,8 @@ export interface HouseChecklistState {
   hasLoadError: boolean;
 }
 
+/** Pestaña de la tabla de reportes: el estado ACTUAL de la casa, no el resultado. */
+export type QcReportTab = 'quality_check' | 'invoice' | 'recall';
 
 /** Lo mínimo para saber qué casas tienen QC pendiente o terminado. */
 export type QcStatusRecord = Pick<QualityCheckRecord, 'houseId' | 'date' | 'status' | 'result'>;
