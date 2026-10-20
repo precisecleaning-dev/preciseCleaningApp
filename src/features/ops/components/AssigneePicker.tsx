@@ -4,7 +4,7 @@
 // y cada una se marca o desmarca con su casilla. Siempre queda al menos una
 // persona. La lista se cierra al tocar fuera o con Escape (sin cerrar el panel
 // de la tarea).
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { Search, X } from 'lucide-react';
 import type { AssignableUser, TaskAssignee } from '../../../types/index';
 import { compareByUserName, getFirstName, matchesSearch } from '../opsOptions';
@@ -44,13 +44,13 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
   // siguen mostrando para poder quitarlas.
   const unlistedAssignees = assignees.filter((assignee) => !assignableUsers.some((user) => user.id === assignee.userId));
   // Todas las personas, de la A a la Z por nombre.
-  const allPeople: TaskAssignee[] = [...assignableUsers.map(toTaskAssignee), ...unlistedAssignees].sort(compareByUserName);
+  const allAssigneeOptions: TaskAssignee[] = [...assignableUsers.map(toTaskAssignee), ...unlistedAssignees].sort(compareByUserName);
   const getOptionLabel = (assignee: TaskAssignee) =>
     (assignee.userId === currentUserId ? `Me (${getFirstName(assignee.userName)})` : assignee.userName);
   // Se busca por el nombre completo; a uno mismo también por "Me".
   const getSearchableText = (assignee: TaskAssignee) =>
     (assignee.userId === currentUserId ? `Me ${assignee.userName}` : assignee.userName);
-  const matchingPeople = allPeople.filter((assignee) => matchesSearch(getSearchableText(assignee), searchQuery));
+  const matchingAssigneeOptions = allAssigneeOptions.filter((assignee) => matchesSearch(getSearchableText(assignee), searchQuery));
   const canRemoveAssignee = assignees.length > 1;
 
   // Marcar agrega a la persona al final (la primera asignada no cambia);
@@ -71,10 +71,16 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
 
   // Enter marca o desmarca el primer resultado de la búsqueda.
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter' || !searchQuery.trim() || matchingPeople.length === 0) return;
+    if (event.key !== 'Enter' || !searchQuery.trim() || matchingAssigneeOptions.length === 0) return;
     event.preventDefault();
-    handleToggleAssignee(matchingPeople[0]);
+    handleToggleAssignee(matchingAssigneeOptions[0]);
     setSearchQuery('');
+  };
+
+  // Salir del selector con Tab (el foco pasa a otro campo) también cierra la
+  // lista. La lista tiene tabIndex -1: tocar una opción deja el foco adentro.
+  const handleBlur = (event: FocusEvent<HTMLDivElement>) => {
+    if (!pickerRef.current?.contains(event.relatedTarget)) setIsOpen(false);
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -84,7 +90,7 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
   };
 
   return (
-    <div ref={pickerRef} className="assignee-picker" onKeyDown={handleKeyDown}>
+    <div ref={pickerRef} className="assignee-picker" onBlur={handleBlur} onKeyDown={handleKeyDown}>
       <label className="assignee-picker-field task-panel-input" htmlFor={searchInputId}>
         {assignees.map((assignee) => (
           <span key={assignee.userId} className="assignee-picker-chip">
@@ -122,11 +128,11 @@ const AssigneePicker = ({ assignees, assignableUsers, currentUserId, label, onAs
         </span>
       </label>
       {isOpen && (
-        <ul id={resultsListId} className="assignee-picker-menu" role="group" aria-label={label}>
-          {matchingPeople.length === 0 && (
+        <ul id={resultsListId} className="assignee-picker-menu" role="group" aria-label={label} tabIndex={-1}>
+          {matchingAssigneeOptions.length === 0 && (
             <li className="assignee-picker-empty">No one matches “{searchQuery.trim()}”</li>
           )}
-          {matchingPeople.map((assignee) => {
+          {matchingAssigneeOptions.map((assignee) => {
             const isChecked = selectedIds.has(assignee.userId);
             return (
               <li key={assignee.userId}>

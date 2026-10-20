@@ -52,12 +52,12 @@ export function namesSummary(names: string[], maxShown = 2): string {
 }
 
 /** Texto comparable al buscar: sin mayúsculas ni acentos ("Doña" → "dona"). */
-const toSearchText = (text: string): string =>
-  text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const normalizeForSearch = (text: string): string =>
+  text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 /** true si `text` contiene lo buscado (vacío = todo coincide). */
 export const matchesSearch = (text: string, searchQuery: string): boolean =>
-  toSearchText(text).includes(toSearchText(searchQuery.trim()));
+  normalizeForSearch(text).includes(normalizeForSearch(searchQuery.trim()));
 
 /** Para ordenar personas de la A a la Z por nombre (sin importar mayúsculas ni acentos). */
 export const compareByUserName = (first: { userName: string }, second: { userName: string }): number =>

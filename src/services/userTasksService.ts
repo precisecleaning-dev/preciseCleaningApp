@@ -34,7 +34,7 @@ import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  Actor, ApprovalDecision, DoneTasksCursor, DoneTasksPage, Repeat, StoredUserTask, TaskProject, TaskRelation, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  Actor, ApprovalDecision, DoneTasksCursor, DoneTasksPage, Repeat, StoredUserTask, TaskProject, TaskRelation, TaskAssignee, TaskAttachment, TaskComment, InitialComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
@@ -197,10 +197,6 @@ export const draftApproval = (approverUserId: string, approverUserName: string):
   decidedAt: null,
   note: '',
 });
-
-/** Comentario escrito en el formulario antes de que la tarea exista: guarda su
- *  texto y la hora en que se escribió (el autor siempre es quien crea la tarea). */
-type InitialComment = Pick<TaskComment, 'text' | 'createdAt'>;
 
 function newTaskData(input: TaskInput, actor: Actor, initialComments: InitialComment[] = []): NewDoc<UserTask> {
   return {

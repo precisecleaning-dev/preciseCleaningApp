@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type {
-  AssignableUser, PendingTaskFile, Priority, TaskAssignee, TaskAttachment, TaskComment, TaskProject,
+  AssignableUser, InitialComment, PendingTaskFile, Priority, TaskAssignee, TaskAttachment, TaskComment, TaskProject,
 } from '../../../types/index';
 import {
   DEFAULT_DURATION_MINUTES, draftApproval, MAX_TITLE_LENGTH, type TaskInput, type TaskPatch,
@@ -43,7 +43,7 @@ interface NewTaskPanelProps {
   approvers: AssignableUser[];
   onClose: () => void;
   /** Crea la tarea con los comentarios del borrador y sube sus archivos. */
-  onCreate: (input: TaskInput, initialComments: TaskComment[], files: File[]) => Promise<boolean>;
+  onCreate: (input: TaskInput, initialComments: InitialComment[], files: File[]) => Promise<boolean>;
 }
 
 const NewTaskPanel = ({
@@ -63,7 +63,7 @@ const NewTaskPanel = ({
   }));
   const [approverUserId, setApproverUserId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [draftComments, setDraftComments] = useState<TaskComment[]>([]);
+  const [draftComments, setDraftComments] = useState<InitialComment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingTaskFile[]>([]);
   // Vistas previas (blob:) creadas en este panel y un contador para sus ids.
   const previewUrlsRef = useRef(new Set<string>());
@@ -95,12 +95,7 @@ const NewTaskPanel = ({
 
   // "Post" en el formulario solo agrega el comentario al borrador.
   const handleAddDraftComment = (text: string): Promise<boolean> => {
-    const draftComment: TaskComment = {
-      userId: currentUser.id,
-      userName: currentUser.name,
-      text,
-      createdAt: new Date().toISOString(),
-    };
+    const draftComment: InitialComment = { text, createdAt: new Date().toISOString() };
     setDraftComments((current) => [...current, draftComment]);
     return Promise.resolve(true);
   };
@@ -138,7 +133,13 @@ const NewTaskPanel = ({
     createdAt: '',
   };
   const canCreate = !!draft.title.trim() && !isSaving;
-  const pendingAttachments = pendingFiles.map((pendingFile) => pendingFile.preview);
+  const pendingFilePreviews = pendingFiles.map((pendingFile) => pendingFile.preview);
+  // TaskComments muestra autor y hora: los del borrador son de quien crea la tarea.
+  const draftCommentPreviews: TaskComment[] = draftComments.map((draftComment) => ({
+    ...draftComment,
+    userId: currentUser.id,
+    userName: currentUser.name,
+  }));
 
   const footerActions = (
     <>
@@ -196,13 +197,13 @@ const NewTaskPanel = ({
       </section>
 
       <TaskAttachments
-        attachments={pendingAttachments}
+        attachments={pendingFilePreviews}
         canRemove={!isSaving}
         uploading={isSaving}
         onAttach={handleAttachFiles}
         onRemove={handleRemovePendingFile}
       />
-      <TaskComments comments={draftComments} me={currentUser} onAdd={handleAddDraftComment} />
+      <TaskComments comments={draftCommentPreviews} me={currentUser} onAdd={handleAddDraftComment} />
     </TaskDrawer>
   );
 };

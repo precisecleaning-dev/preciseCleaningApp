@@ -2945,3 +2945,15 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   sin mayúsculas ni acentos (`matchesSearch`). Es `type="text"` a propósito: con `type="search"` Chrome
   borra el texto con Escape y la lista se volvía a abrir. Marcar agrega al final (la primera asignada no
   cambia).
+- Task list · CR del formulario de nueva tarea (10/2026):
+  - `attachFiles` sube archivo por archivo con su propio try/catch y un solo aviso nombra los que
+    fallaron ("2 of 5 files weren't uploaded: …"); sin red no intenta ninguno y los nombra todos. `add`
+    sigue devolviendo boolean: el panel se cierra igual, porque dejarlo abierto con "Add task" crearía
+    la tarea dos veces. Si se quiere reintentar desde el formulario, hace falta un modo "reintentar
+    subida" con el id de la tarea ya creada.
+  - `InitialComment` vive en `src/types/userTasks.ts` (no exportado desde el service, como pedía el CR):
+    CLAUDE.md manda los tipos a src/types.
+  - `normalizeForSearch` usa `/[\u0300-\u036f]/g` escrito con escapes: con los caracteres combinantes
+    literales la regex es invisible en el diff.
+  - AssigneePicker: `onBlur` del contenedor cierra la lista cuando el foco sale del selector (Tab). La
+    lista tiene `tabIndex={-1}` para que tocar una opción no la cierre antes del clic.
