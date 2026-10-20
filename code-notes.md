@@ -2957,3 +2957,63 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
     literales la regex es invisible en el diff.
   - AssigneePicker: `onBlur` del contenedor cierra la lista cuando el foco sale del selector (Tab). La
     lista tiene `tabIndex={-1}` para que tocar una opción no la cierre antes del clic.
+- Quality Check · reportes y tarjetas (10/2026): tocar un reporte (fila de la tabla o tarjeta en teléfono)
+  abre el detalle de su casa con el host de App (`onOpenHouseDetail`); los clics en sus controles (envíos,
+  status) no lo disparan (`isClickOnControl` en qcReports.ts). Si la casa no está cargada (borrada o fuera
+  de la ventana de 12 meses) el reporte no se puede tocar. Las tarjetas de Pending / Did Not Pass / Recall
+  ya NO tienen Editar ni Eliminar (decisión de Omar): se hacen desde el detalle. Por eso Quality Check ya
+  no usa `useHouseTrash` ni recibe `onOpenHouseEdit`.
+- Quality Check · notas por área (10/2026): "Notes for the team" (una sola, en `qcData.__general.notes`)
+  se cambió por un campo de notas al final de cada área del checklist (`qcData[placeId].notes`, el campo
+  que ya leían el PDF y la tabla de reportes). Marcar Fail agrega "Fail <tarea>" al final de la nota del
+  área y quitar el Fail quita esa línea, en el handler de la respuesta (`syncFailNoteLine`); lo escrito a
+  mano no se toca (si se edita la línea "Fail …", ya no se quita sola). Se quitó la línea automática
+  `⚠ Marcado "No": …` que se agregaba AL GUARDAR (habría duplicado); al abrir un QC viejo esa línea se
+  convierte en líneas "Fail …" (`qcDataWithFailNotes`). Las "Notes for the team" de reportes viejos siguen
+  en el PDF (área General) pero ya no se editan desde el panel. En el PDF cada área lleva siempre su
+  recuadro "Notes" (con "No notes for this area." si está vacío).
+- Quality Check Reports · pestañas (10/2026): ya no existe "Quality Checks"; solo Invoice y Recall. La
+  pestaña sigue el estado ACTUAL de la casa si está en Recall o Invoice; si está en otro estado (o ya no
+  existe) decide el resultado: pasó → Invoice, no pasó → Recall (`getReportTab`, decisión de Omar). En
+  Invoice, "Recall" antes del cliente = la casa estuvo alguna vez en Recall (`useRecallHouses`, misma
+  fuente y etiqueta `.ujt-recall` que el Overview).
+- Detalle de la casa · pestaña "Quality check" (10/2026): `HouseQcHistory` lista los reportes de ESA casa
+  con `useQcForHouses([id])` (no la colección completa), del más reciente al más viejo, de solo lectura.
+  Las fotos de oficina (`__office`) no salen. La línea vieja `⚠ Marcado "No": …` se muestra como líneas
+  "Fail …" (solo al mostrar; el dato no cambia). Se oculta por rol con el elemento `btn_tabQualityCheck`
+  (Configurar campos → Tabs), como Financials.
+- Recall · una sola regla (10/2026): "la casa estuvo en Recall" = `wasHouseInRecall` (utils/jobRecall.ts):
+  su `status_history` entró a un status de Recall (useRecallHouses) o su status actual es Recall. La usan
+  la marca "Recall" (shared/components/RecallMark: Invoices, reportes de QC; el Overview y las filas del
+  QC Dashboard ya la tenían) y los conteos del QC Dashboard: el KPI "Recalls" y la columna "Recalls" del
+  Team Scorecard. Antes contaban solo los trabajos cuyo ÚLTIMO QC falló, y una casa que pasó por Recall y
+  luego se re-inspeccionó y pasó no contaba (daba 10 en el año). Un QC fallado que NO movió la casa a
+  Recall sigue siendo "Re-clean" (pestaña y sub "invoices on hold"), pero no cuenta como Recall.
+  `HouseList.wasRecall` repite la regla en línea (podría usar wasHouseInRecall).
+- Quality Check Reports · sin pestañas (10/2026): no salen los reportes de casas que HOY están en Recall
+  (ya están en las tarjetas "Casas en Recall"; `isHouseInRecall`). Queda el total y el buscador.
+- QC Dashboard · pestaña "Recalls" (antes "Re-clean", 10/2026): filtra las casas que YA están en Invoice y
+  que alguna vez estuvieron en Recall (`isRowInTab`: `row.recall && row.isInvoice`), pedido de Omar. Por eso
+  su número es menor que el KPI "Recalls", que cuenta todos los trabajos que estuvieron en Recall (también
+  los que siguen en Recall o en Quality Check). Team Scorecard ordenado por Recalls de mayor a menor (a
+  igual número, mejor Avg primero).
+- QC Dashboard · Recalls (10/2026, revisión): el KPI "Recalls" (todos los trabajos que estuvieron en Recall)
+  dice debajo "N in invoice · M still open": N es el número de la pestaña "Recalls" (solo casas ya en
+  Invoice) y M los que siguen en Recall o en Quality Check. Así 97 vs 99 no se lee como error. Se quitó el
+  "invoices on hold" del KPI (contaba re-cleans, otra cosa). La marca "Recall" va antes del cliente con
+  `RecallMark` (como Invoices y reportes); salió de la columna Result y su CSS `.qd-recall`.
+- Quality Check Reports · botón "Recalls" (10/2026): junto a "Reports" (todos) filtra solo los reportes de
+  casas que estuvieron alguna vez en Recall (misma regla que la marca: `recallHouseIds`). Los dos totales
+  salen del periodo y la búsqueda. Es un filtro, no una pestaña por status: las casas HOY en Recall siguen
+  fuera de la tabla (están en las tarjetas de arriba).
+- Recalls · UN solo número (10/2026, decisión de Omar; reemplaza las notas anteriores de "Recalls" del QC
+  Dashboard): Recalls = todos los trabajos del periodo que estuvieron en Recall (`wasHouseInRecall`), ya
+  facturados o todavía abiertos. La tarjeta "Recalls", la pestaña "Recalls" y la suma de la columna del
+  Team Scorecard salen de la misma regla (`isRowInTab(row, 'recall')`) y dan el mismo número. Ya no se
+  filtra la pestaña por "en Invoice" ni se desglosa "in invoice · still open".
+  En Quality Check Reports el botón "Recalls" cuenta CASAS (no reportes) entre las que tienen reporte
+  terminado en el periodo; es menor que el del Dashboard porque un trabajo sin reporte terminado no puede
+  salir en esa tabla, y las casas hoy en Recall están en las tarjetas de arriba.
+- Task list · nueva tarea sin Assignee por defecto (10/2026, pedido de Omar): el panel abre sin nadie
+  marcado (antes la persona que se estaba mirando). "Add task" sin Assignee muestra "Choose who will do
+  this task." y no guarda. `TaskListView` ya no calcula `newTaskAssignee`.
