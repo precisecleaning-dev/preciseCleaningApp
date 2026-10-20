@@ -34,7 +34,7 @@ import { storage } from '../config/storage';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import type { NewDoc } from '../lib/firebase/typedConverter';
 import type {
-  Actor, ApprovalDecision, DoneTasksCursor, DoneTasksPage, Repeat, StoredUserTask, TaskProject, TaskRelation, TaskAssignee, TaskAttachment, TaskComment, UserTask, UserTaskApproval, YmdDate,
+  Actor, ApprovalDecision, DoneTasksCursor, DoneTasksPage, Repeat, StoredUserTask, TaskProject, TaskRelation, TaskAssignee, TaskAttachment, TaskComment, InitialComment, UserTask, UserTaskApproval, YmdDate,
 } from '../types/index';
 import { compressImage } from '../utils/imageCompression';
 import { nextOccurrence } from '../features/ops/opsDates';
@@ -198,13 +198,13 @@ export const draftApproval = (approverUserId: string, approverUserName: string):
   note: '',
 });
 
-function newTaskData(input: TaskInput, actor: Actor): NewDoc<UserTask> {
+function newTaskData(input: TaskInput, actor: Actor, initialComments: InitialComment[] = []): NewDoc<UserTask> {
   return {
     ...input,
     status: 'open',
     doneAt: null,
     doneByUserId: null,
-    comments: [],
+    comments: initialComments.map(({ text, createdAt }) => ({ userId: actor.id, userName: actor.name, text, createdAt })),
     attachments: [],
     createdByUserId: actor.id,
     createdByUserName: actor.name,
@@ -283,12 +283,13 @@ export const userTasksService = {
   },
 
   /** Crea una tarea abierta y suma 1 tarea (y sus minutos) a su proyecto.
-   *  Devuelve el id nuevo. */
-  async create(input: TaskInput, actor: Actor, known: KnownProjects): Promise<string> {
+   *  `initialComments`: los escritos en el formulario de nueva tarea; se
+   *  guardan en el mismo batch (la tarea nace con ellos). Devuelve el id nuevo. */
+  async create(input: TaskInput, actor: Actor, known: KnownProjects, initialComments: InitialComment[] = []): Promise<string> {
     assertValidTaskFields(input);
     const taskRef = doc(userTasksCol);
     const batch = writeBatch(db);
-    batch.set(taskRef, { ...newTaskData(input, actor), id: taskRef.id });
+    batch.set(taskRef, { ...newTaskData(input, actor, initialComments), id: taskRef.id });
     bumpProjectCounters(batch, input.projectId, contribution({ status: 'open', durationMinutes: input.durationMinutes }), known);
     await batch.commit();
     return taskRef.id;

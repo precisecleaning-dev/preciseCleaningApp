@@ -2932,3 +2932,28 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   con zoom la tabla quedaba de ~50 px y el TOTAL fijo tapaba la única fila. No volver a `min-height: 0`.
   El Overview (`HousesView.css`, `.hv-unified` / `.ujt-scroll`) usa el mismo patrón y puede tener el mismo
   problema; no se tocó.
+- Task list · nueva tarea con archivos y comentarios (10/2026): el formulario usa los mismos
+  `TaskAttachments` y `TaskComments` que el panel de la tarea, pero en borrador. Los comentarios viajan en
+  el MISMO batch de `userTasksService.create` (`initialComments`, con la hora en que se escribieron; el
+  autor siempre es quien crea). Los archivos se suben DESPUÉS de crear la tarea (`useTaskActions.add` →
+  `attachFiles`): Storage usa `user_tasks/{id}/…` y la regla de update pide la tarea ya creada. Si un
+  archivo falla, la tarea queda creada y se avisa. En el formulario "Post" solo agrega al borrador: lo
+  escrito sin "Post" no se guarda.
+- Task list · Assignee (10/2026): `AssigneePicker` es un campo de búsqueda (chips + texto), ya no un botón
+  desplegable. La lista es la de `assignablePeople` (personas que pueden abrir Task List, más uno mismo)
+  ordenada de la A a la Z por nombre (`compareByUserName`; "Me" queda en su lugar alfabético) y filtrada
+  sin mayúsculas ni acentos (`matchesSearch`). Es `type="text"` a propósito: con `type="search"` Chrome
+  borra el texto con Escape y la lista se volvía a abrir. Marcar agrega al final (la primera asignada no
+  cambia).
+- Task list · CR del formulario de nueva tarea (10/2026):
+  - `attachFiles` sube archivo por archivo con su propio try/catch y un solo aviso nombra los que
+    fallaron ("2 of 5 files weren't uploaded: …"); sin red no intenta ninguno y los nombra todos. `add`
+    sigue devolviendo boolean: el panel se cierra igual, porque dejarlo abierto con "Add task" crearía
+    la tarea dos veces. Si se quiere reintentar desde el formulario, hace falta un modo "reintentar
+    subida" con el id de la tarea ya creada.
+  - `InitialComment` vive en `src/types/userTasks.ts` (no exportado desde el service, como pedía el CR):
+    CLAUDE.md manda los tipos a src/types.
+  - `normalizeForSearch` usa `/[\u0300-\u036f]/g` escrito con escapes: con los caracteres combinantes
+    literales la regex es invisible en el diff.
+  - AssigneePicker: `onBlur` del contenedor cierra la lista cuando el foco sale del selector (Tab). La
+    lista tiene `tabIndex={-1}` para que tocar una opción no la cierre antes del clic.

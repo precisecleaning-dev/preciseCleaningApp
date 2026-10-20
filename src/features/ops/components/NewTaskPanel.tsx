@@ -3,15 +3,34 @@
 // TaskFields), pero no guarda nada hasta "Add task": los cambios se juntan en
 // un borrador. Si alguien tiene que dar el OK, la tarea se crea con el visto
 // bueno "por enviar" (se envía después desde el panel de la tarea).
-import { useRef, useState, type KeyboardEvent } from 'react';
+// Archivos y comentarios usan los mismos componentes que el panel de la tarea
+// (TaskAttachments, TaskComments), pero aquí quedan en el borrador: los
+// comentarios se guardan con la tarea y los archivos se suben al crearla.
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import type { AssignableUser, Priority, TaskAssignee, TaskProject } from '../../../types/index';
+import type {
+  AssignableUser, InitialComment, PendingTaskFile, Priority, TaskAssignee, TaskAttachment, TaskComment, TaskProject,
+} from '../../../types/index';
 import {
   DEFAULT_DURATION_MINUTES, draftApproval, MAX_TITLE_LENGTH, type TaskInput, type TaskPatch,
 } from '../../../services/userTasksService';
 import { todayIso } from '../../../utils/dateFormat';
+import TaskAttachments from './TaskAttachments';
+import TaskComments from './TaskComments';
 import TaskDrawer from './TaskDrawer';
 import TaskFields from './TaskFields';
+
+/** Tarjeta de un archivo que todavía no se sube: vista previa local (blob:). */
+const toPendingTaskFile = (file: File, localId: string): PendingTaskFile => ({
+  file,
+  preview: {
+    name: file.name,
+    url: URL.createObjectURL(file),
+    path: localId,
+    type: file.type || 'application/octet-stream',
+    size: file.size,
+  },
+});
 
 interface NewTaskPanelProps {
   assignableUsers: AssignableUser[];
@@ -23,7 +42,8 @@ interface NewTaskPanelProps {
   /** Quienes pueden dar el visto bueno (sin uno mismo). */
   approvers: AssignableUser[];
   onClose: () => void;
-  onCreate: (input: TaskInput) => Promise<boolean>;
+  /** Crea la tarea con los comentarios del borrador y sube sus archivos. */
+  onCreate: (input: TaskInput, initialComments: InitialComment[], files: File[]) => Promise<boolean>;
 }
 
 const NewTaskPanel = ({
@@ -43,8 +63,42 @@ const NewTaskPanel = ({
   }));
   const [approverUserId, setApproverUserId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [draftComments, setDraftComments] = useState<InitialComment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingTaskFile[]>([]);
+  // Vistas previas (blob:) creadas en este panel y un contador para sus ids.
+  const previewUrlsRef = useRef(new Set<string>());
+  const nextFileNumberRef = useRef(0);
+
+  // Al cerrar el panel se liberan las vistas previas de los archivos.
+  useEffect(() => {
+    const previewUrls = previewUrlsRef.current;
+    return () => previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+  }, []);
 
   const updateDraft = (patch: TaskPatch) => setDraft((current) => ({ ...current, ...patch }));
+
+  const handleAttachFiles = (files: File[]) => {
+    const newPendingFiles = files.map((file) => {
+      nextFileNumberRef.current += 1;
+      const pendingFile = toPendingTaskFile(file, `pending-${nextFileNumberRef.current}`);
+      previewUrlsRef.current.add(pendingFile.preview.url);
+      return pendingFile;
+    });
+    setPendingFiles((current) => [...current, ...newPendingFiles]);
+  };
+
+  const handleRemovePendingFile = (attachment: TaskAttachment) => {
+    URL.revokeObjectURL(attachment.url);
+    previewUrlsRef.current.delete(attachment.url);
+    setPendingFiles((current) => current.filter((pendingFile) => pendingFile.preview.path !== attachment.path));
+  };
+
+  // "Post" en el formulario solo agrega el comentario al borrador.
+  const handleAddDraftComment = (text: string): Promise<boolean> => {
+    const draftComment: InitialComment = { text, createdAt: new Date().toISOString() };
+    setDraftComments((current) => [...current, draftComment]);
+    return Promise.resolve(true);
+  };
 
   const handleCreate = async () => {
     const title = draft.title.trim();
@@ -53,11 +107,11 @@ const NewTaskPanel = ({
     const approver = approvers.find((person) => person.id === approverUserId);
     try {
       // onCreate (useTaskActions.add) avisa con un alert si no se pudo guardar.
-      const wasCreated = await onCreate({
-        ...draft,
-        title,
-        approval: approver ? draftApproval(approver.id, approver.name) : null,
-      });
+      const wasCreated = await onCreate(
+        { ...draft, title, approval: approver ? draftApproval(approver.id, approver.name) : null },
+        draftComments,
+        pendingFiles.map((pendingFile) => pendingFile.file),
+      );
       if (wasCreated) onClose();
     } catch (error) {
       console.error('No se pudo agregar la tarea:', error);
@@ -79,6 +133,13 @@ const NewTaskPanel = ({
     createdAt: '',
   };
   const canCreate = !!draft.title.trim() && !isSaving;
+  const pendingFilePreviews = pendingFiles.map((pendingFile) => pendingFile.preview);
+  // TaskComments muestra autor y hora: los del borrador son de quien crea la tarea.
+  const draftCommentPreviews: TaskComment[] = draftComments.map((draftComment) => ({
+    ...draftComment,
+    userId: currentUser.id,
+    userName: currentUser.name,
+  }));
 
   const footerActions = (
     <>
@@ -134,6 +195,15 @@ const NewTaskPanel = ({
           </select>
         </label>
       </section>
+
+      <TaskAttachments
+        attachments={pendingFilePreviews}
+        canRemove={!isSaving}
+        uploading={isSaving}
+        onAttach={handleAttachFiles}
+        onRemove={handleRemovePendingFile}
+      />
+      <TaskComments comments={draftCommentPreviews} me={currentUser} onAdd={handleAddDraftComment} />
     </TaskDrawer>
   );
 };

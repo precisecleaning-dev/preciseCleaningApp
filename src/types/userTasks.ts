@@ -60,9 +60,22 @@ export interface TaskAttachment {
   size: number; //                      tamaño en bytes
 }
 
+/** Archivo elegido en el formulario de nueva tarea (no se guarda en Firestore):
+ *  se sube cuando la tarea ya existe. `preview` es su tarjeta mientras tanto,
+ *  con `url` = vista previa local (blob:) y `path` = id local. */
+export interface PendingTaskFile {
+  file: File;
+  preview: TaskAttachment;
+}
+
 /** Elemento de `comments[]` de una tarea o de un proyecto (sin archivos). Se
  *  identifica por autor + hora (no tiene id propio). `createdAt` es texto ISO:
  *  dentro de un arreglo Firestore no acepta serverTimestamp(). */
+/** Comentario escrito en el formulario de nueva tarea, antes de que la tarea
+ *  exista: su texto y la hora en que se escribió. El autor siempre es quien
+ *  crea la tarea (lo pone userTasksService.create). */
+export type InitialComment = Pick<TaskComment, 'text' | 'createdAt'>;
+
 /** Elemento de `assignees[]`: una de las personas asignadas a la tarea. */
 export interface TaskAssignee {
   userId: string; //                    FK → system_users: persona asignada
