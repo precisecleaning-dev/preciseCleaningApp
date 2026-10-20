@@ -31,6 +31,7 @@ export interface QcDashRow {
   inspector: string;
   date: string;
   follow: string;
+  /** Estuvo alguna vez en Recall (wasHouseInRecall). */
   recall: boolean;
 }
 

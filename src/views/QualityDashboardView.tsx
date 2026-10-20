@@ -5,7 +5,7 @@
 //      · barra de periodo (Day/Week/Month/Year/Custom) + Team + Inspector
 //      · indicadores: completados, inspeccionados, pass rate, promedio,
 //        re-cleans y sin inspeccionar
-//      · pestañas Needs inspection / Re-clean / Passed / All
+//      · pestañas Needs inspection / Recalls (en Invoice y alguna vez en Recall) / Passed / All
 //      · tabla de inspecciones con score, resultado, áreas con fallas,
 //        seguimiento sugerido y envío del reporte (WhatsApp / email / PDF)
 //      · scorecard por equipo, áreas que más fallan y resumen escrito
@@ -13,7 +13,7 @@
 //    Las reglas viven en src/utils/qcDashboard.ts.
 // ============================================================================
 import { useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { ChevronRight, Filter, Search, Mail, Printer, RotateCcw, Sparkles, X } from 'lucide-react';
+import { ChevronRight, Filter, Search, Mail, Printer, Sparkles, X } from 'lucide-react';
 import type { Property, Role } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { getCompanySettings } from '../services/companyService';
@@ -23,7 +23,7 @@ import { inPeriod, periodRange } from '../utils/periods';
 import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { isRecallText } from '../utils/recallStatus';
 import { groupByDate } from '../utils/dateGrouping';
-import { useRecallHouses } from '../utils/jobRecall';
+import { useRecallHouses, wasHouseInRecall } from '../utils/jobRecall';
 import {
   dashboardSummary, failedAreas, followUp, latestByHouse, recordScore, resultOf, RESULT_LABEL,
   type QcDashRow, type QcPlace, type QcResult, type QcTask,
@@ -39,14 +39,25 @@ import WhatsAppIcon from '../components/WhatsAppIcon';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './QualityDashboardView.css';
 import MenuButton from '../shared/components/MenuButton';
+import RecallMark from '../shared/components/RecallMark';
 
-type Tab = 'todo' | 'reclean' | 'passed' | 'all';
+type Tab = 'todo' | 'recall' | 'passed' | 'all';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'todo', label: 'Needs inspection' },
-  { id: 'reclean', label: 'Re-clean' },
+  { id: 'recall', label: 'Recalls' },
   { id: 'passed', label: 'Passed' },
   { id: 'all', label: 'All' },
 ];
+
+/** Filas de cada pestaña. "Recalls" = todos los trabajos del periodo que
+ *  estuvieron en Recall (ya facturados o todavía abiertos): el MISMO número que
+ *  el KPI y la suma del Team Scorecard (decisión de Omar, 10/2026). Las demás
+ *  por el resultado del último QC. */
+const isRowInTab = (row: QcDashRow, selectedTab: Tab): boolean => {
+  if (selectedTab === 'all') return true;
+  if (selectedTab === 'recall') return row.recall;
+  return row.result === selectedTab;
+};
 const RESULT_TONE: Record<QcResult, string> = { passed: 'good', reclean: 'bad', todo: 'warn' };
 
 
@@ -156,7 +167,7 @@ export default function QualityDashboardView({
         inspector: rec?.inspector || '',
         date: formatDate(p.scheduleDate),
         follow: followUp(result, String(p.invoiceStatus || ''), teamName(p)),
-        recall: recallHouses.has(p.id) || isRecallText(stName),
+        recall: wasHouseInRecall(p.id, stName, recallHouses),
       });
     });
     return out.sort((a, b) => String(b.prop.scheduleDate).localeCompare(String(a.prop.scheduleDate)));
@@ -176,7 +187,10 @@ export default function QualityDashboardView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, teamFilter, inspectorFilter, deferredSearch, customers]);
 
-  const tabRows = scoped.filter((r) => tab === 'all' || r.result === tab);
+  const tabRows = scoped.filter((row) => isRowInTab(row, tab));
+  const rowCountByTab = Object.fromEntries(
+    TABS.map((tabOption) => [tabOption.id, scoped.filter((row) => isRowInTab(row, tabOption.id)).length]),
+  ) as Record<Tab, number>;
   // Grupos por fecha, igual que el Overview (día en Day/Week/Custom, semana en
   // Month, mes en Year), con un resumen de cada grupo.
   const groups = useMemo(
@@ -199,30 +213,36 @@ export default function QualityDashboardView({
   // ---- Indicadores ----
   const inspected = scoped.filter((r) => r.result !== 'todo');
   const passed = scoped.filter((r) => r.result === 'passed');
-  const recleans = scoped.filter((r) => r.result === 'reclean');
   const todo = scoped.filter((r) => r.result === 'todo');
   const scored = inspected.filter((r) => r.score !== null);
   const avg = scored.length ? Math.round(scored.reduce((s, r) => s + (r.score as number), 0) / scored.length) : null;
   const passRate = inspected.length ? Math.round((passed.length / inspected.length) * 100) : null;
   const coverage = scoped.length ? Math.round((inspected.length / scoped.length) * 100) : null;
-  const onHold = recleans.filter((r) => norm(r.prop.invoiceStatus) !== 'paid').length;
 
   // ---- Scorecard por equipo y áreas que más fallan ----
+  // Avg y Pass salen de los trabajos inspeccionados; Recalls cuenta TODOS los
+  // trabajos del equipo que estuvieron en Recall (también los que después
+  // pasaron o los que nunca tuvieron un QC terminado). Orden: del equipo con
+  // más Recalls al que tiene menos; a igual número, el de mejor Avg primero.
   const teamCards = useMemo(() => {
     const m = new Map<string, { name: string; color: string; scores: number[]; n: number; pass: number; re: number }>();
-    scoped.filter((r) => r.result !== 'todo').forEach((r) => {
+    scoped.forEach((r) => {
+      const isInspected = r.result !== 'todo';
+      if (!isInspected && !r.recall) return;
       const key = String(r.prop.teamId || 'none');
       const t = team(r.prop);
       const e = m.get(key) || { name: teamName(r.prop), color: t?.color || '#64748b', scores: [], n: 0, pass: 0, re: 0 };
-      e.n += 1;
-      if (r.result === 'passed') e.pass += 1;
-      if (r.result === 'reclean') e.re += 1;
-      if (r.score !== null) e.scores.push(r.score);
+      if (isInspected) {
+        e.n += 1;
+        if (r.result === 'passed') e.pass += 1;
+        if (r.score !== null) e.scores.push(r.score);
+      }
+      if (r.recall) e.re += 1;
       m.set(key, e);
     });
     return [...m.values()]
       .map((e) => ({ ...e, avg: e.scores.length ? Math.round(e.scores.reduce((a, b) => a + b, 0) / e.scores.length) : null }))
-      .sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1));
+      .sort((firstTeam, secondTeam) => (secondTeam.re - firstTeam.re) || ((secondTeam.avg ?? -1) - (firstTeam.avg ?? -1)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoped, teams]);
 
@@ -323,8 +343,10 @@ export default function QualityDashboardView({
     },
     { key: 'avg', label: 'Avg score', value: avg === null ? '—' : String(avg), sub: 'out of 100' },
     {
-      key: 're', label: 'Re-cleans', value: String(recleans.length),
-      sub: `${onHold} invoice${onHold === 1 ? '' : 's'} on hold`, tone: 'bad' as const, highlight: 'bad' as const,
+      // Mismo conteo que la pestaña "Recalls" (isRowInTab): un solo número.
+      key: 're', label: 'Recalls', value: String(rowCountByTab.recall),
+      sub: 'jobs that went to Recall',
+      tone: 'bad' as const, highlight: 'bad' as const,
     },
     { key: 'todo', label: 'Not inspected', value: String(todo.length), sub: 'completed, no QC yet', tone: 'warn' as const },
   ];
@@ -418,7 +440,7 @@ export default function QualityDashboardView({
                 onClick={() => setTab(t.id)}
               >
                 {t.label}
-                <span className="qd-cnt">{t.id === 'all' ? scoped.length : scoped.filter((r) => r.result === t.id).length}</span>
+                <span className="qd-cnt">{rowCountByTab[t.id]}</span>
               </button>
             ))}
           </div>
@@ -473,7 +495,10 @@ export default function QualityDashboardView({
                         <tr key={r.prop.id} className="qd-row" onClick={() => setOpenRow(r)}>
                           <td className="strong">{r.date}</td>
                           <td className="qd-client">
-                            <div className="strong">{clientName(r.prop)}</div>
+                            <div className="strong">
+                              {r.recall && <RecallMark />}
+                              {clientName(r.prop)}
+                            </div>
                             <div className="qd-muted">{r.prop.address}</div>
                           </td>
                           <td className="semibold">{typeName(r.prop)}</td>
@@ -499,7 +524,6 @@ export default function QualityDashboardView({
                           <td>
                             <div className="qd-result-cell">
                               <span className={`qd-pill ${tone}`}>{RESULT_LABEL[r.result]}</span>
-                              {r.recall && <span className="qd-recall" title="Esta casa estuvo en Recall"><RotateCcw size={11} /> Recall</span>}
                             </div>
                           </td>
                           <td className="qd-issues">
@@ -549,7 +573,7 @@ export default function QualityDashboardView({
               <ul className="qd-teamlist">
                 <li className="qd-teamrow head" aria-hidden="true">
                   <span>Team</span>
-                  <span className="qd-teamstats-head"><span>Avg</span><span>Pass</span><span>Re-clean</span></span>
+                  <span className="qd-teamstats-head"><span>Avg</span><span>Pass</span><span>Recalls</span></span>
                 </li>
                 {teamCards.map((tc) => (
                   <li key={tc.name} className="qd-teamrow">
@@ -557,7 +581,7 @@ export default function QualityDashboardView({
                     <dl className="qd-teamstats">
                       <div><dt>Avg</dt><dd className={tc.avg === null ? '' : scoreTone(tc.avg)}>{tc.avg ?? '—'}</dd></div>
                       <div><dt>Pass</dt><dd>{tc.n ? `${Math.round((tc.pass / tc.n) * 100)}%` : '—'}</dd></div>
-                      <div><dt>Re-clean</dt><dd className={tc.re > 0 ? 'bad' : ''}>{tc.re}</dd></div>
+                      <div><dt>Recalls</dt><dd className={tc.re > 0 ? 'bad' : ''}>{tc.re}</dd></div>
                     </dl>
                   </li>
                 ))}

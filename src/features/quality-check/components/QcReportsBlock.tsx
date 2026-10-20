@@ -13,9 +13,11 @@ interface QcReportsBlockProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  /** Abre el detalle de la casa al tocar un reporte. */
+  onOpenHouseDetail?: (house: Property) => void;
 }
 
-const QcReportsBlock = ({ properties, currentUser, activeRole, isSuperAdmin }: QcReportsBlockProps) => {
+const QcReportsBlock = ({ properties, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail }: QcReportsBlockProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -41,6 +43,7 @@ const QcReportsBlock = ({ properties, currentUser, activeRole, isSuperAdmin }: Q
           currentUser={currentUser}
           activeRole={activeRole}
           isSuperAdmin={isSuperAdmin}
+          onOpenHouseDetail={onOpenHouseDetail}
         />
       )}
     </section>
