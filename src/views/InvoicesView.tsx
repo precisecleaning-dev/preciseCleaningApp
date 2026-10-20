@@ -19,7 +19,7 @@ import { useLiveCollection } from '../shared/data/liveCollections';
 import { propertiesService } from '../services/propertiesService';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import { invoiceEntryMs } from '../utils/invoiceEntry';
-import { changeHouseStatus, houseLogLabel } from '../features/houses/services/houseStatus';
+import { changeHouseStatus, houseLogLabel, statusNameOf } from '../features/houses/services/houseStatus';
 import { useHouseTrash } from '../features/houses/hooks/useHouseTrash';
 import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
 import { useMediaQuery } from '../shared/hooks/useMediaQuery';
@@ -28,6 +28,8 @@ import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import './InvoicesView.css';
 import MenuButton from '../shared/components/MenuButton';
 import VirtualItems from '../shared/components/VirtualItems';
+import RecallMark from '../shared/components/RecallMark';
+import { useRecallHouses, wasHouseInRecall } from '../utils/jobRecall';
 
 const INVOICE_STATUSES = [
   { id: 'Pre-Paid', name: 'Pre-Paid', color: '#8b5cf6' },
@@ -198,6 +200,11 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
     [statusesLive.data],
   );
   const customers = customersLive.data;
+  // ⭐ "Recall" antes del cliente si la casa estuvo alguna vez en Recall (misma
+  //    regla y misma marca que el Overview, el QC Dashboard y los reportes).
+  const recallHouseIds = useRecallHouses(statuses);
+  const wasInRecall = (prop: Property): boolean =>
+    wasHouseInRecall(prop.id, statusNameOf(statuses, prop.statusId), recallHouseIds);
   // ⭐ Las filas se pintan en cuanto hay statuses (deciden qué casa es "Invoice");
   //    el dinero, el cliente y el equipo se completan cuando llegan sus datos.
   const isLoading = !statusesLive.loaded;
@@ -452,7 +459,10 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
           <span className="inv-cell-ellipsis">{prop.address || '-'}</span>
         </td>
         <td className="inv-td inv-col-client" title={getClientName(prop.client)}>
-          <span className="inv-cell-ellipsis strong">{getClientName(prop.client)}</span>
+          <span className="inv-cell-ellipsis strong">
+            {wasInRecall(prop) && <RecallMark />}
+            {getClientName(prop.client)}
+          </span>
         </td>
         {textCell(prop, 'note')}
         <td className="inv-td strong nowrap">{prop.scheduleDate ? formatDate(prop.scheduleDate) : '-'}</td>
@@ -537,7 +547,10 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
       <div key={prop.id} onClick={() => openDetail(prop)} className={`inv-job-card${pending.has(prop.id) ? ' is-pending' : ''}`}>
         {/* Título + profit */}
         <div className="inv-card-top-row">
-          <span className="inv-card-client-name">{clientName}</span>
+          <span className="inv-card-client-name">
+            {wasInRecall(prop) && <RecallMark />}
+            {clientName}
+          </span>
           <span className={`inv-card-profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>
             {cash(f.profit)} <span className="inv-card-margin">{jobFin.loading ? '' : pct(f.margin)}</span>
           </span>

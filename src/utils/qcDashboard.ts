@@ -31,7 +31,10 @@ export interface QcDashRow {
   inspector: string;
   date: string;
   follow: string;
+  /** Estuvo alguna vez en Recall (wasHouseInRecall). */
   recall: boolean;
+  /** Su status actual es Invoice. */
+  isInvoice: boolean;
 }
 
 /** Último reporte de QC por casa (sin registros de prueba). */

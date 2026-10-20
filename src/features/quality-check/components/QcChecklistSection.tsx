@@ -1,6 +1,7 @@
 // Un área del checklist (Porch, Rooms…): encabezado que la contrae o la
 // extiende (con lo que lleva aprobado), sus tareas, "+ Add task" en modo
-// "Edit checklist", las flechas para cambiarla de lugar y sus fotos.
+// "Edit checklist", las flechas para cambiarla de lugar, sus fotos y al final
+// su nota (marcar Fail le agrega "Fail <tarea>"; también se escribe a mano).
 import type { ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
 import type { QcAnswer, QcSection, QcSectionTask } from '../qcForm';
@@ -10,6 +11,7 @@ import QcChecklistTaskRow from './QcChecklistTaskRow';
 interface QcChecklistSectionProps {
   section: QcSection;
   sectionAnswers: Record<string, string>;
+  notes: string;
   isCollapsed: boolean;
   isEditingChecklist: boolean;
   canAddTasks: boolean;
@@ -26,6 +28,7 @@ interface QcChecklistSectionProps {
   photos: ReactNode;
   onToggleCollapsed: (section: QcSection) => void;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
+  onNotesChange: (section: QcSection, notes: string) => void;
   onMoveSection: (section: QcSection, positionOffset: -1 | 1) => void;
   onAddTask: (section: QcSection, taskName: string) => void;
   onRenameTask: (section: QcSection, task: QcSectionTask, name: string) => void;
@@ -33,8 +36,8 @@ interface QcChecklistSectionProps {
 }
 
 const QcChecklistSection = ({
-  section, sectionAnswers, isCollapsed, isEditingChecklist, canAddTasks, canEditTasks, canRemoveTasks,
-  isFirstSection, isLastSection, isReorderingSections, isAddingTask, pendingTaskIds, photos, onToggleCollapsed, onAnswer, onMoveSection, onAddTask, onRenameTask,
+  section, sectionAnswers, notes, isCollapsed, isEditingChecklist, canAddTasks, canEditTasks, canRemoveTasks,
+  isFirstSection, isLastSection, isReorderingSections, isAddingTask, pendingTaskIds, photos, onToggleCollapsed, onAnswer, onNotesChange, onMoveSection, onAddTask, onRenameTask,
   onRemoveTask,
 }: QcChecklistSectionProps) => {
   const passedCount = section.tasks.filter((task) => sectionAnswers[task.id] === 'Yes').length;
@@ -45,6 +48,8 @@ const QcChecklistSection = ({
   })();
   const showMoveButtons = isEditingChecklist && canEditTasks;
   const sectionBodyId = `qcl-section-${section.id}`;
+  // El campo crece con las líneas "Fail …" para que se vean todas.
+  const notesRowCount = Math.max(2, notes.split('\n').length);
 
   return (
     <section className="qcl-section" aria-label={section.name}>
@@ -113,6 +118,16 @@ const QcChecklistSection = ({
             <span className="qcl-photos-lbl">Photos · {section.name}</span>
             {photos}
           </div>
+          <label className="qcl-notes">
+            <span className="qcl-photos-lbl">Notes · {section.name}</span>
+            <textarea
+              className="qcd-textarea"
+              rows={notesRowCount}
+              value={notes}
+              placeholder="Notes for the team about this area"
+              onChange={(event) => onNotesChange(section, event.target.value)}
+            />
+          </label>
         </div>
       )}
     </section>

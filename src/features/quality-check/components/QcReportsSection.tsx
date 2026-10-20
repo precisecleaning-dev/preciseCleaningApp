@@ -7,7 +7,7 @@
 // Lee la colección completa `qualityChecks` del store compartido: quien la monta
 // paga esas lecturas (por eso Quality Check la abre solo bajo demanda).
 import { useDeferredValue, useMemo, useState } from 'react';
-import type { Property, QcReportRow, QcReportTab, Role, SystemUser } from '../../../types/index';
+import type { Property, QcReportRow, Role, SystemUser } from '../../../types/index';
 import { useLiveCollection, useLiveData } from '../../../shared/data/liveCollections';
 import { isHiddenByWindow, useFullHistory } from '../../../shared/data/propertiesWindow';
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery';
@@ -16,11 +16,12 @@ import PeriodBar from '../../../components/PeriodBar';
 import { inPeriod, periodRange } from '../../../utils/periods';
 import { displayClientName } from '../../../utils/customerDocs';
 import { getRelationName } from '../../../utils/relations';
+import { useRecallHouses } from '../../../utils/jobRecall';
 import ShareReportSheet from '../../../components/ShareReportSheet';
 import StatusChangeModal from '../../../components/StatusChangeModal';
 import type { QCPdfPlace, QCPdfTask } from '../../../utils/qcReportPdf';
 import { useQcReportActions } from '../hooks/useQcReportActions';
-import { getReportNotes, getReportScore, getReportTab, getReportTimeMs } from '../qcReports';
+import { getReportNotes, getReportScore, getReportTimeMs, isHouseInRecall } from '../qcReports';
 import QcReportCard from './QcReportCard';
 import QcReportFilters from './QcReportFilters';
 import QcReportSendButtons from './QcReportSendButtons';
@@ -34,12 +35,16 @@ interface QcReportsSectionProps {
   currentUser?: SystemUser | null;
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
+  /** Abre el detalle de la casa (el de Houses, encima de la vista). */
+  onOpenHouseDetail?: (house: Property) => void;
 }
 
 /** Por debajo de este ancho la tabla (980 px) se cambia por tarjetas. */
 const REPORT_CARDS_QUERY = '(max-width: 900px)';
 
-const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = false }: QcReportsSectionProps) => {
+const QcReportsSection = ({
+  properties, currentUser, activeRole, isSuperAdmin = false, onOpenHouseDetail,
+}: QcReportsSectionProps) => {
   const { data: qualityCheckDocs, loaded: areReportsLoaded } = useLiveCollection('qualityChecks');
   const allReports = qualityCheckDocs as unknown as QcReportRow[];
   const customers = useLiveData('customers');
@@ -48,6 +53,9 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
   const places: QCPdfPlace[] = useLiveData('places');
   const tasks: QCPdfTask[] = useLiveData('tasks');
   const isCardLayout = useMediaQuery(REPORT_CARDS_QUERY);
+  // Casas que estuvieron alguna vez en Recall (status_history, con caché): se
+  // marcan con "Recall" antes del cliente.
+  const recallHouseIds = useRecallHouses(statuses);
 
   const [searchText, setSearchText] = useState('');
   // La caja responde al instante; el filtro de la tabla va un paso atrás.
@@ -55,7 +63,6 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
   // Periodo por la fecha de la inspección (se recuerda por navegador).
   const [reportsPeriod, setReportsPeriod] = useStoredPeriod('pc.qc.reports.period', 'month');
   const reportsPeriodRange = useMemo(() => periodRange(reportsPeriod), [reportsPeriod]);
-  const [selectedTab, setSelectedTab] = useState<QcReportTab>('quality_check');
 
   // Cambiar el status de la casa: mismo permiso que Invoices (módulo "Quality Check").
   const canChangePropertyStatus = isSuperAdmin
@@ -76,30 +83,20 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
     statuses, places, tasks, currentUser, getClientName, getTeamName, getPropertyForReport,
   });
 
-  // Solo FINALIZADOS, del más reciente al más viejo. Con la ventana de 12 meses,
-  // un reporte viejo cuya casa no se cargó es historial oculto, no una casa borrada.
+  // Solo FINALIZADOS, del más reciente al más viejo, y no los de casas HOY en
+  // Recall (salen en las tarjetas de arriba). Con la ventana de 12 meses, un
+  // reporte viejo cuya casa no se cargó es historial oculto, no una casa borrada.
   const hasFullHistory = useFullHistory();
   const loadedPropertyIds = useMemo(() => new Set(properties.map((property) => property.id)), [properties]);
   const finishedReports = useMemo(() => allReports
     .filter((report) => report.status === 'Finished')
+    .filter((report) => !isHouseInRecall(propertiesById.get(report.houseId), statuses))
     .filter((report) => !isHiddenByWindow(hasFullHistory, loadedPropertyIds.has(report.houseId), getReportTimeMs(report)))
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport)),
-  [allReports, hasFullHistory, loadedPropertyIds]);
-
-  const tabByReportId = useMemo(
-    () => new Map(finishedReports.map((report) => [report.id, getReportTab(propertiesById.get(report.houseId), statuses)] as const)),
-    [finishedReports, propertiesById, statuses],
-  );
-
-  const reportCountByTab = useMemo(() => {
-    const countByTab: Record<QcReportTab, number> = { quality_check: 0, invoice: 0, recall: 0 };
-    tabByReportId.forEach((reportTab) => { countByTab[reportTab] += 1; });
-    return countByTab;
-  }, [tabByReportId]);
+  [allReports, hasFullHistory, loadedPropertyIds, propertiesById, statuses]);
 
   const normalizedSearchText = deferredSearchText.trim().toLowerCase();
   const visibleReports = finishedReports.filter((report) => {
-    if (tabByReportId.get(report.id) !== selectedTab) return false;
     if (!inPeriod(report.date, reportsPeriodRange)) return false;
     if (!normalizedSearchText) return true;
     return [getClientName(report.client), report.address, report.inspector, report.team, report.date]
@@ -113,7 +110,7 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
       return 'Todavía no hay inspecciones finalizadas. Al terminar una inspección en Quality Check aparecerá aquí.';
     }
     if (visibleReports.length === 0) {
-      return 'Ningún reporte en esta pestaña coincide con los filtros. Limpia la búsqueda o revisa las otras pestañas.';
+      return 'Ningún reporte coincide con los filtros. Limpia la búsqueda o cambia el periodo.';
     }
     return null;
   })();
@@ -132,6 +129,16 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
     />
   );
 
+  // Se busca la casa al tocar (la versión de este render, no una copia guardada).
+  const canOpenReportHouse = (report: QcReportRow): boolean => !!onOpenHouseDetail && propertiesById.has(report.houseId);
+  const handleOpenReportHouse = (report: QcReportRow) => {
+    const house = getPropertyForReport(report);
+    if (house) onOpenHouseDetail?.(house);
+  };
+
+  const wasReportHouseInRecall = (report: QcReportRow): boolean =>
+    recallHouseIds.has(report.houseId);
+
   const renderStatusPill = (report: QcReportRow) => (
     <QcReportStatusPill
       house={getPropertyForReport(report)}
@@ -146,10 +153,8 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
       <div className="qcrs-period">
         <PeriodBar period={reportsPeriod} onChange={setReportsPeriod}>
           <QcReportFilters
-            selectedTab={selectedTab}
-            reportCountByTab={reportCountByTab}
+            reportCount={visibleReports.length}
             searchText={searchText}
-            onSelectTab={setSelectedTab}
             onSearchTextChange={setSearchText}
           />
         </PeriodBar>
@@ -168,6 +173,9 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
               score={getReportScore(report, tasks)}
               sendButtons={renderSendButtons(report, 'full')}
               statusPill={renderStatusPill(report)}
+              canOpenHouse={canOpenReportHouse(report)}
+              wasInRecall={wasReportHouseInRecall(report)}
+              onOpenHouse={handleOpenReportHouse}
             />
           ))}
         </div>
@@ -183,6 +191,9 @@ const QcReportsSection = ({ properties, currentUser, activeRole, isSuperAdmin = 
               score={getReportScore(report, tasks)}
               sendButtons={renderSendButtons(report, 'icons')}
               statusPill={renderStatusPill(report)}
+              canOpenHouse={canOpenReportHouse(report)}
+              wasInRecall={wasReportHouseInRecall(report)}
+              onOpenHouse={handleOpenReportHouse}
             />
           ))}
         </QcReportsTable>

@@ -145,6 +145,12 @@
 
 /* Fotos de cada área, debajo de sus tareas */
 .qcl-photos { display: flex; flex-direction: column; gap: 6px; padding: 10px 0 4px 10px; }
+.qcl-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0 12px 10px;
+}
 .qcl-photos-lbl {
   color: #5b6475;
   font-size: 11px;

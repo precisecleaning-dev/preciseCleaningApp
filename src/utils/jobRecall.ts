@@ -80,6 +80,15 @@ async function fetchRecallHistory(statuses: Status[]): Promise<StatusHistoryEntr
   });
 }
 
+/** ¿El trabajo ESTUVO alguna vez en Recall? Lo dice su historia (ids de
+ *  useRecallHouses) o su status actual. Es la regla de la marca "Recall" y de
+ *  los conteos de Recall: Overview, QC Dashboard, reportes de QC e Invoices. */
+export const wasHouseInRecall = (
+  houseId: string,
+  currentStatusName: string | null | undefined,
+  recallHouseIds: ReadonlySet<string>,
+): boolean => recallHouseIds.has(houseId) || isRecallText(currentStatusName);
+
 export function useRecallHouses(statuses: Status[], enabled = true) {
   const [ids, setIds] = useState<Set<string>>(new Set());
   // Clave estable: la consulta solo se repite si cambian los status de recall,

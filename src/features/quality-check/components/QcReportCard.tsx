@@ -1,11 +1,12 @@
 // Tarjeta de un reporte en el teléfono: cliente y dirección, resultado
 // (Passed / Did Not Pass), status de la casa, fecha, %, duración, equipo,
-// inspector, notas y los botones de envío.
-import type { CSSProperties, ReactNode } from 'react';
+// inspector, notas y los botones de envío. Tocarla abre el detalle de la casa.
+import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 import { CalendarDays, Check, ClipboardCheck, Clock, MapPin, Repeat, StickyNote, User, Users } from 'lucide-react';
 import type { QcReportRow } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
-import { formatInspectionDuration } from '../qcReports';
+import { formatInspectionDuration, isClickOnControl } from '../qcReports';
+import QcReportClientName from './QcReportClientName';
 
 interface QcReportCardProps {
   report: QcReportRow;
@@ -17,20 +18,32 @@ interface QcReportCardProps {
   sendButtons: ReactNode;
   /** Píldora del status de la casa (QcReportStatusPill). */
   statusPill: ReactNode;
+  /** false si la casa ya no está cargada (borrada o fuera de la ventana de 12 meses). */
+  canOpenHouse: boolean;
+  /** Marca "Recall" antes del cliente: la casa estuvo alguna vez en Recall. */
+  wasInRecall: boolean;
+  onOpenHouse: (report: QcReportRow) => void;
 }
 
 const PASSED_BADGE = { background: '#dcfce7', color: '#166534', label: 'Passed', Icon: Check };
 const FAILED_BADGE = { background: '#f3e8ff', color: '#7c3aed', label: 'Did Not Pass', Icon: Repeat };
 
-const QcReportCard = ({ report, clientName, teamName, notes, score, sendButtons, statusPill }: QcReportCardProps) => {
+const QcReportCard = ({
+  report, clientName, teamName, notes, score, sendButtons, statusPill, canOpenHouse, wasInRecall, onOpenHouse,
+}: QcReportCardProps) => {
   const resultBadge = report.result === 'failed' ? FAILED_BADGE : PASSED_BADGE;
   const resultBadgeStyle = { '--badge-bg': resultBadge.background, '--badge-fg': resultBadge.color } as CSSProperties;
 
+  const handleOpenHouse = (event: MouseEvent<HTMLDivElement>) => {
+    if (!canOpenHouse || isClickOnControl(event)) return;
+    onOpenHouse(report);
+  };
+
   return (
-    <div className="qcrs-card">
+    <div className={`qcrs-card${canOpenHouse ? ' clickable' : ''}`} onClick={handleOpenHouse}>
       <div className="qcrs-card-top">
         <div className="qcrs-min-w-0">
-          <div className="qcrs-client-name">{clientName}</div>
+          <QcReportClientName clientName={clientName} wasInRecall={wasInRecall} />
           <div className="qcrs-client-address"><MapPin size={12} /> {report.address || '—'}</div>
         </div>
         <span className="qcrs-badge" style={resultBadgeStyle}>
