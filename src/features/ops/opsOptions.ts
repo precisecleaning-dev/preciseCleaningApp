@@ -51,6 +51,18 @@ export function namesSummary(names: string[], maxShown = 2): string {
   return names.length > maxShown ? `${shown} +${names.length - maxShown}` : shown;
 }
 
+/** Texto comparable al buscar: sin mayúsculas ni acentos ("Doña" → "dona"). */
+const normalizeForSearch = (text: string): string =>
+  text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** true si `text` contiene lo buscado (vacío = todo coincide). */
+export const matchesSearch = (text: string, searchQuery: string): boolean =>
+  normalizeForSearch(text).includes(normalizeForSearch(searchQuery.trim()));
+
+/** Para ordenar personas de la A a la Z por nombre (sin importar mayúsculas ni acentos). */
+export const compareByUserName = (first: { userName: string }, second: { userName: string }): number =>
+  first.userName.localeCompare(second.userName, 'en', { sensitivity: 'base' });
+
 /** "Sandy Martinez" → "SM"; "sandy@x.com" → "SA". */
 export function initials(name: string): string {
   const words = (name || '?').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);

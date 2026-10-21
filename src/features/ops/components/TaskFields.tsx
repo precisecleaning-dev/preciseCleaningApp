@@ -135,7 +135,7 @@ const TaskFields = ({
         <div className="task-panel-prop">
           <dt>Assignee</dt>
           <dd className="task-panel-with-dot">
-            <OpsAvatar id={firstAssignee.userId} name={firstAssignee.userName} size="sm" />
+            {task.assignees.length > 0 && <OpsAvatar id={firstAssignee.userId} name={firstAssignee.userName} size="sm" />}
             {canReassign ? (
               <AssigneePicker
                 assignees={task.assignees}
