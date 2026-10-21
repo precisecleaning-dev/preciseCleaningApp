@@ -3017,7 +3017,10 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Task list · nueva tarea sin Assignee por defecto (10/2026, pedido de Omar): el panel abre sin nadie
   marcado (antes la persona que se estaba mirando). "Add task" sin Assignee muestra "Choose who will do
   this task." y no guarda. `TaskListView` ya no calcula `newTaskAssignee`.
+<<<<<<< HEAD
 - Task list · Assignee obligatorio (CR, 10/2026): `userTasksService.assertValidTaskFields` rechaza
   `assignees: []` (en create, createProjectWithTasks y update): una tarea sin asignados no sale en la lista
   de nadie porque las consultas filtran por `assigneeUserIds`. En el panel el aviso se calcula
   (`hasTriedToCreate && draft.assignees.length === 0`) y usa `.task-panel-error` (TaskPanel.css).
+=======
+>>>>>>> origin/update/slot-3
