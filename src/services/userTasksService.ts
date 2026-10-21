@@ -145,9 +145,11 @@ export const MAX_TASKS_WITH_NEW_PROJECT = 50;
 /** Máximo de veces que se puede repetir una tarea con el viejo "After N times". */
 const MAX_REPEAT_TIMES = 365;
 
-/** Revisa el título y la duración antes de escribir. La pantalla ya los
- *  limita, pero el service es la última puerta antes de Firestore. */
-function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durationMinutes' | 'repeat'>>): void {
+/** Revisa el título, la duración, las repeticiones y las personas asignadas
+ *  antes de escribir. La pantalla ya los limita, pero el service es la última
+ *  puerta antes de Firestore: una tarea sin asignados no saldría en la lista de
+ *  nadie (las consultas filtran por assigneeUserIds). */
+function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durationMinutes' | 'repeat' | 'assignees'>>): void {
   if (fields.title !== undefined) {
     const title = fields.title.trim();
     if (!title) throw new Error('La tarea necesita un título.');
@@ -158,6 +160,9 @@ function assertValidTaskFields(fields: Partial<Pick<TaskInput, 'title' | 'durati
   if (fields.durationMinutes !== undefined) {
     const isValidDuration = Number.isInteger(fields.durationMinutes) && fields.durationMinutes >= 0;
     if (!isValidDuration) throw new Error('La duración debe ser un número entero de minutos (0 = no aplica).');
+  }
+  if (fields.assignees !== undefined && fields.assignees.length === 0) {
+    throw new Error('La tarea necesita al menos una persona asignada.');
   }
   const timesLeft = fields.repeat?.timesLeft;
   if (timesLeft !== undefined && timesLeft !== null) {

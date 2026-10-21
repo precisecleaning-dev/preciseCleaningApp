@@ -6,10 +6,12 @@
 // Archivos y comentarios usan los mismos componentes que el panel de la tarea
 // (TaskAttachments, TaskComments), pero aquí quedan en el borrador: los
 // comentarios se guardan con la tarea y los archivos se suben al crearla.
+// El Assignee empieza vacío (nadie marcado): hay que elegir al menos una
+// persona antes de "Add task".
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import type {
-  AssignableUser, InitialComment, PendingTaskFile, Priority, TaskAssignee, TaskAttachment, TaskComment, TaskProject,
+  AssignableUser, InitialComment, PendingTaskFile, Priority, TaskAttachment, TaskComment, TaskProject,
 } from '../../../types/index';
 import {
   DEFAULT_DURATION_MINUTES, draftApproval, MAX_TITLE_LENGTH, type TaskInput, type TaskPatch,
@@ -37,8 +39,6 @@ interface NewTaskPanelProps {
   projects: TaskProject[];
   priorities: Priority[];
   currentUser: { id: string; name: string };
-  /** A quién va la tarea al abrir el panel (la persona que se está mirando). */
-  defaultAssignee: TaskAssignee;
   /** Quienes pueden dar el visto bueno (sin uno mismo). */
   approvers: AssignableUser[];
   onClose: () => void;
@@ -47,12 +47,12 @@ interface NewTaskPanelProps {
 }
 
 const NewTaskPanel = ({
-  assignableUsers, projects, priorities, currentUser, defaultAssignee, approvers, onClose, onCreate,
+  assignableUsers, projects, priorities, currentUser, approvers, onClose, onCreate,
 }: NewTaskPanelProps) => {
   const titleRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<Omit<TaskInput, 'approval'>>(() => ({
     title: '',
-    assignees: [defaultAssignee],
+    assignees: [],
     dueDate: todayIso(),
     dueTime: '',
     durationMinutes: DEFAULT_DURATION_MINUTES,
@@ -63,6 +63,8 @@ const NewTaskPanel = ({
   }));
   const [approverUserId, setApproverUserId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  // Ya se tocó "Add task": desde ahí se avisa si falta el Assignee.
+  const [hasTriedToCreate, setHasTriedToCreate] = useState(false);
   const [draftComments, setDraftComments] = useState<InitialComment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingTaskFile[]>([]);
   // Vistas previas (blob:) creadas en este panel y un contador para sus ids.
@@ -103,6 +105,8 @@ const NewTaskPanel = ({
   const handleCreate = async () => {
     const title = draft.title.trim();
     if (!title || isSaving) return;
+    setHasTriedToCreate(true);
+    if (draft.assignees.length === 0) return;
     setIsSaving(true);
     const approver = approvers.find((person) => person.id === approverUserId);
     try {
@@ -133,6 +137,8 @@ const NewTaskPanel = ({
     createdAt: '',
   };
   const canCreate = !!draft.title.trim() && !isSaving;
+  // Se calcula: desaparece sola en cuanto se elige a alguien.
+  const isAssigneeErrorShown = hasTriedToCreate && draft.assignees.length === 0;
   const pendingFilePreviews = pendingFiles.map((pendingFile) => pendingFile.preview);
   // TaskComments muestra autor y hora: los del borrador son de quien crea la tarea.
   const draftCommentPreviews: TaskComment[] = draftComments.map((draftComment) => ({
@@ -181,6 +187,7 @@ const NewTaskPanel = ({
         canReassign
         onPatch={updateDraft}
       />
+      {isAssigneeErrorShown && <p className="task-panel-error" role="alert">Choose who will do this task.</p>}
 
       <section className="task-panel-approval" aria-label="Approval">
         <p className="task-panel-approval-title">Approval</p>

@@ -343,6 +343,18 @@
 .task-panel-approval.approved .task-panel-approval-title { color: #15803d; }
 .task-panel-approval.changes_requested .task-panel-approval-title { color: #b91c1c; }
 .task-panel-approval-hint { margin: 0; font-size: 13px; color: #475569; }
+
+/* ---- Aviso de un campo que falta (p. ej. Assignee en la tarea nueva) ---- */
+.task-panel-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  padding: 10px 14px;
+}
 .task-panel-approval-state { margin: 0; font-size: 13px; color: #334155; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .task-panel-approval-state.ok { color: #15803d; }
 .task-panel-approval-state.bad { color: #b91c1c; }
