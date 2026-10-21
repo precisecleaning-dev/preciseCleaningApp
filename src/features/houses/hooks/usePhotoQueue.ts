@@ -19,6 +19,7 @@ import {
   makePendingId,
   type PendingPhoto,
 } from "../../../utils/offlinePhotoQueue";
+import { isDeviceOffline } from "../../../shared/utils/connectivity";
 import type { UploadProgress } from "../components/PhotoUploadToast";
 
 export function usePhotoQueue() {
@@ -40,7 +41,7 @@ export function usePhotoQueue() {
   };
 
   const syncPendingPhotos = async () => {
-    if (!navigator.onLine) return;
+    if (await isDeviceOffline()) return;
     let pending: PendingPhoto[] = [];
     try {
       pending = await getAllPending();
@@ -90,7 +91,7 @@ export function usePhotoQueue() {
     propertyId: string,
   ): Promise<{ urls: string[]; queued: number }> => {
     if (files.length === 0) return { urls: [], queued: 0 };
-    if (navigator.onLine) {
+    if (!(await isDeviceOffline())) {
       try {
         // ⭐ Barra de progreso: el motor reporta bytes reales por foto.
         const label = type === "before" ? "fotos Before" : "fotos After";
@@ -144,7 +145,7 @@ export function usePhotoQueue() {
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     refreshTotal();
-    if (navigator.onLine) syncPendingPhotos();
+    syncPendingPhotos();
     return () => {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);

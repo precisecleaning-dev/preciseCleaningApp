@@ -17,6 +17,7 @@ import { db } from "../../../config/firebase";
 import { COLLECTIONS } from "../../../lib/firebase/collections";
 import type { ChecklistRecord, Property, SystemUser } from "../../../types/index";
 import { useLiveData } from "../../../shared/data/liveCollections";
+import { isDeviceOffline } from "../../../shared/utils/connectivity";
 import { formatTime, todayIso } from "../../../utils/dateFormat";
 import { isActiveTask, sortPlacesByOrder } from "../../../utils/qcCatalog";
 
@@ -130,7 +131,7 @@ const ChecklistModal = ({
           // Sin red Firestore guarda el cambio en el teléfono y lo sube al
           // volver la señal (caché persistente): no se espera, para que el
           // modal no se quede en "Guardando…" (mismo criterio que las fotos).
-          if (typeof navigator !== "undefined" && !navigator.onLine) {
+          if (await isDeviceOffline()) {
             savePromise.catch((error: unknown) => console.error("Error sincronizando checklist:", error));
             alert("Sin conexión: el checklist se guardará automáticamente al recuperar señal.");
             onClose();

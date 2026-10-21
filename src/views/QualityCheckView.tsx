@@ -30,6 +30,7 @@ import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
 import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isPropertyStatusRecall, isRecallText } from '../utils/recallStatus';
+import { isDeviceOffline } from '../shared/utils/connectivity';
 import { escapeHtml } from '../utils/escapeHtml';
 import { formatDate as formatDateMDY, formatTime, todayIso } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
@@ -544,12 +545,12 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    (en memoria si está abierto, y al documento guardado si ya existe).
   const processQueue = async () => {
     if (processingRef.current) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     processingRef.current = true;
     try {
+      if (await isDeviceOffline()) return;
       const all = await offlineGetAll();
       for (const entry of all) {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+        if (await isDeviceOffline()) break;
         try {
           const file = new File([entry.blob], `qc_${entry.id}.jpg`, { type: (entry.blob && entry.blob.type) || 'image/jpeg' });
           const urls = await storageService.uploadQualityCheckPhotos([file], entry.address, entry.placeName);
@@ -582,7 +583,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     const onOffline = () => setIsOnline(false);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    const interval = setInterval(() => { if (typeof navigator === 'undefined' || navigator.onLine) processQueue(); }, 20000);
+    // processQueue no hace nada si de verdad no hay conexión (isDeviceOffline).
+    const interval = setInterval(() => { processQueue(); }, 20000);
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
@@ -1191,7 +1193,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const offline = await isDeviceOffline();
       const movedName = movedTo ? statusNameOf(statuses, movedTo) : '';
       const emailNote = isFinishing && companySettings.autoSend && !branding.email
         ? '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").'
@@ -1239,7 +1241,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       try { compressed = await compressImage(asFile, { quality: 0.8, maxWidth: 1600, maxSizeMB: 0.6 }); }
       catch { compressed = asFile; }
 
-      const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+      const online = !(await isDeviceOffline());
       if (online) {
         try {
           const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);

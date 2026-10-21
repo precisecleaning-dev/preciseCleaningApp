@@ -3065,3 +3065,11 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   siendo `reclean`.
 - `useRecallHouses` devuelve `{ recallHouseIds, isLoaded, error }` (CR, 10/2026): si la historia o
   `recalls` falla se usa lo que sí se leyó y se avisa en `error` (antes se tragaba el error).
+- Sin conexión FALSO (10/2026): `navigator.onLine === false` a veces miente (VPN o adaptadores virtuales, al
+  despertar la computadora, al volver a la app en el teléfono) y la app no guardaba con "…: sin conexión"
+  teniendo internet. `isDeviceOffline()` (src/shared/utils/connectivity.ts) lo confirma con un HEAD a
+  `/version.json?probe=…` (no-store, tope 3 s): cualquier respuesta = hay conexión. Lo usan el Task list
+  (`useTaskActions.run` y adjuntos, `useDoneTasks`), la cola de fotos de la casa (`usePhotoQueue`), las fotos
+  y el aviso de Quality Check (`QualityCheckView`) y el checklist del empleado (`ChecklistModal`). No vuelvas a
+  decidir un guardado con `navigator.onLine` solo. Los avisos de lectura (`isOfflineCacheOnly`) siguen con
+  `navigator.onLine` porque además piden `metadata.fromCache`: al llegar datos del servidor se quitan solos.
