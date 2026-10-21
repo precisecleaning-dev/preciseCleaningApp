@@ -4,8 +4,10 @@
 //    "Precise Cleaning – Unified Jobs View":
 //      · barra de periodo (Day/Week/Month/Year/Custom) + Team + Inspector
 //      · indicadores: completados, inspeccionados, pass rate, promedio,
-//        re-cleans y sin inspeccionar
-//      · pestañas Needs inspection / Recalls (en Invoice y alguna vez en Recall) / Passed / All
+//        Recalls y sin inspeccionar
+//      · pestañas Needs inspection / Recalls (trabajos del periodo que alguna vez
+//        estuvieron en Recall, facturados o no) / Passed / All
+//      · "Did not pass" = QC fallado; "Recalls" = estuvo en el status Recall
 //      · tabla de inspecciones con score, resultado, áreas con fallas,
 //        seguimiento sugerido y envío del reporte (WhatsApp / email / PDF)
 //      · scorecard por equipo, áreas que más fallan y resumen escrito
@@ -130,7 +132,7 @@ export default function QualityDashboardView({
     return () => { alive = false; };
   }, []);
 
-  const recallHouses = useRecallHouses(statuses);
+  const { recallHouseIds } = useRecallHouses(statuses);
 
   // ---- Catálogos ----
   const statusOf = (p: Property) => statuses.find((s) => String(s.id) === String(p.statusId) || s.name === p.statusId);
@@ -167,13 +169,13 @@ export default function QualityDashboardView({
         inspector: rec?.inspector || '',
         date: formatDate(p.scheduleDate),
         follow: followUp(result, String(p.invoiceStatus || ''), teamName(p)),
-        recall: wasHouseInRecall(p.id, stName, recallHouses),
+        recall: wasHouseInRecall(p.id, stName, recallHouseIds),
       });
     });
     return out.sort((a, b) => String(b.prop.scheduleDate).localeCompare(String(a.prop.scheduleDate)));
     // statusOf/teamName dependen de statuses/teams
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [properties, range, latest, tasks, places, statuses, teams, recallHouses]);
+  }, [properties, range, latest, tasks, places, statuses, teams, recallHouseIds]);
 
   // Team / Inspector / búsqueda aplican a todo (KPIs, tabla y paneles laterales)
   const scoped = useMemo(() => {
@@ -225,24 +227,24 @@ export default function QualityDashboardView({
   // pasaron o los que nunca tuvieron un QC terminado). Orden: del equipo con
   // más Recalls al que tiene menos; a igual número, el de mejor Avg primero.
   const teamCards = useMemo(() => {
-    const m = new Map<string, { name: string; color: string; scores: number[]; n: number; pass: number; re: number }>();
+    const m = new Map<string, { name: string; color: string; scores: number[]; n: number; pass: number; recallCount: number }>();
     scoped.forEach((r) => {
       const isInspected = r.result !== 'todo';
       if (!isInspected && !r.recall) return;
       const key = String(r.prop.teamId || 'none');
       const t = team(r.prop);
-      const e = m.get(key) || { name: teamName(r.prop), color: t?.color || '#64748b', scores: [], n: 0, pass: 0, re: 0 };
+      const e = m.get(key) || { name: teamName(r.prop), color: t?.color || '#64748b', scores: [], n: 0, pass: 0, recallCount: 0 };
       if (isInspected) {
         e.n += 1;
         if (r.result === 'passed') e.pass += 1;
         if (r.score !== null) e.scores.push(r.score);
       }
-      if (r.recall) e.re += 1;
+      if (r.recall) e.recallCount += 1;
       m.set(key, e);
     });
     return [...m.values()]
       .map((e) => ({ ...e, avg: e.scores.length ? Math.round(e.scores.reduce((a, b) => a + b, 0) / e.scores.length) : null }))
-      .sort((firstTeam, secondTeam) => (secondTeam.re - firstTeam.re) || ((secondTeam.avg ?? -1) - (firstTeam.avg ?? -1)));
+      .sort((firstTeam, secondTeam) => (secondTeam.recallCount - firstTeam.recallCount) || ((secondTeam.avg ?? -1) - (firstTeam.avg ?? -1)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoped, teams]);
 
@@ -361,7 +363,7 @@ export default function QualityDashboardView({
           <MenuButton onClick={onOpenMenu} />
           <div>
             <h1 className="qd-title">QC Dashboard</h1>
-            <p className="qd-subtitle">Inspections, re-cleans &amp; team scores</p>
+            <p className="qd-subtitle">Inspections, recalls &amp; team scores</p>
           </div>
         </div>
         <label className="qd-search">
@@ -483,7 +485,7 @@ export default function QualityDashboardView({
                       <td colSpan={4}>
                         <span className="qd-group-stats">
                           {g.passed > 0 && <span className="qd-pill good">{g.passed} passed</span>}
-                          {g.reclean > 0 && <span className="qd-pill bad">{g.reclean} re-clean</span>}
+                          {g.reclean > 0 && <span className="qd-pill bad">{g.reclean} did not pass</span>}
                           {g.todo > 0 && <span className="qd-pill warn">{g.todo} not inspected</span>}
                         </span>
                       </td>
@@ -581,7 +583,7 @@ export default function QualityDashboardView({
                     <dl className="qd-teamstats">
                       <div><dt>Avg</dt><dd className={tc.avg === null ? '' : scoreTone(tc.avg)}>{tc.avg ?? '—'}</dd></div>
                       <div><dt>Pass</dt><dd>{tc.n ? `${Math.round((tc.pass / tc.n) * 100)}%` : '—'}</dd></div>
-                      <div><dt>Recalls</dt><dd className={tc.re > 0 ? 'bad' : ''}>{tc.re}</dd></div>
+                      <div><dt>Recalls</dt><dd className={tc.recallCount > 0 ? 'bad' : ''}>{tc.recallCount}</dd></div>
                     </dl>
                   </li>
                 ))}

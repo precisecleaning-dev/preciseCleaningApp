@@ -202,8 +202,8 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
   const customers = customersLive.data;
   // ⭐ "Recall" antes del cliente si la casa estuvo alguna vez en Recall (misma
   //    regla y misma marca que el Overview, el QC Dashboard y los reportes).
-  const recallHouseIds = useRecallHouses(statuses);
-  const wasInRecall = (prop: Property): boolean =>
+  const { recallHouseIds } = useRecallHouses(statuses);
+  const wasPropertyInRecall = (prop: Property): boolean =>
     wasHouseInRecall(prop.id, statusNameOf(statuses, prop.statusId), recallHouseIds);
   // ⭐ Las filas se pintan en cuanto hay statuses (deciden qué casa es "Invoice");
   //    el dinero, el cliente y el equipo se completan cuando llegan sus datos.
@@ -460,7 +460,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
         </td>
         <td className="inv-td inv-col-client" title={getClientName(prop.client)}>
           <span className="inv-cell-ellipsis strong">
-            {wasInRecall(prop) && <RecallMark />}
+            {wasPropertyInRecall(prop) && <RecallMark />}
             {getClientName(prop.client)}
           </span>
         </td>
@@ -548,7 +548,7 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
         {/* Título + profit */}
         <div className="inv-card-top-row">
           <span className="inv-card-client-name">
-            {wasInRecall(prop) && <RecallMark />}
+            {wasPropertyInRecall(prop) && <RecallMark />}
             {clientName}
           </span>
           <span className={`inv-card-profit ${f.profit >= 0 ? 'positive' : 'negative'}`}>

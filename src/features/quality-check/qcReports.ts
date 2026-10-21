@@ -6,17 +6,26 @@
 // qué clics abren el detalle de la casa.
 // ============================================================================
 import type { MouseEvent } from 'react';
-import type { Place, Property, QcReportArea, QcReportRow, Status } from '../../types/index';
+import { Check, Repeat } from 'lucide-react';
+import type { Place, QcReportArea, QcReportRow, QcResultBadge } from '../../types/index';
 import { formatTime } from '../../utils/dateFormat';
 import { computeQCScore } from '../../utils/qcScore';
-import { isRecallName } from '../../utils/statusFilters';
 import type { QCPdfTask } from '../../utils/qcReportPdf';
 import { sortPlacesByOrder } from '../../utils/qcCatalog';
-import { GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT, withFailNoteLines } from './qcForm';
+import { GENERAL_SLOT, GENERAL_SLOT_NAME, getFailedTaskNames, OFFICE_SLOT, withFailNoteLines } from './qcForm';
+
+/** Resultado de un reporte terminado: la misma insignia en las tarjetas de
+ *  Quality Check Reports y en la pestaña "Quality check" de la casa. */
+export const PASSED_BADGE: QcResultBadge = { background: '#dcfce7', color: '#166534', label: 'Passed', Icon: Check };
+export const FAILED_BADGE: QcResultBadge = { background: '#f3e8ff', color: '#7c3aed', label: 'Did Not Pass', Icon: Repeat };
+
+/** Insignia de un reporte terminado según su resultado. */
+export const getFinishedResultBadge = (report: QcReportRow): QcResultBadge =>
+  (report.result === 'failed' ? FAILED_BADGE : PASSED_BADGE);
 
 /** Tocar un reporte abre el detalle de su casa, salvo si el clic fue en uno de
  *  sus controles (envíos, status): esos hacen lo suyo. */
-export const isClickOnControl = (event: MouseEvent<HTMLElement>): boolean =>
+export const isInteractiveClickTarget = (event: MouseEvent<HTMLElement>): boolean =>
   event.target instanceof Element && event.target.closest('a, button, input, select, textarea') !== null;
 
 /** ISO → milisegundos (NaN si no se puede leer). */
@@ -71,47 +80,38 @@ export const getReportTimeMs = (report: QcReportRow): number => {
   return 0;
 };
 
-/** La casa del reporte está HOY en Recall. Esos reportes no salen en la tabla:
- *  la casa ya está en las tarjetas "Casas en Recall" de arriba (decisión de
- *  Omar, 10/2026: sin pestañas Quality Checks ni Recall). */
-export const isHouseInRecall = (house: Property | undefined, statuses: Status[]): boolean => {
-  const rawStatus = String(house?.statusId ?? '').trim();
-  const houseStatus = statuses.find((status) => String(status.id) === rawStatus || String(status.name) === rawStatus);
-  return isRecallName(houseStatus?.name ?? rawStatus);
-};
-
 /** Áreas de un reporte con algo que leer (respuestas, nota o fotos), en el
  *  orden del checklist y "General" al final. Las fotos de oficina
  *  (OFFICE_SLOT) nunca salen fuera del panel de inspección. La nota se muestra
- *  con sus líneas "Fail <tarea>" (la línea vieja "⚠ Marcado "No"" se convierte). */
+ *  con sus líneas "Fail <tarea>" (la línea vieja "⚠ Marcado "No"" se convierte) y,
+ *  si el reporte es viejo y lo tiene, el daño anotado ("Damage: …", como en el PDF). */
 export const getReportAreas = (report: QcReportRow, places: Place[], tasks: QCPdfTask[]): QcReportArea[] => {
   const placeById = new Map(places.map((place) => [place.id, place] as const));
   const taskNameById = new Map(tasks.map((task) => [task.id, task.name] as const));
   const positionByPlaceId = new Map(sortPlacesByOrder(places).map((place, position) => [place.id, position] as const));
   // Áreas borradas del catálogo antes de "General", que siempre va al final.
-  const placeOrder = (areaId: string): number => {
+  const getAreaSortPosition = (areaId: string): number => {
     if (areaId === GENERAL_SLOT) return Number.MAX_SAFE_INTEGER;
     return positionByPlaceId.get(areaId) ?? Number.MAX_SAFE_INTEGER - 1;
   };
   return Object.entries(report.qcData ?? {})
     .filter(([areaId]) => areaId !== OFFICE_SLOT)
     .map(([areaId, areaData]): QcReportArea => {
-      const answerEntries = Object.entries<string>(areaData?.tasks ?? {});
-      const answers = answerEntries.map(([, answer]) => answer);
-      const failedTaskNames = answerEntries
-        .filter(([, answer]) => answer === 'No')
-        .map(([taskId]) => taskNameById.get(taskId))
-        .filter((taskName): taskName is string => !!taskName);
+      const areaAnswers: Record<string, string> = areaData?.tasks ?? {};
+      const answers = Object.values(areaAnswers);
+      const failedTaskNames = getFailedTaskNames(areaAnswers, taskNameById);
+      const damage = String(areaData?.damage ?? '').trim();
+      const notes = withFailNoteLines(String(areaData?.notes ?? ''), failedTaskNames).trim();
       return {
         id: areaId,
         name: areaId === GENERAL_SLOT ? GENERAL_SLOT_NAME : placeById.get(areaId)?.name ?? 'Area',
         passedCount: answers.filter((answer) => answer === 'Yes').length,
         answeredCount: answers.length,
-        notes: withFailNoteLines(String(areaData?.notes ?? ''), failedTaskNames).trim(),
+        notes: [notes, damage && `Damage: ${damage}`].filter(Boolean).join('\n'),
         photoUrls: (Array.isArray(areaData?.photos) ? areaData.photos : [])
           .filter((photoUrl: unknown): photoUrl is string => typeof photoUrl === 'string'),
       };
     })
     .filter((area) => area.answeredCount > 0 || area.notes !== '' || area.photoUrls.length > 0)
-    .sort((firstArea, secondArea) => placeOrder(firstArea.id) - placeOrder(secondArea.id));
+    .sort((firstArea, secondArea) => getAreaSortPosition(firstArea.id) - getAreaSortPosition(secondArea.id));
 };

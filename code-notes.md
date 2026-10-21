@@ -2970,9 +2970,11 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   mano no se toca (si se edita la línea "Fail …", ya no se quita sola). Se quitó la línea automática
   `⚠ Marcado "No": …` que se agregaba AL GUARDAR (habría duplicado); al abrir un QC viejo esa línea se
   convierte en líneas "Fail …" (`qcDataWithFailNotes`). Las "Notes for the team" de reportes viejos siguen
-  en el PDF (área General) pero ya no se editan desde el panel. En el PDF cada área lleva siempre su
+  en el PDF (área General); si el QC que se abre las tiene, el panel las muestra para corregirlas o
+  borrarlas (ver "Notes for the team" de QC empezados antes). En el PDF cada área lleva siempre su
   recuadro "Notes" (con "No notes for this area." si está vacío).
-- Quality Check Reports · pestañas (10/2026): ya no existe "Quality Checks"; solo Invoice y Recall. La
+- REEMPLAZADA por "Quality Check Reports · sin pestañas" (ya no hay pestañas Invoice / Recall).
+  Quality Check Reports · pestañas (10/2026): ya no existe "Quality Checks"; solo Invoice y Recall. La
   pestaña sigue el estado ACTUAL de la casa si está en Recall o Invoice; si está en otro estado (o ya no
   existe) decide el resultado: pasó → Invoice, no pasó → Recall (`getReportTab`, decisión de Omar). En
   Invoice, "Recall" antes del cliente = la casa estuvo alguna vez en Recall (`useRecallHouses`, misma
@@ -2988,16 +2990,18 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   QC Dashboard ya la tenían) y los conteos del QC Dashboard: el KPI "Recalls" y la columna "Recalls" del
   Team Scorecard. Antes contaban solo los trabajos cuyo ÚLTIMO QC falló, y una casa que pasó por Recall y
   luego se re-inspeccionó y pasó no contaba (daba 10 en el año). Un QC fallado que NO movió la casa a
-  Recall sigue siendo "Re-clean" (pestaña y sub "invoices on hold"), pero no cuenta como Recall.
+  Recall se muestra como "Did not pass" (antes "Re-clean"), pero no cuenta como Recall.
   `HouseList.wasRecall` repite la regla en línea (podría usar wasHouseInRecall).
 - Quality Check Reports · sin pestañas (10/2026): no salen los reportes de casas que HOY están en Recall
-  (ya están en las tarjetas "Casas en Recall"; `isHouseInRecall`). Queda el total y el buscador.
-- QC Dashboard · pestaña "Recalls" (antes "Re-clean", 10/2026): filtra las casas que YA están en Invoice y
+  (ya están en las tarjetas "Casas en Recall"; `isPropertyStatusRecall`). Queda el total y el buscador.
+- REEMPLAZADA por "Recalls · UN solo número": la pestaña ya NO filtra por Invoice (el orden del Team
+  Scorecard sí sigue). QC Dashboard · pestaña "Recalls" (antes "Re-clean", 10/2026): filtra las casas que YA están en Invoice y
   que alguna vez estuvieron en Recall (`isRowInTab`: `row.recall && row.isInvoice`), pedido de Omar. Por eso
   su número es menor que el KPI "Recalls", que cuenta todos los trabajos que estuvieron en Recall (también
   los que siguen en Recall o en Quality Check). Team Scorecard ordenado por Recalls de mayor a menor (a
   igual número, mejor Avg primero).
-- QC Dashboard · Recalls (10/2026, revisión): el KPI "Recalls" (todos los trabajos que estuvieron en Recall)
+- REEMPLAZADA por "Recalls · UN solo número": ya no hay desglose "in invoice · still open" (la marca
+  `RecallMark` antes del cliente sigue). QC Dashboard · Recalls (10/2026, revisión): el KPI "Recalls" (todos los trabajos que estuvieron en Recall)
   dice debajo "N in invoice · M still open": N es el número de la pestaña "Recalls" (solo casas ya en
   Invoice) y M los que siguen en Recall o en Quality Check. Así 97 vs 99 no se lee como error. Se quitó el
   "invoices on hold" del KPI (contaba re-cleans, otra cosa). La marca "Recall" va antes del cliente con
@@ -3021,3 +3025,43 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `assignees: []` (en create, createProjectWithTasks y update): una tarea sin asignados no sale en la lista
   de nadie porque las consultas filtran por `assigneeUserIds`. En el panel el aviso se calcula
   (`hasTriedToCreate && draft.assignees.length === 0`) y usa `.task-panel-error` (TaskPanel.css).
+- Quality Check · error de lectura en `useQcForHouses` (CR, 10/2026): el hook devuelve `{ data, loaded,
+  error }` como los de useOpsData. `error` sale si el listener falla (permisos, red) o si Firestore responde
+  vacío desde la caché sin conexión (`includeMetadataChanges` + `isOfflineCacheOnly`): sin eso el esqueleto
+  de la pestaña "Quality check" de la casa se quedaba para siempre o decía "no inspections" sin serlo. Con
+  reportes en caché y sin conexión se muestran los de la caché, sin error. QualityCheckView (inspector) aún
+  ignora `error`.
+- Quality Check · insignias de resultado compartidas (CR, 10/2026): Passed / Did Not Pass viven en
+  `qcReports.ts` (`PASSED_BADGE`, `FAILED_BADGE`, `getFinishedResultBadge`; tipo `QcResultBadge`) y las usan
+  QcReportCard y HouseQcReportItem (este agrega "In progress"). Colores por `--badge-bg` / `--badge-fg`.
+  La fecha de "Corrections done" va con `formatDate(report.correctionsDoneAt)`: cortar el ISO en la "T"
+  mostraba el día UTC (desde las 7 p. m. de Texas, el día siguiente).
+- Quality Check · nota del área con `renderSectionNotes` (CR, 10/2026): el campo vive en `QcSectionNotes` y
+  QualityCheckView lo arma como las fotos (`renderSectionPhotos`). QcCheckDrawer y QcChecklist ya no
+  reciben `sectionNotes` / `onSectionNotesChange`: solo pasan la función.
+- Quality Check Reports · botón "Recalls" dice la unidad (CR, 10/2026, decisión de Omar: seguir contando
+  casas): "7 houses" / "1 house", con title que explica que una casa con varias inspecciones sale en varias
+  filas. "Reports" sigue contando reportes. La marca Recall de cada fila usa `wasHouseInRecall` de
+  utils/jobRecall (misma regla que el QC Dashboard e Invoices).
+- Recall · UNA regla para "la casa está HOY en Recall" (CR, 10/2026): `isPropertyStatusRecall(property,
+  statuses)` en utils/recallStatus.ts (con `isRecallText`: también "Re-clean", "Callback"…). La usan las
+  tarjetas "Casas en Recall" de QualityCheckView y la tabla de Quality Check Reports (antes
+  `isHouseInRecall` con `isRecallName`, que solo buscaba "recall": una casa en "Re-clean" salía en las
+  tarjetas Y en la tabla). `wasHouseInRecall` ya usaba `isRecallText`.
+- Quality Check · líneas "Fail …" en el orden del checklist (CR, 10/2026): `getFailedTaskNames` (qcForm.ts)
+  recorre `taskNameById` (orden del catálogo de tareas), no `Object.entries` de las respuestas. Dos tareas
+  con el mismo nombre en un área comparten una línea (documentado en `syncFailNoteLine`).
+- Quality Check · `damage` de reportes viejos (CR, 10/2026): el formulario ya no lo escribe, pero
+  `getReportAreas` lo suma a la nota del área como "Damage: …" (igual que el PDF) para que la pestaña
+  "Quality check" de la casa no lo pierda.
+- Quality Check · "Notes for the team" de QC empezados antes de las notas por área (CR, 10/2026): si el QC
+  que se abre trae `qcData.__general.notes`, el panel muestra ese campo debajo de "Other photos" (con
+  `QcSectionNotes`, área General) para verlas, corregirlas o borrarlas: siguen saliendo en el PDF.
+  `hasLegacyTeamNotes` se decide AL ABRIR (no por el texto actual), así el campo no desaparece mientras se
+  borra. Un QC nuevo nunca lo muestra.
+- QC Dashboard · "Did not pass" (CR, 10/2026): el resultado de un QC fallado (`RESULT_LABEL.reclean`), el
+  seguimiento y el encabezado de cada grupo de fechas dicen "Did not pass" (como los reportes), no
+  "Re-clean": "Recalls" es la casa que estuvo en el status Recall, otra métrica. La clave interna sigue
+  siendo `reclean`.
+- `useRecallHouses` devuelve `{ recallHouseIds, isLoaded, error }` (CR, 10/2026): si la historia o
+  `recalls` falla se usa lo que sí se leyó y se avisa en `error` (antes se tragaba el error).

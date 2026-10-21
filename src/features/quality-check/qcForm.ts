@@ -67,7 +67,10 @@ const LEGACY_FAILED_TASKS_PREFIX = '⚠ Marcado "No": ';
 const toNoteLines = (notes: string): string[] => (notes ? notes.split('\n') : []);
 
 /** Nota del área cuando una tarea pasa a Fail (agrega su línea al final, si no
- *  estaba) o deja de estarlo (quita esa línea; lo escrito a mano no se toca). */
+ *  estaba) o deja de estarlo (quita esa línea; lo escrito a mano no se toca).
+ *  La línea se reconoce por el NOMBRE de la tarea: si un área tiene dos tareas
+ *  con el mismo nombre (posible con "Edit checklist") y las dos fallan, comparten
+ *  una sola línea, y al desmarcar una se borra aunque la otra siga en Fail. */
 export function syncFailNoteLine(notes: string, taskName: string, isFailed: boolean): string {
   const failLine = failNoteLine(taskName);
   const noteLines = toNoteLines(notes);
@@ -91,16 +94,24 @@ export function withFailNoteLines(notes: string, failedTaskNames: string[]): str
   );
 }
 
+/** Tareas en Fail de un área, en el orden del checklist: el de `taskNameById`,
+ *  que sale del catálogo de tareas (las mismas que arman las áreas del panel).
+ *  Así las líneas "Fail …" que se agregan al abrir un QC viejo no quedan en el
+ *  orden en que se guardaron las respuestas. */
+export const getFailedTaskNames = (
+  placeAnswers: Record<string, string>,
+  taskNameById: ReadonlyMap<string, string>,
+): string[] => [...taskNameById]
+  .filter(([taskId]) => placeAnswers[taskId] === 'No')
+  .map(([, taskName]) => taskName);
+
 /** qcData de un QC que se abre: la nota de cada área con sus líneas
  *  "Fail <tarea>" (withFailNoteLines). Las áreas sin tareas no cambian. */
 export function qcDataWithFailNotes(qcData: QcFormData, taskNameById: ReadonlyMap<string, string>): QcFormData {
   return Object.fromEntries(Object.entries(qcData).map(([placeId, placeData]) => {
     const placeAnswers: Record<string, string> | undefined = placeData?.tasks;
     if (!placeAnswers) return [placeId, placeData];
-    const failedTaskNames = Object.entries(placeAnswers)
-      .filter(([, answer]) => answer === 'No')
-      .map(([taskId]) => taskNameById.get(taskId))
-      .filter((taskName): taskName is string => !!taskName);
+    const failedTaskNames = getFailedTaskNames(placeAnswers, taskNameById);
     return [placeId, { ...placeData, notes: withFailNoteLines(String(placeData.notes ?? ''), failedTaskNames) }];
   }));
 }

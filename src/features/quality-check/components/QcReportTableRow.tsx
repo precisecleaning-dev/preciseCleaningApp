@@ -6,7 +6,7 @@ import { Clock, MapPin, StickyNote, User, Users } from 'lucide-react';
 import type { QcReportRow } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { passRateColors } from '../../../utils/qcScore';
-import { formatInspectionDuration, formatReportClock, isClickOnControl } from '../qcReports';
+import { formatInspectionDuration, formatReportClock, isInteractiveClickTarget } from '../qcReports';
 import QcReportClientName from './QcReportClientName';
 
 interface QcReportTableRowProps {
@@ -33,7 +33,7 @@ const QcReportTableRow = ({
   const scoreStyle = { '--badge-bg': scoreColors.bg, '--badge-fg': scoreColors.fg } as CSSProperties;
 
   const handleOpenHouse = (event: MouseEvent<HTMLTableRowElement>) => {
-    if (!canOpenHouse || isClickOnControl(event)) return;
+    if (!canOpenHouse || isInteractiveClickTarget(event)) return;
     onOpenHouse(report);
   };
 

@@ -32,12 +32,11 @@ interface QcCheckDrawerProps {
   onExtras: (patch: Partial<QcExtras>) => void;
   sections: QcSection[];
   answers: Record<string, Record<string, string> | undefined>;
-  /** Nota de cada área, por id (incluye las líneas "Fail <tarea>"). */
-  sectionNotes: Record<string, string>;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
-  onSectionNotesChange: (section: QcSection, notes: string) => void;
   /** Fotos de un área del checklist (van debajo de sus tareas). */
   renderSectionPhotos: (section: QcSection) => ReactNode;
+  /** Nota de un área del checklist (va al final, debajo de sus fotos). */
+  renderSectionNotes: (section: QcSection) => ReactNode;
   /** Permisos de "QC Checklist Setup" (Roles) para ordenar áreas y editar tareas. */
   canAddChecklistTasks: boolean;
   canEditChecklistTasks: boolean;
@@ -50,6 +49,10 @@ interface QcCheckDrawerProps {
   onRemoveChecklistTask: (section: QcSection, task: QcSectionTask) => void;
   /** Fotos que no son de un área del checklist (área General). */
   generalPhotos: ReactNode;
+  /** "Notes for the team" de un QC empezado antes de las notas por área
+   *  (`__general.notes`): solo si el QC abierto las tiene, para verlas,
+   *  corregirlas o borrarlas (siguen saliendo en el PDF, área General). */
+  legacyTeamNotesField: ReactNode;
   officePhotos: ReactNode;
   /** Sección "Office only" (permiso Office Notes). */
   showOffice: boolean;
@@ -62,10 +65,10 @@ interface QcCheckDrawerProps {
 const QcCheckDrawer = (props: QcCheckDrawerProps) => {
   const {
     address, subtitle, headerActions, onClose, officeNotes, cleanerNotes, teamName, cleanerPhotos,
-    inspectors, extras, onExtras, sections, answers, sectionNotes, onAnswer, onSectionNotesChange, renderSectionPhotos,
+    inspectors, extras, onExtras, sections, answers, onAnswer, renderSectionPhotos, renderSectionNotes,
     canAddChecklistTasks,
     canEditChecklistTasks, canRemoveChecklistTasks, pendingChecklistIds, onMoveChecklistSection, onAddChecklistTask, onRenameChecklistTask,
-    onRemoveChecklistTask, generalPhotos, officePhotos,
+    onRemoveChecklistTask, generalPhotos, legacyTeamNotesField, officePhotos,
     showOffice, saving, saveState, onSave,
   } = props;
   const checklistTotal = checklistTotals(sections, answers);
@@ -141,10 +144,9 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
           <QcChecklist
             sections={sections}
             answers={answers}
-            sectionNotes={sectionNotes}
             onAnswer={onAnswer}
-            onSectionNotesChange={onSectionNotesChange}
             renderSectionPhotos={renderSectionPhotos}
+            renderSectionNotes={renderSectionNotes}
             canAddTasks={canAddChecklistTasks}
             canEditTasks={canEditChecklistTasks}
             canRemoveTasks={canRemoveChecklistTasks}
@@ -171,6 +173,14 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
         <section className="qcd-block small" aria-label="Photos">
           <p className="qcd-lbl">Other photos (before / after)</p>
           {generalPhotos}
+          {legacyTeamNotesField !== null && (
+            <>
+              <p className="qcd-hint">
+                Notes for the team (saved before notes per area). They still print in the PDF: edit or clear them here.
+              </p>
+              {legacyTeamNotesField}
+            </>
+          )}
         </section>
 
         {showOffice && (

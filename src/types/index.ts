@@ -319,6 +319,26 @@ export interface QcReportArea {
   photoUrls: string[];
 }
 
+/** Insignia del resultado de un reporte de QC (Passed, Did Not Pass, In progress):
+ *  texto, colores e ícono. Passed y Did Not Pass están en
+ *  features/quality-check/qcReports.ts (PASSED_BADGE / FAILED_BADGE). */
+export interface QcResultBadge {
+  label: string;
+  background: string;
+  color: string;
+  Icon: LucideIcon;
+}
+
+/** Lo que devuelve useRecallHouses (utils/jobRecall.ts): las casas que
+ *  estuvieron alguna vez en Recall según su historia y la colección `recalls`. */
+export interface RecallHousesResult {
+  recallHouseIds: ReadonlySet<string>;
+  /** Ya terminó la lectura para los status de recall actuales. */
+  isLoaded: boolean;
+  /** Falló la historia o `recalls`; `recallHouseIds` trae lo que sí se leyó. */
+  error: Error | null;
+}
+
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
 export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
 

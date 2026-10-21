@@ -15,18 +15,20 @@ interface HouseQcHistoryProps {
 }
 
 const HouseQcHistory = ({ houseId }: HouseQcHistoryProps) => {
-  const { data: houseReports, loaded: areReportsLoaded } = useQcForHouses<QcReportRow>([houseId]);
+  const { data: houseReports, loaded: areReportsLoaded, error: reportsError } = useQcForHouses<QcReportRow>([houseId]);
   const places: Place[] = useLiveData('places');
   const tasks: QCPdfTask[] = useLiveData('tasks');
 
   const reportsByNewest = [...houseReports]
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport));
+  // Si la lectura falló se dice, en vez de "cargando" para siempre o "sin inspecciones".
+  const areReportsShown = areReportsLoaded && reportsError === null;
 
   return (
     <div className="hqc-panel">
       <div className="hqc-header">
         <ClipboardCheck size={14} /> Quality Check
-        {areReportsLoaded && <span className="hqc-header-count">{reportsByNewest.length}</span>}
+        {areReportsShown && <span className="hqc-header-count">{reportsByNewest.length}</span>}
       </div>
 
       {!areReportsLoaded && (
@@ -35,10 +37,15 @@ const HouseQcHistory = ({ houseId }: HouseQcHistoryProps) => {
           <div className="skel-line skel-row-main" />
         </div>
       )}
-      {areReportsLoaded && reportsByNewest.length === 0 && (
-        <div className="hqc-empty">Esta casa todavía no tiene inspecciones de Quality Check.</div>
+      {reportsError !== null && (
+        <div className="hqc-error" role="alert">
+          Could not load the Quality Check inspections. Check your connection and try again.
+        </div>
       )}
-      {areReportsLoaded && reportsByNewest.length > 0 && (
+      {areReportsShown && reportsByNewest.length === 0 && (
+        <div className="hqc-empty">This house has no Quality Check inspections yet.</div>
+      )}
+      {areReportsShown && reportsByNewest.length > 0 && (
         <ul className="hqc-reports">
           {reportsByNewest.map((report) => (
             <HouseQcReportItem

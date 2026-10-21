@@ -24,7 +24,7 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import type { Status } from '../types/index';
+import type { RecallHousesResult, Status } from '../types/index';
 import type { StatusHistoryEntry } from '../services/statusHistoryService';
 import { cached } from '../shared/utils/memoryCache';
 import { isRecallText } from './recallStatus';
@@ -89,8 +89,21 @@ export const wasHouseInRecall = (
   recallHouseIds: ReadonlySet<string>,
 ): boolean => recallHouseIds.has(houseId) || isRecallText(currentStatusName);
 
-export function useRecallHouses(statuses: Status[], enabled = true) {
-  const [ids, setIds] = useState<Set<string>>(new Set());
+/** Última lectura de useRecallHouses y para qué status de recall fue (`key`). */
+interface RecallHousesState {
+  key: string | null;
+  recallHouseIds: ReadonlySet<string>;
+  error: Error | null;
+}
+
+const INITIAL_RECALL_HOUSES: RecallHousesState = { key: null, recallHouseIds: new Set(), error: null };
+
+const toError = (reason: unknown): Error => (reason instanceof Error ? reason : new Error(String(reason)));
+
+/** Casas que estuvieron alguna vez en Recall (historia + colección `recalls`).
+ *  Si una de las dos lecturas falla se usa la otra y se avisa en `error`. */
+export function useRecallHouses(statuses: Status[], enabled = true): RecallHousesResult {
+  const [recallHousesState, setRecallHousesState] = useState<RecallHousesState>(INITIAL_RECALL_HOUSES);
   // Clave estable: la consulta solo se repite si cambian los status de recall,
   // no cada vez que llega un snapshot nuevo de la lista de statuses.
   const { ids: recallIds, names: recallNames } = recallStatusKeys(statuses);
@@ -100,22 +113,40 @@ export function useRecallHouses(statuses: Status[], enabled = true) {
     // Sin status de recall en el catálogo la historia no aplica (devuelve []),
     // pero la colección `recalls` sí cuenta, como antes.
     if (!enabled) return;
-    let alive = true;
-    const recallStatuses = statuses.filter((s) => isRecallText(s.name));
-    Promise.all([
-      fetchRecallHistory(recallStatuses).catch(() => []),
-      fetchRecallDocs().catch(() => []),
-    ]).then(([hist, rec]) => {
-      if (!alive) return;
-      const s = new Set<string>();
-      hist.forEach((h) => { if (h.propertyId) s.add(String(h.propertyId)); });
-      rec.forEach((r) => { if (r.houseId) s.add(String(r.houseId)); });
-      setIds(s);
-    });
-    return () => { alive = false; };
+    let isActive = true;
+    const loadRecallHouses = async () => {
+      const recallStatuses = statuses.filter((status) => isRecallText(status.name));
+      const [historyResult, recallDocsResult] = await Promise.allSettled([
+        fetchRecallHistory(recallStatuses),
+        fetchRecallDocs(),
+      ]);
+      if (!isActive) return;
+      const recallHouseIds = new Set<string>();
+      if (historyResult.status === 'fulfilled') {
+        historyResult.value.forEach((historyEntry) => {
+          if (historyEntry.propertyId) recallHouseIds.add(String(historyEntry.propertyId));
+        });
+      }
+      if (recallDocsResult.status === 'fulfilled') {
+        recallDocsResult.value.forEach((recallRecord) => {
+          if (recallRecord.houseId) recallHouseIds.add(String(recallRecord.houseId));
+        });
+      }
+      const failedResult = [historyResult, recallDocsResult].find((result) => result.status === 'rejected');
+      const loadError = failedResult ? toError(failedResult.reason) : null;
+      if (loadError) console.error('No se pudo leer la historia de Recall:', loadError);
+      setRecallHousesState({ key, recallHouseIds, error: loadError });
+    };
+    void loadRecallHouses();
+    return () => { isActive = false; };
     // `statuses` se lee a través de `key` (mismos status de recall = misma consulta).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key]);
 
-  return ids;
+  const isCurrentRead = recallHousesState.key === key;
+  return {
+    recallHouseIds: recallHousesState.recallHouseIds,
+    isLoaded: enabled && isCurrentRead,
+    error: isCurrentRead ? recallHousesState.error : null,
+  };
 }

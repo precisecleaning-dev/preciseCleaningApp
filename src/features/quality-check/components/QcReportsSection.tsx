@@ -16,12 +16,14 @@ import PeriodBar from '../../../components/PeriodBar';
 import { inPeriod, periodRange } from '../../../utils/periods';
 import { displayClientName } from '../../../utils/customerDocs';
 import { getRelationName } from '../../../utils/relations';
-import { useRecallHouses } from '../../../utils/jobRecall';
+import { useRecallHouses, wasHouseInRecall } from '../../../utils/jobRecall';
+import { statusNameOf } from '../../houses/services/houseStatus';
 import ShareReportSheet from '../../../components/ShareReportSheet';
 import StatusChangeModal from '../../../components/StatusChangeModal';
 import type { QCPdfPlace, QCPdfTask } from '../../../utils/qcReportPdf';
 import { useQcReportActions } from '../hooks/useQcReportActions';
-import { getReportNotes, getReportScore, getReportTimeMs, isHouseInRecall } from '../qcReports';
+import { getReportNotes, getReportScore, getReportTimeMs } from '../qcReports';
+import { isPropertyStatusRecall } from '../../../utils/recallStatus';
 import QcReportCard from './QcReportCard';
 import QcReportFilters from './QcReportFilters';
 import QcReportSendButtons from './QcReportSendButtons';
@@ -55,8 +57,7 @@ const QcReportsSection = ({
   const isCardLayout = useMediaQuery(REPORT_CARDS_QUERY);
   // Casas que estuvieron alguna vez en Recall (status_history, con caché): se
   // marcan con "Recall" antes del cliente.
-  const recallHouseIds = useRecallHouses(statuses);
-  const wasReportHouseInRecall = (report: QcReportRow): boolean => recallHouseIds.has(report.houseId);
+  const { recallHouseIds } = useRecallHouses(statuses);
   // Botón "Recalls": solo los reportes de casas que estuvieron en Recall.
   const [isShowingOnlyRecalls, setIsShowingOnlyRecalls] = useState(false);
 
@@ -82,6 +83,10 @@ const QcReportsSection = ({
   const getReportTeamName = (report: QcReportRow): string =>
     report.team || getTeamName(getPropertyForReport(report)?.teamId);
 
+  // La misma regla de Recall que el QC Dashboard e Invoices (utils/jobRecall).
+  const isReportFromRecallHouse = (report: QcReportRow): boolean =>
+    wasHouseInRecall(report.houseId, statusNameOf(statuses, getPropertyForReport(report)?.statusId), recallHouseIds);
+
   const reportActions = useQcReportActions({
     statuses, places, tasks, currentUser, getClientName, getTeamName, getPropertyForReport,
   });
@@ -93,24 +98,24 @@ const QcReportsSection = ({
   const loadedPropertyIds = useMemo(() => new Set(properties.map((property) => property.id)), [properties]);
   const finishedReports = useMemo(() => allReports
     .filter((report) => report.status === 'Finished')
-    .filter((report) => !isHouseInRecall(propertiesById.get(report.houseId), statuses))
+    .filter((report) => !isPropertyStatusRecall(propertiesById.get(report.houseId), statuses))
     .filter((report) => !isHiddenByWindow(hasFullHistory, loadedPropertyIds.has(report.houseId), getReportTimeMs(report)))
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport)),
   [allReports, hasFullHistory, loadedPropertyIds, propertiesById, statuses]);
 
   const normalizedSearchText = deferredSearchText.trim().toLowerCase();
   // Periodo y búsqueda (los totales de los botones salen de aquí).
-  const reportsInPeriod = finishedReports.filter((report) => {
+  const filteredReports = finishedReports.filter((report) => {
     if (!inPeriod(report.date, reportsPeriodRange)) return false;
     if (!normalizedSearchText) return true;
     return [getClientName(report.client), report.address, report.inspector, report.team, report.date]
       .some((searchableValue) => String(searchableValue ?? '').toLowerCase().includes(normalizedSearchText));
   });
-  const recallReports = reportsInPeriod.filter(wasReportHouseInRecall);
+  const recallReports = filteredReports.filter(isReportFromRecallHouse);
   // El botón "Recalls" cuenta CASAS (una casa puede tener varios reportes),
   // como el QC Dashboard cuenta trabajos (decisión de Omar, 10/2026).
   const recallHouseCount = new Set(recallReports.map((report) => report.houseId)).size;
-  const visibleReports = isShowingOnlyRecalls ? recallReports : reportsInPeriod;
+  const visibleReports = isShowingOnlyRecalls ? recallReports : filteredReports;
 
   const emptyMessage = (() => {
     if (!areReportsLoaded) return 'Cargando reportes de calidad...';
@@ -159,7 +164,7 @@ const QcReportsSection = ({
       <div className="qcrs-period">
         <PeriodBar period={reportsPeriod} onChange={setReportsPeriod}>
           <QcReportFilters
-            reportCount={reportsInPeriod.length}
+            reportCount={filteredReports.length}
             recallHouseCount={recallHouseCount}
             isShowingOnlyRecalls={isShowingOnlyRecalls}
             searchText={searchText}
@@ -183,7 +188,7 @@ const QcReportsSection = ({
               sendButtons={renderSendButtons(report, 'full')}
               statusPill={renderStatusPill(report)}
               canOpenHouse={canOpenReportHouse(report)}
-              wasInRecall={wasReportHouseInRecall(report)}
+              wasInRecall={isReportFromRecallHouse(report)}
               onOpenHouse={handleOpenReportHouse}
             />
           ))}
@@ -201,7 +206,7 @@ const QcReportsSection = ({
               sendButtons={renderSendButtons(report, 'icons')}
               statusPill={renderStatusPill(report)}
               canOpenHouse={canOpenReportHouse(report)}
-              wasInRecall={wasReportHouseInRecall(report)}
+              wasInRecall={isReportFromRecallHouse(report)}
               onOpenHouse={handleOpenReportHouse}
             />
           ))}

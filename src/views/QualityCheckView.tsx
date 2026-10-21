@@ -29,7 +29,7 @@ import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
 import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
-import { isRecallText } from '../utils/recallStatus';
+import { isPropertyStatusRecall, isRecallText } from '../utils/recallStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { formatDate as formatDateMDY, formatTime, todayIso } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
@@ -46,6 +46,7 @@ import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { usePendingById } from '../shared/hooks/usePendingById';
 import { inPeriod, periodRange } from '../utils/periods';
 import QcReportsBlock from '../features/quality-check/components/QcReportsBlock';
+import QcSectionNotes from '../features/quality-check/components/QcSectionNotes';
 import QcPhotoGrid, { type QcPhotoItem } from '../features/quality-check/components/QcPhotoGrid';
 import type { QcNoteItem } from '../features/quality-check/components/QcIncomingNotes';
 import {
@@ -345,6 +346,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    properties.find en cada render (registros × ~3,600 casas).
   const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
+  // El QC abierto trae "Notes for the team" (`__general.notes`, de antes de las
+  // notas por área): el panel las muestra para que no queden escondidas.
+  const [hasLegacyTeamNotes, setHasLegacyTeamNotes] = useState(false);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
   const [selectedHouseGroup, setSelectedHouseGroup] = useState<QcHouseGroup>('All');
@@ -379,17 +383,11 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   const teams = teamsLive.data;
   const customersList = customersLive.data;
   const statuses = statusesLive.data;
-  // ⭐ ¿La casa está en Recall? (por id o nombre del status)
-  const isRecallStatus = (house: Property): boolean => {
-    const sid = house.statusId;
-    const st = statuses.find((s) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    return isRecallText(st?.name || sid);
-  };
   // ⭐ Solo los reportes de las casas que esta pantalla muestra (en Quality
   //    Check o Recall). Antes se bajaba la colección completa de quality_checks;
   //    los terminados de otras casas se consultan en QC Reports y QC Dashboard.
   const qcLive = useQcForHouses<QCRecord>(
-    properties.filter((h) => isQualityCheckStatus(h.statusId, statuses) || isRecallStatus(h)).map((h) => h.id),
+    properties.filter((h) => isQualityCheckStatus(h.statusId, statuses) || isPropertyStatusRecall(h, statuses)).map((h) => h.id),
   );
   const qcList = useMemo(
     () => [...qcLive.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
@@ -794,7 +792,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
 
   // ⭐ RECALL = casas en estado "Recall" en el pipeline (aunque no tengan un QC
   //    "RECALL" registrado: muchas llegan a Recall por cambio de status).
-  const allRecallHouses = properties.filter(h => isRecallStatus(h));
+  const allRecallHouses = properties.filter((house) => isPropertyStatusRecall(house, statuses));
   const recallHouses = allRecallHouses.filter(isHouseInPeriod);
 
   // ⭐ ¿La casa/registro coincide con la búsqueda?
@@ -902,6 +900,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setEditingQcId(null);
     setPendingPhotos({});
     setCheckInAt(new Date().toISOString()); // ⭐ hora de entrada
+    setHasLegacyTeamNotes(false);
     setQcData(withSlots({}));
     setQcExtras({
       inspectorId: currentUser?.id || '', inspectorName: myName, date: todayIso(),
@@ -933,6 +932,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
     setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
+    setHasLegacyTeamNotes(String(qc.qcData?.[GENERAL_SLOT]?.notes ?? '').trim() !== '');
     // Las tareas en Fail se ven como líneas "Fail <tarea>" en la nota de su área.
     setQcData(withSlots(qcDataWithFailNotes(qc.qcData || {}, taskNameById)));
     setQcExtras({
@@ -963,6 +963,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setIsFormModalOpen(false);
     setSelectedHouse(null);
     setEditingQcId(null);
+    setHasLegacyTeamNotes(false);
     setPendingPhotos({});
     setHasUnsavedChanges(false);
     setLastSavedAt(null);
@@ -1583,7 +1584,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Pass / Fail de una tarea (null = sin responder). Al entrar o salir de
   //    Fail se agrega o se quita su línea "Fail <tarea>" en la nota del área,
   //    en el momento (el inspector la ve mientras marca).
-  const setTaskValue = (placeId: string, taskId: string, value: QcAnswer | null) => {
+  const handleAnswerChange = (placeId: string, taskId: string, value: QcAnswer | null) => {
     const taskName = taskNameById.get(taskId) ?? '';
     setQcData((previousQcData) => {
       const placeData = previousQcData[placeId] || { tasks: {} };
@@ -1601,7 +1602,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   };
 
   // ⭐ Nota de un área del checklist (campo al final del área).
-  const setSectionNotes = (section: QcSection, notes: string) => {
+  const handleSectionNotesChange = (section: QcSection, notes: string) => {
     setQcData((previousQcData) => ({
       ...previousQcData,
       [section.id]: { ...(previousQcData[section.id] || { tasks: {} }), notes },
@@ -1744,6 +1745,11 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     />
   );
   const renderSectionPhotos = (section: QcSection) => renderPhotoGrid(section.id, [section.id], 'plain');
+  const renderSectionNotes = (section: QcSection) => (
+    <QcSectionNotes section={section} notes={String(qcData[section.id]?.notes ?? '')} onNotesChange={handleSectionNotesChange} />
+  );
+  const legacyTeamNotesSection: QcSection = { id: GENERAL_SLOT, name: GENERAL_SLOT_NAME, tasks: [] };
+  const legacyTeamNotesField = hasLegacyTeamNotes ? renderSectionNotes(legacyTeamNotesSection) : null;
 
   // ⭐ Tarjetas de casa (pendientes y Recall): datos y acciones comunes.
   /** Último reporte que NO pasó de una casa (las correcciones de Recall se marcan ahí). */
@@ -1953,10 +1959,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               onExtras={updateExtras}
               sections={qcSections}
               answers={Object.fromEntries(qcSections.map(sec => [sec.id, qcData[sec.id]?.tasks]))}
-              sectionNotes={Object.fromEntries(qcSections.map((section) => [section.id, String(qcData[section.id]?.notes ?? '')]))}
-              onAnswer={setTaskValue}
-              onSectionNotesChange={setSectionNotes}
+              onAnswer={handleAnswerChange}
               renderSectionPhotos={renderSectionPhotos}
+              renderSectionNotes={renderSectionNotes}
               canAddChecklistTasks={canAddChecklistTasks}
               canEditChecklistTasks={canEditChecklistTasks}
               canRemoveChecklistTasks={canArchiveChecklistTasks}
@@ -1966,6 +1971,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               onRenameChecklistTask={handleRenameChecklistTask}
               onRemoveChecklistTask={handleArchiveChecklistTask}
               generalPhotos={renderPhotoGrid(GENERAL_SLOT, otherPhotoSlots, 'plain')}
+              legacyTeamNotesField={legacyTeamNotesField}
               officePhotos={renderPhotoGrid(OFFICE_SLOT, [OFFICE_SLOT], 'card')}
               showOffice={canSeeOfficeNotes}
               saving={isSaving}

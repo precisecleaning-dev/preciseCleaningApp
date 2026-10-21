@@ -4,10 +4,10 @@
 // sus fotos. Es de lectura: se inspecciona o corrige desde Quality Check.
 import type { CSSProperties } from 'react';
 import { Check, Clock, User, Users } from 'lucide-react';
-import type { QcReportArea, QcReportRow } from '../../../types/index';
+import type { QcReportArea, QcReportRow, QcResultBadge } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { passRateColors } from '../../../utils/qcScore';
-import { formatInspectionDuration, formatReportClock } from '../qcReports';
+import { formatInspectionDuration, formatReportClock, getFinishedResultBadge } from '../qcReports';
 
 interface HouseQcReportItemProps {
   report: QcReportRow;
@@ -18,20 +18,20 @@ interface HouseQcReportItemProps {
 /** Fotos por área que se ven como miniatura (el resto se cuenta). */
 const MAX_AREA_THUMBNAILS = 6;
 
-const getResultLabel = (report: QcReportRow): { label: string; tone: 'passed' | 'failed' | 'pending' } => {
-  if (report.status !== 'Finished') return { label: 'In progress', tone: 'pending' };
-  return report.result === 'failed'
-    ? { label: 'Did Not Pass', tone: 'failed' }
-    : { label: 'Passed', tone: 'passed' };
-};
+/** Reporte que el inspector todavía no termina. */
+const IN_PROGRESS_BADGE: QcResultBadge = { background: '#fef3c7', color: '#854d0e', label: 'In progress', Icon: Clock };
+
+const getResultBadge = (report: QcReportRow): QcResultBadge =>
+  (report.status === 'Finished' ? getFinishedResultBadge(report) : IN_PROGRESS_BADGE);
 
 const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => {
-  const result = getResultLabel(report);
+  const resultBadge = getResultBadge(report);
+  const resultBadgeStyle = { '--badge-bg': resultBadge.background, '--badge-fg': resultBadge.color } as CSSProperties;
   const scoreColors = passRateColors(score.passRate, score.hasData);
   const scoreStyle = { '--badge-bg': scoreColors.bg, '--badge-fg': scoreColors.fg } as CSSProperties;
   const scoreText = score.hasData ? `${score.passRate}%` : '—';
   const timeRange = `${formatReportClock(report.checkInAt)} – ${formatReportClock(report.checkOutAt)}`;
-  const correctionsDoneDate = report.correctionsDoneAt ? formatDate(String(report.correctionsDoneAt).split('T')[0]) : '';
+  const correctionsDoneDate = formatDate(report.correctionsDoneAt);
 
   return (
     <li className="hqc-report">
@@ -41,8 +41,8 @@ const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => 
           <div className="hqc-report-time">{timeRange}</div>
         </div>
         <div className="hqc-report-badges">
-          <span className="hqc-score" style={scoreStyle} title="Tareas aprobadas sobre las respondidas">{scoreText}</span>
-          <span className={`hqc-result ${result.tone}`}>{result.label}</span>
+          <span className="hqc-score" style={scoreStyle} title="Passed tasks out of answered tasks">{scoreText}</span>
+          <span className="hqc-result" style={resultBadgeStyle}>{resultBadge.label}</span>
         </div>
       </div>
 
@@ -54,16 +54,16 @@ const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => 
 
       {correctionsDoneDate !== '' && (
         <div className="hqc-corrections">
-          <Check size={13} /> Correcciones hechas · {correctionsDoneDate}{report.correctionsDoneBy ? ` · ${report.correctionsDoneBy}` : ''}
+          <Check size={13} /> Corrections done · {correctionsDoneDate}{report.correctionsDoneBy ? ` · ${report.correctionsDoneBy}` : ''}
         </div>
       )}
 
-      {areas.length === 0 && <p className="hqc-empty-areas">Sin respuestas, notas ni fotos todavía.</p>}
+      {areas.length === 0 && <p className="hqc-empty-areas">No answers, notes or photos yet.</p>}
       {areas.length > 0 && (
         <ul className="hqc-areas">
           {areas.map((area) => {
-            const shownPhotoUrls = area.photoUrls.slice(0, MAX_AREA_THUMBNAILS);
-            const hiddenPhotoCount = area.photoUrls.length - shownPhotoUrls.length;
+            const visiblePhotoUrls = area.photoUrls.slice(0, MAX_AREA_THUMBNAILS);
+            const hiddenPhotoCount = area.photoUrls.length - visiblePhotoUrls.length;
             return (
               <li key={area.id} className="hqc-area">
                 <div className="hqc-area-head">
@@ -73,9 +73,9 @@ const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => 
                   )}
                 </div>
                 {area.notes !== '' && <p className="hqc-area-notes">{area.notes}</p>}
-                {shownPhotoUrls.length > 0 && (
+                {visiblePhotoUrls.length > 0 && (
                   <div className="hqc-area-photos">
-                    {shownPhotoUrls.map((photoUrl, photoIndex) => (
+                    {visiblePhotoUrls.map((photoUrl, photoIndex) => (
                       <a key={photoUrl} href={photoUrl} target="_blank" rel="noopener noreferrer" className="hqc-area-photo">
                         <img src={photoUrl} alt={`${area.name} · photo ${photoIndex + 1}`} loading="lazy" />
                       </a>
