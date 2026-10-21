@@ -579,7 +579,6 @@ export default function App() {
             clearHouseToInspect={() => setHouseToInspect(null)}
             currentUser={effectiveUser}
             onOpenHouseDetail={openHouseDetail}
-            onOpenHouseEdit={openHouseEdit}
           />
         )}
 

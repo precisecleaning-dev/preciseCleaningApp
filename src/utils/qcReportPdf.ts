@@ -168,12 +168,19 @@ export const exportQCReportPDF = async (args: {
 
         // pd.notes/pd.damage son texto libre que escribe el inspector — el punto de
         // mayor riesgo de todo este generador, se escapan sin excepción.
-        const notesHtml = (pd.notes || pd.damage) ? `
+        // Cada área lleva SIEMPRE su recuadro de notas (una línea por renglón:
+        // "Fail <tarea>" y lo que escribió el inspector), aunque esté vacío.
+        const areaNotes = pd.notes.trim();
+        const areaNotesHtml = areaNotes
+          ? `<div class="notes-text">${escapeHtml(areaNotes)}</div>`
+          : '<div class="notes-empty">No notes for this area.</div>';
+        const notesHtml = `
           <div class="notes-block">
-            ${pd.notes ? `<div><strong>Notes:</strong> ${escapeHtml(pd.notes)}</div>` : ''}
+            <div class="notes-label">Notes</div>
+            ${areaNotesHtml}
             ${pd.damage ? `<div style="margin-top: 8px; color: #b91c1c;"><strong>Damage:</strong> ${escapeHtml(pd.damage)}</div>` : ''}
           </div>
-        ` : '';
+        `;
 
         const placeName = escapeHtml(pd.place.name);
         const photosHtml = pd.photosBase64.length > 0 ? `
@@ -291,6 +298,9 @@ export const exportQCReportPDF = async (args: {
               .result-pill.no { background: #fee2e2; color: #b91c1c; }
               .result-pill.na { background: #f1f5f9; color: #94a3b8; }
               .notes-block { background: #f8fafc; padding: 14px 16px; border-left: 3px solid #1e40af; border-radius: 6px; font-size: 13px; color: #334155; margin-bottom: 16px; }
+              .notes-label { font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+              .notes-text { white-space: pre-line; line-height: 1.6; }
+              .notes-empty { color: #94a3b8; }
               .photos-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px; }
               .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
               .photo-item { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #ffffff; page-break-inside: avoid; }

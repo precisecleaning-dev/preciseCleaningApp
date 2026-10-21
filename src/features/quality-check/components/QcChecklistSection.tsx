@@ -1,6 +1,7 @@
 // Un área del checklist (Porch, Rooms…): encabezado que la contrae o la
 // extiende (con lo que lleva aprobado), sus tareas, "+ Add task" en modo
-// "Edit checklist", las flechas para cambiarla de lugar y sus fotos.
+// "Edit checklist", las flechas para cambiarla de lugar, sus fotos y al final
+// su nota (QcSectionNotes: llega armada, como las fotos).
 import type { ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
 import type { QcAnswer, QcSection, QcSectionTask } from '../qcForm';
@@ -24,6 +25,8 @@ interface QcChecklistSectionProps {
   /** Tareas que se están guardando (renombrar o quitar). */
   pendingTaskIds: ReadonlySet<string>;
   photos: ReactNode;
+  /** Nota del área (QcSectionNotes), al final, debajo de las fotos. */
+  notesField: ReactNode;
   onToggleCollapsed: (section: QcSection) => void;
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
   onMoveSection: (section: QcSection, positionOffset: -1 | 1) => void;
@@ -34,7 +37,7 @@ interface QcChecklistSectionProps {
 
 const QcChecklistSection = ({
   section, sectionAnswers, isCollapsed, isEditingChecklist, canAddTasks, canEditTasks, canRemoveTasks,
-  isFirstSection, isLastSection, isReorderingSections, isAddingTask, pendingTaskIds, photos, onToggleCollapsed, onAnswer, onMoveSection, onAddTask, onRenameTask,
+  isFirstSection, isLastSection, isReorderingSections, isAddingTask, pendingTaskIds, photos, notesField, onToggleCollapsed, onAnswer, onMoveSection, onAddTask, onRenameTask,
   onRemoveTask,
 }: QcChecklistSectionProps) => {
   const passedCount = section.tasks.filter((task) => sectionAnswers[task.id] === 'Yes').length;
@@ -113,6 +116,7 @@ const QcChecklistSection = ({
             <span className="qcl-photos-lbl">Photos · {section.name}</span>
             {photos}
           </div>
+          {notesField}
         </div>
       )}
     </section>

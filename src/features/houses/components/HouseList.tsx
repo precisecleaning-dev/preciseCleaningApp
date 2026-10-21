@@ -339,7 +339,7 @@ const HouseList = ({
   const unifiedEnabled = viewMode !== "board";
   const jobFin = useJobFinancials(unifiedEnabled);
   const qcRecords = useQcRecords(unifiedEnabled);
-  const recallHouses = useRecallHouses(statuses, unifiedEnabled);
+  const { recallHouseIds } = useRecallHouses(statuses, unifiedEnabled);
 
   const periodProperties = useMemo(
     () =>
@@ -618,10 +618,10 @@ const HouseList = ({
     [statuses, statusLocked, rowStatus, customersList],
   );
   const wasRecall = useCallback(
-    (prop: Property) => recallHouses.has(prop.id) || isRecallText(findStatusOf(prop)?.name || prop.statusId),
+    (prop: Property) => recallHouseIds.has(prop.id) || isRecallText(findStatusOf(prop)?.name || prop.statusId),
     // findStatusOf solo cambia con statusIndex
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [recallHouses, statusIndex],
+    [recallHouseIds, statusIndex],
   );
 
   return (
