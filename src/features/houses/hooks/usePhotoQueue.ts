@@ -20,10 +20,15 @@ import {
   type PendingPhoto,
 } from "../../../utils/offlinePhotoQueue";
 import { isDeviceOffline } from "../../../shared/utils/connectivity";
+import { useConnectivityStatus } from "../../../shared/hooks/useConnectivityStatus";
 import type { UploadProgress } from "../components/PhotoUploadToast";
 
+/** Errores de Storage que son de conexión: la foto se encola y se reintenta. */
+const CONNECTIVITY_UPLOAD_ERROR_CODES = ["storage/retry-limit-exceeded", "storage/canceled"];
+
 export function usePhotoQueue() {
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  // Aviso "Sin conexión" de la lista: confirmado con el servidor (no solo navigator.onLine).
+  const isOnline = useConnectivityStatus();
   const [pendingTotal, setPendingTotal] = useState(0);
   // Cambia cada vez que se sincroniza la cola: las secciones de fotos de la
   // casa abierta vuelven a contar sus pendientes.
@@ -113,11 +118,13 @@ export function usePhotoQueue() {
         //    encola cuando el fallo es de CONEXION; los demás se reportan con
         //    su código para poder corregir la causa (ver alert del caller).
         setPhotoUpload(null);
+        //    La decisión sale del código del error y, si no es de conexión, se
+        //    confirma con isDeviceOffline(): navigator.onLine solo a veces dice
+        //    "sin conexión" con internet y volvía a encolar errores permanentes.
         const code = String((e as { code?: string })?.code || "");
-        const isConnectivity =
-          !navigator.onLine || code === "storage/retry-limit-exceeded" ||
-          code === "storage/canceled";
-        if (!isConnectivity) throw e;
+        const isConnectivityError =
+          CONNECTIVITY_UPLOAD_ERROR_CODES.includes(code) || (await isDeviceOffline());
+        if (!isConnectivityError) throw e;
         console.error("Subida online falló por conexión, se encola:", e);
       }
     }
@@ -137,19 +144,12 @@ export function usePhotoQueue() {
   };
 
   useEffect(() => {
-    const goOnline = () => {
-      setIsOnline(true);
-      syncPendingPhotos();
-    };
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
+    // Al volver la conexión se suben las pendientes (el aviso lo lleva useConnectivityStatus).
+    const handleOnline = () => syncPendingPhotos();
+    window.addEventListener("online", handleOnline);
     refreshTotal();
     syncPendingPhotos();
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
+    return () => window.removeEventListener("online", handleOnline);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

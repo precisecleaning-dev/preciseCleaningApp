@@ -3073,3 +3073,11 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   y el aviso de Quality Check (`QualityCheckView`) y el checklist del empleado (`ChecklistModal`). No vuelvas a
   decidir un guardado con `navigator.onLine` solo. Los avisos de lectura (`isOfflineCacheOnly`) siguen con
   `navigator.onLine` porque además piden `metadata.fromCache`: al llegar datos del servidor se quitan solos.
+- Aviso "Sin conexión" confirmado (CR, 10/2026): `useConnectivityStatus()` (src/shared/hooks) escucha online /
+  offline y confirma con `isDeviceOffline()` antes de mostrar el aviso (y cada 30 s mientras el navegador diga
+  "sin conexión"). Lo usan el aviso de Quality Check y el de Houses (`usePhotoQueue.isOnline` → HouseList).
+  Antes salía "Sin conexión" con las fotos y el QC guardándose bien, y el inspector podía repetir el trabajo.
+- Fotos de Houses · error al subir (CR, 10/2026): se encola solo si el código es de conexión
+  (`storage/retry-limit-exceeded`, `storage/canceled`) o `isDeviceOffline()` lo confirma. Ya no con
+  `!navigator.onLine` solo: con el "sin conexión" falso un error permanente (reglas de Storage) volvía a
+  encolarse en silencio, el bug que ese bloque corrigió.

@@ -31,6 +31,7 @@ import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
 import { isPropertyStatusRecall, isRecallText } from '../utils/recallStatus';
 import { isDeviceOffline } from '../shared/utils/connectivity';
+import { useConnectivityStatus } from '../shared/hooks/useConnectivityStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { formatDate as formatDateMDY, formatTime, todayIso } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
@@ -422,7 +423,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    casa aparecía en el panel de otra.
   const [queuedByPlace, setQueuedByPlace] = useState<Record<string, { id: string; preview: string }[]>>({});
   const [pendingUploadCount, setPendingUploadCount] = useState(0);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Aviso "Sin conexión": confirmado con el servidor (no solo navigator.onLine).
+  const isOnline = useConnectivityStatus();
   const processingRef = useRef(false);
   const selectedHouseRef = useRef<Property | null>(null);
 
@@ -579,15 +581,12 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Al montar: reconstruir cola + escuchar conexión + reintentar cada 20s.
   useEffect(() => {
     (async () => { await rebuildQueuedPreviews(); processQueue(); })();
-    const onOnline = () => { setIsOnline(true); processQueue(); };
-    const onOffline = () => setIsOnline(false);
+    const onOnline = () => { processQueue(); };
     window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
     // processQueue no hace nada si de verdad no hay conexión (isDeviceOffline).
     const interval = setInterval(() => { processQueue(); }, 20000);
     return () => {
       window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1193,7 +1192,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
-      const offline = await isDeviceOffline();
+      const wasSavedOffline = await isDeviceOffline();
       const movedName = movedTo ? statusNameOf(statuses, movedTo) : '';
       const emailNote = isFinishing && companySettings.autoSend && !branding.email
         ? '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").'
@@ -1207,7 +1206,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
         : outcome === 'invoice'
           ? '✅ Quality Check aprobado.'
           : '✅ Avance guardado. Elige Invoice o RECALL en "Result" para terminar la inspección.')
-        + (offline ? '\n\n📶 Sin señal: quedó guardado en este teléfono y se sube solo al volver la conexión.' : '')
+        + (wasSavedOffline ? '\n\n📶 Sin señal: quedó guardado en este teléfono y se sube solo al volver la conexión.' : '')
         + emailNote);
 
       if (isFinishing) {
@@ -1241,8 +1240,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       try { compressed = await compressImage(asFile, { quality: 0.8, maxWidth: 1600, maxSizeMB: 0.6 }); }
       catch { compressed = asFile; }
 
-      const online = !(await isDeviceOffline());
-      if (online) {
+      const isDeviceOnline = !(await isDeviceOffline());
+      if (isDeviceOnline) {
         try {
           const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);
           if (selectedHouseRef.current?.id === house.id) {
