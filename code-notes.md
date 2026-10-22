@@ -3065,3 +3065,25 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   siendo `reclean`.
 - `useRecallHouses` devuelve `{ recallHouseIds, isLoaded, error }` (CR, 10/2026): si la historia o
   `recalls` falla se usa lo que sí se leyó y se avisa en `error` (antes se tragaba el error).
+- Sin conexión FALSO (10/2026): `navigator.onLine === false` a veces miente (VPN o adaptadores virtuales, al
+  despertar la computadora, al volver a la app en el teléfono) y la app no guardaba con "…: sin conexión"
+  teniendo internet. `isDeviceOffline()` (src/shared/utils/connectivity.ts) lo confirma con un HEAD a
+  `/version.json?probe=…` (no-store, tope 3 s): cualquier respuesta = hay conexión. Lo usan el Task list
+  (`useTaskActions.run` y adjuntos, `useDoneTasks`), la cola de fotos de la casa (`usePhotoQueue`), las fotos
+  y el aviso de Quality Check (`QualityCheckView`) y el checklist del empleado (`ChecklistModal`). No vuelvas a
+  decidir un guardado con `navigator.onLine` solo. Los avisos de lectura (`isOfflineCacheOnly`) siguen con
+  `navigator.onLine` porque además piden `metadata.fromCache`: al llegar datos del servidor se quitan solos.
+- Aviso "Sin conexión" confirmado (CR, 10/2026): `useConnectivityStatus()` (src/shared/hooks) escucha online /
+  offline y confirma con `isDeviceOffline()` antes de mostrar el aviso (y cada 30 s mientras el navegador diga
+  "sin conexión"). Lo usan el aviso de Quality Check y el de Houses (`usePhotoQueue.isOnline` → HouseList).
+  Antes salía "Sin conexión" con las fotos y el QC guardándose bien, y el inspector podía repetir el trabajo.
+- Fotos de Houses · error al subir (CR, 10/2026): se encola solo si el código es de conexión
+  (`storage/retry-limit-exceeded`, `storage/canceled`) o `isDeviceOffline()` lo confirma. Ya no con
+  `!navigator.onLine` solo: con el "sin conexión" falso un error permanente (reglas de Storage) volvía a
+  encolarse en silencio, el bug que ese bloque corrigió.
+- Conexión · CR del hook y de la consulta (10/2026): `useConnectivityStatus` numera cada revisión y solo la
+  más reciente cambia el aviso (una revisión vieja "sin conexión" que terminaba después de una nueva "hay
+  conexión" dejaba el aviso pegado); la revisión cada 30 s corre si el navegador dice "sin conexión" O el
+  aviso está puesto. `isDeviceOffline` reusa la consulta de los últimos 5 s (`PROBE_RESULT_TTL_MS`, también
+  la que sigue en camino): la cola de fotos revisa antes de cada foto. Límite conocido: el portal de un wifi
+  (hoteles, edificios) cuenta como "hay conexión".

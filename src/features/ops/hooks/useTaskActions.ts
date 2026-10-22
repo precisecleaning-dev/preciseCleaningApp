@@ -13,6 +13,7 @@ import { taskProjectsService, type ProjectInput } from '../../../services/taskPr
 import { taskListTabsService } from '../../../services/taskListTabsService';
 import { setPriorities } from '../services/prioritiesService';
 import { isAwaitingApproval } from '../opsPermissions';
+import { isDeviceOffline } from '../../../shared/utils/connectivity';
 
 const UNDO_MS = 6000;
 
@@ -47,18 +48,19 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
   // ⭐ Sin red no se escribe: con el caché persistente de Firestore la escritura
   //    no falla, queda en espera, y el botón se quedaba girando sin aviso hasta
   //    que volviera la señal. Se avisa y la vista conserva lo escrito.
-  const isOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+  //    "Sin red" lo confirma isDeviceOffline: navigator.onLine solo a veces
+  //    dice "sin conexión" con internet funcionando.
   const warnOffline = (what: string) => alert(`${what}: sin conexión. Inténtalo cuando vuelva la señal.`);
 
   const run = async <T,>(id: string, what: string, job: () => Promise<T>): Promise<Result<T>> => {
-    if (isOffline()) {
-      warnOffline(what);
-      return { ok: false };
-    }
     if (inFlight.current.has(id)) return { ok: false };
     inFlight.current.add(id);
     setBusyId(id);
     try {
+      if (await isDeviceOffline()) {
+        warnOffline(what);
+        return { ok: false };
+      }
       return { ok: true, value: await job() };
     } catch (error) {
       fail(what, error);
@@ -74,10 +76,10 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
   // se intenta ninguno). Así se sabe exactamente qué volver a adjuntar.
   const attachFiles = async (taskId: string, files: File[]) => {
     const failedFileNames: string[] = [];
-    if (isOffline()) {
+    setUploading(true);
+    if (await isDeviceOffline()) {
       failedFileNames.push(...files.map((file) => file.name));
     } else {
-      setUploading(true);
       for (const file of files) {
         try {
           await userTasksService.addAttachment(taskId, file);
@@ -86,8 +88,8 @@ export function useTaskActions(actor: Actor, known: KnownProjects) {
           failedFileNames.push(file.name);
         }
       }
-      setUploading(false);
     }
+    setUploading(false);
     if (failedFileNames.length === 0) return;
     alert(`${failedFileNames.length} of ${files.length} files weren't uploaded: ${failedFileNames.join(', ')}.\n\n`
       + 'Open the task and attach them again.');
