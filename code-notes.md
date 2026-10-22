@@ -3081,3 +3081,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   (`storage/retry-limit-exceeded`, `storage/canceled`) o `isDeviceOffline()` lo confirma. Ya no con
   `!navigator.onLine` solo: con el "sin conexión" falso un error permanente (reglas de Storage) volvía a
   encolarse en silencio, el bug que ese bloque corrigió.
+- Conexión · CR del hook y de la consulta (10/2026): `useConnectivityStatus` numera cada revisión y solo la
+  más reciente cambia el aviso (una revisión vieja "sin conexión" que terminaba después de una nueva "hay
+  conexión" dejaba el aviso pegado); la revisión cada 30 s corre si el navegador dice "sin conexión" O el
+  aviso está puesto. `isDeviceOffline` reusa la consulta de los últimos 5 s (`PROBE_RESULT_TTL_MS`, también
+  la que sigue en camino): la cola de fotos revisa antes de cada foto. Límite conocido: el portal de un wifi
+  (hoteles, edificios) cuenta como "hay conexión".

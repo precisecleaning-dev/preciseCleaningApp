@@ -5,47 +5,55 @@
 // (shared/utils/connectivity.ts), así el aviso solo sale si de verdad no hay
 // conexión y nadie repite un trabajo que sí se guardó.
 // Lo usan el aviso de Quality Check y el de Houses (usePhotoQueue).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isDeviceOffline } from '../utils/connectivity';
+import { useStableCallback } from './useStableCallback';
 
-/** Mientras el navegador diga "sin conexión" se vuelve a confirmar cada tanto
- *  (si el aviso era falso, se quita aunque no llegue el evento online). */
+/** Mientras el navegador diga "sin conexión" o el aviso esté puesto, se vuelve
+ *  a confirmar cada tanto (el aviso se quita aunque no llegue el evento online). */
 const OFFLINE_RECHECK_MS = 30_000;
 
 /** true si hay conexión (lo que diga el navegador, confirmado con el servidor). */
 export const useConnectivityStatus = (): boolean => {
   const [isOnline, setIsOnline] = useState(true);
+  // Cada revisión lleva un número y solo la más reciente cambia el aviso: una
+  // revisión vieja ("sin conexión") que termina después de una nueva ("hay
+  // conexión") ya no deja el aviso pegado.
+  const latestCheckIdRef = useRef(0);
+
+  const refreshConnectivityStatus = useStableCallback(async () => {
+    latestCheckIdRef.current += 1;
+    const checkId = latestCheckIdRef.current;
+    const isOffline = await isDeviceOffline();
+    if (checkId === latestCheckIdRef.current) setIsOnline(!isOffline);
+  });
+
+  // Revisa solo si hay algo que confirmar: el navegador dice "sin conexión" o
+  // el aviso está puesto. Con las dos cosas en "hay conexión" no consulta nada.
+  const recheckIfNeeded = useStableCallback(() => {
+    if (navigator.onLine && isOnline) return;
+    void refreshConnectivityStatus();
+  });
 
   // Eventos online / offline del navegador (y la primera revisión al montar).
   useEffect(() => {
-    let isActive = true;
-    const handleConnectivityChange = async () => {
-      const isOffline = await isDeviceOffline();
-      if (isActive) setIsOnline(!isOffline);
-    };
-    void handleConnectivityChange();
+    const handleConnectivityChange = () => void refreshConnectivityStatus();
+    handleConnectivityChange();
     window.addEventListener('online', handleConnectivityChange);
     window.addEventListener('offline', handleConnectivityChange);
     return () => {
-      isActive = false;
+      // Una revisión que termine después de desmontar ya no cambia el aviso.
+      latestCheckIdRef.current += 1;
       window.removeEventListener('online', handleConnectivityChange);
       window.removeEventListener('offline', handleConnectivityChange);
     };
-  }, []);
+  }, [refreshConnectivityStatus]);
 
-  // Revisión periódica: solo consulta al servidor si el navegador dice "sin conexión".
+  // Revisión periódica (no consulta nada si no hace falta: recheckIfNeeded).
   useEffect(() => {
-    let isActive = true;
-    const intervalId = window.setInterval(async () => {
-      if (navigator.onLine) return;
-      const isOffline = await isDeviceOffline();
-      if (isActive) setIsOnline(!isOffline);
-    }, OFFLINE_RECHECK_MS);
-    return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+    const intervalId = window.setInterval(recheckIfNeeded, OFFLINE_RECHECK_MS);
+    return () => window.clearInterval(intervalId);
+  }, [recheckIfNeeded]);
 
   return isOnline;
 };
