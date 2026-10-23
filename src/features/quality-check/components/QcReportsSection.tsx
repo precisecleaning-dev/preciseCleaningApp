@@ -23,7 +23,6 @@ import StatusChangeModal from '../../../components/StatusChangeModal';
 import type { QCPdfPlace, QCPdfTask } from '../../../utils/qcReportPdf';
 import { useQcReportActions } from '../hooks/useQcReportActions';
 import { getReportNotes, getReportScore, getReportTimeMs } from '../qcReports';
-import { isPropertyStatusRecall } from '../../../utils/recallStatus';
 import QcReportCard from './QcReportCard';
 import QcReportFilters from './QcReportFilters';
 import QcReportSendButtons from './QcReportSendButtons';
@@ -91,17 +90,17 @@ const QcReportsSection = ({
     statuses, places, tasks, currentUser, getClientName, getTeamName, getPropertyForReport,
   });
 
-  // Solo FINALIZADOS, del más reciente al más viejo, y no los de casas HOY en
-  // Recall (salen en las tarjetas de arriba). Con la ventana de 12 meses, un
-  // reporte viejo cuya casa no se cargó es historial oculto, no una casa borrada.
+  // Solo FINALIZADOS, del más reciente al más viejo. Los de casas HOY en Recall
+  // también salen (además de las tarjetas "Casas en Recall" de arriba; decisión
+  // de Omar, 10/2026). Con la ventana de 12 meses, un reporte viejo cuya casa no
+  // se cargó es historial oculto, no una casa borrada.
   const hasFullHistory = useFullHistory();
   const loadedPropertyIds = useMemo(() => new Set(properties.map((property) => property.id)), [properties]);
   const finishedReports = useMemo(() => allReports
     .filter((report) => report.status === 'Finished')
-    .filter((report) => !isPropertyStatusRecall(propertiesById.get(report.houseId), statuses))
     .filter((report) => !isHiddenByWindow(hasFullHistory, loadedPropertyIds.has(report.houseId), getReportTimeMs(report)))
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport)),
-  [allReports, hasFullHistory, loadedPropertyIds, propertiesById, statuses]);
+  [allReports, hasFullHistory, loadedPropertyIds]);
 
   const normalizedSearchText = deferredSearchText.trim().toLowerCase();
   // Periodo y búsqueda (los totales de los botones salen de aquí).
