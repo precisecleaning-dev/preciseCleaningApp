@@ -2992,7 +2992,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   luego se re-inspeccionó y pasó no contaba (daba 10 en el año). Un QC fallado que NO movió la casa a
   Recall se muestra como "Did not pass" (antes "Re-clean"), pero no cuenta como Recall.
   `HouseList.wasRecall` repite la regla en línea (podría usar wasHouseInRecall).
-- Quality Check Reports · sin pestañas (10/2026): no salen los reportes de casas que HOY están en Recall
+- REEMPLAZADA en parte por "Quality Check Reports · casas HOY en Recall": esos reportes ya SÍ salen.
+  Quality Check Reports · sin pestañas (10/2026): no salen los reportes de casas que HOY están en Recall
   (ya están en las tarjetas "Casas en Recall"; `isPropertyStatusRecall`). Queda el total y el buscador.
 - REEMPLAZADA por "Recalls · UN solo número": la pestaña ya NO filtra por Invoice (el orden del Team
   Scorecard sí sigue). QC Dashboard · pestaña "Recalls" (antes "Re-clean", 10/2026): filtra las casas que YA están en Invoice y
@@ -3008,8 +3009,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `RecallMark` (como Invoices y reportes); salió de la columna Result y su CSS `.qd-recall`.
 - Quality Check Reports · botón "Recalls" (10/2026): junto a "Reports" (todos) filtra solo los reportes de
   casas que estuvieron alguna vez en Recall (misma regla que la marca: `recallHouseIds`). Los dos totales
-  salen del periodo y la búsqueda. Es un filtro, no una pestaña por status: las casas HOY en Recall siguen
-  fuera de la tabla (están en las tarjetas de arriba).
+  salen del periodo y la búsqueda. Es un filtro, no una pestaña por status. (Las casas HOY en Recall ya
+  salen en la tabla: ver "Quality Check Reports · casas HOY en Recall".)
 - Recalls · UN solo número (10/2026, decisión de Omar; reemplaza las notas anteriores de "Recalls" del QC
   Dashboard): Recalls = todos los trabajos del periodo que estuvieron en Recall (`wasHouseInRecall`), ya
   facturados o todavía abiertos. La tarjeta "Recalls", la pestaña "Recalls" y la suma de la columna del
@@ -3017,7 +3018,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   filtra la pestaña por "en Invoice" ni se desglosa "in invoice · still open".
   En Quality Check Reports el botón "Recalls" cuenta CASAS (no reportes) entre las que tienen reporte
   terminado en el periodo; es menor que el del Dashboard porque un trabajo sin reporte terminado no puede
-  salir en esa tabla, y las casas hoy en Recall están en las tarjetas de arriba.
+  salir en esa tabla (las casas hoy en Recall ya cuentan: ver "Quality Check Reports · casas HOY en Recall").
 - Task list · nueva tarea sin Assignee por defecto (10/2026, pedido de Omar): el panel abre sin nadie
   marcado (antes la persona que se estaba mirando). "Add task" sin Assignee muestra "Choose who will do
   this task." y no guarda. `TaskListView` ya no calcula `newTaskAssignee`.
@@ -3087,3 +3088,11 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   aviso está puesto. `isDeviceOffline` reusa la consulta de los últimos 5 s (`PROBE_RESULT_TTL_MS`, también
   la que sigue en camino): la cola de fotos revisa antes de cada foto. Límite conocido: el portal de un wifi
   (hoteles, edificios) cuenta como "hay conexión".
+- Quality Check Reports · casas HOY en Recall (10/2026, decisión de Omar; reemplaza "no salen los reportes de
+  casas que HOY están en Recall"): sus reportes terminados SÍ salen en la tabla, además de las tarjetas "Casas
+  en Recall" de arriba, con la marca Recall y su status (RECALL). Cuentan en "Reports" y en el botón
+  "Recalls". Una casa en Recall sin reporte terminado solo sale en las tarjetas (la tabla lista reportes).
+- Detalle de la casa · pestaña "Quality check" con PDF (10/2026, pedido de Omar): cada reporte TERMINADO lleva
+  el botón "PDF" (el mismo de Quality Check Reports: `useQcReportActions.handleExportPdf`, clase
+  `.qcrs-pdf-btn`). Uno en curso no lo lleva (todavía no tiene resultado). `HouseQcHistory` recibe la casa
+  (`house`, antes `houseId`) para el equipo del PDF cuando el reporte no lo trae.

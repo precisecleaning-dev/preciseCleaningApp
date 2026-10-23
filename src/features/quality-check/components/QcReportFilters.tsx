@@ -2,8 +2,7 @@
 // la fecha de la inspección): "Reports" (todos, con cuántos reportes) o
 // "Recalls" (solo los de casas que estuvieron alguna vez en Recall; dice cuántas
 // CASAS son, "7 houses", porque la tabla puede tener más filas: una casa con dos
-// inspecciones sale dos veces) y el buscador.
-// Los reportes de casas HOY en Recall están en las tarjetas de arriba.
+// inspecciones sale dos veces) y el buscador. Las casas HOY en Recall también cuentan.
 import { FileText, RotateCcw, Search } from 'lucide-react';
 
 interface QcReportFiltersProps {

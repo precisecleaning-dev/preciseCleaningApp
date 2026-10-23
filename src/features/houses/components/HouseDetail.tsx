@@ -1461,7 +1461,7 @@ export default function HouseDetail({
             {/* ⭐ TAB QUALITY CHECK: reportes de la casa (solo lectura). */}
             {shownDetailTab === "quality" && isElementVisible("btn_tabQualityCheck") && (
               <div className="fade-in">
-                <HouseQcHistory houseId={selectedHouse.id} />
+                <HouseQcHistory house={selectedHouse} />
               </div>
             )}
 
