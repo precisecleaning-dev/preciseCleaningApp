@@ -1,23 +1,40 @@
 // Pestaña "Quality check" del detalle de la casa: todas las inspecciones de
 // ESTA casa (terminadas y en curso), de la más reciente a la más vieja. Escucha
-// solo los reportes de la casa (useQcForHouses), no la colección completa.
+// solo los reportes de la casa (useQcForHouses), no la colección completa. El
+// PDF de un reporte sale de useQcReportActions, el mismo de Quality Check Reports.
 import { ClipboardCheck } from 'lucide-react';
-import type { Place, QcReportRow } from '../../../types/index';
+import type { Place, Property, QcReportRow } from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
+import { displayClientName } from '../../../utils/customerDocs';
 import type { QCPdfTask } from '../../../utils/qcReportPdf';
+import { getRelationName } from '../../../utils/relations';
+import { useQcReportActions } from '../hooks/useQcReportActions';
 import { getReportAreas, getReportScore, getReportTimeMs } from '../qcReports';
 import { useQcForHouses } from '../useQcForHouses';
 import HouseQcReportItem from './HouseQcReportItem';
 import './HouseQcHistory.css';
 
 interface HouseQcHistoryProps {
-  houseId: string;
+  house: Property;
 }
 
-const HouseQcHistory = ({ houseId }: HouseQcHistoryProps) => {
-  const { data: houseReports, loaded: areReportsLoaded, error: reportsError } = useQcForHouses<QcReportRow>([houseId]);
+const HouseQcHistory = ({ house }: HouseQcHistoryProps) => {
+  const { data: houseReports, loaded: areReportsLoaded, error: reportsError } = useQcForHouses<QcReportRow>([house.id]);
   const places: Place[] = useLiveData('places');
   const tasks: QCPdfTask[] = useLiveData('tasks');
+  const statuses = useLiveData('statuses');
+  const customers = useLiveData('customers');
+  const teams = useLiveData('teams');
+  // Mismos nombres que en Quality Check Reports: cliente borrado sin id crudo y
+  // el equipo de la casa si el reporte no lo trae.
+  const reportActions = useQcReportActions({
+    statuses,
+    places,
+    tasks,
+    getClientName: (clientIdOrName) => displayClientName(customers, clientIdOrName),
+    getTeamName: (teamId) => getRelationName(teams, teamId, 'Unassigned'),
+    getPropertyForReport: () => house,
+  });
 
   const reportsByNewest = [...houseReports]
     .sort((firstReport, secondReport) => getReportTimeMs(secondReport) - getReportTimeMs(firstReport));
@@ -53,6 +70,8 @@ const HouseQcHistory = ({ houseId }: HouseQcHistoryProps) => {
               report={report}
               areas={getReportAreas(report, places, tasks)}
               score={getReportScore(report, tasks)}
+              isExportingPdf={reportActions.exportingReportId === report.id}
+              onExportPdf={reportActions.handleExportPdf}
             />
           ))}
         </ul>

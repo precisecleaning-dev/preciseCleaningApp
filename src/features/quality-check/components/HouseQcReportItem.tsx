@@ -1,18 +1,23 @@
 // Un reporte de QC dentro de la pestaña "Quality check" del detalle de la casa:
 // fecha y horas, resultado, %, inspector, equipo, duración, correcciones del
 // Recall y, por área, lo aprobado, su nota (con las líneas "Fail <tarea>") y
-// sus fotos. Es de lectura: se inspecciona o corrige desde Quality Check.
+// sus fotos. Es de lectura: se inspecciona o corrige desde Quality Check. Un
+// reporte terminado se puede ver en PDF (el mismo de Quality Check Reports).
 import type { CSSProperties } from 'react';
 import { Check, Clock, User, Users } from 'lucide-react';
 import type { QcReportArea, QcReportRow, QcResultBadge } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { passRateColors } from '../../../utils/qcScore';
 import { formatInspectionDuration, formatReportClock, getFinishedResultBadge } from '../qcReports';
+import QcPdfButton from './QcPdfButton';
 
 interface HouseQcReportItemProps {
   report: QcReportRow;
   areas: QcReportArea[];
   score: { passRate: number; hasData: boolean };
+  /** Se está armando el PDF de este reporte. */
+  isExportingPdf: boolean;
+  onExportPdf: (report: QcReportRow) => void;
 }
 
 /** Fotos por área que se ven como miniatura (el resto se cuenta). */
@@ -24,7 +29,7 @@ const IN_PROGRESS_BADGE: QcResultBadge = { background: '#fef3c7', color: '#854d0
 const getResultBadge = (report: QcReportRow): QcResultBadge =>
   (report.status === 'Finished' ? getFinishedResultBadge(report) : IN_PROGRESS_BADGE);
 
-const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => {
+const HouseQcReportItem = ({ report, areas, score, isExportingPdf, onExportPdf }: HouseQcReportItemProps) => {
   const resultBadge = getResultBadge(report);
   const resultBadgeStyle = { '--badge-bg': resultBadge.background, '--badge-fg': resultBadge.color } as CSSProperties;
   const scoreColors = passRateColors(score.passRate, score.hasData);
@@ -32,6 +37,8 @@ const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => 
   const scoreText = score.hasData ? `${score.passRate}%` : '—';
   const timeRange = `${formatReportClock(report.checkInAt)} – ${formatReportClock(report.checkOutAt)}`;
   const correctionsDoneDate = formatDate(report.correctionsDoneAt);
+  // Solo los terminados, como en Quality Check Reports: uno en curso aún no tiene resultado.
+  const canExportPdf = report.status === 'Finished';
 
   return (
     <li className="hqc-report">
@@ -43,6 +50,9 @@ const HouseQcReportItem = ({ report, areas, score }: HouseQcReportItemProps) => 
         <div className="hqc-report-badges">
           <span className="hqc-score" style={scoreStyle} title="Passed tasks out of answered tasks">{scoreText}</span>
           <span className="hqc-result" style={resultBadgeStyle}>{resultBadge.label}</span>
+          {canExportPdf && (
+            <QcPdfButton variant="compact" isExporting={isExportingPdf} onExportPdf={() => onExportPdf(report)} />
+          )}
         </div>
       </div>
 

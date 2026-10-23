@@ -75,6 +75,16 @@ export function useHouseAccess({ activeRole, isSuperAdmin, currentUser, formConf
     return !!activeRole?.permissions?.find((p) => p.module === 'Office Notes')?.canView;
   };
 
+  // ⭐ Pestaña "Quality check" del detalle (reportes de la casa y su PDF): hace
+  //    falta View en el módulo "Quality Check" (Roles) Y el tab activo en
+  //    Configure Fields (doble candado, como las notas de oficina). El personal
+  //    de campo sin ese permiso no la ve (decisión de Omar, 10/2026).
+  const canSeeQualityCheckTab = (): boolean => {
+    if (!isElementVisible('btn_tabQualityCheck')) return false;
+    if (isSuperAdmin) return true;
+    return !!activeRole?.permissions?.find((permission) => permission.module === 'Quality Check')?.canView;
+  };
+
   /** ¿Alguno de estos elementos es visible? (oculta tarjetas completas del detalle). */
   const anyVisible = (...elementIds: string[]): boolean => elementIds.some((id) => isElementVisible(id));
 
@@ -91,7 +101,7 @@ export function useHouseAccess({ activeRole, isSuperAdmin, currentUser, formConf
 
   return {
     canAdd, canEdit, canDelete, userScope, allowedStatusIds, isEmployeeRole, photosUnlockedFor,
-    isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes, anyVisible, isStatusVisibleForRole, mediaTabAvailable,
+    isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes, canSeeQualityCheckTab, anyVisible, isStatusVisibleForRole, mediaTabAvailable,
     canConfigureFields,
   };
 }

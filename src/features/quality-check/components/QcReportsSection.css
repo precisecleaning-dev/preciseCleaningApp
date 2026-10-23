@@ -129,19 +129,6 @@
 .qcrs-pill-text { overflow: hidden; text-overflow: ellipsis; }
 .qcrs-pill-chevron { color: #9ca3af; flex-shrink: 0; }
 
-/* ---------- Botón PDF ---------- */
-
-.qcrs-pdf-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 16px; border-radius: 10px; cursor: pointer;
-  border: 1px solid #bfdbfe; background-color: #eff6ff; color: #1d4ed8;
-  font-size: 0.8rem; font-weight: 600;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-.qcrs-pdf-btn:hover:not(:disabled) { background-color: #dbeafe; border-color: #93c5fd; }
-.qcrs-pdf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.qcrs-pdf-btn.full { width: 100%; margin-top: 12px; padding: 11px 16px; }
-
 /* ⭐ Boton de WhatsApp. Verde de la marca para que se reconozca sin leer, que es
    la mitad del valor de tenerlo a mano en una tabla larga. */
 .qcrs-wa-btn {
@@ -198,17 +185,6 @@
    botones quedaban recortados fuera de la celda. */
 /* Tres botones de icono de 44px + separaciones. */
 .qcrs-th.actions, .qcrs-td.actions { min-width: 10.5rem; width: 10.5rem; }
-/* ⭐ Boton PDF en version SOLO ICONO: en la columna de envio los tres deben
-   ocupar lo mismo; la variante con texto sigue existiendo para las tarjetas. */
-.qcrs-pdf-icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 2.75rem; height: 2.75rem; padding: 0; flex-shrink: 0;
-  border: 1px solid #bfdbfe; border-radius: var(--radius-md, 0.75rem);
-  background-color: #eff6ff; color: #1d4ed8; cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-.qcrs-pdf-icon-btn:hover:not(:disabled) { background-color: #dbeafe; border-color: #93c5fd; }
-.qcrs-pdf-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .qcrs-actions-row {
   display: flex; align-items: center; justify-content: center;
   gap: 6px; flex-wrap: nowrap;
