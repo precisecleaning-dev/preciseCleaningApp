@@ -4,11 +4,12 @@
 // sus fotos. Es de lectura: se inspecciona o corrige desde Quality Check. Un
 // reporte terminado se puede ver en PDF (el mismo de Quality Check Reports).
 import type { CSSProperties } from 'react';
-import { Check, Clock, Loader2, Printer, User, Users } from 'lucide-react';
+import { Check, Clock, User, Users } from 'lucide-react';
 import type { QcReportArea, QcReportRow, QcResultBadge } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { passRateColors } from '../../../utils/qcScore';
 import { formatInspectionDuration, formatReportClock, getFinishedResultBadge } from '../qcReports';
+import QcPdfButton from './QcPdfButton';
 
 interface HouseQcReportItemProps {
   report: QcReportRow;
@@ -50,15 +51,7 @@ const HouseQcReportItem = ({ report, areas, score, isExportingPdf, onExportPdf }
           <span className="hqc-score" style={scoreStyle} title="Passed tasks out of answered tasks">{scoreText}</span>
           <span className="hqc-result" style={resultBadgeStyle}>{resultBadge.label}</span>
           {canExportPdf && (
-            <button
-              type="button"
-              className="qcrs-pdf-btn"
-              onClick={() => onExportPdf(report)}
-              disabled={isExportingPdf}
-              title="Ver el reporte en PDF"
-            >
-              {isExportingPdf ? <Loader2 size={14} className="qcrs-spin" /> : <Printer size={14} />} PDF
-            </button>
+            <QcPdfButton variant="compact" isExporting={isExportingPdf} onExportPdf={() => onExportPdf(report)} />
           )}
         </div>
       </div>

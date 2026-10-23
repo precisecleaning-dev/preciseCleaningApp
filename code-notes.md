@@ -3096,3 +3096,20 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   el botón "PDF" (el mismo de Quality Check Reports: `useQcReportActions.handleExportPdf`, clase
   `.qcrs-pdf-btn`). Uno en curso no lo lleva (todavía no tiene resultado). `HouseQcHistory` recibe la casa
   (`house`, antes `houseId`) para el equipo del PDF cuando el reporte no lo trae.
+- Primera carga · casas (10/2026, pedido de Omar; medido con el SDK real y su caché, 3,600 casas, CPU ×4):
+  cada consulta de la ventana recorre TODAS las casas del caché y Firestore las atiende en fila (~1.2 s cada
+  una). (1) Las dos consultas de fechas viejas son UNA (`scheduleDate < '200'`): 4 → 3 consultas; de paso
+  entran las AAAA-MM-DD de 1900–1999 (mal capturadas). (2) `subscribeProperties` comparte un solo listener y
+  lo cierra 10 s después de que nadie lo usa: StrictMode (dev) lo abría, cerraba y reabría y leía todo dos
+  veces. Resultado: producción 4.7 s → 3.9 s; local 9.7 s → 3.7 s; las mismas 2,280 casas.
+  Pendiente (necesita OK, CLAUDE.md prohíbe `or()` aquí): un `or()` solo de `scheduleDate` dejaría 2 consultas
+  (~2.7 s en el banco); hay que confirmar en Firebase que no pide índice.
+- Quality Check · `QcPdfButton` (CR, 10/2026): un solo botón de PDF (features/quality-check/components, con
+  su CSS) para la tabla y las tarjetas de Quality Check Reports (`QcReportSendButtons`) y la pestaña
+  "Quality check" de la casa; variantes `icon` / `compact` / `full`, textos "View report as PDF".
+- Detalle de la casa · pestaña "Quality check" (decisión de Omar, 10/2026): se ve solo con View en el módulo
+  "Quality Check" (Roles) Y el tab activo en Configure Fields (`useHouseAccess.canSeeQualityCheckTab`, doble
+  candado como las notas de oficina). Antes la veía todo rol salvo que se ocultara por rol.
+- Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
+  `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
+  cambio aparte (renombra archivos): pendiente de decidir.

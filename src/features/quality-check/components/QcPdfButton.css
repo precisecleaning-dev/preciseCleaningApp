@@ -1,0 +1,44 @@
+/* Botón para ver un reporte de QC en PDF (QcPdfButton). */
+.qc-pdf-btn {
+  align-items: center;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 600;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px 16px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.qc-pdf-btn:hover:not(:disabled) {
+  background-color: #dbeafe;
+  border-color: #93c5fd;
+}
+.qc-pdf-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+/* Tarjeta del teléfono: ancho completo con texto. */
+.qc-pdf-btn.full {
+  margin-top: 12px;
+  padding: 11px 16px;
+  width: 100%;
+}
+/* Columna de envío de la tabla: cuadrado de 44px solo con el ícono, igual que WhatsApp y email. */
+.qc-pdf-btn.icon {
+  border-radius: var(--radius-md, 0.75rem);
+  flex-shrink: 0;
+  height: 2.75rem;
+  padding: 0;
+  width: 2.75rem;
+}
+.qc-pdf-btn-spin {
+  animation: qc-pdf-btn-spin 1s linear infinite;
+}
+@keyframes qc-pdf-btn-spin {
+  to { transform: rotate(360deg); }
+}
