@@ -3105,3 +3105,21 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
   `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
   cambio aparte (renombra archivos): pendiente de decidir.
+- Clients Report (vista nueva, 10/2026, pedido de Omar: como la tabla dinámica de la hoja del mes): trabajos con
+  Schedule Date en el periodo (default Month), un renglón por cliente con Jobs y Final Cost, y Grand Total
+  (`utils/clientsReport.ts`). Cuenta TODOS los trabajos del periodo, también los que no tienen status (el
+  Overview los saca; la hoja los cuenta). Se agrupa por el nombre YA resuelto (`displayClientNameIn`): el id,
+  el id legacy y el nombre del mismo cliente caen en un solo renglón. Orden alfabético; "No client" al final.
+  Permiso propio "Clients Report"; si el rol no lo declara, lo hereda de "Invoices" (Sidebar
+  `canViewOrLegacy`, guardia `TAB_MODULE`). El Scope Own del módulo se respeta (`propertiesForModule`).
+- Clients Report · diseño de la tabla (10/2026, pedido de Omar: para la alta gerencia): columna "Share" = qué
+  parte del Final Cost del periodo es de cada cliente (`shareOfFinalCost`). La BARRA es relativa al cliente más
+  grande (el mayor va lleno), el número sí es el % real del total: con escala 0–100% casi todas las barras
+  quedaban de 1–2 px. En el teléfono no se dibuja la columna Share (`useMediaQuery(PHONE_QUERY)`). La tarjeta
+  usa `overflow: clip` (no `hidden`) para que el encabezado de columnas quede pegado al hacer scroll.
+- Clients Report · tablero ejecutivo (10/2026, pedido de Omar): las tarjetas de arriba son
+  `ClientsReportSummary` (Final cost, Jobs, Clients, Top client) con tonos de la paleta (azul marino del menú
+  → azul de la marca); NO usan KpiGrid a propósito para no cambiar el Overview ni Invoices. "Top client" =
+  mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
+  mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
+  orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.

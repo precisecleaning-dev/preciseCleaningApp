@@ -62,6 +62,9 @@ const DEFAULT_MODULES = [
   // --- Administracion del negocio ---
   'Payroll',
   'Invoices',
+  // ⭐ Reporte de clientes (trabajos y Final Cost por cliente). Si el rol no lo
+  //    declara, lo ve quien tiene Invoices (Sidebar: canViewOrLegacy).
+  'Clients Report',
   'Customers',
   // --- Sistema ---
   'Activity Log',

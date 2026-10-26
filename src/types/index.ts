@@ -339,6 +339,35 @@ export interface RecallHousesResult {
   error: Error | null;
 }
 
+/** Un cliente en el reporte Clients Report (utils/clientsReport.ts): sus
+ *  trabajos del periodo y la suma de su Final Cost. */
+export interface ClientReportRow {
+  clientName: string;
+  jobCount: number;
+  finalCost: number;
+  /** Parte del Final Cost del periodo que es de este cliente (0 a 1). */
+  shareOfFinalCost: number;
+}
+
+/** Reporte Clients Report: un renglón por cliente y el Grand Total. */
+export interface ClientsReport {
+  rows: ClientReportRow[];
+  totalJobs: number;
+  totalFinalCost: number;
+}
+
+/** Columnas de la tabla del Clients Report que se pueden ordenar. */
+export type ClientsReportSortColumn = 'clientName' | 'jobCount' | 'finalCost' | 'shareOfFinalCost';
+
+/** Orden de una columna: de mayor a menor (desc) o de menor a mayor (asc). */
+export type SortDirection = 'asc' | 'desc';
+
+/** Orden elegido en la tabla del Clients Report (null = orden original: por cliente A–Z). */
+export interface ClientsReportSort {
+  column: ClientsReportSortColumn;
+  direction: SortDirection;
+}
+
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
 export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
 
