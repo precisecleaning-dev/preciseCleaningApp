@@ -6,39 +6,35 @@ import App from './App.tsx'
 // ============================================================================
 // ⭐ RECUPERACION AUTOMATICA TRAS UN DEPLOY
 //
-// Aunque el Service Worker ya se limpia solo (ver vite.config.ts), queda un
-// caso que la configuracion no puede cubrir: una pestana que YA estaba abierta
-// cuando se publico una version nueva. Ese documento tiene en memoria un
-// index.html que apunta a chunks con hash viejo; al navegar a una vista con
-// carga diferida (React.lazy), el import falla con:
-//
+// Caso 1 — una pestaña que YA estaba abierta cuando se publicó una versión
+// nueva: su index.html en memoria apunta a chunks con hash viejo y, al abrir
+// una vista de carga diferida (React.lazy), el import falla con
 //   "Failed to fetch dynamically imported module .../assets/CalendarView-XXXX.js"
+// Vite emite `vite:preloadError` en ese momento.
 //
-// Vite emite `vite:preloadError` justo en ese momento. La unica salida real es
-// recargar para pedir el index.html nuevo.
+// Caso 2 — el chunk quedó GUARDADO MAL: durante un deploy Cloudflare respondió
+// index.html en lugar del archivo y el navegador lo guardó un año como si fuera
+// el JavaScript. Recargar no basta: hay que quitar el Service Worker y pedir el
+// archivo de nuevo al servidor. Eso lo hace `window.pcRepairAssets`, definido
+// en index.html (allí también atiende el caso de que no cargue el bundle
+// principal, que aquí no se puede detectar porque este archivo no llegaría a
+// correr).
 //
-// El guard con sessionStorage es importante: si el fallo fuese permanente (por
-// ejemplo un chunk realmente ausente del deploy), recargar sin freno dejaria la
-// pagina en un bucle infinito de recargas. Con esto se intenta UNA vez por
-// sesion; si vuelve a fallar, se deja pasar el error para que sea visible.
+// pcRepairAssets lleva su propio tope (2 intentos por minuto, en
+// sessionStorage): si el fallo sigue no entra en un bucle de recargas, y el
+// error se deja pasar para que sea visible.
 // ============================================================================
-const RELOAD_FLAG = 'pc:chunk-reload'
+
+/** URL del chunk que no cargó, sacada del mensaje del error de Vite. */
+const getFailedChunkUrl = (error: unknown): string | undefined => {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /https?:\/\/\S+\.(?:js|css)/.exec(message)?.[0]
+}
 
 window.addEventListener('vite:preloadError', (event) => {
-  if (sessionStorage.getItem(RELOAD_FLAG)) {
-    // Ya se reintento en esta sesion: no recargar otra vez.
-    console.error('Chunk no disponible tras recargar. Revisa el deploy.', event)
-    return
-  }
-  sessionStorage.setItem(RELOAD_FLAG, '1')
-  event.preventDefault()
-  window.location.reload()
-})
-
-// Si la app arranca bien, se limpia la marca para que un futuro deploy vuelva a
-// tener su reintento disponible.
-window.addEventListener('load', () => {
-  sessionStorage.removeItem(RELOAD_FLAG)
+  const isRepairStarted = window.pcRepairAssets?.(getFailedChunkUrl(event.payload)) ?? false
+  // Sin reparación (intentos agotados) el error sigue su curso y se ve.
+  if (isRepairStarted) event.preventDefault()
 })
 
 createRoot(document.getElementById('root')!).render(
