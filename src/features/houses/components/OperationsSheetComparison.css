@@ -1,0 +1,272 @@
+/* Resultado de la comparación Excel ↔ app (OperationsSheetComparison.tsx).
+   Una sola lista con rejilla: en el teléfono cada fila se vuelve tarjeta
+   (los montos llevan su etiqueta con data-label). */
+.osc-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.osc-totals {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  color: #475569;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  gap: 8px 24px;
+  padding: 12px 16px;
+}
+
+.osc-totals strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.osc-total-difference.is-different strong {
+  color: #b91c1c;
+}
+
+.osc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* min-height 0: quita el mínimo táctil global de 48 px (index.css). */
+.osc-tab {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 6px;
+  min-height: 0;
+  padding: 7px 14px;
+}
+
+.osc-tab:hover {
+  background: #f8fafc;
+}
+
+.osc-tab.active {
+  background: #1d3fcf;
+  border-color: #1d3fcf;
+  color: #ffffff;
+}
+
+.osc-tab-count {
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+}
+
+.osc-tab.active .osc-tab-count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.osc-list {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: clip;
+}
+
+.osc-list-head,
+.osc-row {
+  align-items: center;
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns: 112px minmax(220px, 1fr) repeat(4, 118px) 150px;
+  padding: 10px 16px;
+}
+
+.osc-list-head {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.osc-head-amount {
+  text-align: right;
+}
+
+.osc-row {
+  border-bottom: 1px solid #f1f5f9;
+  border-left: 3px solid transparent;
+  row-gap: 6px;
+}
+
+.osc-row.status-different {
+  border-left-color: #f59e0b;
+}
+
+.osc-row.status-sheetOnly {
+  border-left-color: #dc2626;
+}
+
+.osc-row.status-appOnly {
+  border-left-color: #7c3aed;
+}
+
+.osc-row.status-ok {
+  border-left-color: #16a34a;
+}
+
+.osc-date {
+  color: #334155;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.osc-job {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.osc-address {
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.osc-meta {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.osc-amount {
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.osc-amount.is-different {
+  background: #fff7ed;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  padding: 4px 6px;
+}
+
+.osc-amount-sheet {
+  color: #b45309;
+}
+
+.osc-amount-app {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.osc-status {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.osc-badge {
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.osc-badge.status-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.osc-badge.status-different {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.osc-badge.status-sheetOnly {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.osc-badge.status-appOnly {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.osc-open-btn {
+  align-items: center;
+  background: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #1d3fcf;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: 4px;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.osc-open-btn:hover {
+  background: #eef2ff;
+}
+
+.osc-reasons {
+  color: #92400e;
+  font-size: 0.75rem;
+  grid-column: 2 / -1;
+  margin: 0;
+}
+
+.osc-empty {
+  color: #64748b;
+  margin: 0;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .osc-list-head {
+    display: none;
+  }
+  .osc-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .osc-job {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+  .osc-amount {
+    text-align: left;
+  }
+  .osc-amount::before {
+    color: #64748b;
+    content: attr(data-label);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .osc-status {
+    justify-content: flex-start;
+  }
+  .osc-reasons {
+    grid-column: 1 / -1;
+  }
+}

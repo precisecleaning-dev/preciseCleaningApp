@@ -3,20 +3,28 @@
 //    Antes vivían dentro de InvoicesView; ahora también las usa el Overview
 //    unificado, así que se extrajeron aquí para que ambas vistas den la misma
 //    cifra exacta:
-//      Service Price = suma de los servicios cobrados (billing_services)
+//      Service Price = suma de los servicios cobrados SIN impuesto (subtotal =
+//                      cantidad × precio de cada billing_service)
 //      Taxes         = 8.25% del Service Price (0 si la casa está exenta)
-//      Final Cost    = Service Price − Taxes
+//      Final Cost    = Service Price + Taxes si el servicio tiene Apply Tax =
+//                      Yes; Service Price − Taxes si es No (fórmula de la hoja:
+//                      IF(Customers "YES", F+G, F−G))
 //      Profit        = Final Cost − Payroll
 //      Margin        = Profit / Final Cost
+//    ⭐ Antes el Service Price salía del `total` del servicio, que YA trae el
+//       impuesto sumado (Apply Tax = Yes): la app cobraba el 8.25% dos veces y
+//       luego lo restaba ($100 → Price $108.25, Final $99.32 en vez de $108.25).
+//       Decisión de Omar (10/2026): las fórmulas de la hoja son las correctas.
 
 import { useMemo } from 'react';
-import type { Property, PayrollRecord } from '../types/index';
+import type { BilledServiceAmounts, Property, PayrollRecord } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
 
 /** Impuesto de venta de Texas ($200 → $16.50 · $425 → $35.06). */
-const TAX_RATE = 0.0825;
+export const TAX_RATE = 0.0825;
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+/** Redondea a centavos: 28.875 → 28.88. */
+export const round2 = (n: number) => Math.round(n * 100) / 100;
 // Un solo formateador: toLocaleString crea uno nuevo en cada llamada y el
 // Overview en Year formatea miles de montos.
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -32,6 +40,28 @@ export interface JobFinancials {
   /** Profit / Final Cost en %. null si Final Cost = 0. */
   margin: number | null;
 }
+
+const toNumber = (value: unknown): number | null => {
+  const amount = typeof value === 'number' ? value : Number(value);
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(amount) ? amount : null;
+};
+
+/**
+ * Precio del servicio SIN impuesto: el subtotal guardado, o cantidad × precio.
+ * Registros viejos sin ninguno de los dos: su total (no hay forma de separar
+ * el impuesto).
+ */
+export const getBilledServiceBasePrice = (service: BilledServiceAmounts): number => {
+  const subtotal = toNumber(service.subtotal);
+  if (subtotal !== null) return subtotal;
+  const quantity = toNumber(service.quantity);
+  const unitPrice = toNumber(service.price);
+  if (quantity !== null && unitPrice !== null) return quantity * unitPrice;
+  return toNumber(service.total) ?? 0;
+};
+
+/** Apply Tax = Yes (o sin definir, el valor de siempre): el impuesto se SUMA al Final Cost. */
+const isTaxAddedToFinalCost = (service: BilledServiceAmounts) => service.applyTax !== 'No';
 
 const marginOf = (profit: number, finalCost: number): number | null =>
   finalCost > 0 ? (profit / finalCost) * 100 : null;
@@ -64,16 +94,20 @@ export function useJobFinancials(enabled = true) {
   const payrolls = payrollLive.data;
 
   const byProp = useMemo(() => {
-    const m = new Map<string, { price: number; payroll: number }>();
+    // price = suma sin impuesto · taxAddedPrice = la parte con Apply Tax = Yes
+    // (su impuesto se suma; el del resto se resta).
+    const m = new Map<string, { price: number; taxAddedPrice: number; payroll: number }>();
     services.forEach((srv) => {
       if (!srv.propertyId) return;
-      const e = m.get(srv.propertyId) || { price: 0, payroll: 0 };
-      e.price += Number(srv.total) || 0;
+      const e = m.get(srv.propertyId) || { price: 0, taxAddedPrice: 0, payroll: 0 };
+      const basePrice = getBilledServiceBasePrice(srv);
+      e.price += basePrice;
+      if (isTaxAddedToFinalCost(srv)) e.taxAddedPrice += basePrice;
       m.set(srv.propertyId, e);
     });
     payrolls.forEach((pay) => {
       if (!pay.propertyId) return;
-      const e = m.get(pay.propertyId) || { price: 0, payroll: 0 };
+      const e = m.get(pay.propertyId) || { price: 0, taxAddedPrice: 0, payroll: 0 };
       e.payroll += getPayrollTotal(pay);
       m.set(pay.propertyId, e);
     });
@@ -87,7 +121,10 @@ export function useJobFinancials(enabled = true) {
         const servicePrice = round2(e?.price || 0);
         const payroll = round2(e?.payroll || 0);
         const taxes = prop.taxExempt ? 0 : round2(servicePrice * TAX_RATE);
-        const finalCost = round2(servicePrice - taxes);
+        // Impuesto que se suma (Apply Tax = Yes) menos el que se resta (No).
+        const taxSubtractedPrice = servicePrice - (e?.taxAddedPrice || 0);
+        const taxBalance = prop.taxExempt ? 0 : ((e?.taxAddedPrice || 0) - taxSubtractedPrice) * TAX_RATE;
+        const finalCost = round2(servicePrice + taxBalance);
         const profit = round2(finalCost - payroll);
         return { servicePrice, taxes, finalCost, payroll, profit, margin: marginOf(profit, finalCost) };
       },

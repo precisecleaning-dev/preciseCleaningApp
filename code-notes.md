@@ -3096,3 +3096,49 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   el botón "PDF" (el mismo de Quality Check Reports: `useQcReportActions.handleExportPdf`, clase
   `.qcrs-pdf-btn`). Uno en curso no lo lleva (todavía no tiene resultado). `HouseQcHistory` recibe la casa
   (`house`, antes `houseId`) para el equipo del PDF cuando el reporte no lo trae.
+- Quality Check · `QcPdfButton` (CR, 10/2026): un solo botón de PDF (features/quality-check/components, con
+  su CSS) para la tabla y las tarjetas de Quality Check Reports (`QcReportSendButtons`) y la pestaña
+  "Quality check" de la casa; variantes `icon` / `compact` / `full`, textos "View report as PDF".
+- Detalle de la casa · pestaña "Quality check" (decisión de Omar, 10/2026): se ve solo con View en el módulo
+  "Quality Check" (Roles) Y el tab activo en Configure Fields (`useHouseAccess.canSeeQualityCheckTab`, doble
+  candado como las notas de oficina). Antes la veía todo rol salvo que se ocultara por rol.
+- Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
+  `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
+  cambio aparte (renombra archivos): pendiente de decidir.
+- Clients Report (vista nueva, 10/2026, pedido de Omar: como la tabla dinámica de la hoja del mes): trabajos con
+  Schedule Date en el periodo (default Month), un renglón por cliente con Jobs y Final Cost, y Grand Total
+  (`utils/clientsReport.ts`). Cuenta TODOS los trabajos del periodo, también los que no tienen status (el
+  Overview los saca; la hoja los cuenta). Se agrupa por el nombre YA resuelto (`displayClientNameIn`): el id,
+  el id legacy y el nombre del mismo cliente caen en un solo renglón. Orden alfabético; "No client" al final.
+  Permiso propio "Clients Report"; si el rol no lo declara, lo hereda de "Invoices" (Sidebar
+  `canViewOrLegacy`, guardia `TAB_MODULE`). El Scope Own del módulo se respeta (`propertiesForModule`).
+- Clients Report · diseño de la tabla (10/2026, pedido de Omar: para la alta gerencia): columna "Share" = qué
+  parte del Final Cost del periodo es de cada cliente (`shareOfFinalCost`). La BARRA es relativa al cliente más
+  grande (el mayor va lleno), el número sí es el % real del total: con escala 0–100% casi todas las barras
+  quedaban de 1–2 px. En el teléfono no se dibuja la columna Share (`useMediaQuery(PHONE_QUERY)`). La tarjeta
+  usa `overflow: clip` (no `hidden`) para que el encabezado de columnas quede pegado al hacer scroll.
+- Clients Report · tablero ejecutivo (10/2026, pedido de Omar): las tarjetas de arriba son
+  `ClientsReportSummary` (Final cost, Jobs, Clients, Top client) con tonos de la paleta (azul marino del menú
+  → azul de la marca); NO usan KpiGrid a propósito para no cambiar el Overview ni Invoices. "Top client" =
+  mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
+  mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
+  orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.
+- Pipeline → Excel (10/2026, pedido de Omar): botón "Excel" en el Pipeline (solo con el grupo Financial) abre
+  `OperationsSheetDialog`: exporta la hoja "Daily Operations" del periodo (default Month) y compara un Excel
+  subido. MATCH por calle (número + primera palabra: "401 twin") + misma fecha; entre varios trabajos de la
+  misma calle y día (Twin Creek) gana unidad / Service Price / Payroll / cliente / nota; lo que sobra se
+  intenta ±7 días ("Different date"). Regla de impuesto = la de la app (Final Cost = Price − 8.25%, exento = 0;
+  decisión de Omar): las filas de la hoja que SUMAN el impuesto salen como diferencia "Excel adds the tax".
+  OJO hoja de October: 145 filas con `IF(...,F+G,F+G)` (suma el impuesto siempre). Export: fórmulas propias
+  (Taxes, Final Cost, Profit, Margin, WEEKNUM), NO el XLOOKUP a la pestaña Customers (no viene en el archivo
+  → #REF!). Notes = notas de oficina solo si el rol puede verlas. exceljs y xlsx se cargan solo al usarse;
+  las listas de Invoice/Drip pans van por RANGO (`dataValidations.add`): por celda exceljs arma rangos
+  encimados. Pendiente: QC Status, Recall Completed, Move in, Number of Days y Drip pans salen vacíos (la app
+  no guarda esos datos); exceljs (~270 kB gzip) entra al precache del Service Worker como xlsx.
+- Finanzas por trabajo = fórmulas de la hoja (10/2026, decisión de Omar; REEMPLAZA "regla de impuesto = la de
+  la app" de la nota Pipeline → Excel): Service Price = suma de los servicios SIN impuesto (`subtotal`, o
+  cantidad × precio; registros sin ninguno: su `total`), Taxes = Price × 8.25% (0 si `taxExempt`), Final Cost =
+  Price + Taxes con Apply Tax = Yes del servicio, Price − Taxes con No (si mezcla: suma lo de Yes y resta lo
+  de No). Antes el Price salía del `total` del servicio, que YA trae el impuesto: se cobraba el 8.25% dos
+  veces ($100 → Final $99.32 en vez de $108.25). No volver a usar `total` como precio. Cambian a la vez
+  Invoices, Overview, Owner/Manager, Payroll, Clients Report y Pipeline → Excel (todos usan useJobFinancials).

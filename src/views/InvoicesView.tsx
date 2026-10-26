@@ -7,7 +7,6 @@ import {
   X, StickyNote, FileImage, PauseCircle
 } from 'lucide-react';
 import PeriodBar from '../components/PeriodBar';
-import KpiGrid from '../components/KpiGrid';
 import { groupByDate, weekNumberOf } from '../utils/dateGrouping';
 import { inPeriod, periodRange } from '../utils/periods';
 import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
@@ -211,7 +210,6 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
   // ⭐ billing_services + payroll en tiempo real y fórmulas de la hoja
   const jobFin = useJobFinancials();
   const cash = (n: number): ReactNode => (jobFin.loading ? <span className="skel-line skel-money" /> : money(n));
-  const cashText = (n: number) => (jobFin.loading ? '…' : money(n));
 
   // ⭐ Periodo (Day / Week / Month / Year / Custom) — misma barra que el
   //    Overview. Reemplaza Start/End Date y "Agrupar por": el periodo filtra y
@@ -746,32 +744,6 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
 
       {/* ⭐ Periodo — misma barra que el Overview */}
       <PeriodBar period={invoicesPeriod} onChange={setInvoicesPeriod} />
-
-      {/* ⭐ RESUMEN del periodo — de izquierda a derecha igual que la hoja:
-          lo cobrado → impuesto → neto → costo → ganancia. */}
-      <KpiGrid
-        label="Resumen financiero"
-        groups={[{
-          key: 'fin',
-          title: 'Financials',
-          color: '#1d3fcf',
-          tiles: [
-            { key: 'price', label: 'Service price', value: cashText(filteredTotals.servicePrice), sub: `${filteredProperties.length.toLocaleString('en-US')} ${filteredProperties.length === 1 ? 'job' : 'jobs'}` },
-            { key: 'tax', label: 'Taxes', value: cashText(filteredTotals.taxes), sub: '8.25% Texas' },
-            { key: 'final', label: 'Final cost', value: cashText(filteredTotals.finalCost), sub: 'Price − taxes' },
-            {
-              key: 'payroll', label: 'Payroll', value: cashText(filteredTotals.payroll),
-              sub: filteredTotals.finalCost > 0 ? `${((filteredTotals.payroll / filteredTotals.finalCost) * 100).toFixed(1)}% of final cost` : '—',
-            },
-            {
-              key: 'profit', label: 'Profit', value: cashText(filteredTotals.profit),
-              tone: filteredTotals.profit < 0 ? 'bad' : 'good',
-              highlight: filteredTotals.profit < 0 ? 'bad' : 'good',
-              sub: `Margin ${pct(filteredTotals.margin)}`,
-            },
-          ],
-        }]}
-      />
 
       {/* ⭐ Filtros: status del invoice (chips) + búsqueda */}
       <div className="inv-filters-bar">

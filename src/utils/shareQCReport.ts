@@ -29,6 +29,7 @@
 
 import { generatePDFBlob } from './pdfGenerator';
 import { formatDate, formatDateForFile } from './dateFormat';
+import { downloadBlob } from '../shared/utils/downloadFile';
 
 interface QCShareSummary {
   clientName: string;
@@ -192,14 +193,7 @@ export const shareNow = async (prepared: PreparedQCShare): Promise<ShareResult> 
 
 /** Descarga el PDF ya preparado. Un <a download> sí funciona sin activación. */
 export const downloadPrepared = (prepared: PreparedQCShare): void => {
-  const url = URL.createObjectURL(prepared.blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = prepared.fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  downloadBlob(prepared.blob, prepared.fileName);
 };
 
 /**

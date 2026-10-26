@@ -1,0 +1,176 @@
+/* Ventana Pipeline → Excel (OperationsSheetDialog.tsx). El fondo y el tamaño
+   salen de las clases globales .modal-overlay-centered y .modal-90. */
+.osd-dialog {
+  overflow: hidden;
+}
+
+.osd-header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 22px;
+}
+
+.osd-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.osd-heading-icon {
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+.osd-title {
+  color: #0f172a;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.osd-subtitle {
+  color: #64748b;
+  font-size: 0.8125rem;
+  margin: 2px 0 0;
+}
+
+.osd-close-btn {
+  align-items: center;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px;
+}
+
+.osd-close-btn:hover {
+  color: #0f172a;
+}
+
+.osd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 18px 22px 22px;
+}
+
+.osd-actions {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.osd-action-card {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.osd-action-title {
+  color: #0f172a;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.osd-action-text {
+  color: #64748b;
+  font-size: 0.8125rem;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.osd-primary-btn,
+.osd-secondary-btn {
+  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  gap: 6px;
+  min-height: 0;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.osd-primary-btn {
+  background: #16a34a;
+  border: 1px solid #16a34a;
+  color: #ffffff;
+}
+
+.osd-primary-btn:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.osd-secondary-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1d3fcf;
+}
+
+.osd-secondary-btn:hover:not(:disabled) {
+  background: #eef2ff;
+}
+
+.osd-primary-btn:disabled,
+.osd-secondary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.osd-file-input {
+  display: none;
+}
+
+.osd-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  font-size: 0.875rem;
+  margin: 0;
+  padding: 10px 14px;
+}
+
+.osd-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 768px) {
+  /* App.css hace `.modal-90 > header { flex-wrap: wrap }` (barra de acciones del
+     detalle de la casa); aquí la X se queda junto al título. */
+  .osd-dialog > .osd-header {
+    flex-wrap: nowrap;
+  }
+  .osd-header {
+    padding: 14px 16px;
+  }
+  .osd-body {
+    padding: 14px 16px 18px;
+  }
+  .osd-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .osd-action-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
