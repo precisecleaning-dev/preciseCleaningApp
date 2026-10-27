@@ -36,6 +36,7 @@ const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   houses: () => import('../views/HousesView'),
   pipeline: () => import('../views/HousesView'),
   invoices: () => import('../views/InvoicesView'),
+  clients_report: () => import('../views/ClientsReportView'),
   calendar: () => import('../views/CalendarView'),
   qc_report: () => import('../views/QualityCheckHub'),
   qc_dashboard: () => import('../views/QualityDashboardView'),

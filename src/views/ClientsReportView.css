@@ -1,0 +1,55 @@
+/* =====================================================================
+   ⭐ Clients Report — mismo aspecto que el QC Dashboard y el Overview:
+   encabezado, barra de periodo, indicadores y tabla.
+   (barra de periodo en PeriodBar.css, indicadores en components/ClientsReportSummary.css,
+   tabla en components/ClientsReportTable.css)
+   ===================================================================== */
+/* App.css fija `* { font-family: system-ui }`: la letra del diseño se aplica
+   a cada elemento. */
+.cr-page,
+.cr-page * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+.cr-page {
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.cr-page > * {
+  flex-shrink: 0;
+}
+
+.cr-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.cr-title-group {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cr-title {
+  color: #0f172a;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.cr-subtitle {
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 4px 0 0;
+}

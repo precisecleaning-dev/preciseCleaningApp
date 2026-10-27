@@ -1,0 +1,147 @@
+/* Tarjetas de resumen del Clients Report (ClientsReportSummary.tsx). Tonos de
+   la paleta de la app: el azul marino del menú (#0f172a) hasta el azul de la
+   marca (#1d3fcf) y el del ítem activo (#3b82f6). La letra la pone
+   ClientsReportView.css (.cr-page *). */
+.crs-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.crs-card {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px 20px 20px;
+  position: relative;
+}
+
+/* Brillo suave en la esquina: da profundidad sin salirse de la paleta. */
+.crs-card::after {
+  background: radial-gradient(circle at top right, rgba(255, 255, 255, 0.16), transparent 60%);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.crs-card.tone-navy {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+.crs-card.tone-indigo {
+  background: linear-gradient(135deg, #172554 0%, #1e3a8a 100%);
+}
+
+.crs-card.tone-blue {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d3fcf 100%);
+}
+
+.crs-card.tone-sky {
+  background: linear-gradient(135deg, #1d3fcf 0%, #3b82f6 100%);
+}
+
+.crs-card-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.crs-label {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crs-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #ffffff;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.crs-value {
+  font-size: 1.875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Top client: un nombre, no un número. */
+.crs-value.is-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.crs-detail {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Esqueleto sobre fondo oscuro: el gris claro de .skel-line (y su brillo) se
+   verían blancos. */
+.crs-card .skel-line {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+
+.crs-card .skel-line::after {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.16) 50%, transparent 100%);
+}
+
+.crs-value-skeleton {
+  height: 2rem;
+  width: 70%;
+}
+
+.crs-detail-skeleton {
+  height: 0.8rem;
+  width: 50%;
+}
+
+@media (max-width: 1024px) {
+  .crs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .crs-grid {
+    gap: 12px;
+  }
+  .crs-card {
+    padding: 14px 16px 16px;
+  }
+  .crs-value {
+    font-size: 1.375rem;
+  }
+  .crs-value.is-text {
+    font-size: 1rem;
+  }
+  /* Tarjetas angostas: el detalle baja de línea en vez de cortarse. */
+  .crs-detail {
+    white-space: normal;
+  }
+}

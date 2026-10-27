@@ -43,7 +43,7 @@ Los permisos heredados se calculan igual que en la app: Recycle Bin y Activity
 Log heredan de Settings, y Task List hereda de Manager/Owner.
 
 `fin` dice si el usuario puede ver dinero. Es verdadero para Administrator, para
-quien ve Payroll, Invoices, Owner o Manager, y para quien ve Houses sin el grupo
+quien ve Payroll, Invoices, Clients Report, Owner o Manager, y para quien ve Houses sin el grupo
 `financial` oculto.
 
 ## Qué cambia respecto de hoy
