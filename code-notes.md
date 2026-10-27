@@ -2932,6 +2932,209 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   con zoom la tabla quedaba de ~50 px y el TOTAL fijo tapaba la única fila. No volver a `min-height: 0`.
   El Overview (`HousesView.css`, `.hv-unified` / `.ujt-scroll`) usa el mismo patrón y puede tener el mismo
   problema; no se tocó.
+- Task list · nueva tarea con archivos y comentarios (10/2026): el formulario usa los mismos
+  `TaskAttachments` y `TaskComments` que el panel de la tarea, pero en borrador. Los comentarios viajan en
+  el MISMO batch de `userTasksService.create` (`initialComments`, con la hora en que se escribieron; el
+  autor siempre es quien crea). Los archivos se suben DESPUÉS de crear la tarea (`useTaskActions.add` →
+  `attachFiles`): Storage usa `user_tasks/{id}/…` y la regla de update pide la tarea ya creada. Si un
+  archivo falla, la tarea queda creada y se avisa. En el formulario "Post" solo agrega al borrador: lo
+  escrito sin "Post" no se guarda.
+- Task list · Assignee (10/2026): `AssigneePicker` es un campo de búsqueda (chips + texto), ya no un botón
+  desplegable. La lista es la de `assignablePeople` (personas que pueden abrir Task List, más uno mismo)
+  ordenada de la A a la Z por nombre (`compareByUserName`; "Me" queda en su lugar alfabético) y filtrada
+  sin mayúsculas ni acentos (`matchesSearch`). Es `type="text"` a propósito: con `type="search"` Chrome
+  borra el texto con Escape y la lista se volvía a abrir. Marcar agrega al final (la primera asignada no
+  cambia).
+- Task list · CR del formulario de nueva tarea (10/2026):
+  - `attachFiles` sube archivo por archivo con su propio try/catch y un solo aviso nombra los que
+    fallaron ("2 of 5 files weren't uploaded: …"); sin red no intenta ninguno y los nombra todos. `add`
+    sigue devolviendo boolean: el panel se cierra igual, porque dejarlo abierto con "Add task" crearía
+    la tarea dos veces. Si se quiere reintentar desde el formulario, hace falta un modo "reintentar
+    subida" con el id de la tarea ya creada.
+  - `InitialComment` vive en `src/types/userTasks.ts` (no exportado desde el service, como pedía el CR):
+    CLAUDE.md manda los tipos a src/types.
+  - `normalizeForSearch` usa `/[\u0300-\u036f]/g` escrito con escapes: con los caracteres combinantes
+    literales la regex es invisible en el diff.
+  - AssigneePicker: `onBlur` del contenedor cierra la lista cuando el foco sale del selector (Tab). La
+    lista tiene `tabIndex={-1}` para que tocar una opción no la cierre antes del clic.
+- Quality Check · reportes y tarjetas (10/2026): tocar un reporte (fila de la tabla o tarjeta en teléfono)
+  abre el detalle de su casa con el host de App (`onOpenHouseDetail`); los clics en sus controles (envíos,
+  status) no lo disparan (`isClickOnControl` en qcReports.ts). Si la casa no está cargada (borrada o fuera
+  de la ventana de 12 meses) el reporte no se puede tocar. Las tarjetas de Pending / Did Not Pass / Recall
+  ya NO tienen Editar ni Eliminar (decisión de Omar): se hacen desde el detalle. Por eso Quality Check ya
+  no usa `useHouseTrash` ni recibe `onOpenHouseEdit`.
+- Quality Check · notas por área (10/2026): "Notes for the team" (una sola, en `qcData.__general.notes`)
+  se cambió por un campo de notas al final de cada área del checklist (`qcData[placeId].notes`, el campo
+  que ya leían el PDF y la tabla de reportes). Marcar Fail agrega "Fail <tarea>" al final de la nota del
+  área y quitar el Fail quita esa línea, en el handler de la respuesta (`syncFailNoteLine`); lo escrito a
+  mano no se toca (si se edita la línea "Fail …", ya no se quita sola). Se quitó la línea automática
+  `⚠ Marcado "No": …` que se agregaba AL GUARDAR (habría duplicado); al abrir un QC viejo esa línea se
+  convierte en líneas "Fail …" (`qcDataWithFailNotes`). Las "Notes for the team" de reportes viejos siguen
+  en el PDF (área General); si el QC que se abre las tiene, el panel las muestra para corregirlas o
+  borrarlas (ver "Notes for the team" de QC empezados antes). En el PDF cada área lleva siempre su
+  recuadro "Notes" (con "No notes for this area." si está vacío).
+- REEMPLAZADA por "Quality Check Reports · sin pestañas" (ya no hay pestañas Invoice / Recall).
+  Quality Check Reports · pestañas (10/2026): ya no existe "Quality Checks"; solo Invoice y Recall. La
+  pestaña sigue el estado ACTUAL de la casa si está en Recall o Invoice; si está en otro estado (o ya no
+  existe) decide el resultado: pasó → Invoice, no pasó → Recall (`getReportTab`, decisión de Omar). En
+  Invoice, "Recall" antes del cliente = la casa estuvo alguna vez en Recall (`useRecallHouses`, misma
+  fuente y etiqueta `.ujt-recall` que el Overview).
+- Detalle de la casa · pestaña "Quality check" (10/2026): `HouseQcHistory` lista los reportes de ESA casa
+  con `useQcForHouses([id])` (no la colección completa), del más reciente al más viejo, de solo lectura.
+  Las fotos de oficina (`__office`) no salen. La línea vieja `⚠ Marcado "No": …` se muestra como líneas
+  "Fail …" (solo al mostrar; el dato no cambia). Se oculta por rol con el elemento `btn_tabQualityCheck`
+  (Configurar campos → Tabs), como Financials.
+- Recall · una sola regla (10/2026): "la casa estuvo en Recall" = `wasHouseInRecall` (utils/jobRecall.ts):
+  su `status_history` entró a un status de Recall (useRecallHouses) o su status actual es Recall. La usan
+  la marca "Recall" (shared/components/RecallMark: Invoices, reportes de QC; el Overview y las filas del
+  QC Dashboard ya la tenían) y los conteos del QC Dashboard: el KPI "Recalls" y la columna "Recalls" del
+  Team Scorecard. Antes contaban solo los trabajos cuyo ÚLTIMO QC falló, y una casa que pasó por Recall y
+  luego se re-inspeccionó y pasó no contaba (daba 10 en el año). Un QC fallado que NO movió la casa a
+  Recall se muestra como "Did not pass" (antes "Re-clean"), pero no cuenta como Recall.
+  `HouseList.wasRecall` repite la regla en línea (podría usar wasHouseInRecall).
+- REEMPLAZADA en parte por "Quality Check Reports · casas HOY en Recall": esos reportes ya SÍ salen.
+  Quality Check Reports · sin pestañas (10/2026): no salen los reportes de casas que HOY están en Recall
+  (ya están en las tarjetas "Casas en Recall"; `isPropertyStatusRecall`). Queda el total y el buscador.
+- REEMPLAZADA por "Recalls · UN solo número": la pestaña ya NO filtra por Invoice (el orden del Team
+  Scorecard sí sigue). QC Dashboard · pestaña "Recalls" (antes "Re-clean", 10/2026): filtra las casas que YA están en Invoice y
+  que alguna vez estuvieron en Recall (`isRowInTab`: `row.recall && row.isInvoice`), pedido de Omar. Por eso
+  su número es menor que el KPI "Recalls", que cuenta todos los trabajos que estuvieron en Recall (también
+  los que siguen en Recall o en Quality Check). Team Scorecard ordenado por Recalls de mayor a menor (a
+  igual número, mejor Avg primero).
+- REEMPLAZADA por "Recalls · UN solo número": ya no hay desglose "in invoice · still open" (la marca
+  `RecallMark` antes del cliente sigue). QC Dashboard · Recalls (10/2026, revisión): el KPI "Recalls" (todos los trabajos que estuvieron en Recall)
+  dice debajo "N in invoice · M still open": N es el número de la pestaña "Recalls" (solo casas ya en
+  Invoice) y M los que siguen en Recall o en Quality Check. Así 97 vs 99 no se lee como error. Se quitó el
+  "invoices on hold" del KPI (contaba re-cleans, otra cosa). La marca "Recall" va antes del cliente con
+  `RecallMark` (como Invoices y reportes); salió de la columna Result y su CSS `.qd-recall`.
+- Quality Check Reports · botón "Recalls" (10/2026): junto a "Reports" (todos) filtra solo los reportes de
+  casas que estuvieron alguna vez en Recall (misma regla que la marca: `recallHouseIds`). Los dos totales
+  salen del periodo y la búsqueda. Es un filtro, no una pestaña por status. (Las casas HOY en Recall ya
+  salen en la tabla: ver "Quality Check Reports · casas HOY en Recall".)
+- Recalls · UN solo número (10/2026, decisión de Omar; reemplaza las notas anteriores de "Recalls" del QC
+  Dashboard): Recalls = todos los trabajos del periodo que estuvieron en Recall (`wasHouseInRecall`), ya
+  facturados o todavía abiertos. La tarjeta "Recalls", la pestaña "Recalls" y la suma de la columna del
+  Team Scorecard salen de la misma regla (`isRowInTab(row, 'recall')`) y dan el mismo número. Ya no se
+  filtra la pestaña por "en Invoice" ni se desglosa "in invoice · still open".
+  En Quality Check Reports el botón "Recalls" cuenta CASAS (no reportes) entre las que tienen reporte
+  terminado en el periodo; es menor que el del Dashboard porque un trabajo sin reporte terminado no puede
+  salir en esa tabla (las casas hoy en Recall ya cuentan: ver "Quality Check Reports · casas HOY en Recall").
+- Task list · nueva tarea sin Assignee por defecto (10/2026, pedido de Omar): el panel abre sin nadie
+  marcado (antes la persona que se estaba mirando). "Add task" sin Assignee muestra "Choose who will do
+  this task." y no guarda. `TaskListView` ya no calcula `newTaskAssignee`.
+- Task list · Assignee obligatorio (CR, 10/2026): `userTasksService.assertValidTaskFields` rechaza
+  `assignees: []` (en create, createProjectWithTasks y update): una tarea sin asignados no sale en la lista
+  de nadie porque las consultas filtran por `assigneeUserIds`. En el panel el aviso se calcula
+  (`hasTriedToCreate && draft.assignees.length === 0`) y usa `.task-panel-error` (TaskPanel.css).
+- Quality Check · error de lectura en `useQcForHouses` (CR, 10/2026): el hook devuelve `{ data, loaded,
+  error }` como los de useOpsData. `error` sale si el listener falla (permisos, red) o si Firestore responde
+  vacío desde la caché sin conexión (`includeMetadataChanges` + `isOfflineCacheOnly`): sin eso el esqueleto
+  de la pestaña "Quality check" de la casa se quedaba para siempre o decía "no inspections" sin serlo. Con
+  reportes en caché y sin conexión se muestran los de la caché, sin error. QualityCheckView (inspector) aún
+  ignora `error`.
+- Quality Check · insignias de resultado compartidas (CR, 10/2026): Passed / Did Not Pass viven en
+  `qcReports.ts` (`PASSED_BADGE`, `FAILED_BADGE`, `getFinishedResultBadge`; tipo `QcResultBadge`) y las usan
+  QcReportCard y HouseQcReportItem (este agrega "In progress"). Colores por `--badge-bg` / `--badge-fg`.
+  La fecha de "Corrections done" va con `formatDate(report.correctionsDoneAt)`: cortar el ISO en la "T"
+  mostraba el día UTC (desde las 7 p. m. de Texas, el día siguiente).
+- Quality Check · nota del área con `renderSectionNotes` (CR, 10/2026): el campo vive en `QcSectionNotes` y
+  QualityCheckView lo arma como las fotos (`renderSectionPhotos`). QcCheckDrawer y QcChecklist ya no
+  reciben `sectionNotes` / `onSectionNotesChange`: solo pasan la función.
+- Quality Check Reports · botón "Recalls" dice la unidad (CR, 10/2026, decisión de Omar: seguir contando
+  casas): "7 houses" / "1 house", con title que explica que una casa con varias inspecciones sale en varias
+  filas. "Reports" sigue contando reportes. La marca Recall de cada fila usa `wasHouseInRecall` de
+  utils/jobRecall (misma regla que el QC Dashboard e Invoices).
+- Recall · UNA regla para "la casa está HOY en Recall" (CR, 10/2026): `isPropertyStatusRecall(property,
+  statuses)` en utils/recallStatus.ts (con `isRecallText`: también "Re-clean", "Callback"…). La usan las
+  tarjetas "Casas en Recall" de QualityCheckView y la tabla de Quality Check Reports (antes
+  `isHouseInRecall` con `isRecallName`, que solo buscaba "recall": una casa en "Re-clean" salía en las
+  tarjetas Y en la tabla). `wasHouseInRecall` ya usaba `isRecallText`.
+- Quality Check · líneas "Fail …" en el orden del checklist (CR, 10/2026): `getFailedTaskNames` (qcForm.ts)
+  recorre `taskNameById` (orden del catálogo de tareas), no `Object.entries` de las respuestas. Dos tareas
+  con el mismo nombre en un área comparten una línea (documentado en `syncFailNoteLine`).
+- Quality Check · `damage` de reportes viejos (CR, 10/2026): el formulario ya no lo escribe, pero
+  `getReportAreas` lo suma a la nota del área como "Damage: …" (igual que el PDF) para que la pestaña
+  "Quality check" de la casa no lo pierda.
+- Quality Check · "Notes for the team" de QC empezados antes de las notas por área (CR, 10/2026): si el QC
+  que se abre trae `qcData.__general.notes`, el panel muestra ese campo debajo de "Other photos" (con
+  `QcSectionNotes`, área General) para verlas, corregirlas o borrarlas: siguen saliendo en el PDF.
+  `hasLegacyTeamNotes` se decide AL ABRIR (no por el texto actual), así el campo no desaparece mientras se
+  borra. Un QC nuevo nunca lo muestra.
+- QC Dashboard · "Did not pass" (CR, 10/2026): el resultado de un QC fallado (`RESULT_LABEL.reclean`), el
+  seguimiento y el encabezado de cada grupo de fechas dicen "Did not pass" (como los reportes), no
+  "Re-clean": "Recalls" es la casa que estuvo en el status Recall, otra métrica. La clave interna sigue
+  siendo `reclean`.
+- `useRecallHouses` devuelve `{ recallHouseIds, isLoaded, error }` (CR, 10/2026): si la historia o
+  `recalls` falla se usa lo que sí se leyó y se avisa en `error` (antes se tragaba el error).
+- Sin conexión FALSO (10/2026): `navigator.onLine === false` a veces miente (VPN o adaptadores virtuales, al
+  despertar la computadora, al volver a la app en el teléfono) y la app no guardaba con "…: sin conexión"
+  teniendo internet. `isDeviceOffline()` (src/shared/utils/connectivity.ts) lo confirma con un HEAD a
+  `/version.json?probe=…` (no-store, tope 3 s): cualquier respuesta = hay conexión. Lo usan el Task list
+  (`useTaskActions.run` y adjuntos, `useDoneTasks`), la cola de fotos de la casa (`usePhotoQueue`), las fotos
+  y el aviso de Quality Check (`QualityCheckView`) y el checklist del empleado (`ChecklistModal`). No vuelvas a
+  decidir un guardado con `navigator.onLine` solo. Los avisos de lectura (`isOfflineCacheOnly`) siguen con
+  `navigator.onLine` porque además piden `metadata.fromCache`: al llegar datos del servidor se quitan solos.
+- Aviso "Sin conexión" confirmado (CR, 10/2026): `useConnectivityStatus()` (src/shared/hooks) escucha online /
+  offline y confirma con `isDeviceOffline()` antes de mostrar el aviso (y cada 30 s mientras el navegador diga
+  "sin conexión"). Lo usan el aviso de Quality Check y el de Houses (`usePhotoQueue.isOnline` → HouseList).
+  Antes salía "Sin conexión" con las fotos y el QC guardándose bien, y el inspector podía repetir el trabajo.
+- Fotos de Houses · error al subir (CR, 10/2026): se encola solo si el código es de conexión
+  (`storage/retry-limit-exceeded`, `storage/canceled`) o `isDeviceOffline()` lo confirma. Ya no con
+  `!navigator.onLine` solo: con el "sin conexión" falso un error permanente (reglas de Storage) volvía a
+  encolarse en silencio, el bug que ese bloque corrigió.
+- Conexión · CR del hook y de la consulta (10/2026): `useConnectivityStatus` numera cada revisión y solo la
+  más reciente cambia el aviso (una revisión vieja "sin conexión" que terminaba después de una nueva "hay
+  conexión" dejaba el aviso pegado); la revisión cada 30 s corre si el navegador dice "sin conexión" O el
+  aviso está puesto. `isDeviceOffline` reusa la consulta de los últimos 5 s (`PROBE_RESULT_TTL_MS`, también
+  la que sigue en camino): la cola de fotos revisa antes de cada foto. Límite conocido: el portal de un wifi
+  (hoteles, edificios) cuenta como "hay conexión".
+- Quality Check Reports · casas HOY en Recall (10/2026, decisión de Omar; reemplaza "no salen los reportes de
+  casas que HOY están en Recall"): sus reportes terminados SÍ salen en la tabla, además de las tarjetas "Casas
+  en Recall" de arriba, con la marca Recall y su status (RECALL). Cuentan en "Reports" y en el botón
+  "Recalls". Una casa en Recall sin reporte terminado solo sale en las tarjetas (la tabla lista reportes).
+- Detalle de la casa · pestaña "Quality check" con PDF (10/2026, pedido de Omar): cada reporte TERMINADO lleva
+  el botón "PDF" (el mismo de Quality Check Reports: `useQcReportActions.handleExportPdf`, clase
+  `.qcrs-pdf-btn`). Uno en curso no lo lleva (todavía no tiene resultado). `HouseQcHistory` recibe la casa
+  (`house`, antes `houseId`) para el equipo del PDF cuando el reporte no lo trae.
+- Quality Check · `QcPdfButton` (CR, 10/2026): un solo botón de PDF (features/quality-check/components, con
+  su CSS) para la tabla y las tarjetas de Quality Check Reports (`QcReportSendButtons`) y la pestaña
+  "Quality check" de la casa; variantes `icon` / `compact` / `full`, textos "View report as PDF".
+- Detalle de la casa · pestaña "Quality check" (decisión de Omar, 10/2026): se ve solo con View en el módulo
+  "Quality Check" (Roles) Y el tab activo en Configure Fields (`useHouseAccess.canSeeQualityCheckTab`, doble
+  candado como las notas de oficina). Antes la veía todo rol salvo que se ocultara por rol.
+- Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
+  `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
+  cambio aparte (renombra archivos): pendiente de decidir.
+- Clients Report (vista nueva, 10/2026, pedido de Omar: como la tabla dinámica de la hoja del mes): trabajos con
+  Schedule Date en el periodo (default Month), un renglón por cliente con Jobs y Final Cost, y Grand Total
+  (`utils/clientsReport.ts`). Cuenta TODOS los trabajos del periodo, también los que no tienen status (el
+  Overview los saca; la hoja los cuenta). Se agrupa por el nombre YA resuelto (`displayClientNameIn`): el id,
+  el id legacy y el nombre del mismo cliente caen en un solo renglón. Orden alfabético; "No client" al final.
+  Permiso propio "Clients Report"; si el rol no lo declara, lo hereda de "Invoices" (Sidebar
+  `canViewOrLegacy`, guardia `TAB_MODULE`). El Scope Own del módulo se respeta (`propertiesForModule`).
+- Clients Report · diseño de la tabla (10/2026, pedido de Omar: para la alta gerencia): columna "Share" = qué
+  parte del Final Cost del periodo es de cada cliente (`shareOfFinalCost`). La BARRA es relativa al cliente más
+  grande (el mayor va lleno), el número sí es el % real del total: con escala 0–100% casi todas las barras
+  quedaban de 1–2 px. En el teléfono no se dibuja la columna Share (`useMediaQuery(PHONE_QUERY)`). La tarjeta
+  usa `overflow: clip` (no `hidden`) para que el encabezado de columnas quede pegado al hacer scroll.
+- Clients Report · tablero ejecutivo (10/2026, pedido de Omar): las tarjetas de arriba son
+  `ClientsReportSummary` (Final cost, Jobs, Clients, Top client) con tonos de la paleta (azul marino del menú
+  → azul de la marca); NO usan KpiGrid a propósito para no cambiar el Overview ni Invoices. "Top client" =
+  mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
+  mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
+  orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.
+- Clients Report · permiso heredado (CR del PR #24, 10/2026): un rol que NO declara "Clients Report" usa View y
+  Scope de "Invoices" (`getClientsReportPermissionModule` / `getInheritedClientsReportPermission` en
+  utils/clientsReport.ts), igual que "Projects" hereda de "Task List". RolesView muestra ese valor al abrir el
+  rol (antes salía en No y al guardar le quitaba el reporte) y App.tsx filtra las casas con el Scope del módulo
+  que manda. Add/Edit/Delete no aplican (es un reporte).
+- Clients Report · guardia y dinero (CR 2 del PR #24, 10/2026): la guardia `TAB_MODULE` de App.tsx usa
+  `getClientsReportPermissionModule(activeRole)`, la misma regla que el Sidebar (`canViewOrLegacy`): si el rol
+  declara "Clients Report" manda ese permiso aunque esté en No; solo si no lo declara, Invoices. Con la lista
+  `['Clients Report', 'Invoices']` (antes) bastaba Invoices para entrar aunque el reporte estuviera apagado.
+  `functions/src/userAccess.ts` cuenta "Clients Report" en `fin`: con las reglas propuestas, un rol que solo
+  tiene el reporte no podría leer `billing_services` / `payroll` y vería $0.00 (prueba "Clients Report solo"
+  en security/tests/). Un client con solo espacios cae en "No client" (`job.client?.trim()`).
 - Pantalla en blanco que solo se arregla en incógnito (10/2026, reporte de Isleny; reproducido con dos builds y
   un servidor como Cloudflare): durante un deploy, index.html nuevo pide /assets/ que aún no llegan; Cloudflare
   (not_found_handling "single-page-application", sin Worker) responde index.html con 200 y el navegador + el
@@ -2948,3 +3151,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   (el error de CSS de Vite trae "/assets/x.css"). Reemplaza el "recargar una vez por sesión" de main.tsx.
   Pendiente (necesita OK, toca el hosting): que /assets/* inexistente dé 404 (Worker con run_worker_first)
   para que la copia mala no se guarde nunca.
+- Vista que no carga por mala señal (CR 2 del PR #26, decisión de Omar 10/2026): `ViewErrorBoundary` envuelve la
+  pestaña activa en App.tsx y muestra "This screen couldn't load" + Reload en vez de la app en blanco (no hay
+  otro error boundary). NO recarga sola: se perdería un formulario sin guardar (antes main.tsx recargaba una
+  vez). Al cambiar de pestaña se borra el error. Es componente de CLASE a propósito (React no tiene hook para
+  atrapar errores de render). Si `refactor/app-tabs` entra después, el boundary va en AppTabContent.tsx,
+  alrededor de su `<Suspense>`.

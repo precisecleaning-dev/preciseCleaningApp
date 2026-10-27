@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import RouteTransition, { ViewSkeleton } from './components/RouteTransition';
+import ViewErrorBoundary from './components/ViewErrorBoundary';
 import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
+import { getClientsReportPermissionModule } from './utils/clientsReport';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
 // ⭐ Notificaciones / Ver como / Log Out: un solo componente (barra arriba en
@@ -25,6 +27,9 @@ const CalendarView = lazy(() => import('./views/CalendarView'));
 const QualityCheckHub = lazy(() => import('./views/QualityCheckHub'));
 const PayrollView = lazy(() => import('./views/PayrollView'));
 const InvoicesView = lazy(() => import('./views/InvoicesView'));
+// ⭐ CLIENTS REPORT — trabajos y Final Cost por cliente en el periodo (como la
+//    tabla dinámica de la hoja del mes).
+const ClientsReportView = lazy(() => import('./views/ClientsReportView'));
 // ⭐ NO STATUS — casas sin estado asignado (salieron de Overview y Pipeline)
 // ⭐ ACTIVITY LOG — bitacora de todo lo que se hace en la app
 const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
@@ -61,7 +66,7 @@ import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'qc_report' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'clients_report' | 'qc_report' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
@@ -70,13 +75,13 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 /** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
 const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
-  'qc_dashboard', 'owner', 'manager',
+  'qc_dashboard', 'owner', 'manager', 'clients_report',
 ]);
 /** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
 const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'calendar', 'invoices', 'payroll', 'qc_report', 'qc_dashboard', 'owner', 'manager',
 ]);
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'clients_report', 'qc_report', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -340,6 +345,9 @@ export default function App() {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
       qc_report: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
+      // Misma regla que el Sidebar (canViewOrLegacy): si el rol declara
+      // "Clients Report" manda ese permiso (aunque esté en false); si no, Invoices.
+      clients_report: [getClientsReportPermissionModule(activeRole)],
       owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'],
       payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
@@ -492,7 +500,10 @@ export default function App() {
         )}
         {/* ⭐ Esqueleto en vez del spinner de pantalla completa: dibuja la FORMA
             de lo que viene, reduce la espera percibida y evita el salto de
-            layout. Con la precarga en reposo casi nunca llega a verse. */}
+            layout. Con la precarga en reposo casi nunca llega a verse.
+            ViewErrorBoundary: si la vista no carga (mala señal), aviso con
+            "Reload" en vez de la app en blanco. */}
+        <ViewErrorBoundary resetKey={activeTab}>
         <Suspense fallback={<ViewSkeleton />}>
         <RouteTransition routeKey={activeTab}>
         {waitingForProperties ? <ViewSkeleton /> : (<>
@@ -546,6 +557,13 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'clients_report' && (
+          <ClientsReportView
+            onOpenMenu={toggleMenu}
+            properties={propertiesForModule(getClientsReportPermissionModule(activeRole))}
+          />
+        )}
+
         {/* VISTA DEL MURO SOCIAL */}
 
         {activeTab === 'calendar' && (
@@ -579,7 +597,6 @@ export default function App() {
             clearHouseToInspect={() => setHouseToInspect(null)}
             currentUser={effectiveUser}
             onOpenHouseDetail={openHouseDetail}
-            onOpenHouseEdit={openHouseEdit}
           />
         )}
 
@@ -673,6 +690,7 @@ export default function App() {
         </>)}
         </RouteTransition>
         </Suspense>
+        </ViewErrorBoundary>
       </main>
 
       {isViewAsModalOpen && (
