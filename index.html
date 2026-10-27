@@ -13,133 +13,185 @@
       JavaScript: desde entonces la app no arranca en ese navegador ("MIME type
       text/html"), aunque el deploy ya terminó. En incógnito no hay caché y
       funciona.
-      Este script va PRIMERO para escuchar el error de esos archivos: quita el
-      Service Worker y su caché, vuelve a pedir los archivos al servidor
-      (fetch con cache "reload" reemplaza la copia mala) y recarga. Hasta
-      MAX_REPAIR_ATTEMPTS intentos cada REPAIR_WINDOW_MS (si el deploy aún no
-      termina, la página vuelve a intentar sola al pasar ese tiempo, sin un
-      bucle de recargas). Sin conexión no se toca nada: el Service Worker es lo
-      que deja usar la app offline. main.tsx usa window.pcRepairAssets cuando
-      falla una vista de carga diferida.
+      Este script va PRIMERO para escuchar el error de esos archivos. Antes de
+      tocar nada confirma que la copia guardada es HTML (content-type
+      text/html): un fallo por mala señal NO es esto y no se repara. Si lo es,
+      quita el Service Worker y su caché, vuelve a pedir los archivos al
+      servidor (fetch con cache "reload" reemplaza la copia mala) y recarga.
+      Hasta MAX_REPAIR_ATTEMPTS intentos cada REPAIR_WINDOW_MS. Si la app no
+      arrancó (deploy a medias), la página vuelve a intentar sola al pasar ese
+      tiempo; si ya arrancó no se recarga (se perdería un formulario sin
+      guardar). Sin conexión no se toca nada: el Service Worker es lo que deja
+      usar la app offline. main.tsx usa window.pcRepairAssets cuando falla una
+      vista de carga diferida y marca window.pcIsAppStarted al arrancar.
       No es JSX ni el bundle: tiene que funcionar justo cuando el bundle no carga.
     -->
     <script>
-      (function () {
-        var ATTEMPTS_KEY = 'pc:asset-repair-attempts';
-        var PENDING_URLS_KEY = 'pc:asset-repair-urls';
-        var MAX_REPAIR_ATTEMPTS = 2;
-        var REPAIR_WINDOW_MS = 60000;
-        var isRepairing = false;
-        var isRetryScheduled = false;
+      (() => {
+        const ATTEMPTS_KEY = 'pc:asset-repair-attempts';
+        const PENDING_URLS_KEY = 'pc:asset-repair-urls';
+        const MAX_REPAIR_ATTEMPTS = 2;
+        const REPAIR_WINDOW_MS = 60000;
+        let isRepairing = false;
+        let isRetryScheduled = false;
 
-        function readSession(key) {
-          try { return sessionStorage.getItem(key); } catch (error) { return null; }
-        }
-        function writeSession(key, value) {
+        const readSession = (key) => {
+          try {
+            return sessionStorage.getItem(key);
+          } catch {
+            return null;
+          }
+        };
+        const writeSession = (key, value) => {
           try {
             if (value === null) sessionStorage.removeItem(key);
             else sessionStorage.setItem(key, value);
-          } catch (error) { /* sin sessionStorage: sin contador */ }
-        }
+          } catch {
+            // sin sessionStorage: sin contador
+          }
+        };
 
         // Archivos de /assets/ que pide la página (JS, CSS y precargas) más el que falló.
-        function collectAssetUrls(failedUrl) {
-          var assetUrls = failedUrl ? [failedUrl] : [];
-          document.querySelectorAll('script[src*="/assets/"], link[href*="/assets/"]').forEach(function (element) {
-            var assetUrl = element.src || element.href;
-            if (assetUrls.indexOf(assetUrl) < 0) assetUrls.push(assetUrl);
+        const collectAssetUrls = (failedUrl) => {
+          const assetUrls = failedUrl ? [failedUrl] : [];
+          document.querySelectorAll('script[src*="/assets/"], link[href*="/assets/"]').forEach((element) => {
+            const assetUrl = element.src ?? element.href;
+            if (!assetUrls.includes(assetUrl)) assetUrls.push(assetUrl);
           });
           return assetUrls;
-        }
+        };
 
-        function removeServiceWorkerAndCaches() {
-          var unregisterWorkers = navigator.serviceWorker && navigator.serviceWorker.getRegistrations
-            ? navigator.serviceWorker.getRegistrations().then(function (registrations) {
-              return Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
-            })
-            : Promise.resolve();
-          var deleteCaches = window.caches
-            ? caches.keys().then(function (cacheNames) {
-              return Promise.all(cacheNames.map(function (cacheName) { return caches.delete(cacheName); }));
-            })
-            : Promise.resolve();
-          return Promise.all([unregisterWorkers, deleteCaches]).catch(function () { /* se recarga igual */ });
-        }
+        const removeServiceWorkerAndCaches = async () => {
+          try {
+            const registrations = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+            const cacheNames = window.caches ? await caches.keys() : [];
+            await Promise.all([
+              ...registrations.map((registration) => registration.unregister()),
+              ...cacheNames.map((cacheName) => caches.delete(cacheName)),
+            ]);
+          } catch {
+            // se recarga igual
+          }
+        };
 
         // Pide cada archivo al servidor y reemplaza la copia del caché HTTP.
-        function refetchAssets(assetUrls) {
-          return Promise.all(assetUrls.map(function (assetUrl) {
-            return fetch(assetUrl, { cache: 'reload' }).catch(function () { /* sin red: se reintenta al recargar */ });
-          }));
-        }
+        const refetchAssets = (assetUrls) => Promise.all(assetUrls.map(async (assetUrl) => {
+          try {
+            await fetch(assetUrl, { cache: 'reload' });
+          } catch {
+            // sin red: se reintenta al recargar
+          }
+        }));
 
-        // Intentos de la ventana actual: { count, firstAt }. Pasada la ventana, de cero.
-        function readAttempts() {
-          var attempts = { count: 0, firstAt: Date.now() };
-          try { attempts = JSON.parse(readSession(ATTEMPTS_KEY)) || attempts; } catch (error) { /* valor viejo */ }
-          var isWindowOver = Date.now() - attempts.firstAt > REPAIR_WINDOW_MS;
-          return isWindowOver ? { count: 0, firstAt: Date.now() } : attempts;
-        }
+        // Intentos de la ventana actual: { count, firstAttemptAt }. Pasada la ventana, de cero.
+        const readAttempts = () => {
+          const now = Date.now();
+          let attempts = null;
+          try {
+            attempts = JSON.parse(readSession(ATTEMPTS_KEY));
+          } catch {
+            // valor viejo o dañado: se empieza de cero
+          }
+          const isWindowOver = !attempts?.firstAttemptAt || now - attempts.firstAttemptAt > REPAIR_WINDOW_MS;
+          return isWindowOver ? { count: 0, firstAttemptAt: now } : attempts;
+        };
+
+        // ¿La copia que tiene el navegador (caché HTTP o Service Worker) es HTML?
+        // Así quedó guardado mal un archivo durante un deploy. Sin red o con
+        // error: false (un fallo por mala señal no se repara).
+        const isSavedCopyHtml = async (assetUrl) => {
+          try {
+            const response = await fetch(assetUrl);
+            return (response.headers.get('content-type') ?? '').includes('text/html');
+          } catch {
+            return false;
+          }
+        };
 
         // Cuánto falta para que termine la ventana de intentos (+1 s).
-        function readAttemptsWaitMs() {
-          return Math.max(1000, readAttempts().firstAt + REPAIR_WINDOW_MS - Date.now() + 1000);
-        }
+        const getRetryDelayMs = () =>
+          Math.max(1000, readAttempts().firstAttemptAt + REPAIR_WINDOW_MS - Date.now() + 1000);
 
-        // true si arrancó (o ya va) una reparación; false si no se hizo nada.
-        function repairAssets(failedUrl) {
+        // Quita el SW y su caché, vuelve a pedir los archivos y recarga (en el finally: pase lo que pase).
+        const runRepair = async (assetUrls) => {
+          const isControlledByWorker = !!navigator.serviceWorker?.controller;
+          try {
+            await removeServiceWorkerAndCaches();
+            // Con un Service Worker al mando, el fetch le llegaría a él y no al
+            // servidor: se recarga primero (ya sin worker) y se repite allá.
+            if (isControlledByWorker) writeSession(PENDING_URLS_KEY, JSON.stringify(assetUrls));
+            else await refetchAssets(assetUrls);
+          } finally {
+            location.reload();
+          }
+        };
+
+        // true si arrancó (o ya va) una reparación y la página se va a recargar;
+        // false si no se hizo nada.
+        const repairAssets = async (failedUrl) => {
           if (isRepairing) return true;
+          // Limitación: navigator.onLine puede mentir. false solo dice que no hay
+          // ninguna red (algunos navegadores lo dan mal con VPN o adaptadores
+          // virtuales: entonces no se repara hasta recargar a mano) y true no
+          // garantiza internet (ese caso lo cubre isSavedCopyHtml: sin red da false).
           if (navigator.onLine === false) return false;
-          var attempts = readAttempts();
+          const attempts = readAttempts();
           if (attempts.count >= MAX_REPAIR_ATTEMPTS) {
             console.error('La app no pudo cargar sus archivos tras reintentar.', failedUrl);
             return false;
           }
+          // Sin URL (Safari: "Importing a module script failed.") no se puede
+          // revisar la copia: solo se recarga (pide el index.html nuevo), sin
+          // quitar el Service Worker. Cuenta como intento.
+          const isPoisonedCopy = failedUrl ? await isSavedCopyHtml(failedUrl) : false;
+          if (failedUrl && !isPoisonedCopy) return false;
+          if (isRepairing) return true; // otro error ya empezó mientras se revisaba
           isRepairing = true;
-          writeSession(ATTEMPTS_KEY, JSON.stringify({ count: attempts.count + 1, firstAt: attempts.firstAt }));
-          var assetUrls = collectAssetUrls(failedUrl);
-          var isControlledByWorker = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
-          removeServiceWorkerAndCaches().then(function () {
-            // Con un Service Worker al mando, el fetch le llegaría a él y no al
-            // servidor: se recarga primero (ya sin worker) y se repite allá.
-            if (isControlledByWorker) {
-              writeSession(PENDING_URLS_KEY, JSON.stringify(assetUrls));
-              return null;
-            }
-            return refetchAssets(assetUrls);
-          }).then(function () {
-            location.reload();
-          });
+          writeSession(ATTEMPTS_KEY, JSON.stringify({ count: attempts.count + 1, firstAttemptAt: attempts.firstAttemptAt }));
+          if (isPoisonedCopy) runRepair(collectAssetUrls(failedUrl));
+          else location.reload();
           return true;
-        }
+        };
 
         // Segundo paso de una reparación: la página ya no tiene Service Worker.
-        var pendingUrls = readSession(PENDING_URLS_KEY);
-        if (pendingUrls) {
+        const finishPendingRepair = async (pendingUrlsJson) => {
           isRepairing = true;
           writeSession(PENDING_URLS_KEY, null);
-          var parsedUrls = [];
-          try { parsedUrls = JSON.parse(pendingUrls); } catch (error) { parsedUrls = []; }
-          refetchAssets(parsedUrls).then(removeServiceWorkerAndCaches).then(function () {
+          let pendingAssetUrls = [];
+          try {
+            pendingAssetUrls = JSON.parse(pendingUrlsJson);
+          } catch {
+            pendingAssetUrls = [];
+          }
+          try {
+            await refetchAssets(pendingAssetUrls);
+            await removeServiceWorkerAndCaches();
+          } finally {
             location.reload();
-          });
-        }
+          }
+        };
+
+        const pendingUrlsJson = readSession(PENDING_URLS_KEY);
+        if (pendingUrlsJson) finishPendingRepair(pendingUrlsJson);
 
         // Error al cargar un <script> o <link> de /assets/ (los errores de carga
         // no suben: se escuchan en la fase de captura).
-        window.addEventListener('error', function (event) {
-          var element = event.target;
-          var isAssetTag = element && (element.tagName === 'SCRIPT' || element.tagName === 'LINK');
-          var assetUrl = isAssetTag ? element.src || element.href : '';
-          if (!assetUrl || assetUrl.indexOf('/assets/') < 0) return;
-          var isRepairStarted = repairAssets(assetUrl);
-          // La app no arrancó y se agotaron los intentos (deploy a medias):
-          // se vuelve a intentar sola cuando pasa la ventana.
-          if (!isRepairStarted && !isRetryScheduled && navigator.onLine !== false) {
-            isRetryScheduled = true;
-            setTimeout(function () { location.reload(); }, readAttemptsWaitMs());
-          }
-        }, true);
+        const handleAssetLoadError = async (event) => {
+          const element = event.target;
+          const isAssetTag = element?.tagName === 'SCRIPT' || element?.tagName === 'LINK';
+          const assetUrl = isAssetTag ? element.src ?? element.href : '';
+          if (!assetUrl?.includes('/assets/')) return;
+          const isRepairStarted = await repairAssets(assetUrl);
+          // Sin reparación (intentos agotados o no era una copia mala): si la app
+          // no arrancó, se vuelve a intentar sola cuando pasa la ventana. Si ya
+          // arrancó no se recarga: se perdería lo que no se ha guardado.
+          if (isRepairStarted || isRetryScheduled || window.pcIsAppStarted || navigator.onLine === false) return;
+          isRetryScheduled = true;
+          setTimeout(() => {
+            if (!window.pcIsAppStarted) location.reload();
+          }, getRetryDelayMs());
+        };
+        window.addEventListener('error', handleAssetLoadError, true);
 
         window.pcRepairAssets = repairAssets;
       })();

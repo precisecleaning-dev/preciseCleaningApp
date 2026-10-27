@@ -20,21 +20,29 @@ import App from './App.tsx'
 // principal, que aquí no se puede detectar porque este archivo no llegaría a
 // correr).
 //
-// pcRepairAssets lleva su propio tope (2 intentos por minuto, en
-// sessionStorage): si el fallo sigue no entra en un bucle de recargas, y el
-// error se deja pasar para que sea visible.
+// pcRepairAssets solo repara si la copia guardada es HTML y lleva su propio
+// tope (2 intentos por minuto, en sessionStorage): si el fallo sigue no entra
+// en un bucle de recargas. El error sigue su curso (se ve); si hubo
+// reparación, la página se recarga sola.
 // ============================================================================
 
-/** URL del chunk que no cargó, sacada del mensaje del error de Vite. */
+// index.html no programa su recarga automática si la app ya arrancó.
+window.pcIsAppStarted = true
+
+/** Ruta de un archivo de /assets/ en el mensaje: absoluta ("Failed to fetch
+ *  dynamically imported module: https://…/assets/x.js") o relativa ("Unable to
+ *  preload CSS for /assets/x.css"). */
+const ASSET_PATH_PATTERN = /(?:https?:\/\/[^\s'"]+)?\/assets\/[^\s'"]+?\.(?:js|css)\b/
+
+/** URL completa del chunk que no cargó, sacada del mensaje del error de Vite. */
 const getFailedChunkUrl = (error: unknown): string | undefined => {
   const message = error instanceof Error ? error.message : String(error ?? '')
-  return /https?:\/\/\S+\.(?:js|css)/.exec(message)?.[0]
+  const assetPath = ASSET_PATH_PATTERN.exec(message)?.[0]
+  return assetPath ? new URL(assetPath, window.location.href).href : undefined
 }
 
 window.addEventListener('vite:preloadError', (event) => {
-  const isRepairStarted = window.pcRepairAssets?.(getFailedChunkUrl(event.payload)) ?? false
-  // Sin reparación (intentos agotados) el error sigue su curso y se ve.
-  if (isRepairStarted) event.preventDefault()
+  void window.pcRepairAssets?.(getFailedChunkUrl(event.payload))
 })
 
 createRoot(document.getElementById('root')!).render(
