@@ -8,6 +8,7 @@ import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestor
 import './RolesView.css';
 import MenuButton from '../../shared/components/MenuButton';
 import { inheritedTaskProjectRights } from '../../features/ops/opsPermissions';
+import { getInheritedClientsReportPermission } from '../../utils/clientsReport';
 
 interface RolesViewProps {
   onOpenMenu: () => void;
@@ -166,6 +167,16 @@ export default function RolesView({ onOpenMenu, roles }: RolesViewProps) {
             module: mod,
             ...inheritedProjectRights,
             scope: 'All' as const,
+            allowedStatusIds: [],
+            hiddenGroups: [],
+            readOnlyFields: []
+          };
+        }
+        // ⭐ "Clients Report" sin declarar: View y Scope heredados de "Invoices"
+        //    (utils/clientsReport.ts), para que guardar el rol no le quite el reporte.
+        if (mod === 'Clients Report') {
+          return {
+            ...getInheritedClientsReportPermission(role),
             allowedStatusIds: [],
             hiddenGroups: [],
             readOnlyFields: []

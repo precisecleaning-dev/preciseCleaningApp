@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import RouteTransition, { ViewSkeleton } from './components/RouteTransition';
 import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
+import { getClientsReportPermissionModule } from './utils/clientsReport';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
 // ⭐ Notificaciones / Ver como / Log Out: un solo componente (barra arriba en
@@ -343,8 +344,9 @@ export default function App() {
       houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
       qc_report: ['Quality Check'],
       qc_dashboard: ['QC Dashboard', 'Quality Check'],
-      // Sin "Clients Report" declarado, lo hereda de Invoices (mismas cifras).
-      clients_report: ['Clients Report', 'Invoices'],
+      // Misma regla que el Sidebar (canViewOrLegacy): si el rol declara
+      // "Clients Report" manda ese permiso (aunque esté en false); si no, Invoices.
+      clients_report: [getClientsReportPermissionModule(activeRole)],
       owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'],
       payroll: ['Payroll'],
       customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
@@ -554,7 +556,7 @@ export default function App() {
         {activeTab === 'clients_report' && (
           <ClientsReportView
             onOpenMenu={toggleMenu}
-            properties={propertiesForModule('Clients Report')}
+            properties={propertiesForModule(getClientsReportPermissionModule(activeRole))}
           />
         )}
 

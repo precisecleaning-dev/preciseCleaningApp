@@ -1,7 +1,7 @@
 /* =====================================================================
    ⭐ Clients Report — mismo aspecto que el QC Dashboard y el Overview:
    encabezado, barra de periodo, indicadores y tabla.
-   (barra de periodo en PeriodBar.css, indicadores en KpiGrid.css,
+   (barra de periodo en PeriodBar.css, indicadores en components/ClientsReportSummary.css,
    tabla en components/ClientsReportTable.css)
    ===================================================================== */
 /* App.css fija `* { font-family: system-ui }`: la letra del diseño se aplica

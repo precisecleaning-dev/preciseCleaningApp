@@ -3123,3 +3123,15 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
   mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
   orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.
+- Clients Report · permiso heredado (CR del PR #24, 10/2026): un rol que NO declara "Clients Report" usa View y
+  Scope de "Invoices" (`getClientsReportPermissionModule` / `getInheritedClientsReportPermission` en
+  utils/clientsReport.ts), igual que "Projects" hereda de "Task List". RolesView muestra ese valor al abrir el
+  rol (antes salía en No y al guardar le quitaba el reporte) y App.tsx filtra las casas con el Scope del módulo
+  que manda. Add/Edit/Delete no aplican (es un reporte).
+- Clients Report · guardia y dinero (CR 2 del PR #24, 10/2026): la guardia `TAB_MODULE` de App.tsx usa
+  `getClientsReportPermissionModule(activeRole)`, la misma regla que el Sidebar (`canViewOrLegacy`): si el rol
+  declara "Clients Report" manda ese permiso aunque esté en No; solo si no lo declara, Invoices. Con la lista
+  `['Clients Report', 'Invoices']` (antes) bastaba Invoices para entrar aunque el reporte estuviera apagado.
+  `functions/src/userAccess.ts` cuenta "Clients Report" en `fin`: con las reglas propuestas, un rol que solo
+  tiene el reporte no podría leer `billing_services` / `payroll` y vería $0.00 (prueba "Clients Report solo"
+  en security/tests/). Un client con solo espacios cae en "No client" (`job.client?.trim()`).

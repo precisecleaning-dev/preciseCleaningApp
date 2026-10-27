@@ -10,6 +10,7 @@ import type {
   ClientReportRow, ClientsReport, ClientsReportSort, ClientsReportSortColumn,
 } from '../types/index';
 import { money, pct } from '../utils/jobFinancials';
+import { formatCount, pluralize } from '../utils/countFormat';
 import { getNextClientsReportSort, NO_CLIENT_LABEL, sortClientRows } from '../utils/clientsReport';
 import { PHONE_QUERY, useMediaQuery } from '../shared/hooks/useMediaQuery';
 import VirtualItems from '../shared/components/VirtualItems';
@@ -17,11 +18,6 @@ import './ClientsReportTable.css';
 
 /** Alto aproximado de un renglón (px) mientras VirtualItems mide los reales. */
 const ROW_HEIGHT_ESTIMATE = 53;
-
-const formatCount = (count: number) => count.toLocaleString('en-US');
-
-const pluralize = (count: number, singular: string, plural: string) =>
-  `${formatCount(count)} ${count === 1 ? singular : plural}`;
 
 /** Valor de aria-sort del encabezado según el orden elegido. */
 const getAriaSort = (sort: ClientsReportSort | null, column: ClientsReportSortColumn) => {
@@ -112,11 +108,11 @@ interface ClientsReportTableRowProps {
   clientRow: ClientReportRow;
   largestShareOfFinalCost: number;
   isFinalCostLoading: boolean;
-  showShareColumn: boolean;
+  isShareColumnVisible: boolean;
 }
 
 const ClientsReportTableRow = ({
-  clientRow, largestShareOfFinalCost, isFinalCostLoading, showShareColumn,
+  clientRow, largestShareOfFinalCost, isFinalCostLoading, isShareColumnVisible,
 }: ClientsReportTableRowProps) => {
   const isWithoutClient = clientRow.clientName === NO_CLIENT_LABEL;
   return (
@@ -124,7 +120,7 @@ const ClientsReportTableRow = ({
       <td className={`crt-client${isWithoutClient ? ' is-unassigned' : ''}`}>{clientRow.clientName}</td>
       <td className="crt-jobs crt-number">{formatCount(clientRow.jobCount)}</td>
       <FinalCostCell finalCost={clientRow.finalCost} isLoading={isFinalCostLoading} />
-      {showShareColumn && (
+      {isShareColumnVisible && (
         <ShareCell
           shareOfFinalCost={clientRow.shareOfFinalCost}
           largestShareOfFinalCost={largestShareOfFinalCost}
@@ -147,8 +143,8 @@ const ClientsReportTable = ({ report, isFinalCostLoading, periodLabel }: Clients
   const [sort, setSort] = useState<ClientsReportSort | null>(null);
   // En el teléfono no cabe la barra: se queda Client · Jobs · Final Cost.
   const isPhone = useMediaQuery(PHONE_QUERY);
-  const showShareColumn = !isPhone;
-  const columnCount = showShareColumn ? 4 : 3;
+  const isShareColumnVisible = !isPhone;
+  const columnCount = isShareColumnVisible ? 4 : 3;
   const hasJobs = report.rows.length > 0;
   const largestShareOfFinalCost = Math.max(0, ...report.rows.map((clientRow) => clientRow.shareOfFinalCost));
   const sortedRows = useMemo(() => sortClientRows(report.rows, sort), [report.rows, sort]);
@@ -164,7 +160,7 @@ const ClientsReportTable = ({ report, isFinalCostLoading, periodLabel }: Clients
       clientRow={clientRow}
       largestShareOfFinalCost={largestShareOfFinalCost}
       isFinalCostLoading={isFinalCostLoading}
-      showShareColumn={showShareColumn}
+      isShareColumnVisible={isShareColumnVisible}
     />
   );
 
@@ -184,7 +180,7 @@ const ClientsReportTable = ({ report, isFinalCostLoading, periodLabel }: Clients
             <SortableHeaderCell
               label="Final Cost" column="finalCost" sort={sort} onSort={handleSortByColumn} className="crt-number"
             />
-            {showShareColumn && (
+            {isShareColumnVisible && (
               <SortableHeaderCell
                 label="Share" column="shareOfFinalCost" sort={sort} onSort={handleSortByColumn} className="crt-share"
               />
@@ -211,7 +207,7 @@ const ClientsReportTable = ({ report, isFinalCostLoading, periodLabel }: Clients
               <th scope="row">Grand Total</th>
               <td className="crt-number">{formatCount(report.totalJobs)}</td>
               <FinalCostCell finalCost={report.totalFinalCost} isLoading={isFinalCostLoading} />
-              {showShareColumn && <td className="crt-share" />}
+              {isShareColumnVisible && <td className="crt-share" />}
             </tr>
           </tfoot>
         )}

@@ -6,10 +6,9 @@ import type { LucideIcon } from 'lucide-react';
 import { ClipboardList, DollarSign, TrendingUp, Users } from 'lucide-react';
 import type { ClientsReport } from '../types/index';
 import { money, pct } from '../utils/jobFinancials';
+import { formatCount } from '../utils/countFormat';
 import { getTopClient } from '../utils/clientsReport';
 import './ClientsReportSummary.css';
-
-const formatCount = (count: number) => count.toLocaleString('en-US');
 
 interface SummaryCardProps {
   label: string;

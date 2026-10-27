@@ -76,6 +76,11 @@ const PEOPLE = {
     active: true, admin: false, fin: false, roleId: 'r-checklist', userId: 'u-checklist',
     m: { 'Quality Check': R(), 'QC Checklist Setup': R(true, true, true, false) },
   },
+  // Solo "Clients Report": el reporte suma Final Cost, así que ve dinero.
+  'reporter@precise.test': {
+    active: true, admin: false, fin: true, roleId: 'r-reporter', userId: 'u-reporter',
+    m: { 'Clients Report': R() },
+  },
   'inactive@precise.test': {
     active: false, admin: false, fin: true, roleId: 'r-owner', userId: 'u-inactive', m: { Houses: ALL },
   },
@@ -156,6 +161,11 @@ describe('dinero', () => {
     await assertFails(getDocs(collection(as('inspector@precise.test'), 'billing_services')));
     await assertSucceeds(getDocs(collection(as('owner@precise.test'), 'payroll')));
     await assertSucceeds(getDocs(collection(as('sandy@precise.test'), 'billing_services')));
+  });
+
+  test('Clients Report solo: lee billing_services y payroll (si no, vería $0.00)', async () => {
+    await assertSucceeds(getDocs(collection(as('reporter@precise.test'), 'billing_services')));
+    await assertSucceeds(getDocs(collection(as('reporter@precise.test'), 'payroll')));
   });
 
   test('registrar un pago: Payroll o editar Houses', async () => {

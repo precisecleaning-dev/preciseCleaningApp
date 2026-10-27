@@ -36,7 +36,7 @@ const ClientsReportView = ({ onOpenMenu, properties }: ClientsReportViewProps) =
   const [period, setPeriod] = useStoredPeriod('pc.clientsReport.period', 'month');
   const periodDateRange = useMemo(() => periodRange(period), [period]);
   const customers = useLiveData('customers');
-  const jobFinancials = useJobFinancials();
+  const { calc: calcJobFinancials, loading: isFinalCostLoading } = useJobFinancials();
 
   const clientNameIndex = useMemo(() => customerNameIndex(customers), [customers]);
 
@@ -46,11 +46,14 @@ const ClientsReportView = ({ onOpenMenu, properties }: ClientsReportViewProps) =
   );
 
   const clientsReport = useMemo(() => {
-    const getClientName = (job: Property) =>
-      job.client ? displayClientNameIn(clientNameIndex, job.client) : NO_CLIENT_LABEL;
-    const getFinalCost = (job: Property) => jobFinancials.calc(job).finalCost;
+    // Un client con solo espacios cuenta como "No client" (no un renglón sin nombre).
+    const getClientName = (job: Property) => {
+      const clientKey = job.client?.trim();
+      return clientKey ? displayClientNameIn(clientNameIndex, clientKey) : NO_CLIENT_LABEL;
+    };
+    const getFinalCost = (job: Property) => calcJobFinancials(job).finalCost;
     return buildClientsReport(periodJobs, getClientName, getFinalCost);
-  }, [periodJobs, clientNameIndex, jobFinancials]);
+  }, [periodJobs, clientNameIndex, calcJobFinancials]);
 
   return (
     <div className="cr-page fade-in">
@@ -67,11 +70,11 @@ const ClientsReportView = ({ onOpenMenu, properties }: ClientsReportViewProps) =
 
       <PeriodBar period={period} onChange={setPeriod} />
 
-      <ClientsReportSummary report={clientsReport} isFinalCostLoading={jobFinancials.loading} />
+      <ClientsReportSummary report={clientsReport} isFinalCostLoading={isFinalCostLoading} />
 
       <ClientsReportTable
         report={clientsReport}
-        isFinalCostLoading={jobFinancials.loading}
+        isFinalCostLoading={isFinalCostLoading}
         periodLabel={periodDateRange.label}
       />
     </div>

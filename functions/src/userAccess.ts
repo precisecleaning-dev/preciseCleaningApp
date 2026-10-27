@@ -158,10 +158,11 @@ export function computeAccess(userId: string, user: UserDoc, role: RoleDoc | nul
   });
   const isAdmin = role?.name === "Administrator";
   // ¿Puede ver dinero? Las pantallas que lo muestran: Payroll, Invoices,
-  // Owner/Manager y Houses cuando el rol no oculta el grupo "financial".
+  // Clients Report, Owner/Manager y Houses cuando el rol no oculta el grupo
+  // "financial". (Un rol sin "Clients Report" declarado ya entra por Invoices.)
   const hiddenHouseGroups = declared.get("Houses")?.hiddenGroups ?? [];
   const canSeeFinancials = isAdmin ||
-    ["Payroll", "Invoices", "Owner", "Manager"].some((moduleName) => rightsByModule[moduleName]?.v) ||
+    ["Payroll", "Invoices", "Clients Report", "Owner", "Manager"].some((moduleName) => rightsByModule[moduleName]?.v) ||
     (!!rightsByModule["Houses"]?.v && !hiddenHouseGroups.includes("financial"));
   return {
     // Hoy la app deja entrar a un usuario "Inactive"; con las reglas propuestas
