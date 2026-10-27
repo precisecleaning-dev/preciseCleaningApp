@@ -158,6 +158,10 @@ export interface Property {
   invoiceHoldBy?: string;
 }
 
+/** Pestaña con la que otra vista pide abrir el detalle de una casa (HousesView
+ *  `detailInitialTab`; p. ej. "media" desde Invoices para los PDF de fotos). */
+export type HouseDetailTab = 'overview' | 'financials' | 'media';
+
 // ==========================================
 // 3. SETTINGS & CATALOGS
 // ==========================================
@@ -340,46 +344,6 @@ export interface RecallHousesResult {
   error: Error | null;
 }
 
-/** Un cliente en el reporte Clients Report (utils/clientsReport.ts): sus
- *  trabajos del periodo y la suma de su Final Cost. */
-export interface ClientReportRow {
-  clientName: string;
-  jobCount: number;
-  finalCost: number;
-  /** Parte del Final Cost del periodo que es de este cliente (0 a 1). */
-  shareOfFinalCost: number;
-}
-
-/** Reporte Clients Report: un renglón por cliente y el Grand Total. */
-export interface ClientsReport {
-  rows: ClientReportRow[];
-  totalJobs: number;
-  totalFinalCost: number;
-}
-
-/** Columnas de la tabla del Clients Report que se pueden ordenar. */
-export type ClientsReportSortColumn = 'clientName' | 'jobCount' | 'finalCost' | 'shareOfFinalCost';
-
-/** Orden de una columna: de mayor a menor (desc) o de menor a mayor (asc). */
-export type SortDirection = 'asc' | 'desc';
-
-/** Orden elegido en la tabla del Clients Report (null = orden original: por cliente A–Z). */
-export interface ClientsReportSort {
-  column: ClientsReportSortColumn;
-  direction: SortDirection;
-}
-
-/** Lo que se lee de un servicio cobrado (billing_services) para las finanzas
- *  del trabajo (utils/jobFinancials.ts). `unknown`: los registros viejos o
- *  importados pueden traer textos o no traer el campo. */
-export interface BilledServiceAmounts {
-  subtotal?: unknown;
-  quantity?: unknown;
-  price?: unknown;
-  total?: unknown;
-  applyTax?: unknown;
-}
-
 // ---- Hoja "Daily Operations" (Excel) — Pipeline → Excel ----
 // Leer la hoja, compararla con la app y exportarla igual:
 // features/houses/operationsSheet*.ts.
@@ -407,6 +371,10 @@ export interface OperationsSheetRow {
 export type OperationsSheetAmountField = 'servicePrice' | 'taxes' | 'finalCost' | 'payroll';
 
 export type OperationsSheetAmounts = Record<OperationsSheetAmountField, number>;
+
+/** Cómo arma la hoja el Final Cost de una fila: F+G (Apply Tax = Yes), F−G
+ *  (No) o ninguna fórmula (el trabajo mezcla servicios con y sin Apply Tax). */
+export type OperationsSheetFinalCostKind = 'taxAdded' | 'taxSubtracted' | null;
 
 /** Un monto que no coincide, con el motivo cuando se sabe. */
 export interface OperationsSheetAmountDifference {
@@ -464,7 +432,7 @@ export interface OperationsSheetJobCandidate {
 export interface OperationsSheetCandidatePair {
   sheetIndex: number;
   candidateIndex: number;
-  points: number;
+  matchScore: number;
 }
 
 /** Lo que la comparación necesita de la app. */
@@ -480,6 +448,8 @@ export interface OperationsSheetRowSources {
   getTeamName: (job: Property) => string;
   /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
   getAmounts: (job: Property) => OperationsSheetAmounts;
+  /** Profit de la app (useJobFinancials().calc): sin el impuesto que se suma. */
+  getProfit: (job: Property) => number;
   /** El rol puede ver las notas de oficina (columna Notes). */
   canSeeOfficeNotes: boolean;
 }
@@ -506,6 +476,8 @@ export interface OperationsSheetExportRow {
   team: string;
   /** Montos de la app (useJobFinancials): Service Price sin impuesto, Taxes y Final Cost. */
   amounts: OperationsSheetAmounts;
+  /** Profit de la app: Final Cost sin el impuesto que se suma, menos Payroll. */
+  profit: number;
   isTaxExempt: boolean;
   invoice: string;
   /** Notas de oficina; '' si el rol no puede verlas. */
@@ -569,8 +541,9 @@ export interface QcRecordLite {
 // TEXTO: días AAAA-MM-DD y fecha + hora ISO; en pantalla SIEMPRE MM/DD/AAAA y
 // h:mm AM/PM.
 // Cada colección tiene su archivo de tipos (y su service en src/services):
-//   user_tasks    → ./userTasks.ts     (services/userTasksService.ts)
-//   task_projects → ./taskProjects.ts  (services/taskProjectsService.ts)
+//   user_tasks       → ./userTasks.ts        (services/userTasksService.ts)
+//   task_projects    → ./taskProjects.ts     (services/taskProjectsService.ts)
+//   billing_services → ./billingServices.ts  (features/houses/services/billingServices.ts)
 
 /** Día sin hora: "2026-10-13" (AAAA-MM-DD). */
 export type YmdDate = string;
@@ -586,3 +559,4 @@ export interface UserPriorities {
 
 export * from './userTasks';
 export * from './taskProjects';
+export * from './billingServices';

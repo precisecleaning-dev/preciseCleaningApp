@@ -9,7 +9,10 @@
 //      Final Cost    = Service Price + Taxes si el servicio tiene Apply Tax =
 //                      Yes; Service Price − Taxes si es No (fórmula de la hoja:
 //                      IF(Customers "YES", F+G, F−G))
-//      Profit        = Final Cost − Payroll
+//      Profit        = Final Cost SIN el impuesto que se suma (Apply Tax =
+//                      Yes) − Payroll: ese impuesto se cobra para el estado,
+//                      no es ganancia (CR del PR #25, decisión de Omar 10/2026;
+//                      la hoja de la oficina usa H − I y lo contaba)
 //      Margin        = Profit / Final Cost
 //    ⭐ Antes el Service Price salía del `total` del servicio, que YA trae el
 //       impuesto sumado (Apply Tax = Yes): la app cobraba el 8.25% dos veces y
@@ -25,6 +28,14 @@ export const TAX_RATE = 0.0825;
 
 /** Redondea a centavos: 28.875 → 28.88. */
 export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Diferencia menor a un centavo: redondeos de la hoja o de la app. */
+const AMOUNT_TOLERANCE = 0.01;
+
+/** ¿Dos montos son el mismo (salvo redondeo)? false si falta alguno. Lo usan
+ *  la comparación y la exportación del Excel (features/houses/operationsSheet*). */
+export const isSameAmount = (amountA: number | null, amountB: number | null): boolean =>
+  amountA !== null && amountB !== null && Math.abs(amountA - amountB) < AMOUNT_TOLERANCE;
 // Un solo formateador: toLocaleString crea uno nuevo en cada llamada y el
 // Overview en Year formatea miles de montos.
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -125,7 +136,11 @@ export function useJobFinancials(enabled = true) {
         const taxSubtractedPrice = servicePrice - (e?.taxAddedPrice || 0);
         const taxBalance = prop.taxExempt ? 0 : ((e?.taxAddedPrice || 0) - taxSubtractedPrice) * TAX_RATE;
         const finalCost = round2(servicePrice + taxBalance);
-        const profit = round2(finalCost - payroll);
+        // Lo que queda para la empresa: el precio menos el impuesto que se resta
+        // (No). El que se suma (Yes) es del estado y no entra en el Profit.
+        const subtractedTax = prop.taxExempt ? 0 : taxSubtractedPrice * TAX_RATE;
+        const netRevenue = round2(servicePrice - subtractedTax);
+        const profit = round2(netRevenue - payroll);
         return { servicePrice, taxes, finalCost, payroll, profit, margin: marginOf(profit, finalCost) };
       },
     [byProp],

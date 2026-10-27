@@ -1,24 +1,7 @@
 // src/features/houses/serviceRecords.ts
 // Servicios cobrados de una casa (`billing_services`) tal como los maneja el
 // formulario de casas. Extraído de HousesView.tsx.
-import type { Customer, Tax } from "../../types/index";
-
-export interface ServiceRecord {
-  id?: string;
-  propertyId: string;
-  serviceId: string;
-  quantity: number;
-  price: number;
-  subtotal: number;
-  applyTax: "Yes" | "No";
-  minusTax: "Yes" | "No";
-  taxPercentage: number;
-  taxAmount: number;
-  total: number;
-  totalMinusTax: number; // ⭐ AppSheet "Total Minus Tax"
-  notes: string;
-  createdAt?: string;
-}
+import type { Customer, ServiceRecord, Tax } from "../../types/index";
 
 // Huella de un servicio para saber si cambió desde que se cargó. Las claves se
 // ordenan: el mismo contenido en otro orden no cuenta como cambio.

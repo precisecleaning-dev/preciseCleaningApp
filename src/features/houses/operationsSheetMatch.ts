@@ -18,13 +18,10 @@ import type {
   OperationsSheetCompareSources, OperationsSheetComparison, OperationsSheetJobCandidate, OperationsSheetMatch,
   OperationsSheetMatchStatus, OperationsSheetRow, Property,
 } from '../../types/index';
-import { round2, TAX_RATE } from '../../utils/jobFinancials';
+import { isSameAmount, round2, TAX_RATE } from '../../utils/jobFinancials';
 
 /** Días que se acepta mover la fecha al buscar un trabajo que no estaba en su día. */
 const MAX_DATE_SHIFT_DAYS = 7;
-
-/** Diferencia mínima que cuenta (redondeos de la hoja). */
-const AMOUNT_TOLERANCE = 0.01;
 
 const DAY_MS = 86_400_000;
 
@@ -50,10 +47,7 @@ const MATCH_POINTS = {
 };
 
 
-const isSameAmount = (amountA: number | null, amountB: number | null) =>
-  amountA !== null && amountB !== null && Math.abs(amountA - amountB) < AMOUNT_TOLERANCE;
-
-const toWords = (text: string): string[] =>
+const splitIntoWords = (text: string): string[] =>
   text.toLowerCase().replace(/[^a-z0-9#\s]/g, ' ').split(/\s+/).filter(Boolean);
 
 /** Tipo de calle escrito completo → abreviado ("Drive" y "Dr" son la misma calle). */
@@ -70,7 +64,7 @@ const STREET_TYPES = new Set([...Object.values(STREET_TYPE_ABBREVIATIONS), 'loop
  * ("110 North Dr") se usa ese. null si no empieza con número.
  */
 export const getStreetKey = (address: string): string | null => {
-  const words = toWords(address)
+  const words = splitIntoWords(address)
     .filter((word) => !IGNORED_ADDRESS_WORDS.has(word))
     .map((word) => STREET_TYPE_ABBREVIATIONS[word] ?? word);
   const [houseNumber, ...restWords] = words;
@@ -84,7 +78,7 @@ export const getStreetKey = (address: string): string | null => {
 
 /** Unidades que aparecen en el texto: "apt d" → "d", "unit 11g" → "11g", "#b" → "b". */
 const getUnitTokens = (text: string): Set<string> => {
-  const words = toWords(text);
+  const words = splitIntoWords(text);
   const unitTokens = new Set<string>();
   words.forEach((word, wordIndex) => {
     if (word.startsWith('#') && word.length > 1) unitTokens.add(word.slice(1));
@@ -96,7 +90,7 @@ const getUnitTokens = (text: string): Set<string> => {
 
 /** Parte de la nota que se compara: palabras de 3+ letras o con números ("3bds", "11g"). */
 const getNoteWords = (text: string): Set<string> =>
-  new Set(toWords(text).filter((word) => word.length >= 3 || /\d/.test(word)));
+  new Set(splitIntoWords(text).filter((word) => word.length >= 3 || /\d/.test(word)));
 
 const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -109,7 +103,7 @@ const getSheetRowStreetKey = (sheetRow: OperationsSheetRow) =>
 
 /** Qué tanto se parece una fila a un trabajo de la MISMA calle. */
 const scorePair = (sheetRow: OperationsSheetRow, candidate: OperationsSheetJobCandidate): number => {
-  let points = 0;
+  let matchScore = 0;
   const sheetText = `${sheetRow.address} ${sheetRow.note}`;
   const jobUnit = (candidate.job.unit ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const sheetUnits = getUnitTokens(sheetText);
@@ -117,28 +111,28 @@ const scorePair = (sheetRow: OperationsSheetRow, candidate: OperationsSheetJobCa
   const jobUnits = getUnitTokens(`${candidate.job.address} ${candidate.job.note ?? ''}`);
   if (jobUnit) jobUnits.add(jobUnit);
   if ([...jobUnits].some((unit) => sheetUnits.has(unit) || sheetWords.has(unit))) {
-    points += MATCH_POINTS.sameUnit;
+    matchScore += MATCH_POINTS.sameUnit;
   }
-  if (isSameAmount(sheetRow.servicePrice, candidate.amounts.servicePrice)) points += MATCH_POINTS.sameServicePrice;
-  if (isSameAmount(sheetRow.payroll, candidate.amounts.payroll)) points += MATCH_POINTS.samePayroll;
+  if (isSameAmount(sheetRow.servicePrice, candidate.amounts.servicePrice)) matchScore += MATCH_POINTS.sameServicePrice;
+  if (isSameAmount(sheetRow.payroll, candidate.amounts.payroll)) matchScore += MATCH_POINTS.samePayroll;
   const sheetClient = normalizeName(sheetRow.client);
   const jobClient = normalizeName(candidate.clientName);
   if (sheetClient && jobClient && (sheetClient.startsWith(jobClient) || jobClient.startsWith(sheetClient))) {
-    points += MATCH_POINTS.sameClient;
+    matchScore += MATCH_POINTS.sameClient;
   }
   const sheetNoteWords = getNoteWords(sheetRow.note);
   const jobNoteWords = getNoteWords(candidate.job.note || candidate.job.generalNotes || '');
   const sharedWordCount = [...sheetNoteWords].filter((word) => jobNoteWords.has(word)).length;
   const noteSimilarity = sharedWordCount / Math.max(1, Math.min(sheetNoteWords.size, jobNoteWords.size));
-  points += Math.round(noteSimilarity * MATCH_POINTS.noteWords);
-  return points;
+  matchScore += Math.round(noteSimilarity * MATCH_POINTS.noteWords);
+  return matchScore;
 };
 
 /** Empareja una sola vez cada fila y cada trabajo, primero los pares con más puntos. */
 const assignPairs = (pairs: OperationsSheetCandidatePair[], usedSheetIndexes: Set<number>, usedCandidateIndexes: Set<number>) => {
   const assignedPairs: OperationsSheetCandidatePair[] = [];
   [...pairs]
-    .sort((pairA, pairB) => pairB.points - pairA.points)
+    .sort((pairA, pairB) => pairB.matchScore - pairA.matchScore)
     .forEach((pair) => {
       if (usedSheetIndexes.has(pair.sheetIndex) || usedCandidateIndexes.has(pair.candidateIndex)) return;
       usedSheetIndexes.add(pair.sheetIndex);
@@ -222,8 +216,8 @@ export const compareOperationsSheet = (
         const dayDifference = daysBetween(sheetRow.date, candidate.job.scheduleDate);
         if (isSameDateOnly ? dayDifference !== 0 : dayDifference > MAX_DATE_SHIFT_DAYS) return;
         // Entre fechas movidas gana la más cercana.
-        const points = scorePair(sheetRow, candidate) - dayDifference;
-        pairs.push({ sheetIndex, candidateIndex, points });
+        const matchScore = scorePair(sheetRow, candidate) - dayDifference;
+        pairs.push({ sheetIndex, candidateIndex, matchScore });
       });
     });
     return pairs;
@@ -232,7 +226,7 @@ export const compareOperationsSheet = (
   const sameDatePairs = assignPairs(buildPairs(true), usedSheetIndexes, usedCandidateIndexes);
   const shiftedDatePairs = assignPairs(buildPairs(false), usedSheetIndexes, usedCandidateIndexes);
 
-  const toMatch = (pair: OperationsSheetCandidatePair, isDateShifted: boolean): OperationsSheetMatch => {
+  const buildMatch = (pair: OperationsSheetCandidatePair, isDateShifted: boolean): OperationsSheetMatch => {
     const sheetRow = sheetRows[pair.sheetIndex];
     const candidate = candidates[pair.candidateIndex];
     const differences = getDifferences(sheetRow, candidate.amounts);
@@ -273,8 +267,8 @@ export const compareOperationsSheet = (
     }));
 
   const matches = [
-    ...sameDatePairs.map((pair) => toMatch(pair, false)),
-    ...shiftedDatePairs.map((pair) => toMatch(pair, true)),
+    ...sameDatePairs.map((pair) => buildMatch(pair, false)),
+    ...shiftedDatePairs.map((pair) => buildMatch(pair, true)),
     ...sheetOnlyMatches,
     ...appOnlyMatches,
   ].sort(compareMatches);

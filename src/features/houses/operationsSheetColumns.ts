@@ -44,6 +44,7 @@ export const buildOperationsSheetExportRows = (
       date: job.scheduleDate ?? '',
       team: sources.getTeamName(job),
       amounts: sources.getAmounts(job),
+      profit: sources.getProfit(job),
       isTaxExempt: !!job.taxExempt,
       invoice: job.invoiceStatus ?? '',
       notes: sources.canSeeOfficeNotes ? job.officeNote ?? '' : '',

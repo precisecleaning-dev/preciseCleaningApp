@@ -14,7 +14,7 @@ import {
   Wrench, Hash, Briefcase, AlertTriangle, Image as ImageIcon, Copy, CheckSquare, DollarSign, CheckCircle,
   Calendar, PlayCircle, BarChart3, FileImage, History, Save, Layers, Camera, PenTool, StickyNote,
 } from "lucide-react";
-import type { NoteHistoryEntry, PayrollRecord, Property, SystemUser } from "../../../types/index";
+import type { NoteHistoryEntry, PayrollRecord, Property, ServiceRecord, SystemUser } from "../../../types/index";
 import { useLiveData } from "../../../shared/data/liveCollections";
 import { commitOps } from "../../../shared/data/batchWrites";
 import { propertiesService } from "../../../services/propertiesService";
@@ -29,7 +29,7 @@ import HouseQcHistory from "../../quality-check/components/HouseQcHistory";
 import PhotoSection from "../../../components/PhotoSection";
 import type { StatusModalConfig } from "../../../components/StatusChangeModal";
 import type { PhotoConfig } from "../../../services/photoConfigService";
-import { type ServiceRecord, newServiceRecord, recordTotalMinusTax } from "../serviceRecords";
+import { newServiceRecord, recordTotalMinusTax } from "../serviceRecords";
 import { editablePayroll, newPayrollRecord, payrollTotal } from "../payrollRecords";
 import { listDiff } from "../houseDiff";
 import { openPhotoReport } from "../photoReport";

@@ -28,19 +28,24 @@ const REQUIRED_FIELDS: OperationsSheetHeaderField[] = ['address', 'date', 'servi
 const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
 const DAY_MS = 86_400_000;
 
-const pad2 = (value: number) => String(value).padStart(2, '0');
+const padToTwoDigits = (value: number) => String(value).padStart(2, '0');
 
 const normalizeHeader = (value: unknown) => String(value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-const cellText = (value: unknown): string => (value === null || value === undefined ? '' : String(value).trim());
+const getCellText = (value: unknown): string => (value === null || value === undefined ? '' : String(value).trim());
 
-/** Número de la celda: número tal cual, o texto tipo "$1,234.50" / "200,00". */
+/**
+ * Número de la celda: número tal cual, o texto tipo "$1,234.50" / "200,00".
+ * La coma es decimal solo si le siguen 1 o 2 dígitos al final ("200,00",
+ * "12,5"); si no, separa miles ("$1,234" = 1234).
+ */
 export const parseSheetAmount = (value: unknown): number | null => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const text = cellText(value).replace(/[$\s]/g, '');
+  const text = getCellText(value).replace(/[$\s]/g, '');
   if (!text) return null;
-  const hasCommaDecimal = text.includes(',') && !text.includes('.');
-  const normalized = hasCommaDecimal ? text.replace(',', '.') : text.replace(/,/g, '');
+  const hasCommaDecimal = !text.includes('.') && /,\d{1,2}$/.test(text);
+  const withDecimalPoint = hasCommaDecimal ? text.replace(/,(?=\d{1,2}$)/, '.') : text;
+  const normalized = withDecimalPoint.replace(/,/g, '');
   const amount = Number(normalized);
   return Number.isFinite(amount) ? amount : null;
 };
@@ -48,13 +53,14 @@ export const parseSheetAmount = (value: unknown): number | null => {
 /** Fecha de la celda en AAAA-MM-DD: número de serie de Excel o texto M/D/AAAA. '' si no es fecha. */
 export const parseSheetDate = (value: unknown): string => {
   if (typeof value === 'number' && value > 0) {
-    // UTC a propósito: el número de serie es un día, sin hora ni zona.
-    const date = new Date(EXCEL_EPOCH_MS + Math.round(value) * DAY_MS);
-    return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+    // UTC a propósito: el número de serie es un día, sin hora ni zona. floor:
+    // la parte decimal es la hora (45567.75 = ese día a las 6 p. m.).
+    const date = new Date(EXCEL_EPOCH_MS + Math.floor(value) * DAY_MS);
+    return `${date.getUTCFullYear()}-${padToTwoDigits(date.getUTCMonth() + 1)}-${padToTwoDigits(date.getUTCDate())}`;
   }
-  const text = cellText(value);
+  const text = getCellText(value);
   const usDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
-  if (usDate) return `${usDate[3]}-${pad2(Number(usDate[1]))}-${pad2(Number(usDate[2]))}`;
+  if (usDate) return `${usDate[3]}-${padToTwoDigits(Number(usDate[1]))}-${padToTwoDigits(Number(usDate[2]))}`;
   const isoDate = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
   return isoDate ? `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}` : '';
 };
@@ -84,22 +90,22 @@ export const parseOperationsSheetRows = (sheetName: string, rows: readonly (read
 
   const sheetRows: OperationsSheetRow[] = [];
   dataRows.forEach((row, dataIndex) => {
-    const address = cellText(readCell(row, 'address'));
+    const address = getCellText(readCell(row, 'address'));
     const date = parseSheetDate(readCell(row, 'date'));
     if (!address || !date) return;
     sheetRows.push({
       sheetName,
       rowNumber: dataIndex + 2,
       address,
-      client: cellText(readCell(row, 'client')),
-      note: cellText(readCell(row, 'note')),
+      client: getCellText(readCell(row, 'client')),
+      note: getCellText(readCell(row, 'note')),
       date,
-      team: cellText(readCell(row, 'team')),
+      team: getCellText(readCell(row, 'team')),
       servicePrice: parseSheetAmount(readCell(row, 'servicePrice')),
       taxes: parseSheetAmount(readCell(row, 'taxes')),
       finalCost: parseSheetAmount(readCell(row, 'finalCost')),
       payroll: parseSheetAmount(readCell(row, 'payroll')),
-      invoice: cellText(readCell(row, 'invoice')),
+      invoice: getCellText(readCell(row, 'invoice')),
     });
   });
   return sheetRows;

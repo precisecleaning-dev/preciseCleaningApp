@@ -6,7 +6,7 @@
 //      Payroll (operationsSheetMatch.ts).
 //    Ambos usan el periodo de la barra (por defecto el mes) y los trabajos de
 //    la empresa elegida en el Pipeline (Normal / Cavalry).
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Download, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
 import type { OperationsSheetAmounts, Property, UploadedOperationsSheet } from '../../../types/index';
 import { inPeriod, MONTHS_LONG, periodRange } from '../../../utils/periods';
@@ -35,21 +35,41 @@ interface OperationsSheetDialogProps {
   businessName: string;
   /** El rol puede ver las notas de oficina (columna Notes del Excel). */
   canSeeOfficeNotes: boolean;
+  /** Excel subido (lo guarda HouseList: sigue ahí al volver de abrir un trabajo). */
+  uploadedSheet: UploadedOperationsSheet | null;
+  onUploadedSheetChange: (uploadedSheet: UploadedOperationsSheet | null) => void;
   onOpenHouse: (house: Property) => void;
   onClose: () => void;
 }
 
 const OperationsSheetDialog = ({
-  jobs, businessName, canSeeOfficeNotes, onOpenHouse, onClose,
+  jobs, businessName, canSeeOfficeNotes, uploadedSheet, onUploadedSheetChange, onOpenHouse, onClose,
 }: OperationsSheetDialogProps) => {
   const [period, setPeriod] = useStoredPeriod('pc.operationsSheet.period', 'month');
   const periodDateRange = useMemo(() => periodRange(period), [period]);
-  const jobFinancials = useJobFinancials();
+  const { calc: calcJobFinancials, loading: isFinancialsLoading } = useJobFinancials();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadedSheet, setUploadedSheet] = useState<UploadedOperationsSheet | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Escape cierra (como DeleteHouseDialog).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // El foco entra al diálogo al abrirlo y vuelve a donde estaba (el botón
+  // Excel) al cerrarlo.
+  useEffect(() => {
+    const previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => previouslyFocusedElement?.focus?.();
+  }, []);
 
   const periodJobs = useMemo(
     () => jobs.filter((job) => inPeriod(job.scheduleDate, periodDateRange)),
@@ -69,22 +89,22 @@ const OperationsSheetDialog = ({
   );
 
   const getAppAmounts = useCallback((job: Property): OperationsSheetAmounts => {
-    const { servicePrice, taxes, finalCost, payroll } = jobFinancials.calc(job);
+    const { servicePrice, taxes, finalCost, payroll } = calcJobFinancials(job);
     return { servicePrice, taxes, finalCost, payroll };
-  }, [jobFinancials]);
+  }, [calcJobFinancials]);
 
   const comparison = useMemo(() => {
-    if (!uploadedSheet || jobFinancials.loading) return null;
+    if (!uploadedSheet || isFinancialsLoading) return null;
     return compareOperationsSheet(periodSheetRows, periodJobs, { getAppAmounts, getClientName: getJobClientName });
-  }, [uploadedSheet, jobFinancials.loading, periodSheetRows, periodJobs, getAppAmounts, getJobClientName]);
+  }, [uploadedSheet, isFinancialsLoading, periodSheetRows, periodJobs, getAppAmounts, getJobClientName]);
 
   const isMonthPeriod = period.kind === 'month';
   const sheetName = isMonthPeriod ? MONTHS_LONG[Number(period.anchor.slice(5, 7)) - 1] : DEFAULT_SHEET_NAME;
   const exportSummary = `${pluralize(periodJobs.length, 'job', 'jobs')} · ${periodDateRange.label} · ${businessName}`;
   const uploadSummary = uploadedSheet
-    ? `${uploadedSheet.fileName} · ${pluralize(periodSheetRows.length, 'row', 'rows')} in this period (of ${formatCount(uploadedSheet.rows.length)})`
+    ? `${uploadedSheet.fileName} · ${pluralize(periodSheetRows.length, 'row', 'rows')} in this period (of ${formatCount(uploadedSheet.rows.length)}) · compared with ${businessName} jobs only`
     : 'Upload the Daily Operations Excel to check it against the app.';
-  const isExportDisabled = isExporting || jobFinancials.loading || periodJobs.length === 0;
+  const isExportDisabled = isExporting || isFinancialsLoading || periodJobs.length === 0;
 
   const handleExport = async () => {
     setErrorMessage('');
@@ -94,6 +114,7 @@ const OperationsSheetDialog = ({
         getClientName: getJobClientName,
         getTeamName: (job) => getRelationName(teams, job.teamId, ''),
         getAmounts: getAppAmounts,
+        getProfit: (job) => calcJobFinancials(job).profit,
         canSeeOfficeNotes,
       });
       const fileName = `Daily_Operations_${sheetName}_${formatDateForFile(todayIso())}.xlsx`;
@@ -118,7 +139,7 @@ const OperationsSheetDialog = ({
         setErrorMessage('No job rows found. The sheet needs the Address, Date and Service Price columns.');
         return;
       }
-      setUploadedSheet({ fileName: selectedFile.name, rows });
+      onUploadedSheetChange({ fileName: selectedFile.name, rows });
     } catch (error) {
       console.error(error);
       setErrorMessage('Could not read that file. Upload the .xlsx exported from the Daily Operations sheet.');
@@ -130,10 +151,12 @@ const OperationsSheetDialog = ({
   return (
     <div className="modal-overlay-centered" onClick={onClose}>
       <div
+        ref={dialogRef}
         className="modal-90 osd-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="osd-title"
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="osd-header">

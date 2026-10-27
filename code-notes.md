@@ -3105,24 +3105,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
   `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
   cambio aparte (renombra archivos): pendiente de decidir.
-- Clients Report (vista nueva, 10/2026, pedido de Omar: como la tabla dinámica de la hoja del mes): trabajos con
-  Schedule Date en el periodo (default Month), un renglón por cliente con Jobs y Final Cost, y Grand Total
-  (`utils/clientsReport.ts`). Cuenta TODOS los trabajos del periodo, también los que no tienen status (el
-  Overview los saca; la hoja los cuenta). Se agrupa por el nombre YA resuelto (`displayClientNameIn`): el id,
-  el id legacy y el nombre del mismo cliente caen en un solo renglón. Orden alfabético; "No client" al final.
-  Permiso propio "Clients Report"; si el rol no lo declara, lo hereda de "Invoices" (Sidebar
-  `canViewOrLegacy`, guardia `TAB_MODULE`). El Scope Own del módulo se respeta (`propertiesForModule`).
-- Clients Report · diseño de la tabla (10/2026, pedido de Omar: para la alta gerencia): columna "Share" = qué
-  parte del Final Cost del periodo es de cada cliente (`shareOfFinalCost`). La BARRA es relativa al cliente más
-  grande (el mayor va lleno), el número sí es el % real del total: con escala 0–100% casi todas las barras
-  quedaban de 1–2 px. En el teléfono no se dibuja la columna Share (`useMediaQuery(PHONE_QUERY)`). La tarjeta
-  usa `overflow: clip` (no `hidden`) para que el encabezado de columnas quede pegado al hacer scroll.
-- Clients Report · tablero ejecutivo (10/2026, pedido de Omar): las tarjetas de arriba son
-  `ClientsReportSummary` (Final cost, Jobs, Clients, Top client) con tonos de la paleta (azul marino del menú
-  → azul de la marca); NO usan KpiGrid a propósito para no cambiar el Overview ni Invoices. "Top client" =
-  mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
-  mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
-  orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.
 - Pipeline → Excel (10/2026, pedido de Omar): botón "Excel" en el Pipeline (solo con el grupo Financial) abre
   `OperationsSheetDialog`: exporta la hoja "Daily Operations" del periodo (default Month) y compara un Excel
   subido. MATCH por calle (número + primera palabra: "401 twin") + misma fecha; entre varios trabajos de la
@@ -3142,3 +3124,17 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   de No). Antes el Price salía del `total` del servicio, que YA trae el impuesto: se cobraba el 8.25% dos
   veces ($100 → Final $99.32 en vez de $108.25). No volver a usar `total` como precio. Cambian a la vez
   Invoices, Overview, Owner/Manager, Payroll, Clients Report y Pipeline → Excel (todos usan useJobFinancials).
+- Pipeline → Excel · CR del PR #25 (10/2026): el Excel subido lo guarda HouseList (`uploadedOperationsSheet`), no
+  el diálogo: "Open" cierra el diálogo para mostrar el detalle y, al volver, sigue el mismo archivo (no pasar
+  el estado de vuelta al diálogo). El botón tiene su propio elemento "btn_operationsSheet" en Configure Fields
+  (además del grupo Financial); por defecto se ve. Su clase es la compartida del header, `.hv-btn-header` (antes
+  `.hv-btn-history`, la de "Mi historial"). Los filtros de la comparación son botones con `aria-pressed` (no
+  hay paneles: no usar role="tablist"). El diálogo cierra con Escape y devuelve el foco al botón Excel.
+- Profit sin impuesto (CR 2 del PR #25, decisión de Omar 10/2026; CAMBIA la regla de la nota "Finanzas por
+  trabajo"): Profit = Final Cost sin el impuesto que se SUMA (Apply Tax = Yes) − Payroll; el impuesto es del
+  estado, no ganancia ($100 Yes, Payroll $50 → Profit $50, antes $58.25). Con No el impuesto ya se restó y queda
+  Final Cost − Payroll. Margin sigue siendo Profit / Final Cost (como la columna K). La hoja de la oficina usa
+  J = H − I: el Excel exportado pone H−G−I en las filas Yes y H−I en las No (mixtas: el valor). Cambia Profit y
+  Margin en Invoices, Overview, Owner/Manager y el Excel. `isSameAmount` (menos de un centavo) vive en
+  utils/jobFinancials.ts y lo usan la comparación y la exportación. Lectura del Excel: la coma es decimal solo
+  con 1–2 dígitos al final ("$1,234" = 1234) y la fecha con hora toma el día (Math.floor, no round).
