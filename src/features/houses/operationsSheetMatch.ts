@@ -11,14 +11,14 @@
 // MAX_DATE_SHIFT_DAYS días antes o después (trabajo que se movió de día).
 //
 // MONTOS: Service Price, Taxes, Final Cost y Payroll de la app
-// (utils/jobFinancials.ts, con las fórmulas de la hoja: Final Cost = Price ±
-// 8.25% según Apply Tax). Diferencias de menos de un centavo no cuentan.
+// (utils/jobFinancials.ts: el impuesto de cada servicio según su Apply Tax /
+// Minus Tax). Diferencias de menos de un centavo no cuentan (isSameAmount).
 import type {
   OperationsSheetAmountDifference, OperationsSheetAmountField, OperationsSheetAmounts, OperationsSheetCandidatePair,
   OperationsSheetCompareSources, OperationsSheetComparison, OperationsSheetJobCandidate, OperationsSheetMatch,
   OperationsSheetMatchStatus, OperationsSheetRow, Property,
 } from '../../types/index';
-import { isSameAmount, round2, TAX_RATE } from '../../utils/jobFinancials';
+import { isSameAmount, roundToCents, TAX_RATE } from '../../utils/jobFinancials';
 
 /** Días que se acepta mover la fecha al buscar un trabajo que no estaba en su día. */
 const MAX_DATE_SHIFT_DAYS = 7;
@@ -151,7 +151,7 @@ const explainDifference = (
   const { servicePrice, taxes, finalCost } = sheetRow;
   if (sheetRow[field] === null) return 'Empty in Excel';
   if (field !== 'taxes' && sheetRow[field] === 0) return 'Excel shows $0.00';
-  if (field === 'taxes' && appAmounts.taxes === 0 && (taxes ?? 0) > 0) return 'Tax exempt in the app';
+  if (field === 'taxes' && appAmounts.taxes === 0 && (taxes ?? 0) > 0) return 'No tax in the app';
   if (field === 'taxes' && (taxes ?? 0) === 0 && appAmounts.taxes > 0) return 'No tax in Excel';
   if ((field === 'taxes' || field === 'finalCost') && !isSameAmount(servicePrice, appAmounts.servicePrice)) {
     return 'Follows the Service Price difference';
@@ -159,11 +159,11 @@ const explainDifference = (
   const isTaxAddedInApp = appAmounts.taxes > 0 && isSameAmount(appAmounts.finalCost, appAmounts.servicePrice + appAmounts.taxes);
   const isTaxSubtractedInApp = appAmounts.taxes > 0 && isSameAmount(appAmounts.finalCost, appAmounts.servicePrice - appAmounts.taxes);
   if (field === 'finalCost' && servicePrice !== null && taxes !== null && taxes > 0) {
-    if (isSameAmount(finalCost, servicePrice + taxes) && isTaxSubtractedInApp) return 'Excel adds the tax · Apply Tax is No in the app';
-    if (isSameAmount(finalCost, servicePrice - taxes) && isTaxAddedInApp) return 'Excel subtracts the tax · Apply Tax is Yes in the app';
+    if (isSameAmount(finalCost, servicePrice + taxes) && isTaxSubtractedInApp) return 'Excel adds the tax · the app subtracts it';
+    if (isSameAmount(finalCost, servicePrice - taxes) && isTaxAddedInApp) return 'Excel subtracts the tax · the app adds it';
   }
   if (field === 'taxes' && servicePrice !== null && taxes !== null && taxes > 0
-    && !isSameAmount(taxes, round2(servicePrice * TAX_RATE))) {
+    && !isSameAmount(taxes, roundToCents(servicePrice * TAX_RATE))) {
     return 'Excel tax is not 8.25% of the price';
   }
   if (field === 'finalCost' && !isSameAmount(taxes, appAmounts.taxes)) return 'Follows the Taxes difference';
@@ -279,7 +279,7 @@ export const compareOperationsSheet = (
   return {
     matches,
     counts,
-    sheetFinalCostTotal: round2(sheetRows.reduce((total, sheetRow) => total + (sheetRow.finalCost ?? 0), 0)),
-    appFinalCostTotal: round2(jobs.reduce((total, job) => total + sources.getAppAmounts(job).finalCost, 0)),
+    sheetFinalCostTotal: roundToCents(sheetRows.reduce((total, sheetRow) => total + (sheetRow.finalCost ?? 0), 0)),
+    appFinalCostTotal: roundToCents(jobs.reduce((total, job) => total + sources.getAppAmounts(job).finalCost, 0)),
   };
 };

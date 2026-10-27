@@ -139,13 +139,13 @@ const OperationsSheetComparison = ({ comparison, getClientName, onOpenHouse }: O
         </span>
       </div>
 
-      <div className="osc-tabs" role="tablist" aria-label="Comparison results">
+      {/* Filtros de la lista (no pestañas con panel propio): botones con aria-pressed. */}
+      <div className="osc-tabs" role="group" aria-label="Show results">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            role="tab"
-            aria-selected={selectedTab === tab.id}
+            aria-pressed={selectedTab === tab.id}
             className={`osc-tab tab-${tab.id}${selectedTab === tab.id ? ' active' : ''}`}
             onClick={() => setSelectedTab(tab.id)}
           >

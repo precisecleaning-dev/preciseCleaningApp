@@ -7,7 +7,7 @@ import {
   AlertTriangle, Briefcase, ChevronRight, Clock, CloudOff, FileSpreadsheet, FileText, Filter, Plus, Search, ShieldCheck,
   Wrench,
 } from "lucide-react";
-import type { Property, Status, SystemUser } from "../../../types/index";
+import type { Property, Status, SystemUser, UploadedOperationsSheet } from "../../../types/index";
 import { propertiesService } from "../../../services/propertiesService";
 import { logActivity } from "../../../services/activityLogService";
 import { resolveCustomerName } from "../../../utils/customerDocs";
@@ -168,6 +168,9 @@ const HouseList = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // ⭐ Pipeline → Excel: exportar la hoja Daily Operations y compararla con la app.
   const [isOperationsSheetOpen, setIsOperationsSheetOpen] = useState(false);
+  // El Excel subido vive aquí y no en el diálogo: al abrir un trabajo desde la
+  // comparación ("Open") el diálogo se cierra, y al volver sigue el mismo archivo.
+  const [uploadedOperationsSheet, setUploadedOperationsSheet] = useState<UploadedOperationsSheet | null>(null);
 
   // ⭐ PERF: este componente solo se monta en la página completa de Houses;
   //    en modo 'modals-only' (encima de Quality Check, Payroll, Invoices,
@@ -604,6 +607,8 @@ const HouseList = ({
   const rowEditAllowed = !!canEdit && isVisible("admin") && isElementVisible("btn_editDetails");
   const rowDeleteAllowed = !!canDelete && isVisible("admin") && isElementVisible("btn_deleteProperty");
   const cardPhotos = isVisible("media") && isElementVisible("btn_tabMedia") && isElementVisible("card_photos");
+  const isOperationsSheetButtonVisible =
+    viewMode === "board" && isVisible("financial") && isElementVisible("btn_operationsSheet");
   const statusLocked = !canEdit || !isVisible("workflow") || isFieldRO("statusId");
   const renderRowStatus = useCallback(
     (prop: Property) => (
@@ -673,11 +678,13 @@ const HouseList = ({
             />
           </div>
 
-          {/* ⭐ Excel de operaciones: solo en el Pipeline y para quien ve las
-              finanzas (grupo Financial de Houses: montos y nómina). */}
-          {viewMode === "board" && isVisible("financial") && (
+          {/* ⭐ Excel de operaciones: solo en el Pipeline, para quien ve las
+              finanzas (grupo Financial de Houses: montos y nómina) y con el
+              botón activo en Configure Fields. */}
+          {isOperationsSheetButtonVisible && (
             <button
-              className="hv-btn-history"
+              type="button"
+              className="hv-btn-header"
               onClick={() => setIsOperationsSheetOpen(true)}
               title="Export the Daily Operations Excel or compare it with the app"
             >
@@ -687,7 +694,8 @@ const HouseList = ({
 
           {isElementVisible("btn_myHistory") && (
             <button
-              className="hv-btn-history"
+              type="button"
+              className="hv-btn-header"
               onClick={() => setIsHistoryOpen(true)}
               title="Historial de casas asignadas a mí"
             >
@@ -1000,6 +1008,8 @@ const HouseList = ({
           jobs={propertiesWithScope}
           businessName={business}
           canSeeOfficeNotes={canSeeOfficeNotes()}
+          uploadedSheet={uploadedOperationsSheet}
+          onUploadedSheetChange={setUploadedOperationsSheet}
           onOpenHouse={handleOpenHouseFromOperationsSheet}
           onClose={() => setIsOperationsSheetOpen(false)}
         />

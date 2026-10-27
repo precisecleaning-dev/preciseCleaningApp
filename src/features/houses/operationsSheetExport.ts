@@ -3,19 +3,19 @@
 // hoja de la oficina: encabezado azul (#535FC1) con filtros, filas celeste
 // (#CFE2F3) con borde, letra Arial, formatos m/d/yyyy, $ y %, primera fila fija
 // y las listas de Invoice y Drip pans/Bulbs/Filters.
-// Taxes, Final Cost, Profit, Profit Margin y Week Numer van como FÓRMULAS,
-// como en la hoja: Taxes = F×8.25% (0 si el trabajo está exento) y Final Cost
-// = F+G (Apply Tax = Yes) o F−G (No), según los montos de la app
-// (utils/jobFinancials.ts). Profit NO es el H−I de la hoja: con Apply Tax =
-// Yes es H−G−I (el impuesto es del estado, no ganancia). La fórmula de la
-// hoja con XLOOKUP a la pestaña Customers no se copia: esa pestaña no viene en
-// el archivo y daría #REF!.
+// Taxes, Final Cost, Profit, Profit Margin y Week Numer van como FÓRMULAS
+// cuando los montos de la app (utils/jobFinancials.ts) caben en una: Taxes =
+// F×8.25%, Final Cost = F+G (impuesto sumado) o F−G (restado), Profit = H−G−I
+// o H−I (el impuesto sumado es del estado, no ganancia; la hoja usa H−I). Si
+// no caben (sin impuesto, otro %, o un trabajo que suma y resta), va el valor.
+// La fórmula de la hoja con XLOOKUP a la pestaña Customers no se copia: esa
+// pestaña no viene en el archivo y daría #REF!.
 // `exceljs` (~1 MB) se carga solo al exportar (import dinámico).
 import type * as ExcelJS from 'exceljs';
 import type {
   ExcelWorksheetWithRangeValidations, OperationsSheetAmounts, OperationsSheetExportRow, OperationsSheetFinalCostKind,
 } from '../../types/index';
-import { isSameAmount, TAX_RATE } from '../../utils/jobFinancials';
+import { isSameAmount, roundToCents, TAX_RATE } from '../../utils/jobFinancials';
 import { downloadBlob } from '../../shared/utils/downloadFile';
 import {
   OPERATIONS_SHEET_COLUMN_WIDTHS, OPERATIONS_SHEET_HEADERS, OPERATIONS_SHEET_INVOICE_OPTIONS,
@@ -62,7 +62,14 @@ const getExcelWeekNumber = (isoDate: string): number | null => {
   return Math.floor((dayOfYear + new Date(januaryFirst).getUTCDay()) / 7) + 1;
 };
 
-/** F+G (Apply Tax = Yes), F−G (No) o null si el trabajo mezcla los dos. */
+/** Taxes: F×8.25% si es el 8.25% del precio; si no (sin impuesto, otro %), el valor. */
+const buildTaxesCell = (row: OperationsSheetExportRow, rowNumber: number) => {
+  const { servicePrice, taxes } = row.amounts;
+  const isStandardTax = taxes > 0 && isSameAmount(taxes, roundToCents(servicePrice * TAX_RATE));
+  return isStandardTax ? { formula: `F${rowNumber}*${TAX_PERCENT_TEXT}`, result: taxes } : taxes;
+};
+
+/** F+G (impuesto sumado), F−G (restado) o null si el trabajo suma y resta. */
 const getFinalCostKind = ({ servicePrice, taxes, finalCost }: OperationsSheetAmounts): OperationsSheetFinalCostKind => {
   if (isSameAmount(finalCost, servicePrice + taxes)) return 'taxAdded';
   if (isSameAmount(finalCost, servicePrice - taxes)) return 'taxSubtracted';
@@ -94,7 +101,7 @@ const buildProfitCell = (row: OperationsSheetExportRow, rowNumber: number, final
 
 /** Celdas A–T de una fila; las fórmulas llevan su resultado para verse sin recalcular. */
 const buildRowValues = (row: OperationsSheetExportRow, rowNumber: number) => {
-  const { servicePrice, taxes, finalCost, payroll } = row.amounts;
+  const { servicePrice, finalCost, payroll } = row.amounts;
   const { profit } = row;
   const finalCostKind = getFinalCostKind(row.amounts);
   const weekNumber = getExcelWeekNumber(row.date);
@@ -105,7 +112,7 @@ const buildRowValues = (row: OperationsSheetExportRow, rowNumber: number) => {
     toExcelDate(row.date),
     row.team,
     servicePrice,
-    row.isTaxExempt ? 0 : { formula: `F${rowNumber}*${TAX_PERCENT_TEXT}`, result: taxes },
+    buildTaxesCell(row, rowNumber),
     buildFinalCostCell(row, rowNumber, finalCostKind),
     payroll,
     buildProfitCell(row, rowNumber, finalCostKind),

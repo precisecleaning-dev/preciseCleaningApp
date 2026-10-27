@@ -1,6 +1,5 @@
 // src/types/index.ts
 import type { LucideIcon } from 'lucide-react';
-import type { DataValidation as ExcelDataValidation } from 'exceljs';
 
 // ==========================================
 // 1. SYSTEM SECURITY & USERS (RBAC)
@@ -344,145 +343,33 @@ export interface RecallHousesResult {
   error: Error | null;
 }
 
-// ---- Hoja "Daily Operations" (Excel) — Pipeline → Excel ----
-// Leer la hoja, compararla con la app y exportarla igual:
-// features/houses/operationsSheet*.ts.
-
-/** Una fila de trabajo leída de la hoja (pestañas Operations, September,
- *  October…). Los montos son los que muestra la hoja (ya calculados). */
-export interface OperationsSheetRow {
-  sheetName: string;
-  /** Fila en la hoja (1 = encabezado), para ubicarla en el Excel. */
-  rowNumber: number;
-  address: string;
-  client: string;
-  note: string;
-  /** AAAA-MM-DD. */
-  date: string;
-  team: string;
-  servicePrice: number | null;
-  taxes: number | null;
-  finalCost: number | null;
-  payroll: number | null;
-  invoice: string;
-}
-
-/** Montos que se comparan entre la hoja y la app. */
-export type OperationsSheetAmountField = 'servicePrice' | 'taxes' | 'finalCost' | 'payroll';
-
-export type OperationsSheetAmounts = Record<OperationsSheetAmountField, number>;
-
-/** Cómo arma la hoja el Final Cost de una fila: F+G (Apply Tax = Yes), F−G
- *  (No) o ninguna fórmula (el trabajo mezcla servicios con y sin Apply Tax). */
-export type OperationsSheetFinalCostKind = 'taxAdded' | 'taxSubtracted' | null;
-
-/** Un monto que no coincide, con el motivo cuando se sabe. */
-export interface OperationsSheetAmountDifference {
-  field: OperationsSheetAmountField;
-  sheetValue: number | null;
-  appValue: number;
-  reason: string | null;
-}
-
-/** ok = mismos montos · different = hay diferencias (o la fecha no es la misma)
- *  · sheetOnly = está en la hoja y no en la app · appOnly = al revés. */
-export type OperationsSheetMatchStatus = 'ok' | 'different' | 'sheetOnly' | 'appOnly';
-
-export interface OperationsSheetMatch {
-  /** Clave estable para la lista (fila de la hoja y/o id de la casa). */
-  key: string;
-  status: OperationsSheetMatchStatus;
-  sheetRow: OperationsSheetRow | null;
-  job: Property | null;
-  appAmounts: OperationsSheetAmounts | null;
-  differences: OperationsSheetAmountDifference[];
-  /** Se emparejó con un trabajo de otra fecha (pocos días de diferencia). */
-  isDateShifted: boolean;
-}
-
-/** Resultado de comparar la hoja con la app en un periodo. */
-export interface OperationsSheetComparison {
-  matches: OperationsSheetMatch[];
-  counts: Record<OperationsSheetMatchStatus, number>;
-  /** Suma del Final Cost de las filas de la hoja y de los trabajos de la app del periodo. */
-  sheetFinalCostTotal: number;
-  appFinalCostTotal: number;
-}
-
-/** Columnas de la hoja que se leen (operationsSheetRead.ts). */
-export type OperationsSheetHeaderField =
-  | 'address' | 'client' | 'note' | 'date' | 'team' | 'servicePrice' | 'taxes' | 'finalCost' | 'payroll' | 'invoice';
-
-/** Excel subido en Pipeline → Excel: nombre del archivo y sus filas de trabajo. */
-export interface UploadedOperationsSheet {
-  fileName: string;
-  rows: OperationsSheetRow[];
-}
-
-/** Trabajo de la app listo para emparejar (operationsSheetMatch.ts). */
-export interface OperationsSheetJobCandidate {
-  job: Property;
-  /** "401 twin": número + primera palabra de la calle. */
-  streetKey: string;
-  amounts: OperationsSheetAmounts;
+/** Un cliente en el reporte Clients Report (utils/clientsReport.ts): sus
+ *  trabajos del periodo y la suma de su Final Cost. */
+export interface ClientReportRow {
   clientName: string;
+  jobCount: number;
+  finalCost: number;
+  /** Parte del Final Cost del periodo que es de este cliente (0 a 1). */
+  shareOfFinalCost: number;
 }
 
-/** Posible pareja fila de la hoja ↔ trabajo, con sus puntos de parecido. */
-export interface OperationsSheetCandidatePair {
-  sheetIndex: number;
-  candidateIndex: number;
-  matchScore: number;
+/** Reporte Clients Report: un renglón por cliente y el Grand Total. */
+export interface ClientsReport {
+  rows: ClientReportRow[];
+  totalJobs: number;
+  totalFinalCost: number;
 }
 
-/** Lo que la comparación necesita de la app. */
-export interface OperationsSheetCompareSources {
-  /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
-  getAppAmounts: (job: Property) => OperationsSheetAmounts;
-  getClientName: (job: Property) => string;
-}
+/** Columnas de la tabla del Clients Report que se pueden ordenar. */
+export type ClientsReportSortColumn = 'clientName' | 'jobCount' | 'finalCost' | 'shareOfFinalCost';
 
-/** Lo que una fila del Excel exportado necesita de la app y no está en la casa misma. */
-export interface OperationsSheetRowSources {
-  getClientName: (job: Property) => string;
-  getTeamName: (job: Property) => string;
-  /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
-  getAmounts: (job: Property) => OperationsSheetAmounts;
-  /** Profit de la app (useJobFinancials().calc): sin el impuesto que se suma. */
-  getProfit: (job: Property) => number;
-  /** El rol puede ver las notas de oficina (columna Notes). */
-  canSeeOfficeNotes: boolean;
-}
+/** Orden de una columna: de mayor a menor (desc) o de menor a mayor (asc). */
+export type SortDirection = 'asc' | 'desc';
 
-/**
- * Hoja de exceljs con `dataValidations.add`, que exceljs usa pero no tipa. Con
- * él la lista va como UN rango (L2:L199); puesta celda por celda, exceljs arma
- * rangos encimados (L10:L199 y L2:L199) que Excel puede marcar como dañados.
- */
-export interface ExcelWorksheetWithRangeValidations {
-  dataValidations: { add: (range: string, validation: ExcelDataValidation) => void };
-}
-
-/** Pestaña del resultado de la comparación: un estado o todas. */
-export type OperationsSheetComparisonTab = OperationsSheetMatchStatus | 'all';
-
-/** Una fila para exportar la hoja desde la app (operationsSheetExport.ts). */
-export interface OperationsSheetExportRow {
-  address: string;
-  client: string;
-  note: string;
-  /** AAAA-MM-DD ('' sin fecha). */
-  date: string;
-  team: string;
-  /** Montos de la app (useJobFinancials): Service Price sin impuesto, Taxes y Final Cost. */
-  amounts: OperationsSheetAmounts;
-  /** Profit de la app: Final Cost sin el impuesto que se suma, menos Payroll. */
-  profit: number;
-  isTaxExempt: boolean;
-  invoice: string;
-  /** Notas de oficina; '' si el rol no puede verlas. */
-  notes: string;
-  issues: string;
+/** Orden elegido en la tabla del Clients Report (null = orden original: por cliente A–Z). */
+export interface ClientsReportSort {
+  column: ClientsReportSortColumn;
+  direction: SortDirection;
 }
 
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
@@ -541,9 +428,8 @@ export interface QcRecordLite {
 // TEXTO: días AAAA-MM-DD y fecha + hora ISO; en pantalla SIEMPRE MM/DD/AAAA y
 // h:mm AM/PM.
 // Cada colección tiene su archivo de tipos (y su service en src/services):
-//   user_tasks       → ./userTasks.ts        (services/userTasksService.ts)
-//   task_projects    → ./taskProjects.ts     (services/taskProjectsService.ts)
-//   billing_services → ./billingServices.ts  (features/houses/services/billingServices.ts)
+//   user_tasks    → ./userTasks.ts     (services/userTasksService.ts)
+//   task_projects → ./taskProjects.ts  (services/taskProjectsService.ts)
 
 /** Día sin hora: "2026-10-13" (AAAA-MM-DD). */
 export type YmdDate = string;
@@ -559,4 +445,3 @@ export interface UserPriorities {
 
 export * from './userTasks';
 export * from './taskProjects';
-export * from './billingServices';

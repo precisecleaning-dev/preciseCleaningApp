@@ -24,6 +24,7 @@ import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
 import { useMediaQuery } from '../shared/hooks/useMediaQuery';
 import { usePendingById } from '../shared/hooks/usePendingById';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
+import InvoicesTotalsBar from '../components/InvoicesTotalsBar';
 import './InvoicesView.css';
 import MenuButton from '../shared/components/MenuButton';
 import VirtualItems from '../shared/components/VirtualItems';
@@ -853,7 +854,10 @@ export default function InvoicesView({ onOpenMenu, properties, currentUser, acti
           )}
         </div>
       ) : (
-        <VirtualItems className="inv-cards-wrap" items={listItems} estimate={210} renderItem={renderCardItem} />
+        <>
+          <InvoicesTotalsBar totals={filteredTotals} jobCount={filteredProperties.length} isLoading={jobFin.loading} />
+          <VirtualItems className="inv-cards-wrap" items={listItems} estimate={210} renderItem={renderCardItem} />
+        </>
       )
       )}
 

@@ -25,7 +25,9 @@ export interface ServiceRecord {
 
 /** Campos de un servicio cobrado que usan las finanzas del trabajo
  *  (utils/jobFinancials.ts). */
-type BilledServiceAmountField = keyof Pick<ServiceRecord, 'subtotal' | 'quantity' | 'price' | 'total' | 'applyTax'>;
+type BilledServiceAmountField = keyof Pick<
+  ServiceRecord, 'subtotal' | 'quantity' | 'price' | 'total' | 'applyTax' | 'minusTax' | 'taxPercentage'
+>;
 
 /** Lo que se lee de esos campos: los mismos de ServiceRecord, pero `unknown`
  *  porque los registros viejos o importados pueden traer textos o no traerlos. */

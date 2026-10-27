@@ -104,7 +104,7 @@ export default function HouseDetail({
     getClientName, getServiceName, logLabel,
   } = catalogs;
   const {
-    canEdit, canDelete, photosUnlockedFor, isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes,
+    canEdit, canDelete, photosUnlockedFor, isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes, canSeeQualityCheckTab,
     anyVisible, mediaTabAvailable,
   } = access;
 
@@ -1088,8 +1088,8 @@ export default function HouseDetail({
               >
                 <History size={14} className="hv-tab-icon-inline" /> History
               </button>
-              {/* ⭐ Quality check: las inspecciones de ESTA casa (configurable por rol). */}
-              {isElementVisible("btn_tabQualityCheck") && (
+              {/* ⭐ Quality check: las inspecciones de ESTA casa (permiso Quality Check + tab activo). */}
+              {canSeeQualityCheckTab() && (
                 <button
                   className={`hv-detail-tab${shownDetailTab === "quality" ? " active" : ""}`}
                   onClick={() => setActiveDetailTab("quality")}
@@ -1459,7 +1459,7 @@ export default function HouseDetail({
             )}
 
             {/* ⭐ TAB QUALITY CHECK: reportes de la casa (solo lectura). */}
-            {shownDetailTab === "quality" && isElementVisible("btn_tabQualityCheck") && (
+            {shownDetailTab === "quality" && canSeeQualityCheckTab() && (
               <div className="fade-in">
                 <HouseQcHistory house={selectedHouse} />
               </div>

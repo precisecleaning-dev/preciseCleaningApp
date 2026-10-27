@@ -4,7 +4,8 @@
 // de donde está. App.tsx decide en qué pestañas (TABS_WITH_HOUSE_MODALS).
 // Cada vista se descarga con lazy() la primera vez que se abre (code splitting).
 import { lazy, Suspense, useState, type Dispatch, type SetStateAction } from 'react';
-import type { Property, Role, SystemUser } from '../types/index';
+import type { HouseDetailTab, Property, Role, SystemUser } from '../types/index';
+import { getClientsReportPermissionModule } from '../utils/clientsReport';
 import type { TabOptions } from '../App';
 import RouteTransition, { ViewSkeleton } from './RouteTransition';
 
@@ -15,6 +16,8 @@ const CalendarView = lazy(() => import('../views/CalendarView'));
 const QualityCheckHub = lazy(() => import('../views/QualityCheckHub'));
 const PayrollView = lazy(() => import('../views/PayrollView'));
 const InvoicesView = lazy(() => import('../views/InvoicesView'));
+// ⭐ CLIENTS REPORT — trabajos y Final Cost por cliente en el periodo.
+const ClientsReportView = lazy(() => import('../views/ClientsReportView'));
 const ActivityLogView = lazy(() => import('../views/ActivityLogView'));
 const TrashView = lazy(() => import('../views/TrashView'));
 const RolesView = lazy(() => import('../views/admin/RolesView'));
@@ -26,9 +29,6 @@ const ManagerView = lazy(() => import('../views/ManagerView'));
 const TaskListView = lazy(() => import('../features/ops/TaskListView'));
 const CompanySettingsView = lazy(() => import('../views/CompanySettingsView'));
 const PhotoSettingsView = lazy(() => import('../views/PhotoSettingsView'));
-
-/** Pestaña con la que abre el detalle de una casa ("media" = fotos y PDF, desde Invoices). */
-type HouseDetailTab = 'media';
 
 interface AppTabContentProps {
   activeTab: TabOptions;
@@ -115,6 +115,14 @@ const AppTabContent = ({
             properties={properties}
             onOpenHouseDetail={handleOpenHouseDetail}
             onOpenHouseEdit={handleOpenHouseEdit}
+          />
+        );
+      case 'clients_report':
+        // Scope del módulo que manda (Clients Report o, sin declararlo, Invoices).
+        return (
+          <ClientsReportView
+            onOpenMenu={onOpenMenu}
+            properties={getPropertiesForModule(getClientsReportPermissionModule(activeRole))}
           />
         );
       case 'calendar':

@@ -1,6 +1,8 @@
 /* Ventana Pipeline → Excel (OperationsSheetDialog.tsx). El fondo y el tamaño
    salen de las clases globales .modal-overlay-centered y .modal-90. */
 .osd-dialog {
+  /* Recibe el foco al abrir (tabIndex -1): sin el anillo alrededor de todo el diálogo. */
+  outline: none;
   overflow: hidden;
 }
 

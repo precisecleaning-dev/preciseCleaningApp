@@ -15,6 +15,7 @@ import { useVersionCheck } from './hooks/useVersionCheck';
 import { prefetchView, startIdlePrefetch } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import { canViewTaskList } from './features/ops/opsPermissions';
+import { getClientsReportPermissionModule } from './utils/clientsReport';
 import { useTaskListBadgeCount } from './features/ops/hooks/useTaskListBadgeCount';
 import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import AppLoadingScreen from './components/AppLoadingScreen';
@@ -30,7 +31,7 @@ import './App.css';
  *  una sola vez (antes eran dos listas y 'photo_settings' faltaba en esta, así
  *  que recargar en "Fotos" volvía a Houses). */
 const VALID_TABS = [
-  'houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'qc_report', 'qc_dashboard',
+  'houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'clients_report', 'qc_report', 'qc_dashboard',
   'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'photo_settings',
   'roles', 'users', 'data_import',
 ] as const;
@@ -42,7 +43,7 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 /** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
 const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
-  'qc_dashboard', 'owner', 'manager',
+  'qc_dashboard', 'owner', 'manager', 'clients_report',
 ]);
 /** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
 const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
@@ -50,7 +51,8 @@ const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
 ]);
 
 /** Módulo(s) de Roles & Permissions que dan acceso a cada pestaña (basta uno).
- *  Una pestaña sin módulo no se revisa. */
+ *  Una pestaña sin módulo no se revisa. clients_report depende del rol: va en
+ *  canViewTab. */
 const TAB_MODULE: Partial<Record<TabOptions, string[]>> = {
   houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
   qc_report: ['Quality Check'], qc_dashboard: ['QC Dashboard', 'Quality Check'],
@@ -229,6 +231,11 @@ const App = () => {
         ? activeRole.permissions?.find((permission) => permission.module === 'Photo Settings')
         : undefined;
       if (photoSettingsPermission) return !!photoSettingsPermission.canView;
+      // Clients Report: misma regla que el Sidebar (canViewOrLegacy): si el rol
+      // declara "Clients Report" manda ese permiso; si no, Invoices.
+      if (tab === 'clients_report') {
+        return canRoleViewModule(activeRole, getClientsReportPermissionModule(activeRole));
+      }
       const tabModules = TAB_MODULE[tab];
       return !tabModules || tabModules.some((module) => canRoleViewModule(activeRole, module));
     };

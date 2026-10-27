@@ -3105,36 +3105,40 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Props de la pestaña (CR, 10/2026): `HouseQcHistory` recibe `house` (no `property`) por consistencia con
   `selectedHouse` de HouseDetail y el nombre del archivo. Unificar "house" / "property" en toda la app es un
   cambio aparte (renombra archivos): pendiente de decidir.
-- Pipeline → Excel (10/2026, pedido de Omar): botón "Excel" en el Pipeline (solo con el grupo Financial) abre
-  `OperationsSheetDialog`: exporta la hoja "Daily Operations" del periodo (default Month) y compara un Excel
-  subido. MATCH por calle (número + primera palabra: "401 twin") + misma fecha; entre varios trabajos de la
-  misma calle y día (Twin Creek) gana unidad / Service Price / Payroll / cliente / nota; lo que sobra se
-  intenta ±7 días ("Different date"). Regla de impuesto = la de la app (Final Cost = Price − 8.25%, exento = 0;
-  decisión de Omar): las filas de la hoja que SUMAN el impuesto salen como diferencia "Excel adds the tax".
-  OJO hoja de October: 145 filas con `IF(...,F+G,F+G)` (suma el impuesto siempre). Export: fórmulas propias
-  (Taxes, Final Cost, Profit, Margin, WEEKNUM), NO el XLOOKUP a la pestaña Customers (no viene en el archivo
-  → #REF!). Notes = notas de oficina solo si el rol puede verlas. exceljs y xlsx se cargan solo al usarse;
-  las listas de Invoice/Drip pans van por RANGO (`dataValidations.add`): por celda exceljs arma rangos
-  encimados. Pendiente: QC Status, Recall Completed, Move in, Number of Days y Drip pans salen vacíos (la app
-  no guarda esos datos); exceljs (~270 kB gzip) entra al precache del Service Worker como xlsx.
-- Finanzas por trabajo = fórmulas de la hoja (10/2026, decisión de Omar; REEMPLAZA "regla de impuesto = la de
-  la app" de la nota Pipeline → Excel): Service Price = suma de los servicios SIN impuesto (`subtotal`, o
-  cantidad × precio; registros sin ninguno: su `total`), Taxes = Price × 8.25% (0 si `taxExempt`), Final Cost =
-  Price + Taxes con Apply Tax = Yes del servicio, Price − Taxes con No (si mezcla: suma lo de Yes y resta lo
-  de No). Antes el Price salía del `total` del servicio, que YA trae el impuesto: se cobraba el 8.25% dos
-  veces ($100 → Final $99.32 en vez de $108.25). No volver a usar `total` como precio. Cambian a la vez
-  Invoices, Overview, Owner/Manager, Payroll, Clients Report y Pipeline → Excel (todos usan useJobFinancials).
-- Pipeline → Excel · CR del PR #25 (10/2026): el Excel subido lo guarda HouseList (`uploadedOperationsSheet`), no
-  el diálogo: "Open" cierra el diálogo para mostrar el detalle y, al volver, sigue el mismo archivo (no pasar
-  el estado de vuelta al diálogo). El botón tiene su propio elemento "btn_operationsSheet" en Configure Fields
-  (además del grupo Financial); por defecto se ve. Su clase es la compartida del header, `.hv-btn-header` (antes
-  `.hv-btn-history`, la de "Mi historial"). Los filtros de la comparación son botones con `aria-pressed` (no
-  hay paneles: no usar role="tablist"). El diálogo cierra con Escape y devuelve el foco al botón Excel.
-- Profit sin impuesto (CR 2 del PR #25, decisión de Omar 10/2026; CAMBIA la regla de la nota "Finanzas por
-  trabajo"): Profit = Final Cost sin el impuesto que se SUMA (Apply Tax = Yes) − Payroll; el impuesto es del
-  estado, no ganancia ($100 Yes, Payroll $50 → Profit $50, antes $58.25). Con No el impuesto ya se restó y queda
-  Final Cost − Payroll. Margin sigue siendo Profit / Final Cost (como la columna K). La hoja de la oficina usa
-  J = H − I: el Excel exportado pone H−G−I en las filas Yes y H−I en las No (mixtas: el valor). Cambia Profit y
-  Margin en Invoices, Overview, Owner/Manager y el Excel. `isSameAmount` (menos de un centavo) vive en
-  utils/jobFinancials.ts y lo usan la comparación y la exportación. Lectura del Excel: la coma es decimal solo
-  con 1–2 dígitos al final ("$1,234" = 1234) y la fecha con hora toma el día (Math.floor, no round).
+- Clients Report (vista nueva, 10/2026, pedido de Omar: como la tabla dinámica de la hoja del mes): trabajos con
+  Schedule Date en el periodo (default Month), un renglón por cliente con Jobs y Final Cost, y Grand Total
+  (`utils/clientsReport.ts`). Cuenta TODOS los trabajos del periodo, también los que no tienen status (el
+  Overview los saca; la hoja los cuenta). Se agrupa por el nombre YA resuelto (`displayClientNameIn`): el id,
+  el id legacy y el nombre del mismo cliente caen en un solo renglón. Orden alfabético; "No client" al final.
+  Permiso propio "Clients Report"; si el rol no lo declara, lo hereda de "Invoices" (Sidebar
+  `canViewOrLegacy`, guardia `TAB_MODULE`). El Scope Own del módulo se respeta (`propertiesForModule`).
+- Clients Report · diseño de la tabla (10/2026, pedido de Omar: para la alta gerencia): columna "Share" = qué
+  parte del Final Cost del periodo es de cada cliente (`shareOfFinalCost`). La BARRA es relativa al cliente más
+  grande (el mayor va lleno), el número sí es el % real del total: con escala 0–100% casi todas las barras
+  quedaban de 1–2 px. En el teléfono no se dibuja la columna Share (`useMediaQuery(PHONE_QUERY)`). La tarjeta
+  usa `overflow: clip` (no `hidden`) para que el encabezado de columnas quede pegado al hacer scroll.
+- Clients Report · tablero ejecutivo (10/2026, pedido de Omar): las tarjetas de arriba son
+  `ClientsReportSummary` (Final cost, Jobs, Clients, Top client) con tonos de la paleta (azul marino del menú
+  → azul de la marca); NO usan KpiGrid a propósito para no cambiar el Overview ni Invoices. "Top client" =
+  mayor Final Cost, sin contar "No client". Encabezados de la tabla: 1er clic de mayor a menor, 2º de menor a
+  mayor, 3º vuelve al orden original (cliente A–Z) — `getNextClientsReportSort` / `sortClientRows`. El
+  orden vive en la tabla (no se guarda al salir de la vista). Al ordenar por Client, "No client" va al final.
+- Clients Report · permiso heredado (CR del PR #24, 10/2026): un rol que NO declara "Clients Report" usa View y
+  Scope de "Invoices" (`getClientsReportPermissionModule` / `getInheritedClientsReportPermission` en
+  utils/clientsReport.ts), igual que "Projects" hereda de "Task List". RolesView muestra ese valor al abrir el
+  rol (antes salía en No y al guardar le quitaba el reporte) y App.tsx filtra las casas con el Scope del módulo
+  que manda. Add/Edit/Delete no aplican (es un reporte).
+- Clients Report · guardia y dinero (CR 2 del PR #24, 10/2026): la guardia `TAB_MODULE` de App.tsx usa
+  `getClientsReportPermissionModule(activeRole)`, la misma regla que el Sidebar (`canViewOrLegacy`): si el rol
+  declara "Clients Report" manda ese permiso aunque esté en No; solo si no lo declara, Invoices. Con la lista
+  `['Clients Report', 'Invoices']` (antes) bastaba Invoices para entrar aunque el reporte estuviera apagado.
+  `functions/src/userAccess.ts` cuenta "Clients Report" en `fin`: con las reglas propuestas, un rol que solo
+  tiene el reporte no podría leer `billing_services` / `payroll` y vería $0.00 (prueba "Clients Report solo"
+  en security/tests/). Un client con solo espacios cae en "No client" (`job.client?.trim()`).
+- App.tsx dividido (10/2026, CR del PR #25): App.tsx queda con sesión, listeners globales, pestaña activa, guardia
+  de permisos (`VALID_TABS` → `TabOptions`, `TAB_MODULE`, `FALLBACK_TAB_ORDER`) y "Ver como"; la pestaña activa,
+  los `lazy()` de cada vista y el host de los modales de casa (HousesView "modals-only") están en
+  `components/AppTabContent.tsx`; la pantalla de carga en `AppLoadingScreen` y el aviso de versión en
+  `AppUpdateBanner`. `utils/viewPrefetch.ts` debe usar los MISMOS imports que los `lazy()` de AppTabContent.
+  Pendiente (lo hace Omar, Claude no edita CLAUDE.md): CLAUDE.md aún dice App.tsx para el render, los lazy() y
+  el host de modales (estructura de carpetas, "Detalle o formulario de una casa…" y "Agregar una vista nueva").
