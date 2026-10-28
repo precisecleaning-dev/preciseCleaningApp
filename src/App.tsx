@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import RouteTransition, { ViewSkeleton } from './components/RouteTransition';
+import ViewErrorBoundary from './components/ViewErrorBoundary';
 import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import { getClientsReportPermissionModule } from './utils/clientsReport';
@@ -499,7 +500,10 @@ export default function App() {
         )}
         {/* ⭐ Esqueleto en vez del spinner de pantalla completa: dibuja la FORMA
             de lo que viene, reduce la espera percibida y evita el salto de
-            layout. Con la precarga en reposo casi nunca llega a verse. */}
+            layout. Con la precarga en reposo casi nunca llega a verse.
+            ViewErrorBoundary: si la vista no carga (mala señal), aviso con
+            "Reload" en vez de la app en blanco. */}
+        <ViewErrorBoundary resetKey={activeTab}>
         <Suspense fallback={<ViewSkeleton />}>
         <RouteTransition routeKey={activeTab}>
         {waitingForProperties ? <ViewSkeleton /> : (<>
@@ -686,6 +690,7 @@ export default function App() {
         </>)}
         </RouteTransition>
         </Suspense>
+        </ViewErrorBoundary>
       </main>
 
       {isViewAsModalOpen && (
