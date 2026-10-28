@@ -4,8 +4,8 @@
 //    modal con selector de áreas: panel lateral a la derecha en computadora y
 //    pantalla completa en el teléfono, con todo en una sola columna:
 //    notas de oficina y limpiadores → inspector y fecha → checklist Pass/Fail
-//    (cada área con sus fotos; se contraen y, con permiso, se ordenan y editan) → puntaje → otras fotos (General) → notas para
-//    el equipo → solo oficina → resultado.
+//    (cada área con sus fotos y su nota; se contraen y, con permiso, se ordenan
+//    y editan) → puntaje → otras fotos (General) → solo oficina → resultado.
 //
 // Es de presentación: QualityCheckView guarda, sube fotos y mueve la casa.
 // ============================================================================
@@ -35,6 +35,8 @@ interface QcCheckDrawerProps {
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
   /** Fotos de un área del checklist (van debajo de sus tareas). */
   renderSectionPhotos: (section: QcSection) => ReactNode;
+  /** Nota de un área del checklist (va al final, debajo de sus fotos). */
+  renderSectionNotes: (section: QcSection) => ReactNode;
   /** Permisos de "QC Checklist Setup" (Roles) para ordenar áreas y editar tareas. */
   canAddChecklistTasks: boolean;
   canEditChecklistTasks: boolean;
@@ -47,11 +49,13 @@ interface QcCheckDrawerProps {
   onRemoveChecklistTask: (section: QcSection, task: QcSectionTask) => void;
   /** Fotos que no son de un área del checklist (área General). */
   generalPhotos: ReactNode;
+  /** "Notes for the team" de un QC empezado antes de las notas por área
+   *  (`__general.notes`): solo si el QC abierto las tiene, para verlas,
+   *  corregirlas o borrarlas (siguen saliendo en el PDF, área General). */
+  legacyTeamNotesField: ReactNode;
   officePhotos: ReactNode;
   /** Sección "Office only" (permiso Office Notes). */
   showOffice: boolean;
-  teamNotes: string;
-  onTeamNotes: (value: string) => void;
   saving: boolean;
   /** "Cambios sin guardar" / "Guardado h:mm". */
   saveState: ReactNode;
@@ -61,10 +65,11 @@ interface QcCheckDrawerProps {
 const QcCheckDrawer = (props: QcCheckDrawerProps) => {
   const {
     address, subtitle, headerActions, onClose, officeNotes, cleanerNotes, teamName, cleanerPhotos,
-    inspectors, extras, onExtras, sections, answers, onAnswer, renderSectionPhotos, canAddChecklistTasks,
+    inspectors, extras, onExtras, sections, answers, onAnswer, renderSectionPhotos, renderSectionNotes,
+    canAddChecklistTasks,
     canEditChecklistTasks, canRemoveChecklistTasks, pendingChecklistIds, onMoveChecklistSection, onAddChecklistTask, onRenameChecklistTask,
-    onRemoveChecklistTask, generalPhotos, officePhotos,
-    showOffice, teamNotes, onTeamNotes, saving, saveState, onSave,
+    onRemoveChecklistTask, generalPhotos, legacyTeamNotesField, officePhotos,
+    showOffice, saving, saveState, onSave,
   } = props;
   const checklistTotal = checklistTotals(sections, answers);
   const passRatePercent = checklistTotal.answered ? Math.round((checklistTotal.passed / checklistTotal.answered) * 100) : 0;
@@ -141,6 +146,7 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
             answers={answers}
             onAnswer={onAnswer}
             renderSectionPhotos={renderSectionPhotos}
+            renderSectionNotes={renderSectionNotes}
             canAddTasks={canAddChecklistTasks}
             canEditTasks={canEditChecklistTasks}
             canRemoveTasks={canRemoveChecklistTasks}
@@ -167,12 +173,15 @@ const QcCheckDrawer = (props: QcCheckDrawerProps) => {
         <section className="qcd-block small" aria-label="Photos">
           <p className="qcd-lbl">Other photos (before / after)</p>
           {generalPhotos}
+          {legacyTeamNotesField !== null && (
+            <>
+              <p className="qcd-hint">
+                Notes for the team (saved before notes per area). They still print in the PDF: edit or clear them here.
+              </p>
+              {legacyTeamNotesField}
+            </>
+          )}
         </section>
-
-        <label className="qcd-field">
-          <span className="qcd-lbl">Notes for the team</span>
-          <textarea className="qcd-textarea" rows={3} value={teamNotes} onChange={(event) => onTeamNotes(event.target.value)} />
-        </label>
 
         {showOffice && (
           <section className="qcd-office" aria-label="Office only">

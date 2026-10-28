@@ -2,7 +2,7 @@
 // ============================================================================
 // ⭐ DETALLE DE UNA CASA (modal): encabezado con Sync / Start / Finish / Pay /
 //    Duplicate, status, pestañas (Notes & Photos, Overview & Log, Financials,
-//    History) y pie con Delete / Damages / Checklist / Edit. Tiene su propio
+//    History, Quality check) y pie con Delete / Damages / Checklist / Edit. Tiene su propio
 //    estado (pestaña, fotos nuevas, modales de servicio y pago, cámara…) y se
 //    monta de nuevo en cada apertura. Lo abre HousesView, que conserva la casa
 //    en vivo, sus servicios y pagos (useHouseRecords) y el cambio de status.
@@ -25,6 +25,7 @@ import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 import { getRelationName, getRelationColor } from "../../../utils/relations";
 import NoteThread, { type NoteMessage } from "../../../components/NoteThread";
 import StatusHistoryPanel from "../../../components/StatusHistoryPanel";
+import HouseQcHistory from "../../quality-check/components/HouseQcHistory";
 import PhotoSection from "../../../components/PhotoSection";
 import type { StatusModalConfig } from "../../../components/StatusChangeModal";
 import type { PhotoConfig } from "../../../services/photoConfigService";
@@ -52,7 +53,7 @@ import BurstCamera from "./BurstCamera";
 import ServiceModal from "./ServiceModal";
 import PayrollModal from "./PayrollModal";
 
-export type DetailTab = "overview" | "financials" | "media" | "history";
+export type DetailTab = "overview" | "financials" | "media" | "history" | "quality";
 type NoteField = "note" | "officeNote" | "employeeNote";
 
 const NO_REMOVED: { before: string[]; after: string[] } = { before: [], after: [] };
@@ -103,7 +104,7 @@ export default function HouseDetail({
     getClientName, getServiceName, logLabel,
   } = catalogs;
   const {
-    canEdit, canDelete, photosUnlockedFor, isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes,
+    canEdit, canDelete, photosUnlockedFor, isFieldRO, isVisible, isElementVisible, canSeeOfficeNotes, canSeeQualityCheckTab,
     anyVisible, mediaTabAvailable,
   } = access;
 
@@ -1087,6 +1088,15 @@ export default function HouseDetail({
               >
                 <History size={14} className="hv-tab-icon-inline" /> History
               </button>
+              {/* ⭐ Quality check: las inspecciones de ESTA casa (permiso Quality Check + tab activo). */}
+              {canSeeQualityCheckTab() && (
+                <button
+                  className={`hv-detail-tab${shownDetailTab === "quality" ? " active" : ""}`}
+                  onClick={() => setActiveDetailTab("quality")}
+                >
+                  <ClipboardCheck size={14} className="hv-tab-icon-inline" /> Quality check
+                </button>
+              )}
             </div>
 
             {shownDetailTab === "overview" && (
@@ -1445,6 +1455,13 @@ export default function HouseDetail({
                   propertyId={selectedHouse.id}
                   statuses={statuses}
                 />
+              </div>
+            )}
+
+            {/* ⭐ TAB QUALITY CHECK: reportes de la casa (solo lectura). */}
+            {shownDetailTab === "quality" && canSeeQualityCheckTab() && (
+              <div className="fade-in">
+                <HouseQcHistory house={selectedHouse} />
               </div>
             )}
 

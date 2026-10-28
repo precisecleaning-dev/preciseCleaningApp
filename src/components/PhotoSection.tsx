@@ -60,7 +60,7 @@ export default function PhotoSection({
             <>
               <button type="button" className="ps-btn ps-btn-upload" disabled={busy}
                 onClick={() => uploadRef.current?.click()}>
-                <Upload size={18} /> Subir
+                <Upload size={18} /> Upload
               </button>
               <input ref={uploadRef} type="file" multiple accept="image/*" className="ps-hidden-input"
                 onChange={e => { onAddFiles(e.target.files); e.target.value = ''; }} />

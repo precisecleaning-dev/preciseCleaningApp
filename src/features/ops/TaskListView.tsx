@@ -47,7 +47,7 @@ import { useTaskActions } from './hooks/useTaskActions';
 import { useTaskListLabels } from './hooks/useTaskListLabels';
 import { useTaskListTabOrder } from './hooks/useTaskListTabOrder';
 import {
-  assignablePeople, canReassignTask, getDefaultApproverUserId, isAssignee, taskListRights, taskProjectRights, toTaskAssignee, userName,
+  assignablePeople, canReassignTask, getDefaultApproverUserId, isAssignee, taskListRights, taskProjectRights, userName,
 } from './opsPermissions';
 import { getFirstName } from './opsOptions';
 import { isUpcomingDailyRepeat } from './opsDates';
@@ -237,11 +237,6 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
   const viewedRoleName = isEveryoneView
     ? 'All managers'
     : roles.find((role) => role.id === viewedUser?.roleId)?.name ?? '';
-  // La tarea nueva va para la persona que se está mirando (con "Everyone", para uno mismo).
-  const newTaskAssigneeUser = assignableUsers.find((person) => person.id === (isEveryoneView ? currentUserId : viewedUserId));
-  const newTaskAssignee = newTaskAssigneeUser
-    ? toTaskAssignee(newTaskAssigneeUser)
-    : { userId: currentUserId, userName: currentUserName };
 
   const { getAssigneesLabel, getAssignedByName, getProjectTitle, getProjectColor } = useTaskListLabels({
     users, projectsById, currentUserId, viewedUserId,
@@ -510,12 +505,10 @@ const TaskListView = ({ onOpenMenu, currentUser, activeRole, isSuperAdmin }: Tas
 
       {isNewTaskPanelOpen && (
         <NewTaskPanel
-          key={newTaskAssignee.userId}
           assignableUsers={assignableUsers}
           projects={activeProjects}
           priorities={priorityCatalog}
           currentUser={{ id: currentUserId, name: currentUserName }}
-          defaultAssignee={newTaskAssignee}
           approvers={approvers}
           onClose={() => setIsNewTaskPanelOpen(false)}
           onCreate={taskActions.add}

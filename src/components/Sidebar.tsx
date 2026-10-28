@@ -1,6 +1,6 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, Gauge, Briefcase, UserCog, ListChecks
+  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, Gauge, Briefcase, UserCog, ListChecks, BarChart3
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Role, Permission } from '../types/index';
@@ -126,6 +126,10 @@ const Sidebar = ({
     //    permiso propio, agrega el modulo "No Status" y cambia el canView de aqui.
     // ⭐ INVOICES — check INDEPENDIENTE de Houses
     { tab: 'invoices', label: 'Invoices', icon: FileText, visible: canView('Invoices') },
+    // ⭐ CLIENTS REPORT — trabajos y Final Cost por cliente. Permiso propio
+    //    "Clients Report"; si el rol aún no lo tiene declarado, hereda el de
+    //    "Invoices" (son las mismas cifras de dinero).
+    { tab: 'clients_report', label: 'Clients Report', icon: BarChart3, visible: canViewOrLegacy('Clients Report', canView('Invoices')) },
     // ⭐ CALENDAR
     { tab: 'calendar', label: 'Calendar', icon: CalendarDays, visible: canView('Calendar') },
     // ⭐ QUALITY CHECK — usa módulo "Quality Check" (NO "Houses")

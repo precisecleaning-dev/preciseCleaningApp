@@ -69,8 +69,8 @@ service cloud.firestore {
       return acc().userId in task.get('assigneeUserIds', [])
         || task.get('assigneeUserId', '') == acc().userId;
     }
-    // Puede ver dinero (Payroll, Invoices, Owner/Manager o Houses sin ocultar
-    // "financial"). Lo calcula userAccess.ts.
+    // Puede ver dinero (Payroll, Invoices, Clients Report, Owner/Manager o
+    // Houses sin ocultar "financial"). Lo calcula userAccess.ts.
     function fin() {
       return active() && (acc().admin == true || acc().get('fin', false) == true);
     }

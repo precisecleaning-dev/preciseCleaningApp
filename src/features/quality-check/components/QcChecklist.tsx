@@ -1,5 +1,5 @@
 // ⭐ Checklist del Quality Check: una sección por área de Settings (en su orden
-//    manual) con sus tareas Pass / Fail y sus fotos. Cada área se contrae o se
+//    manual) con sus tareas Pass / Fail, sus fotos y su nota. Cada área se contrae o se
 //    extiende; "Collapse all" / "Expand all" para todas. Con el permiso
 //    "QC Checklist Setup" (Roles) aparece "Edit checklist": ordenar las áreas
 //    (flechas) y agregar, renombrar o quitar tareas. Esos cambios son del
@@ -17,6 +17,8 @@ interface QcChecklistProps {
   onAnswer: (placeId: string, taskId: string, value: QcAnswer | null) => void;
   /** Cuadrícula de fotos de un área (QcPhotoGrid de esa área). */
   renderSectionPhotos: (section: QcSection) => ReactNode;
+  /** Nota de un área (QcSectionNotes de esa área). */
+  renderSectionNotes: (section: QcSection) => ReactNode;
   /** Permisos de "QC Checklist Setup": Add = agregar · Edit = renombrar y ordenar · Delete = quitar. */
   canAddTasks: boolean;
   canEditTasks: boolean;
@@ -30,7 +32,7 @@ interface QcChecklistProps {
 }
 
 const QcChecklist = ({
-  sections, answers, onAnswer, renderSectionPhotos, canAddTasks, canEditTasks, canRemoveTasks, pendingChecklistIds,
+  sections, answers, onAnswer, renderSectionPhotos, renderSectionNotes, canAddTasks, canEditTasks, canRemoveTasks, pendingChecklistIds,
   onMoveSection, onAddTask, onRenameTask, onRemoveTask,
 }: QcChecklistProps) => {
   const isReorderingSections = pendingChecklistIds.has(CHECKLIST_ORDER_PENDING_ID);
@@ -95,6 +97,7 @@ const QcChecklist = ({
           isAddingTask={pendingChecklistIds.has(addTaskPendingId(section.id))}
           pendingTaskIds={pendingChecklistIds}
           photos={renderSectionPhotos(section)}
+          notesField={renderSectionNotes(section)}
           onToggleCollapsed={handleToggleCollapsed}
           onAnswer={onAnswer}
           onMoveSection={onMoveSection}

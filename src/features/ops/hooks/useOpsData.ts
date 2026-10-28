@@ -30,6 +30,7 @@ import type {
   DoneTasksPage, DoneTasksResult, OpenTasksSource, StoredUserTask, TaskRelation, UserTask,
 } from '../../../types/index';
 import { LEGACY_ASSIGNEE_FIELD, userTaskRef, userTasksCol, userTasksService } from '../../../services/userTasksService';
+import { isDeviceOffline } from '../../../shared/utils/connectivity';
 
 export const ALL_USERS = '__all__';
 
@@ -210,7 +211,7 @@ export function useDoneTasks(relation: TaskRelation, userId: string | null, isDo
     let isCancelled = false;
     const loadFirstPage = async () => {
       try {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) throw OFFLINE_LOAD_ERROR;
+        if (await isDeviceOffline()) throw OFFLINE_LOAD_ERROR;
         const firstPage = await userTasksService.getDonePage(relation, queryUserId, null);
         if (!isCancelled) setDonePages({ key: donePagesKey, pages: [firstPage], pageIndex: 0, error: null });
       } catch (error) {

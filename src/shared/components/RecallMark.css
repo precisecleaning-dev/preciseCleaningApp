@@ -1,0 +1,5 @@
+/* Separación entre la marca "Recall" y el nombre del cliente que la sigue. */
+.recall-mark {
+  margin-right: 6px;
+  vertical-align: 1px;
+}

@@ -7,8 +7,9 @@
 //      que ya terminó el trabajo: status Quality Check / Invoice / Recall /
 //      "complete…", o marcado como terminado por el empleado, o con un QC.
 //    · Resultado = último reporte de QC de la casa:
-//        Finished y no fallido → Passed · fallido → Re-clean · sin QC terminado
-//        → Not inspected.
+//        Finished y no fallido → Passed · fallido → Did not pass · sin QC
+//        terminado → Not inspected. "Did not pass" es el QC fallado; "Recalls"
+//        es otra cosa: la casa estuvo en el status Recall (utils/jobRecall).
 //    · Score = % guardado al cerrar la inspección (passRate) o, en registros
 //      viejos, recalculado desde qcData con el mismo util que el PDF.
 //    · Issues = áreas con al menos una tarea marcada "No".
@@ -31,6 +32,7 @@ export interface QcDashRow {
   inspector: string;
   date: string;
   follow: string;
+  /** Estuvo alguna vez en Recall (wasHouseInRecall). */
   recall: boolean;
 }
 
@@ -75,7 +77,7 @@ export function resultOf(rec: QcRecordLite | null): QcResult {
 export function followUp(result: QcResult, invoiceStatus: string, teamName: string): string {
   const inv = invoiceStatus.toLowerCase().trim();
   if (result === 'reclean') {
-    return `Re-clean ${teamName || 'team'}${inv && inv !== 'paid' ? ' · invoice on hold' : ''}`;
+    return `Did not pass · ${teamName || 'team'}${inv && inv !== 'paid' ? ' · invoice on hold' : ''}`;
   }
   if (result === 'todo') {
     return inv === 'paid' || inv === 'pre-paid' ? 'Already paid — inspect or close out' : 'Inspect';
@@ -87,7 +89,7 @@ export function followUp(result: QcResult, invoiceStatus: string, teamName: stri
 
 export const RESULT_LABEL: Record<QcResult, string> = {
   passed: 'Passed',
-  reclean: 'Re-clean',
+  reclean: 'Did not pass',
   todo: 'Not inspected',
 };
 

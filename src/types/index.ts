@@ -308,6 +308,66 @@ export interface QualityCheckRecord {
  *  reportes de Quality Check (features/quality-check/components/QcReportsSection). */
 export type QcReportRow = QualityCheckRecord & { id: string };
 
+/** Un área de un reporte de QC, resumida para leerla (pestaña "Quality check"
+ *  del detalle de la casa): aprobadas / respondidas, su nota y sus fotos. */
+export interface QcReportArea {
+  id: string;
+  name: string;
+  passedCount: number;
+  answeredCount: number;
+  notes: string;
+  photoUrls: string[];
+}
+
+/** Insignia del resultado de un reporte de QC (Passed, Did Not Pass, In progress):
+ *  texto, colores e ícono. Passed y Did Not Pass están en
+ *  features/quality-check/qcReports.ts (PASSED_BADGE / FAILED_BADGE). */
+export interface QcResultBadge {
+  label: string;
+  background: string;
+  color: string;
+  Icon: LucideIcon;
+}
+
+/** Lo que devuelve useRecallHouses (utils/jobRecall.ts): las casas que
+ *  estuvieron alguna vez en Recall según su historia y la colección `recalls`. */
+export interface RecallHousesResult {
+  recallHouseIds: ReadonlySet<string>;
+  /** Ya terminó la lectura para los status de recall actuales. */
+  isLoaded: boolean;
+  /** Falló la historia o `recalls`; `recallHouseIds` trae lo que sí se leyó. */
+  error: Error | null;
+}
+
+/** Un cliente en el reporte Clients Report (utils/clientsReport.ts): sus
+ *  trabajos del periodo y la suma de su Final Cost. */
+export interface ClientReportRow {
+  clientName: string;
+  jobCount: number;
+  finalCost: number;
+  /** Parte del Final Cost del periodo que es de este cliente (0 a 1). */
+  shareOfFinalCost: number;
+}
+
+/** Reporte Clients Report: un renglón por cliente y el Grand Total. */
+export interface ClientsReport {
+  rows: ClientReportRow[];
+  totalJobs: number;
+  totalFinalCost: number;
+}
+
+/** Columnas de la tabla del Clients Report que se pueden ordenar. */
+export type ClientsReportSortColumn = 'clientName' | 'jobCount' | 'finalCost' | 'shareOfFinalCost';
+
+/** Orden de una columna: de mayor a menor (desc) o de menor a mayor (asc). */
+export type SortDirection = 'asc' | 'desc';
+
+/** Orden elegido en la tabla del Clients Report (null = orden original: por cliente A–Z). */
+export interface ClientsReportSort {
+  column: ClientsReportSortColumn;
+  direction: SortDirection;
+}
+
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */
 export type QcHouseGroup = 'All' | 'Pending' | 'Recall';
 
@@ -330,8 +390,6 @@ export interface HouseChecklistState {
   hasLoadError: boolean;
 }
 
-/** Pestaña de la tabla de reportes: el estado ACTUAL de la casa, no el resultado. */
-export type QcReportTab = 'quality_check' | 'invoice' | 'recall';
 
 /** Lo mínimo para saber qué casas tienen QC pendiente o terminado. */
 export type QcStatusRecord = Pick<QualityCheckRecord, 'houseId' | 'date' | 'status' | 'result'>;

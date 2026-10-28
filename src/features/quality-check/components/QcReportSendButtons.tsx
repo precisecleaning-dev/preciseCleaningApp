@@ -1,8 +1,9 @@
 // Botones para enviar un reporte: WhatsApp, email y PDF. En la tabla son solo
 // iconos (`layout="icons"`); en la tarjeta del teléfono, botones anchos con texto.
-import { Loader2, Mail, Printer } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 import WhatsAppIcon from '../../../components/WhatsAppIcon';
 import type { QcReportRow } from '../../../types/index';
+import QcPdfButton from './QcPdfButton';
 
 interface QcReportSendButtonsProps {
   report: QcReportRow;
@@ -22,9 +23,7 @@ const QcReportSendButtons = ({
   if (layout === 'full') {
     return (
       <>
-        <button type="button" className="full qcrs-pdf-btn" onClick={() => onExportPdf(report)} disabled={isExporting}>
-          {isExporting ? <Loader2 size={15} className="qcrs-spin" /> : <Printer size={15} />} Ver reporte PDF
-        </button>
+        <QcPdfButton variant="full" isExporting={isExporting} onExportPdf={() => onExportPdf(report)} />
         <button type="button" className="full qcrs-wa-btn" onClick={() => onShareWhatsApp(report)} disabled={isSharing}>
           {isSharing ? <Loader2 size={15} className="qcrs-spin" /> : <WhatsAppIcon size={17} />} Enviar por WhatsApp
         </button>
@@ -57,16 +56,7 @@ const QcReportSendButtons = ({
       >
         {isSendingEmail ? <Loader2 size={16} className="qcrs-spin" /> : <Mail size={16} />}
       </button>
-      <button
-        type="button"
-        className="qcrs-pdf-icon-btn"
-        onClick={() => onExportPdf(report)}
-        disabled={isExporting}
-        title="Ver el reporte en PDF"
-        aria-label="Ver el reporte en PDF"
-      >
-        {isExporting ? <Loader2 size={16} className="qcrs-spin" /> : <Printer size={16} />}
-      </button>
+      <QcPdfButton variant="icon" isExporting={isExporting} onExportPdf={() => onExportPdf(report)} />
     </div>
   );
 };

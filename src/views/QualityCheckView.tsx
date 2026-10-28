@@ -20,8 +20,6 @@ import { compressImage } from '../utils/imageCompression';
 import {
   addStatusChange, afterStatusHistoryWrite, changeHouseStatus, houseLogLabel, logStatusChange, statusNameOf,
 } from '../features/houses/services/houseStatus';
-import { useHouseTrash } from '../features/houses/hooks/useHouseTrash';
-import DeleteHouseDialog from '../features/houses/components/DeleteHouseDialog';
 import type { WriteBatch } from '../shared/data/batchWrites';
 import { qualityChecks } from '../features/quality-check/services/qualityChecks';
 import { isQualityCheckStatus, latestQCForHouse, housePassedQC, houseFailedQC } from '../utils/qcStatus';
@@ -31,7 +29,9 @@ import { sendMailAndConfirm, mailResultMessage } from '../utils/sendMail';
 import { qualityCheckAllowedStatuses } from '../utils/statusFilters';
 import { syncQCRecordWithStatus } from '../utils/qcRecordSync';
 import StatusChangeModal from '../components/StatusChangeModal';
-import { isRecallText } from '../utils/recallStatus';
+import { isPropertyStatusRecall, isRecallText } from '../utils/recallStatus';
+import { isDeviceOffline } from '../shared/utils/connectivity';
+import { useConnectivityStatus } from '../shared/hooks/useConnectivityStatus';
 import { escapeHtml } from '../utils/escapeHtml';
 import { formatDate as formatDateMDY, formatTime, todayIso } from '../utils/dateFormat';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
@@ -48,10 +48,11 @@ import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
 import { usePendingById } from '../shared/hooks/usePendingById';
 import { inPeriod, periodRange } from '../utils/periods';
 import QcReportsBlock from '../features/quality-check/components/QcReportsBlock';
+import QcSectionNotes from '../features/quality-check/components/QcSectionNotes';
 import QcPhotoGrid, { type QcPhotoItem } from '../features/quality-check/components/QcPhotoGrid';
 import type { QcNoteItem } from '../features/quality-check/components/QcIncomingNotes';
 import {
-  GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT, OFFICE_SLOT_NAME,
+  GENERAL_SLOT, GENERAL_SLOT_NAME, OFFICE_SLOT, OFFICE_SLOT_NAME, qcDataWithFailNotes, syncFailNoteLine,
   type QcAnswer, type QcExtras, type QcSection, type QcSectionTask,
 } from '../features/quality-check/qcForm';
 import { settingsPlacesService } from '../services/settingsPlacesService';
@@ -148,7 +149,6 @@ interface QualityCheckViewProps {
   activeRole?: Role | null;
   isSuperAdmin?: boolean;
   onOpenHouseDetail?: (house: Property) => void; // ⭐ abre el detalle en HousesView
-  onOpenHouseEdit?: (house: Property) => void;   // ⭐ abre el FORMULARIO de edición en HousesView
 }
 
 // Destino del email si la empresa no tiene correo configurado (el que ya usaba la vista).
@@ -332,7 +332,7 @@ function PhotoAnnotator({ imageUrl, saving, onCancel, onSave }: {
 }
 
 
-const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail, onOpenHouseEdit }: QualityCheckViewProps) => {
+const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseToInspect, currentUser, activeRole, isSuperAdmin, onOpenHouseDetail }: QualityCheckViewProps) => {
   // ⭐ Reportes de QC y catálogos del store compartido (un listener por
   //    colección para toda la app). Antes: getDocsCacheFirst de quality_checks
   //    y customers, que pintaba del caché pero SIEMPRE repetía la lectura
@@ -348,6 +348,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    properties.find en cada render (registros × ~3,600 casas).
   const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const [editingQcId, setEditingQcId] = useState<string | null>(null);
+  // El QC abierto trae "Notes for the team" (`__general.notes`, de antes de las
+  // notas por área): el panel las muestra para que no queden escondidas.
+  const [hasLegacyTeamNotes, setHasLegacyTeamNotes] = useState(false);
   // ⭐ Solo Pending y Recall en esta vista: los QC terminados se consultan en la
   //    pestaña "Reportes" del hub (decisión de producto).
   const [selectedHouseGroup, setSelectedHouseGroup] = useState<QcHouseGroup>('All');
@@ -378,20 +381,15 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // Áreas en su orden manual (sortOrder; las que no tienen, al final por nombre).
   const places = useMemo(() => sortPlacesByOrder(placesLive.data), [placesLive.data]);
   const tasks = useMemo(() => [...tasksLive.data].sort((a, b) => a.name.localeCompare(b.name)), [tasksLive.data]);
+  const taskNameById = useMemo(() => new Map(tasks.map((task) => [task.id, task.name] as const)), [tasks]);
   const teams = teamsLive.data;
   const customersList = customersLive.data;
   const statuses = statusesLive.data;
-  // ⭐ ¿La casa está en Recall? (por id o nombre del status)
-  const isRecallStatus = (house: Property): boolean => {
-    const sid = house.statusId;
-    const st = statuses.find((s) => String(s.id) === String(sid) || String(s.name) === String(sid));
-    return isRecallText(st?.name || sid);
-  };
   // ⭐ Solo los reportes de las casas que esta pantalla muestra (en Quality
   //    Check o Recall). Antes se bajaba la colección completa de quality_checks;
   //    los terminados de otras casas se consultan en QC Reports y QC Dashboard.
   const qcLive = useQcForHouses<QCRecord>(
-    properties.filter((h) => isQualityCheckStatus(h.statusId, statuses) || isRecallStatus(h)).map((h) => h.id),
+    properties.filter((h) => isQualityCheckStatus(h.statusId, statuses) || isPropertyStatusRecall(h, statuses)).map((h) => h.id),
   );
   const qcList = useMemo(
     () => [...qcLive.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
@@ -425,7 +423,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    casa aparecía en el panel de otra.
   const [queuedByPlace, setQueuedByPlace] = useState<Record<string, { id: string; preview: string }[]>>({});
   const [pendingUploadCount, setPendingUploadCount] = useState(0);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  // Aviso "Sin conexión": confirmado con el servidor (no solo navigator.onLine).
+  const isOnline = useConnectivityStatus();
   const processingRef = useRef(false);
   const selectedHouseRef = useRef<Property | null>(null);
 
@@ -548,12 +547,12 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   //    (en memoria si está abierto, y al documento guardado si ya existe).
   const processQueue = async () => {
     if (processingRef.current) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     processingRef.current = true;
     try {
+      if (await isDeviceOffline()) return;
       const all = await offlineGetAll();
       for (const entry of all) {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
+        if (await isDeviceOffline()) break;
         try {
           const file = new File([entry.blob], `qc_${entry.id}.jpg`, { type: (entry.blob && entry.blob.type) || 'image/jpeg' });
           const urls = await storageService.uploadQualityCheckPhotos([file], entry.address, entry.placeName);
@@ -582,14 +581,12 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Al montar: reconstruir cola + escuchar conexión + reintentar cada 20s.
   useEffect(() => {
     (async () => { await rebuildQueuedPreviews(); processQueue(); })();
-    const onOnline = () => { setIsOnline(true); processQueue(); };
-    const onOffline = () => setIsOnline(false);
+    const onOnline = () => { processQueue(); };
     window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    const interval = setInterval(() => { if (typeof navigator === 'undefined' || navigator.onLine) processQueue(); }, 20000);
+    // processQueue no hace nada si de verdad no hay conexión (isDeviceOffline).
+    const interval = setInterval(() => { processQueue(); }, 20000);
     return () => {
       window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -604,16 +601,6 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
   // ⭐ Resuelve el nombre del cliente desde la colección customers (id o nombre)
   const getClientName = (clientIdOrName?: string | null): string =>
     getRelationName(customersList, clientIdOrName, String(clientIdOrName || 'Unknown'));
-
-  // ⭐ Borrar la casa = mandarla a la papelera con motivo obligatorio, junto con
-  //    sus pagos y servicios (antes se destruía con deleteDoc y la nómina quedaba
-  //    huérfana). Mismo flujo que Houses: features/houses/hooks/useHouseTrash.ts.
-  const houseTrash = useHouseTrash({
-    actor: currentUser,
-    module: 'Quality Check',
-    labelOf: (h) => houseLogLabel(getClientName(h.client), h.address),
-    liveOf: (id) => propById.get(id),
-  });
 
   // ⭐ Ruta de inspección — agregar/quitar casas del drawer lateral
   const isHouseInRoute = (houseId: string): boolean => routeHouseIds.includes(houseId);
@@ -806,7 +793,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
 
   // ⭐ RECALL = casas en estado "Recall" en el pipeline (aunque no tengan un QC
   //    "RECALL" registrado: muchas llegan a Recall por cambio de status).
-  const allRecallHouses = properties.filter(h => isRecallStatus(h));
+  const allRecallHouses = properties.filter((house) => isPropertyStatusRecall(house, statuses));
   const recallHouses = allRecallHouses.filter(isHouseInPeriod);
 
   // ⭐ ¿La casa/registro coincide con la búsqueda?
@@ -914,6 +901,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setEditingQcId(null);
     setPendingPhotos({});
     setCheckInAt(new Date().toISOString()); // ⭐ hora de entrada
+    setHasLegacyTeamNotes(false);
     setQcData(withSlots({}));
     setQcExtras({
       inspectorId: currentUser?.id || '', inspectorName: myName, date: todayIso(),
@@ -945,7 +933,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setEditingQcId(qc.id as string);
     setPendingPhotos({});
     setCheckInAt(qc.checkInAt || new Date().toISOString()); // ⭐ conservar entrada previa
-    setQcData(withSlots(qc.qcData || {}));
+    setHasLegacyTeamNotes(String(qc.qcData?.[GENERAL_SLOT]?.notes ?? '').trim() !== '');
+    // Las tareas en Fail se ven como líneas "Fail <tarea>" en la nota de su área.
+    setQcData(withSlots(qcDataWithFailNotes(qc.qcData || {}, taskNameById)));
     setQcExtras({
       inspectorId: qc.inspectorId || (qc.inspector === myName ? currentUser?.id || '' : ''),
       inspectorName: qc.inspector || myName,
@@ -974,6 +964,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     setIsFormModalOpen(false);
     setSelectedHouse(null);
     setEditingQcId(null);
+    setHasLegacyTeamNotes(false);
     setPendingPhotos({});
     setHasUnsavedChanges(false);
     setLastSavedAt(null);
@@ -1092,25 +1083,10 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       return (!isNaN(a) && !isNaN(b) && b >= a) ? Math.round((b - a) / 60000) : null;
     })();
 
-    // ⭐ Punto 8: por cada área, registrar en sus notas QUÉ tareas se marcaron "No"
-    //    (sale en el PDF). Marcador propio para no duplicarse al re-guardar.
-    const NO_MARKER = '⚠ Marcado "No": ';
-    const qcDataWithNoNotes: QcFormData = { ...qcData };
-    qcSections.forEach(s => {
-      const entry = qcDataWithNoNotes[s.id];
-      if (!entry) return;
-      const noNames = s.tasks.filter(t => entry.tasks?.[t.id] === 'No').map(t => t.name);
-      const baseNotes = String(entry.notes || '')
-        .split('\n')
-        .filter(line => !line.startsWith(NO_MARKER))
-        .join('\n')
-        .trim();
-      const autoLine = noNames.length > 0 ? `${NO_MARKER}${noNames.join(', ')}` : '';
-      qcDataWithNoNotes[s.id] = { ...entry, notes: [baseNotes, autoLine].filter(Boolean).join('\n') };
-    });
-
+    // Las tareas en Fail ya están en la nota de su área ("Fail <tarea>", al
+    // marcarlas): se guarda qcData tal cual.
     // ⭐ Resultado (%) con el util compartido: el mismo número que sale en el PDF.
-    const qcScore = computeQCScore(qcDataWithNoNotes, tasks);
+    const qcScore = computeQCScore(qcData, tasks);
     const inspectorName = qcExtras.inspectorName || myName;
     const teamName = editing?.team || getTeamNameForHouse(selectedHouse);
     const recordDate = qcExtras.date || editing?.date || todayIso();
@@ -1130,7 +1106,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       durationMinutes,
       // Áreas con al menos una respuesta (las vistas viejas leen este campo).
       selectedPlaces: qcSections.filter(s => Object.keys(qcData[s.id]?.tasks || {}).length > 0).map(s => s.id),
-      qcData: qcDataWithNoNotes,
+      qcData,
       passRate: qcScore.passRate,
       passRateAnswered: qcScore.totalAnswered,
       passRateVerdict: qcScore.verdict,
@@ -1192,7 +1168,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           }
           if (!sendEmail) return;
           try {
-            const res = await sendQCByEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName);
+            const res = await sendQCByEmail(house, qcData, inspectorName, recordDate, teamName);
             if (res && (res.status === 'error' || res.status === 'no-extension')) alert(`Quality Check de ${label}:\n${mailResultMessage(res, branding.email)}`);
           } catch (e) {
             console.error('No se pudo enviar el email automático:', e);
@@ -1216,7 +1192,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       setHasUnsavedChanges(false);
       setLastSavedAt(fmtTime(nowIso));
 
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const wasSavedOffline = await isDeviceOffline();
       const movedName = movedTo ? statusNameOf(statuses, movedTo) : '';
       const emailNote = isFinishing && companySettings.autoSend && !branding.email
         ? '\n📧 Configura el email de la empresa para el envío automático (botón "Empresa").'
@@ -1230,13 +1206,13 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
         : outcome === 'invoice'
           ? '✅ Quality Check aprobado.'
           : '✅ Avance guardado. Elige Invoice o RECALL en "Result" para terminar la inspección.')
-        + (offline ? '\n\n📶 Sin señal: quedó guardado en este teléfono y se sube solo al volver la conexión.' : '')
+        + (wasSavedOffline ? '\n\n📶 Sin señal: quedó guardado en este teléfono y se sube solo al volver la conexión.' : '')
         + emailNote);
 
       if (isFinishing) {
         handleCloseForm();
         if (qcExtras.notifyManager && canSeeOfficeNotes) {
-          openNotifyManagerEmail(house, qcDataWithNoNotes, inspectorName, recordDate, teamName, qcExtras.clientNotes);
+          openNotifyManagerEmail(house, qcData, inspectorName, recordDate, teamName, qcExtras.clientNotes);
         }
       }
     } catch (error) {
@@ -1264,8 +1240,8 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       try { compressed = await compressImage(asFile, { quality: 0.8, maxWidth: 1600, maxSizeMB: 0.6 }); }
       catch { compressed = asFile; }
 
-      const online = typeof navigator === 'undefined' ? true : navigator.onLine;
-      if (online) {
+      const isDeviceOnline = !(await isDeviceOffline());
+      if (isDeviceOnline) {
         try {
           const urls = await storageService.uploadQualityCheckPhotos([compressed], house.address, placeName);
           if (selectedHouseRef.current?.id === house.id) {
@@ -1606,20 +1582,32 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     }
   };
 
-  // ⭐ Pass / Fail de una tarea (null = sin responder).
-  const setTaskValue = (placeId: string, taskId: string, value: QcAnswer | null) => {
-    setQcData(prev => {
-      const place = prev[placeId] || { tasks: {} };
-      const nextTasks = { ...(place.tasks || {}) };
-      if (value) nextTasks[taskId] = value; else delete nextTasks[taskId];
-      return { ...prev, [placeId]: { ...place, tasks: nextTasks } };
+  // ⭐ Pass / Fail de una tarea (null = sin responder). Al entrar o salir de
+  //    Fail se agrega o se quita su línea "Fail <tarea>" en la nota del área,
+  //    en el momento (el inspector la ve mientras marca).
+  const handleAnswerChange = (placeId: string, taskId: string, value: QcAnswer | null) => {
+    const taskName = taskNameById.get(taskId) ?? '';
+    setQcData((previousQcData) => {
+      const placeData = previousQcData[placeId] || { tasks: {} };
+      const nextAnswers = { ...(placeData.tasks || {}) };
+      if (value) nextAnswers[taskId] = value; else delete nextAnswers[taskId];
+      const wasFailed = placeData.tasks?.[taskId] === 'No';
+      const isFailed = value === 'No';
+      const currentNotes = String(placeData.notes ?? '');
+      const nextNotes = wasFailed !== isFailed && taskName
+        ? syncFailNoteLine(currentNotes, taskName, isFailed)
+        : currentNotes;
+      return { ...previousQcData, [placeId]: { ...placeData, tasks: nextAnswers, notes: nextNotes } };
     });
     setHasUnsavedChanges(true);
   };
 
-  // ⭐ "Notes for the team": se guardan como las notas del área General.
-  const setTeamNotes = (value: string) => {
-    setQcData(prev => ({ ...prev, [GENERAL_SLOT]: { ...(prev[GENERAL_SLOT] || {}), notes: value } }));
+  // ⭐ Nota de un área del checklist (campo al final del área).
+  const handleSectionNotesChange = (section: QcSection, notes: string) => {
+    setQcData((previousQcData) => ({
+      ...previousQcData,
+      [section.id]: { ...(previousQcData[section.id] || { tasks: {} }), notes },
+    }));
     setHasUnsavedChanges(true);
   };
 
@@ -1758,6 +1746,11 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
     />
   );
   const renderSectionPhotos = (section: QcSection) => renderPhotoGrid(section.id, [section.id], 'plain');
+  const renderSectionNotes = (section: QcSection) => (
+    <QcSectionNotes section={section} notes={String(qcData[section.id]?.notes ?? '')} onNotesChange={handleSectionNotesChange} />
+  );
+  const legacyTeamNotesSection: QcSection = { id: GENERAL_SLOT, name: GENERAL_SLOT_NAME, tasks: [] };
+  const legacyTeamNotesField = hasLegacyTeamNotes ? renderSectionNotes(legacyTeamNotesSection) : null;
 
   // ⭐ Tarjetas de casa (pendientes y Recall): datos y acciones comunes.
   /** Último reporte que NO pasó de una casa (las correcciones de Recall se marcan ahí). */
@@ -1786,8 +1779,6 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
       onChangeStatus: openHouseStatusModal,
       onToggleRoute: toggleRouteHouse,
       onInspect: handleStartOrContinueQC,
-      onEdit: (editedHouse: Property) => onOpenHouseEdit?.(editedHouse),
-      onDelete: (deletedHouse: Property) => houseTrash.request(deletedHouse),
       onMarkCorrectionsDone: handleMarkCorrectionsDone,
     };
   };
@@ -1916,6 +1907,7 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           currentUser={currentUser}
           activeRole={activeRole}
           isSuperAdmin={isSuperAdmin}
+          onOpenHouseDetail={onOpenHouseDetail}
         />
       )}
 
@@ -1968,8 +1960,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               onExtras={updateExtras}
               sections={qcSections}
               answers={Object.fromEntries(qcSections.map(sec => [sec.id, qcData[sec.id]?.tasks]))}
-              onAnswer={setTaskValue}
+              onAnswer={handleAnswerChange}
               renderSectionPhotos={renderSectionPhotos}
+              renderSectionNotes={renderSectionNotes}
               canAddChecklistTasks={canAddChecklistTasks}
               canEditChecklistTasks={canEditChecklistTasks}
               canRemoveChecklistTasks={canArchiveChecklistTasks}
@@ -1979,10 +1972,9 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
               onRenameChecklistTask={handleRenameChecklistTask}
               onRemoveChecklistTask={handleArchiveChecklistTask}
               generalPhotos={renderPhotoGrid(GENERAL_SLOT, otherPhotoSlots, 'plain')}
+              legacyTeamNotesField={legacyTeamNotesField}
               officePhotos={renderPhotoGrid(OFFICE_SLOT, [OFFICE_SLOT], 'card')}
               showOffice={canSeeOfficeNotes}
-              teamNotes={String(qcData[GENERAL_SLOT]?.notes || '')}
-              onTeamNotes={setTeamNotes}
               saving={isSaving}
               saveState={hasUnsavedChanges
                 ? <span className="dirty">Cambios sin guardar</span>
@@ -2045,16 +2037,6 @@ const QualityCheckView = ({ onOpenMenu, properties, houseToInspect, clearHouseTo
           prepared={shareReady}
           clientName={shareClient}
           onClose={() => setShareReady(null)}
-        />
-      )}
-
-      {/* ⭐ Borrar con motivo → papelera (mismo diálogo que Houses) */}
-      {houseTrash.target && (
-        <DeleteHouseDialog
-          label={houseTrash.label}
-          busy={houseTrash.busy}
-          onCancel={houseTrash.cancel}
-          onConfirm={(reason) => void houseTrash.confirm(reason)}
         />
       )}
 
