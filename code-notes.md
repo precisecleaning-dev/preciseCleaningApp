@@ -3135,3 +3135,25 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `functions/src/userAccess.ts` cuenta "Clients Report" en `fin`: con las reglas propuestas, un rol que solo
   tiene el reporte no podría leer `billing_services` / `payroll` y vería $0.00 (prueba "Clients Report solo"
   en security/tests/). Un client con solo espacios cae en "No client" (`job.client?.trim()`).
+- Pantalla en blanco que solo se arregla en incógnito (10/2026, reporte de Isleny; reproducido con dos builds y
+  un servidor como Cloudflare): durante un deploy, index.html nuevo pide /assets/ que aún no llegan; Cloudflare
+  (not_found_handling "single-page-application", sin Worker) responde index.html con 200 y el navegador + el
+  precache del Service Worker lo guardan COMO el JS ("MIME type text/html"). Queda roto en ese navegador aunque
+  el deploy termine. Arreglo: script al inicio de index.html (`window.pcRepairAssets`) que, al fallar un
+  <script>/<link> de /assets/ o un chunk diferido (vite:preloadError en main.tsx), PRIMERO confirma que la
+  copia guardada es HTML (fetch normal, content-type text/html); un fallo por mala señal no se repara. Si lo
+  es, quita el SW y Cache Storage, pide los archivos con fetch(cache:"reload") DESDE UNA PÁGINA SIN SW (si no,
+  el fetch lo contesta el SW) y recarga. Tope: 2 intentos por minuto (sessionStorage). Si la app no arrancó
+  (`window.pcIsAppStarted`, lo marca main.tsx), reintenta sola al pasar el minuto; si ya arrancó NO recarga (se
+  perdería un formulario sin guardar). Sin URL del archivo (Safari: "Importing a module script failed.") solo
+  recarga, sin quitar el SW. `navigator.onLine === false` no hace nada (el SW es lo que deja usar la app
+  offline); limitación: onLine puede mentir (anotado en el script). getFailedChunkUrl acepta rutas relativas
+  (el error de CSS de Vite trae "/assets/x.css"). Reemplaza el "recargar una vez por sesión" de main.tsx.
+  Pendiente (necesita OK, toca el hosting): que /assets/* inexistente dé 404 (Worker con run_worker_first)
+  para que la copia mala no se guarde nunca.
+- Vista que no carga por mala señal (CR 2 del PR #26, decisión de Omar 10/2026): `ViewErrorBoundary` envuelve la
+  pestaña activa en App.tsx y muestra "This screen couldn't load" + Reload en vez de la app en blanco (no hay
+  otro error boundary). NO recarga sola: se perdería un formulario sin guardar (antes main.tsx recargaba una
+  vez). Al cambiar de pestaña se borra el error. Es componente de CLASE a propósito (React no tiene hook para
+  atrapar errores de render). Si `refactor/app-tabs` entra después, el boundary va en AppTabContent.tsx,
+  alrededor de su `<Suspense>`.
