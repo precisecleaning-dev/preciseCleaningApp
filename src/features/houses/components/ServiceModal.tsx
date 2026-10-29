@@ -4,9 +4,9 @@
 //    el detalle, que lo guarda en billing_services). Extraído de HousesView.
 import { useState } from "react";
 import { DollarSign, Hash, Percent, Save, Wrench, X } from "lucide-react";
-import { computeServiceTotals, type ServiceRecord } from "../serviceRecords";
+import { computeServiceTotals } from "../serviceRecords";
 import type { ProductRecord } from "../hooks/useHouseCatalogs";
-import type { Tax } from "../../../types/index";
+import type { ServiceRecord, Tax } from "../../../types/index";
 import SearchableSelect from "./SearchableSelect";
 
 interface ServiceModalProps {

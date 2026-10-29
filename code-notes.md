@@ -3157,3 +3157,21 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   vez). Al cambiar de pestaña se borra el error. Es componente de CLASE a propósito (React no tiene hook para
   atrapar errores de render). Si `refactor/app-tabs` entra después, el boundary va en AppTabContent.tsx,
   alrededor de su `<Suspense>`.
+- Finanzas por trabajo (10/2026, decisiones de Omar en el CR del PR #25; REEMPLAZA las fórmulas de la nota
+  de Invoices "Taxes = 8.25% de Service Price, Final Cost = Price − Taxes, Profit = Final Cost − Payroll" y
+  "Service Price = suma de billing_services"): cada servicio cobrado usa lo que guarda. Service Price = su
+  subtotal SIN impuesto (o cantidad × precio; un subtotal en 0 con cantidad × precio mayor no cuenta, registros
+  importados; sin ninguno, su `total`, sin impuesto aparte: ya es el final). Impuesto = subtotal × su `taxPercentage` (8.25% si no lo trae) y se
+  SUMA con Apply Tax Yes + Minus Tax No, se RESTA con No + Yes y no se toca con No/No o Yes/Yes: la regla
+  "Total Minus Tax" de AppSheet que ya mostraba el detalle de la casa (`getServiceTaxSign`, la usan
+  jobFinancials y serviceRecords). Sin los campos: Apply Tax Yes / Minus Tax No. Taxes = sumado + restado,
+  Final Cost = Price + sumado − restado (0 de impuesto si la casa es `taxExempt`). Profit = Final Cost sin el
+  impuesto sumado − Payroll (ese impuesto es del estado, no ganancia); Margin = Profit / Final Cost. Antes el
+  Price salía del `total` (que YA trae el impuesto) y se restaba 8.25% a todo. No volver a usar `total` como
+  precio ni el 8.25% fijo. ⚠ CAMBIAN las cifras de TODOS los meses en Invoices, Payroll, Overview,
+  Owner/Manager, Clients Report y el Excel: Omar lo sabe y lo aprobó (10/2026); avisar a la oficina el día del
+  deploy. La hoja de la oficina (F±G por cliente YES/NO, Profit = H − I) ya no es la regla.
+- Invoices · totales en el teléfono (10/2026, pedido de Omar): al quitar las tarjetas Financials (KpiGrid) el
+  teléfono (tarjetas, ≤900 px) se quedaba sin totales del periodo; `InvoicesTotalsBar` muestra Final Cost,
+  Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). No es sticky:
+  `.inv-page` tiene `overflow-x: hidden` y eso rompe `position: sticky`.

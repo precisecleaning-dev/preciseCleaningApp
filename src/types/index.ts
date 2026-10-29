@@ -424,8 +424,9 @@ export interface QcRecordLite {
 // TEXTO: días AAAA-MM-DD y fecha + hora ISO; en pantalla SIEMPRE MM/DD/AAAA y
 // h:mm AM/PM.
 // Cada colección tiene su archivo de tipos (y su service en src/services):
-//   user_tasks    → ./userTasks.ts     (services/userTasksService.ts)
-//   task_projects → ./taskProjects.ts  (services/taskProjectsService.ts)
+//   user_tasks       → ./userTasks.ts        (services/userTasksService.ts)
+//   task_projects    → ./taskProjects.ts     (services/taskProjectsService.ts)
+//   billing_services → ./billingServices.ts  (features/houses/services/billingServices.ts)
 
 /** Día sin hora: "2026-10-13" (AAAA-MM-DD). */
 export type YmdDate = string;
@@ -441,3 +442,4 @@ export interface UserPriorities {
 
 export * from './userTasks';
 export * from './taskProjects';
+export * from './billingServices';

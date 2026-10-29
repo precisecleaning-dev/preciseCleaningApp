@@ -19,9 +19,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
 import { COLLECTIONS } from '../../../lib/firebase/collections';
-import type { PayrollRecord, Property } from '../../../types/index';
+import type { PayrollRecord, Property, ServiceRecord } from '../../../types/index';
 import { dateSortValue } from '../../../utils/dateFormat';
-import type { ServiceRecord } from '../serviceRecords';
 
 /** Documento suelto de `properties` en vivo (null = sin id, borrada o cargando). */
 function useHouseDoc(id: string | null): Property | null {

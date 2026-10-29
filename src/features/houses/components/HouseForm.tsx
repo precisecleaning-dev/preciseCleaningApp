@@ -14,7 +14,7 @@ import {
   Users, StickyNote, Image as ImageIcon, CheckSquare, DollarSign, Save, XCircle, Layers, Settings, Receipt,
   CalendarClock, Camera,
 } from "lucide-react";
-import type { Customer, PayrollRecord, Property, SystemUser } from "../../../types/index";
+import type { Customer, PayrollRecord, Property, ServiceRecord, SystemUser } from "../../../types/index";
 import { commitOps, type BatchOp } from "../../../shared/data/batchWrites";
 import { propertiesService } from "../../../services/propertiesService";
 import { payrollService } from "../../../services/payrollService";
@@ -26,7 +26,7 @@ import { stampInvoiceEntry } from "../../../utils/invoiceEntry";
 import { cavalryClientKeys, houseBusiness, statusesForBusiness } from "../../../shared/utils/businesses";
 import PhotoSection from "../../../components/PhotoSection";
 import DateInput from "../../../shared/components/DateInput";
-import { type ServiceRecord, newServiceRecord, recordFingerprint, recordTotalMinusTax } from "../serviceRecords";
+import { newServiceRecord, recordFingerprint, recordTotalMinusTax } from "../serviceRecords";
 import { editablePayroll, newPayrollRecord, payrollTotal } from "../payrollRecords";
 import { changedFields, listDiff } from "../houseDiff";
 import type { HouseDraft } from "../houseDrafts";

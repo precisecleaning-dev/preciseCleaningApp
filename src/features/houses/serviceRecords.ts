@@ -1,24 +1,8 @@
 // src/features/houses/serviceRecords.ts
 // Servicios cobrados de una casa (`billing_services`) tal como los maneja el
 // formulario de casas. Extraído de HousesView.tsx.
-import type { Customer, Tax } from "../../types/index";
-
-export interface ServiceRecord {
-  id?: string;
-  propertyId: string;
-  serviceId: string;
-  quantity: number;
-  price: number;
-  subtotal: number;
-  applyTax: "Yes" | "No";
-  minusTax: "Yes" | "No";
-  taxPercentage: number;
-  taxAmount: number;
-  total: number;
-  totalMinusTax: number; // ⭐ AppSheet "Total Minus Tax"
-  notes: string;
-  createdAt?: string;
-}
+import type { Customer, ServiceRecord, Tax } from "../../types/index";
+import { getServiceTaxSign } from "../../utils/jobFinancials";
 
 // Huella de un servicio para saber si cambió desde que se cargó. Las claves se
 // ordenan: el mismo contenido en otro orden no cuenta como cambio.
@@ -43,9 +27,8 @@ export const computeServiceTotals = (f: ServiceRecord) => {
   if (f.applyTax === "Yes") total = subtotal + taxAmount;
   else if (f.applyTax === "No" && f.minusTax === "Yes") total = subtotal - taxAmount;
 
-  let totalMinusTax = subtotal;
-  if (f.minusTax === "Yes" && f.applyTax === "No") totalMinusTax = subtotal - taxAmount;
-  else if (f.applyTax === "Yes" && f.minusTax === "No") totalMinusTax = subtotal + taxAmount;
+  // La misma regla que usan Invoices y el Overview (utils/jobFinancials.ts).
+  const totalMinusTax = subtotal + getServiceTaxSign(f.applyTax, f.minusTax) * taxAmount;
 
   return { subtotal, taxAmount, total, totalMinusTax };
 };
@@ -55,11 +38,7 @@ export const recordTotalMinusTax = (r: ServiceRecord): number => {
   if (typeof r?.totalMinusTax === "number") return r.totalMinusTax;
   const subtotal = Number(r?.subtotal) || 0;
   const taxAmount = Number(r?.taxAmount) || 0;
-  if (r?.minusTax === "Yes" && r?.applyTax === "No")
-    return subtotal - taxAmount;
-  if (r?.applyTax === "Yes" && r?.minusTax === "No")
-    return subtotal + taxAmount;
-  return subtotal;
+  return subtotal + getServiceTaxSign(r?.applyTax, r?.minusTax) * taxAmount;
 };
 
 const DEFAULT_SERVICE_RECORD: ServiceRecord = {

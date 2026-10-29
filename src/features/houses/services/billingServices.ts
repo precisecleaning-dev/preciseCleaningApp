@@ -5,7 +5,7 @@
 import { addDoc, collection, deleteDoc, doc, updateDoc, type WriteBatch } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
 import { COLLECTIONS } from '../../../lib/firebase/collections';
-import type { ServiceRecord } from '../serviceRecords';
+import type { ServiceRecord } from '../../../types/index';
 
 const col = () => collection(db, COLLECTIONS.billingServices);
 const ref = (id: string) => doc(db, COLLECTIONS.billingServices, id);
