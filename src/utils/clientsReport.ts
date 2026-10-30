@@ -6,6 +6,7 @@
 import type {
   ClientsReport, ClientsReportSort, ClientsReportSortColumn, ClientReportRow, Permission, Property, Role,
 } from '../types/index';
+import { roundToCents } from './jobFinancials';
 
 /** Renglón de los trabajos sin cliente (va al final, como "(blank)" en la hoja). */
 export const NO_CLIENT_LABEL = 'No client';
@@ -15,8 +16,6 @@ const CLIENTS_REPORT_MODULE = 'Clients Report';
 
 /** Módulo del que hereda un rol que todavía no declara "Clients Report" (mismas cifras de dinero). */
 const CLIENTS_REPORT_FALLBACK_MODULE = 'Invoices';
-
-const roundToCents = (amount: number) => Math.round(amount * 100) / 100;
 
 /** "No client" siempre al final: 1 o −1 si una de las dos filas lo es; 0 si ninguna. */
 const compareNoClientLast = (rowA: ClientReportRow, rowB: ClientReportRow): number => {
