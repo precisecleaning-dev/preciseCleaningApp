@@ -2,7 +2,9 @@
 // Servicios cobrados de una casa (`billing_services`) tal como los maneja el
 // formulario de casas. Extraído de HousesView.tsx.
 import type { Customer, ServiceRecord, Tax } from "../../types/index";
-import { getServiceTaxSign } from "../../utils/jobFinancials";
+import {
+  DEFAULT_APPLY_TAX, DEFAULT_MINUS_TAX, getBilledServiceAmounts, getServiceTaxSign,
+} from "../../shared/utils/billedServiceAmounts";
 
 // Huella de un servicio para saber si cambió desde que se cargó. Las claves se
 // ordenan: el mismo contenido en otro orden no cuenta como cambio.
@@ -27,18 +29,19 @@ export const computeServiceTotals = (f: ServiceRecord) => {
   if (f.applyTax === "Yes") total = subtotal + taxAmount;
   else if (f.applyTax === "No" && f.minusTax === "Yes") total = subtotal - taxAmount;
 
-  // La misma regla que usan Invoices y el Overview (utils/jobFinancials.ts).
+  // La misma regla que usan Invoices y el Overview (shared/utils/billedServiceAmounts.ts).
   const totalMinusTax = subtotal + getServiceTaxSign(f.applyTax, f.minusTax) * taxAmount;
 
   return { subtotal, taxAmount, total, totalMinusTax };
 };
 
-// ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados)
+// ⭐ Total Minus Tax para registros que aún no lo tengan guardado (legacy/importados):
+//    el mismo monto que cuentan Invoices y el Overview (precio sin impuesto ±
+//    impuesto, con Apply Tax Yes / Minus Tax No si el registro no los trae).
 export const recordTotalMinusTax = (r: ServiceRecord): number => {
   if (typeof r?.totalMinusTax === "number") return r.totalMinusTax;
-  const subtotal = Number(r?.subtotal) || 0;
-  const taxAmount = Number(r?.taxAmount) || 0;
-  return subtotal + getServiceTaxSign(r?.applyTax, r?.minusTax) * taxAmount;
+  const { basePrice, signedTax } = getBilledServiceAmounts(r);
+  return basePrice + signedTax;
 };
 
 const DEFAULT_SERVICE_RECORD: ServiceRecord = {
@@ -47,8 +50,8 @@ const DEFAULT_SERVICE_RECORD: ServiceRecord = {
   quantity: 1,
   price: 0,
   subtotal: 0,
-  applyTax: "Yes",
-  minusTax: "No",
+  applyTax: DEFAULT_APPLY_TAX,
+  minusTax: DEFAULT_MINUS_TAX,
   taxPercentage: 0,
   taxAmount: 0,
   total: 0,

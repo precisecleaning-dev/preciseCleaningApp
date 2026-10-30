@@ -14,10 +14,16 @@ interface InvoicesTotalsBarProps {
   isLoading: boolean;
 }
 
+const getProfitToneClass = (profit: number, isLoading: boolean): string => {
+  if (isLoading) return '';
+  return profit >= 0 ? ' is-positive' : ' is-negative';
+};
+
 const InvoicesTotalsBar = ({ totals, jobCount, isLoading }: InvoicesTotalsBarProps) => {
   const formatAmount = (amount: number): ReactNode =>
     isLoading ? <span className="skel-line skel-money" /> : money(amount);
-  const profitToneClass = totals.profit >= 0 ? ' is-positive' : ' is-negative';
+  // Sin tono mientras carga: un Profit en $0 aún no es ganancia.
+  const profitToneClass = getProfitToneClass(totals.profit, isLoading);
   const marginText = isLoading ? '' : pct(totals.margin);
 
   return (

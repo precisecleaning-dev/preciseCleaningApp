@@ -1,19 +1,20 @@
 // src/utils/jobFinancials.ts
 // ⭐ Finanzas por trabajo. Las usan Invoices, el Overview, Owner/Manager,
-//    Payroll, el Clients Report y el Excel del Pipeline, así que todos dan la
-//    misma cifra. Por cada servicio cobrado (billing_services), con lo que
-//    guarda el servicio (decisión de Omar, CR del PR #25, 10/2026):
+//    Payroll, el Clients Report, el Excel del Pipeline y el tab Financials del
+//    detalle de la casa, así que todos dan la misma cifra. Por cada servicio
+//    cobrado (billing_services), con lo que guarda el servicio (decisión de
+//    Omar, CR del PR #25, 10/2026; reglas en shared/utils/billedServiceAmounts.ts):
 //      Service Price = subtotal SIN impuesto (o cantidad × precio)
 //      Impuesto      = subtotal × su taxPercentage; se SUMA con Apply Tax Yes
 //                      + Minus Tax No, se RESTA con No + Yes y no se toca con
-//                      No/No o Yes/Yes (getServiceTaxSign: lo mismo que
-//                      muestra el detalle de la casa)
+//                      No/No o Yes/Yes
 //    Por trabajo:
 //      Taxes         = impuesto sumado + restado (0 si la casa está exenta)
 //      Final Cost    = Service Price + sumado − restado
-//      Profit        = Final Cost sin el impuesto sumado − Payroll (ese
-//                      impuesto es del estado, no ganancia)
-//      Margin        = Profit / Final Cost
+//      Net Revenue   = Final Cost sin el impuesto sumado (ese impuesto es del
+//                      estado, no ingreso de la empresa)
+//      Profit        = Net Revenue − Payroll
+//      Margin        = Profit / Net Revenue
 //    ⭐ Antes: Price = `total` del servicio (que YA trae el impuesto) y Final
 //       Cost = Price − 8.25% siempre. CAMBIAN las cifras de todos los meses
 //       (ver code-notes.md, "Finanzas por trabajo").
@@ -21,10 +22,7 @@
 import { useMemo } from 'react';
 import type { BilledServiceAmounts, Property, PayrollRecord } from '../types/index';
 import { useLiveCollection } from '../shared/data/liveCollections';
-
-/** Impuesto de venta de Texas ($200 → $16.50 · $425 → $35.06). Lo usa un
- *  servicio que no guarda su taxPercentage. */
-export const TAX_RATE = 0.0825;
+import { getBilledServiceAmounts } from '../shared/utils/billedServiceAmounts';
 
 /** Redondea a centavos: 28.875 → 28.88. También lo usa el Clients Report. */
 export const roundToCents = (amount: number) => Math.round(amount * 100) / 100;
@@ -34,69 +32,20 @@ const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximum
 export const money = (amount: number) => `$${MONEY.format(amount)}`;
 export const pct = (percent: number | null) => (percent === null ? '—' : `${percent.toFixed(1)}%`);
 
-/**
- * Qué hace un servicio cobrado con su impuesto, con la regla "Total Minus Tax"
- * de AppSheet (la que muestra el detalle de la casa): Apply Tax Yes + Minus Tax
- * No lo suma (1), Apply Tax No + Minus Tax Yes lo resta (−1) y cualquier otra
- * combinación no lo toca (0).
- */
-export const getServiceTaxSign = (applyTax: unknown, minusTax: unknown): 1 | -1 | 0 => {
-  if (applyTax === 'Yes' && minusTax === 'No') return 1;
-  if (applyTax === 'No' && minusTax === 'Yes') return -1;
-  return 0;
-};
-
-/** Número de un campo guardado: número, o texto numérico ("100"); null si no hay. */
-const parseAmount = (value: unknown): number | null => {
-  const amount = typeof value === 'number' ? value : Number(value);
-  return value !== null && value !== undefined && value !== '' && Number.isFinite(amount) ? amount : null;
-};
-
-/**
- * Precio del servicio SIN impuesto: el subtotal guardado o cantidad × precio.
- * Un subtotal en 0 con cantidad × precio mayor no cuenta (registros
- * importados). Sin ninguno de los dos: su total (no se puede separar el
- * impuesto).
- */
-export const getBilledServiceBasePrice = (billedService: BilledServiceAmounts): number => {
-  const subtotal = parseAmount(billedService.subtotal);
-  const quantity = parseAmount(billedService.quantity);
-  const unitPrice = parseAmount(billedService.price);
-  const quantityTimesPrice = quantity !== null && unitPrice !== null ? quantity * unitPrice : null;
-  if (subtotal !== null && (subtotal !== 0 || !quantityTimesPrice)) return subtotal;
-  return quantityTimesPrice ?? parseAmount(billedService.total) ?? 0;
-};
-
-/** ¿El servicio guarda su precio sin impuesto (subtotal o cantidad × precio)? */
-const hasPriceWithoutTax = (billedService: BilledServiceAmounts): boolean =>
-  parseAmount(billedService.subtotal) !== null
-  || (parseAmount(billedService.quantity) !== null && parseAmount(billedService.price) !== null);
-
-/**
- * Impuesto de un servicio con su signo: + se suma al Final Cost, − se resta, 0
- * no aplica. Registros sin Apply Tax / Minus Tax toman los valores por defecto
- * del formulario (Yes / No); sin taxPercentage, el 8.25%. Un registro viejo que
- * solo trae su `total` no lleva impuesto aparte: ese total ya es el final.
- */
-const getBilledServiceSignedTax = (billedService: BilledServiceAmounts, basePrice: number): number => {
-  if (!hasPriceWithoutTax(billedService)) return 0;
-  const taxSign = getServiceTaxSign(billedService.applyTax ?? 'Yes', billedService.minusTax ?? 'No');
-  const taxPercentage = parseAmount(billedService.taxPercentage) ?? TAX_RATE * 100;
-  return taxSign * basePrice * (taxPercentage / 100);
-};
-
 export interface JobFinancials {
   servicePrice: number;
   taxes: number;
   finalCost: number;
+  /** Final Cost sin el impuesto sumado: lo que le queda a la empresa antes de Payroll. */
+  netRevenue: number;
   payroll: number;
   profit: number;
-  /** Profit / Final Cost en %. null si Final Cost = 0. */
+  /** Profit / Net Revenue en %. null si Net Revenue = 0. */
   margin: number | null;
 }
 
-const marginOf = (profit: number, finalCost: number): number | null =>
-  finalCost > 0 ? (profit / finalCost) * 100 : null;
+const marginOf = (profit: number, netRevenue: number): number | null =>
+  netRevenue > 0 ? (profit / netRevenue) * 100 : null;
 
 /** Tono del margen, umbrales del diseño: ≥45% verde · ≥35% ámbar · menos rojo. */
 export type Tone = 'good' | 'warn' | 'bad' | 'none';
@@ -110,6 +59,52 @@ export const getPayrollTotal = (payrollRecord?: Partial<PayrollRecord> | null): 
   if (payrollRecord.totalAmount != null && Number(payrollRecord.totalAmount) !== 0) return Number(payrollRecord.totalAmount);
   return Number(payrollRecord.baseAmount || 0) + Number(payrollRecord.extraAmount || 0)
     - Number(payrollRecord.discountAmount || 0);
+};
+
+/** Montos de una casa antes de redondear: price = suma sin impuesto ·
+ *  addedTax / subtractedTax = impuesto que se suma o se resta (en positivo). */
+interface JobAmounts {
+  price: number;
+  addedTax: number;
+  subtractedTax: number;
+  payroll: number;
+}
+
+const createEmptyAmounts = (): JobAmounts => ({ price: 0, addedTax: 0, subtractedTax: 0, payroll: 0 });
+
+const addBilledService = (jobAmounts: JobAmounts, billedService: BilledServiceAmounts) => {
+  const { basePrice, signedTax } = getBilledServiceAmounts(billedService);
+  jobAmounts.price += basePrice;
+  if (signedTax > 0) jobAmounts.addedTax += signedTax;
+  else jobAmounts.subtractedTax -= signedTax;
+};
+
+const toJobFinancials = (property: Property, jobAmounts?: JobAmounts): JobFinancials => {
+  const servicePrice = roundToCents(jobAmounts?.price ?? 0);
+  const payroll = roundToCents(jobAmounts?.payroll ?? 0);
+  const addedTax = property.taxExempt ? 0 : jobAmounts?.addedTax ?? 0;
+  const subtractedTax = property.taxExempt ? 0 : jobAmounts?.subtractedTax ?? 0;
+  const taxes = roundToCents(addedTax + subtractedTax);
+  const finalCost = roundToCents(servicePrice + addedTax - subtractedTax);
+  const netRevenue = roundToCents(servicePrice - subtractedTax);
+  const profit = roundToCents(netRevenue - payroll);
+  return { servicePrice, taxes, finalCost, netRevenue, payroll, profit, margin: marginOf(profit, netRevenue) };
+};
+
+/**
+ * Finanzas de UNA casa con sus propios servicios y pagos (el detalle de la
+ * casa ya los escucha con useHouseRecords): mismas fórmulas que
+ * useJobFinancials sin abrir los listeners de las colecciones completas.
+ */
+export const getJobFinancials = (
+  property: Property,
+  billedServices: BilledServiceAmounts[],
+  payrollRecords: Partial<PayrollRecord>[],
+): JobFinancials => {
+  const jobAmounts = createEmptyAmounts();
+  billedServices.forEach((billedService) => addBilledService(jobAmounts, billedService));
+  payrollRecords.forEach((payrollRecord) => { jobAmounts.payroll += getPayrollTotal(payrollRecord); });
+  return toJobFinancials(property, jobAmounts);
 };
 
 /**
@@ -127,23 +122,16 @@ export function useJobFinancials(enabled = true) {
   const payrolls = payrollLive.data;
 
   const amountsByPropertyId = useMemo(() => {
-    // price = suma sin impuesto · addedTax / subtractedTax = impuesto que se
-    // suma o se resta (en positivo).
-    const emptyAmounts = () => ({ price: 0, addedTax: 0, subtractedTax: 0, payroll: 0 });
-    const amountsMap = new Map<string, ReturnType<typeof emptyAmounts>>();
+    const amountsMap = new Map<string, JobAmounts>();
     services.forEach((billedService) => {
       if (!billedService.propertyId) return;
-      const propertyAmounts = amountsMap.get(billedService.propertyId) ?? emptyAmounts();
-      const basePrice = getBilledServiceBasePrice(billedService);
-      const signedTax = getBilledServiceSignedTax(billedService, basePrice);
-      propertyAmounts.price += basePrice;
-      if (signedTax > 0) propertyAmounts.addedTax += signedTax;
-      else propertyAmounts.subtractedTax -= signedTax;
+      const propertyAmounts = amountsMap.get(billedService.propertyId) ?? createEmptyAmounts();
+      addBilledService(propertyAmounts, billedService);
       amountsMap.set(billedService.propertyId, propertyAmounts);
     });
     payrolls.forEach((payrollRecord) => {
       if (!payrollRecord.propertyId) return;
-      const propertyAmounts = amountsMap.get(payrollRecord.propertyId) ?? emptyAmounts();
+      const propertyAmounts = amountsMap.get(payrollRecord.propertyId) ?? createEmptyAmounts();
       propertyAmounts.payroll += getPayrollTotal(payrollRecord);
       amountsMap.set(payrollRecord.propertyId, propertyAmounts);
     });
@@ -151,36 +139,24 @@ export function useJobFinancials(enabled = true) {
   }, [services, payrolls]);
 
   const calc = useMemo(
-    () =>
-      (prop: Property): JobFinancials => {
-        const propertyAmounts = amountsByPropertyId.get(prop.id);
-        const servicePrice = roundToCents(propertyAmounts?.price ?? 0);
-        const payroll = roundToCents(propertyAmounts?.payroll ?? 0);
-        const addedTax = prop.taxExempt ? 0 : propertyAmounts?.addedTax ?? 0;
-        const subtractedTax = prop.taxExempt ? 0 : propertyAmounts?.subtractedTax ?? 0;
-        const taxes = roundToCents(addedTax + subtractedTax);
-        const finalCost = roundToCents(servicePrice + addedTax - subtractedTax);
-        // Lo que queda para la empresa: el impuesto sumado es del estado.
-        const netRevenue = roundToCents(servicePrice - subtractedTax);
-        const profit = roundToCents(netRevenue - payroll);
-        return { servicePrice, taxes, finalCost, payroll, profit, margin: marginOf(profit, finalCost) };
-      },
+    () => (property: Property): JobFinancials => toJobFinancials(property, amountsByPropertyId.get(property.id)),
     [amountsByPropertyId],
   );
 
   const sum = useMemo(
     () =>
-      (list: Property[]): JobFinancials => {
-        const totals = { servicePrice: 0, taxes: 0, finalCost: 0, payroll: 0, profit: 0 };
-        list.forEach((job) => {
+      (jobs: Property[]): JobFinancials => {
+        const totals = { servicePrice: 0, taxes: 0, finalCost: 0, netRevenue: 0, payroll: 0, profit: 0 };
+        jobs.forEach((job) => {
           const jobFinancials = calc(job);
           totals.servicePrice += jobFinancials.servicePrice;
           totals.taxes += jobFinancials.taxes;
           totals.finalCost += jobFinancials.finalCost;
+          totals.netRevenue += jobFinancials.netRevenue;
           totals.payroll += jobFinancials.payroll;
           totals.profit += jobFinancials.profit;
         });
-        return { ...totals, margin: marginOf(totals.profit, totals.finalCost) };
+        return { ...totals, margin: marginOf(totals.profit, totals.netRevenue) };
       },
     [calc],
   );

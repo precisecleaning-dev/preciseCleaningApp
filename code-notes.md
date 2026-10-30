@@ -3161,17 +3161,24 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   de Invoices "Taxes = 8.25% de Service Price, Final Cost = Price − Taxes, Profit = Final Cost − Payroll" y
   "Service Price = suma de billing_services"): cada servicio cobrado usa lo que guarda. Service Price = su
   subtotal SIN impuesto (o cantidad × precio; un subtotal en 0 con cantidad × precio mayor no cuenta, registros
-  importados; sin ninguno, su `total`, sin impuesto aparte: ya es el final). Impuesto = subtotal × su `taxPercentage` (8.25% si no lo trae) y se
-  SUMA con Apply Tax Yes + Minus Tax No, se RESTA con No + Yes y no se toca con No/No o Yes/Yes: la regla
-  "Total Minus Tax" de AppSheet que ya mostraba el detalle de la casa (`getServiceTaxSign`, la usan
-  jobFinancials y serviceRecords). Sin los campos: Apply Tax Yes / Minus Tax No. Taxes = sumado + restado,
-  Final Cost = Price + sumado − restado (0 de impuesto si la casa es `taxExempt`). Profit = Final Cost sin el
-  impuesto sumado − Payroll (ese impuesto es del estado, no ganancia); Margin = Profit / Final Cost. Antes el
-  Price salía del `total` (que YA trae el impuesto) y se restaba 8.25% a todo. No volver a usar `total` como
-  precio ni el 8.25% fijo. ⚠ CAMBIAN las cifras de TODOS los meses en Invoices, Payroll, Overview,
-  Owner/Manager, Clients Report y el Excel: Omar lo sabe y lo aprobó (10/2026); avisar a la oficina el día del
-  deploy. La hoja de la oficina (F±G por cliente YES/NO, Profit = H − I) ya no es la regla.
+  importados; sin ninguno, su `total`, sin impuesto aparte: ya es el final). Impuesto = subtotal × su
+  `taxPercentage` (8.25% si no lo trae) y se SUMA con Apply Tax Yes + Minus Tax No, se RESTA con No + Yes y no
+  se toca con No/No o Yes/Yes: la regla "Total Minus Tax" de AppSheet. Sin los campos: Apply Tax Yes / Minus
+  Tax No (`DEFAULT_APPLY_TAX` / `DEFAULT_MINUS_TAX`, los mismos de "Add Service"). Todo eso vive en UN solo
+  lugar, `shared/utils/billedServiceAmounts.ts`, que usan jobFinancials y serviceRecords: así el total de un
+  servicio en la casa y en Invoices es el mismo (antes un importado sin Apply/Minus daba $200 en la casa y
+  $216.50 en Invoices). Taxes = sumado + restado, Final Cost = Price + sumado − restado (0 de impuesto si la
+  casa es `taxExempt`). Net Revenue = Final Cost sin el impuesto sumado; Profit = Net Revenue − Payroll y
+  Margin = Profit / Net Revenue (decisión de Omar, CR del PR de finanzas: el impuesto es del estado, no
+  ingreso; $100 + $8.25 con nómina $40 → 60%, no 55.4%). El tab Financials del detalle de la casa usa
+  `getJobFinancials` con los servicios y pagos de la casa (mismas cifras que Invoices sin abrir los listeners
+  de las colecciones completas). Antes el Price salía del `total` (que YA trae el impuesto) y se restaba 8.25%
+  a todo. No volver a usar `total` como precio ni el 8.25% fijo. ⚠ CAMBIAN las cifras de TODOS los meses en
+  Invoices, Payroll, Overview, Owner/Manager, Clients Report y el detalle de la casa: Omar lo sabe y lo aprobó
+  (10/2026); avisar a la oficina el día del deploy. La hoja de la oficina (F±G por cliente YES/NO, Profit =
+  H − I) ya no es la regla.
 - Invoices · totales en el teléfono (10/2026, pedido de Omar): al quitar las tarjetas Financials (KpiGrid) el
   teléfono (tarjetas, ≤900 px) se quedaba sin totales del periodo; `InvoicesTotalsBar` muestra Final Cost,
-  Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). No es sticky:
-  `.inv-page` tiene `overflow-x: hidden` y eso rompe `position: sticky`.
+  Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). Mientras cargan los
+  datos no lleva color (un $0 aún no es ganancia). No es sticky: `.inv-page` tiene `overflow-x: hidden` y eso
+  rompe `position: sticky`.

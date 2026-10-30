@@ -23,6 +23,7 @@ import { payrollService } from "../../../services/payrollService";
 import { logActivity } from "../../../services/activityLogService";
 import { formatDate, formatDateTime } from "../../../utils/dateFormat";
 import { getRelationName, getRelationColor } from "../../../utils/relations";
+import { getJobFinancials, money } from "../../../utils/jobFinancials";
 import NoteThread, { type NoteMessage } from "../../../components/NoteThread";
 import StatusHistoryPanel from "../../../components/StatusHistoryPanel";
 import HouseQcHistory from "../../quality-check/components/HouseQcHistory";
@@ -861,12 +862,11 @@ export default function HouseDetail({
     }
   };
 
-  const totalBilled = houseServices.reduce((sum, r) => sum + r.total, 0);
-  const totalPayroll = detailPayrollRecords.reduce(
-    (sum, r) => sum + r.totalAmount,
-    0,
-  );
-  const netProfit = totalBilled - totalPayroll;
+  // ⭐ Mismas fórmulas que Invoices (utils/jobFinancials.ts) con los servicios
+  //    y pagos de esta casa: Final Cost con el impuesto de cada servicio y
+  //    Profit sin el impuesto sumado.
+  const houseFinancials = getJobFinancials(selectedHouse, houseServices, detailPayrollRecords);
+  const profitToneClass = houseFinancials.profit >= 0 ? "positive" : "negative";
 
   return (
     <>
@@ -1470,10 +1470,10 @@ export default function HouseDetail({
                 <div className="hv-fin-kpi-grid">
                   <div className="hv-fin-kpi-card revenue">
                     <div className="hv-fin-kpi-label revenue">
-                      Total Revenue
+                      Final Cost
                     </div>
                     <div className="hv-fin-kpi-value revenue">
-                      ${totalBilled.toFixed(2)}
+                      {money(houseFinancials.finalCost)}
                     </div>
                   </div>
                   <div className="hv-fin-kpi-card payroll">
@@ -1481,21 +1481,15 @@ export default function HouseDetail({
                       Total Payroll
                     </div>
                     <div className="hv-fin-kpi-value payroll">
-                      ${totalPayroll.toFixed(2)}
+                      {money(houseFinancials.payroll)}
                     </div>
                   </div>
-                  <div
-                    className={`hv-fin-kpi-card profit ${netProfit >= 0 ? "positive" : "negative"}`}
-                  >
-                    <div
-                      className={`hv-fin-kpi-label profit ${netProfit >= 0 ? "positive" : "negative"}`}
-                    >
-                      Net Profit
+                  <div className={`hv-fin-kpi-card profit ${profitToneClass}`}>
+                    <div className={`hv-fin-kpi-label profit ${profitToneClass}`}>
+                      Profit
                     </div>
-                    <div
-                      className={`hv-fin-kpi-value profit ${netProfit >= 0 ? "positive" : "negative"}`}
-                    >
-                      ${netProfit.toFixed(2)}
+                    <div className={`hv-fin-kpi-value profit ${profitToneClass}`}>
+                      {money(houseFinancials.profit)}
                     </div>
                   </div>
                 </div>
