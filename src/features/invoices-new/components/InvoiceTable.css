@@ -1,0 +1,111 @@
+/* Tabla de invoices (InvoiceTable.tsx / InvoiceRow.tsx). */
+.invt-scroll {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow-x: auto;
+}
+
+.invt-table {
+  border-collapse: collapse;
+  min-width: 820px;
+  width: 100%;
+}
+
+.invt-table th,
+.invt-table td {
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.875rem;
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.invt-table thead th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.invt-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.invt-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.invt-number {
+  color: #1d3fcf;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.invt-client {
+  max-width: 320px;
+}
+
+.invt-client-name,
+.invt-job {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invt-client-name {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.invt-job {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.invt-date {
+  color: #334155;
+  white-space: nowrap;
+}
+
+.invt-late {
+  color: #dc2626;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.invt-table .invt-money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.invt-actions {
+  text-align: right;
+  width: 1%;
+}
+
+.invt-action-btn {
+  align-items: center;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  min-height: 0;
+  width: 32px;
+}
+
+.invt-action-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}

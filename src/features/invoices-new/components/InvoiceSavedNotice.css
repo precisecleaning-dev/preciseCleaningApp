@@ -1,0 +1,30 @@
+/* Aviso de invoice guardado (InvoiceSavedNotice.tsx). */
+.invn-saved-notice {
+  align-items: center;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  color: #065f46;
+  display: flex;
+  font-size: 0.875rem;
+  font-weight: 500;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.invn-saved-text {
+  flex: 1 1 auto;
+}
+
+.invn-saved-close {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  min-height: 0;
+  width: 28px;
+}

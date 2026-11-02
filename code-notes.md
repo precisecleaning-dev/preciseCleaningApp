@@ -3182,3 +3182,31 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). Mientras cargan los
   datos no lleva color (un $0 aún no es ganancia). No es sticky: `.inv-page` tiene `overflow-x: hidden` y eso
   rompe `position: sticky`.
+- Invoices New · modelo de datos (11/2026, decisiones de Omar):
+  colección `invoices` (tipos `types/invoices.ts`, service `services/invoicesService.ts`). Montos en CENTAVOS
+  enteros y tasa en puntos base (8.25% = 825): sumas exactas y reglas validables; la única conversión con los
+  dólares del resto de la app está en `features/invoices-new/invoiceMath.ts`. Cliente y job se COPIAN al crear
+  (`client`, `job`): editar después la casa o el cliente no cambia un invoice emitido. Número `INV-AAAA-0001`
+  desde `invoice_counters/{año}` en una transacción (sin repetidos; sin conexión no se crea). Activity en
+  `invoices/{id}/events` (solo se agrega) y fotos elegidas en `invoices/{id}/photos/selection` (las URLs no van
+  en el encabezado: la lista no las necesita). Sin `delete` (el número no deja huecos) ni `getAll`: la lista
+  escuchará una ventana acotada como propertiesWindow (no va en liveCollections). No escribe nada en
+  `properties`: el módulo Invoices viejo queda intacto.
+- Invoices New · formulario Create/Edit (11/2026): se elige el JOB (no hay selector de cliente, decisión de
+  Omar); el cliente sale de `properties.client` (`findCustomer`) y se copia al crear. El selector lista primero
+  los jobs en status Invoice y "Show all jobs" abre la ventana de 12 meses. Monto y tasa se prellenan con
+  `getInvoiceDefaults` (finanzas del job) EN EL RENDER mientras el usuario no los toca (`amountText`/`taxRateText`
+  en null): no hay efecto que los copie al llegar los servicios. Un job con invoices o con `invoiceHold` solo
+  avisa. Pendiente por etapa: Preview PDF (PDF), "Selected photos" con galería (fotos; hoy va "All job
+  photos"), opciones de envío y enlace de Stripe (correo/Stripe; hoy se guarda el correo del cliente y
+  `paymentLinkUrl` vacío). Edit se abre desde el lápiz de cada fila de la lista.
+- Invoices New · lista (11/2026): `invoicesService.subscribeWindow` une DOS consultas de un solo campo
+  (`issueDate >=` día 1 de hace 12 meses, `windowStartIso()` de propertiesWindow, y `status in` [awaiting,
+  link_sent] para los pendientes de cualquier fecha): sin índices compuestos. "Ver todo el historial" (el mismo
+  interruptor de las casas) escucha la colección completa. Búsqueda, tarjetas, orden y paginación numerada se
+  hacen en el cliente sobre esa ventana, A PROPÓSITO (CLAUDE.md pide paginar en el servidor): la búsqueda es
+  por texto parcial y las tarjetas deben cubrir TODO el conjunto buscado, no la página (alcance §6). Vale hasta
+  unos miles de invoices en la ventana; si crece, `searchText` y `numberKey` ya están guardados para pasar a
+  consultas con cursor. Las tarjetas se calculan sobre búsqueda + fechas, nunca sobre la tarjeta o el estado
+  elegidos. Cualquier cambio de filtro vuelve a la página 1 en el reducer (`useInvoiceFilters`), sin efectos.
+  En el teléfono la tabla se desplaza de lado (alcance §17), no hay tarjetas.

@@ -1,0 +1,62 @@
+/* Barra de filtros de Invoices New (InvoiceFiltersBar.tsx). */
+.invfb-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.invfb-search {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  flex: 1 1 260px;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+}
+
+.invfb-search-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.invfb-search-input {
+  background: none;
+  border: 0;
+  flex: 1 1 auto;
+  font-size: 0.875rem;
+  min-height: 0;
+  min-width: 0;
+  outline: none;
+}
+
+.invfb-select {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 0.85rem;
+  height: 40px;
+  min-height: 0;
+  padding: 0 10px;
+}
+
+.invfb-clear-btn {
+  background: none;
+  border: 0;
+  color: #1d3fcf;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 8px 4px;
+}
+
+@media (max-width: 768px) {
+  .invfb-select {
+    flex: 1 1 auto;
+  }
+}

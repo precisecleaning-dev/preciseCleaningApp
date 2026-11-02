@@ -1,12 +1,14 @@
 import {
   Building2, Home, Settings as SettingsIcon, Users, CalendarDays,
-  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, Gauge, Briefcase, UserCog, ListChecks, BarChart3
+  ShieldCheck, UserPlus, DollarSign, ClipboardCheck, X, FileText, Database, LayoutGrid, Camera, ScrollText, Trash2, Gauge, Briefcase, UserCog, ListChecks, BarChart3,
+  Receipt
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Role, Permission } from '../types/index';
 import type { TabOptions } from '../App';
 import { prefetchHandlers } from '../utils/viewPrefetch';
 import { canViewTaskList } from '../features/ops/opsPermissions';
+import { INVOICES_NEW_MODULE } from '../features/invoices-new/invoicesNewPermissions';
 import { APP_VERSION } from '../hooks/useVersionCheck';
 import SessionActions from '../shared/components/SessionActions';
 import { PHONE_QUERY, useMediaQuery } from '../shared/hooks/useMediaQuery';
@@ -148,6 +150,9 @@ const Sidebar = ({
     { tab: 'payroll', label: 'Payroll', icon: DollarSign, visible: canView('Payroll') },
     // ⭐ CUSTOMERS
     { tab: 'customers', label: 'Customers', icon: Users, visible: canView('Customers') },
+    // ⭐ INVOICE NEW — módulo nuevo de invoices. Permiso propio "Invoices New",
+    //    sin herencia: nadie lo ve hasta activarlo en Roles.
+    { tab: 'invoices_new', label: 'Invoice New', icon: Receipt, visible: canView(INVOICES_NEW_MODULE) },
   ];
 
   const adminNavItems: NavItemConfig[] = [

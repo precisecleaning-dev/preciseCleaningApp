@@ -1,0 +1,286 @@
+// Formulario Create / Edit Invoice. Se elige el JOB (no hay selector de
+// cliente): el cliente y los montos salen del job y se pueden editar. Pie con
+// solo Cancel y Create Invoice (o Save Changes al editar).
+// Pendiente en etapas siguientes: Preview PDF, galería "Selected photos" y las
+// opciones de envío por correo / Stripe.
+import { useEffect, useState, type FormEvent } from 'react';
+import { CreditCard, FileText, Image as ImageIcon, Plus, StickyNote, X } from 'lucide-react';
+import type { Invoice, InvoiceNote, Property, SystemUser } from '../../../types/index';
+import { useLiveData } from '../../../shared/data/liveCollections';
+import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
+import { cavalryClientKeys, houseBusiness } from '../../../shared/utils/businesses';
+import { findCustomer } from '../../../utils/customerDocs';
+import { fullName } from '../../../utils/homeData';
+import { invoicesService, buildInvoiceNote, type InvoiceActor } from '../../../services/invoicesService';
+import { formatCents } from '../invoiceMath';
+import {
+  buildAllJobPhotoItems, buildClientSnapshot, buildJobSnapshot, getInvoiceDefaults,
+} from '../invoiceSnapshot';
+import {
+  getInvoiceFormAmounts, getInvoiceFormErrors, useInvoiceForm, type InvoiceFormNote,
+} from '../hooks/useInvoiceForm';
+import { useInvoiceJobOptions } from '../hooks/useInvoiceJobOptions';
+import { useJobInvoices } from '../hooks/useJobInvoices';
+import InvoiceFormSection from './InvoiceFormSection';
+import InvoiceJobPicker from './InvoiceJobPicker';
+import InvoiceDatesFields from './InvoiceDatesFields';
+import InvoiceAmountFields from './InvoiceAmountFields';
+import InvoiceNotesEditor from './InvoiceNotesEditor';
+import InvoicePhotosOption from './InvoicePhotosOption';
+import InvoicePaymentFields from './InvoicePaymentFields';
+import './InvoiceFormModal.css';
+
+interface InvoiceFormModalProps {
+  /** null = crear; un invoice = editarlo. */
+  invoice: Invoice | null;
+  /** Casas de la ventana de App.tsx (las del selector de job). */
+  properties: Property[];
+  currentUser: SystemUser | null;
+  onClose: () => void;
+  onSaved: (result: { id: string; number: string; isNew: boolean }) => void;
+}
+
+/** Notas a guardar: las sin cambios quedan igual, las editadas conservan
+ *  autor y fecha, las nuevas llevan a quien las escribió; las vacías se van. */
+const buildSavedNotes = (formNotes: InvoiceFormNote[], actor: InvoiceActor): InvoiceNote[] =>
+  formNotes
+    .filter((formNote) => formNote.text.trim() !== '')
+    .map((formNote) => {
+      const text = formNote.text.trim();
+      if (!formNote.original) return buildInvoiceNote(text, actor);
+      return formNote.original.text === text ? formNote.original : { ...formNote.original, text };
+    });
+
+const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }: InvoiceFormModalProps) => {
+  const customers = useLiveData('customers');
+  const services = useLiveData('services');
+  const statuses = useLiveData('statuses');
+  const taxes = useLiveData('taxes');
+  const { state, actions, isEditing, isPaymentLocked } = useInvoiceForm(invoice);
+  const [showAllJobs, setShowAllJobs] = useState(false);
+  const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const jobOptions = useInvoiceJobOptions(properties, statuses, customers, showAllJobs, state.propertyId);
+  const selectedProperty = properties.find((property) => property.id === state.propertyId) ?? null;
+  const jobRecords = useHouseRecords(isEditing ? null : state.propertyId || null);
+  const jobInvoices = useJobInvoices(state.propertyId, invoice?.id ?? null);
+  const selectedCustomer = selectedProperty ? findCustomer(customers, selectedProperty.client) : null;
+
+  const jobDefaults = selectedProperty && jobRecords.loaded
+    ? getInvoiceDefaults({
+      property: selectedProperty,
+      billedServices: jobRecords.services,
+      customer: selectedCustomer,
+      defaultTaxPercentage: Number(taxes[0]?.percentage ?? 0),
+    })
+    : null;
+  const amounts = getInvoiceFormAmounts(state, jobDefaults);
+  const errors = getInvoiceFormErrors(state, amounts, isEditing);
+  const shownErrors = hasTriedSubmit ? errors : {};
+  const isFormValid = Object.keys(errors).length === 0;
+
+  const client = invoice?.client ?? (selectedProperty ? buildClientSnapshot(selectedProperty, customers) : null);
+  const serviceDate = invoice?.job.serviceDate ?? selectedProperty?.scheduleDate ?? '';
+  const jobPhotos = selectedProperty ? buildAllJobPhotoItems(selectedProperty) : [];
+  const beforePhotoCount = jobPhotos.filter((photo) => photo.category === 'before').length;
+
+  const jobWarnings = [
+    ...(selectedProperty?.invoiceHold ? ['This job is on invoice hold (failed Quality Check).'] : []),
+    ...(jobInvoices.invoices.length > 0
+      ? [`This job already has ${jobInvoices.invoices.length} invoice(s): ${jobInvoices.invoices.map((jobInvoice) => jobInvoice.number).join(', ')}.`]
+      : []),
+    ...(jobInvoices.hasError ? ['Could not check if this job already has invoices.'] : []),
+  ];
+  const isJobAmountDifferent = !!jobDefaults && jobDefaults.jobAmountsAtIssue.servicePriceCents > 0
+    && !jobDefaults.matchesJobFinalCost && state.amountText === null;
+  const jobAmountHint = isJobAmountDifferent && jobDefaults
+    ? `Review the amount: this job's Final Cost is ${formatCents(jobDefaults.jobAmountsAtIssue.finalCostCents)}.`
+    : null;
+
+  const title = isEditing ? 'Edit Invoice' : 'Create Invoice';
+  const submitLabel = isEditing ? 'Save Changes' : 'Create Invoice';
+
+  // Escape cierra (salvo mientras se guarda).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSaving) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSaving, onClose]);
+
+  const createInvoice = async (actor: InvoiceActor) => {
+    if (!selectedProperty || !client) throw new Error('Select a job.');
+    const created = await invoicesService.create({
+      client,
+      job: buildJobSnapshot(selectedProperty, services),
+      business: houseBusiness(selectedProperty, cavalryClientKeys(customers)),
+      jobAmountsAtIssue: jobDefaults?.jobAmountsAtIssue ?? null,
+      issueDate: state.issueDate,
+      paymentTerms: state.paymentTerms,
+      dueDate: state.dueDate,
+      subtotalCents: amounts.subtotalCents ?? 0,
+      taxRateBps: amounts.taxRateBps ?? 0,
+      recipientEmail: client.email,
+      paymentLinkUrl: '',
+      noteTexts: state.notes.map((note) => note.text),
+      photos: { include: state.includePhotos, mode: 'all', items: jobPhotos },
+      status: state.status,
+      initialPayment: state.status === 'paid' ? state.payment : null,
+    }, actor);
+    onSaved({ ...created, isNew: true });
+  };
+
+  const updateInvoice = async (savedInvoice: Invoice, actor: InvoiceActor) => {
+    await invoicesService.update(savedInvoice.id, {
+      issueDate: state.issueDate,
+      paymentTerms: state.paymentTerms,
+      dueDate: state.dueDate,
+      ...(isPaymentLocked ? {} : { subtotalCents: amounts.subtotalCents ?? 0, taxRateBps: amounts.taxRateBps ?? 0 }),
+      notes: buildSavedNotes(state.notes, actor),
+    }, actor);
+    if (state.includePhotos !== savedInvoice.photos.include) {
+      await invoicesService.updatePhotoSelection(savedInvoice.id, {
+        include: state.includePhotos, mode: 'all', items: jobPhotos,
+      }, actor);
+    }
+    onSaved({ id: savedInvoice.id, number: savedInvoice.number, isNew: false });
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setHasTriedSubmit(true);
+    if (!isFormValid || isSaving) return;
+    if (!currentUser) {
+      setSaveError('Your user profile is not loaded. Reload the app and try again.');
+      return;
+    }
+    const actor: InvoiceActor = { id: currentUser.id, name: fullName(currentUser) };
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      if (invoice) await updateInvoice(invoice, actor);
+      else await createInvoice(actor);
+    } catch (error) {
+      console.error('Could not save the invoice:', error);
+      const detail = error instanceof Error ? error.message : '';
+      setSaveError(`Could not save the invoice. ${detail} Check your connection and try again.`.trim());
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay-centered">
+      <div className="invf-dialog modal-70" role="dialog" aria-modal="true" aria-labelledby="invoice-form-title">
+        <header className="invf-header">
+          <div>
+            <h2 className="invf-title" id="invoice-form-title">{title}</h2>
+            <p className="invf-subtitle">Choose the job, review the amount and decide how the invoice is recorded.</p>
+          </div>
+          <button type="button" className="invf-icon-btn" aria-label={`Close ${title.toLowerCase()}`} disabled={isSaving} onClick={onClose}>
+            <X size={20} aria-hidden="true" />
+          </button>
+        </header>
+
+        <form className="invf-form" noValidate onSubmit={handleSubmit}>
+          <div className="invf-body modal-body-scroll">
+            <InvoiceFormSection id="invoice-details-heading" title="Invoice details" icon={FileText}>
+              <InvoiceJobPicker
+                jobOptions={jobOptions}
+                selectedPropertyId={state.propertyId}
+                onSelectJob={actions.selectJob}
+                showAllJobs={showAllJobs}
+                onShowAllJobsChange={setShowAllJobs}
+                isLocked={isEditing}
+                error={shownErrors.job}
+                warnings={jobWarnings}
+                client={client}
+                serviceDate={serviceDate}
+              />
+              <InvoiceDatesFields
+                issueDate={state.issueDate}
+                paymentTerms={state.paymentTerms}
+                dueDate={state.dueDate}
+                onIssueDateChange={actions.setIssueDate}
+                onPaymentTermsChange={actions.setPaymentTerms}
+                onDueDateChange={actions.setDueDate}
+                issueDateError={shownErrors.issueDate}
+                dueDateError={shownErrors.dueDate}
+              />
+              <InvoiceAmountFields
+                amountText={amounts.amountText}
+                taxRateText={amounts.taxRateText}
+                onAmountChange={actions.setAmount}
+                onTaxRateChange={actions.setTaxRate}
+                subtotalCents={amounts.subtotalCents ?? 0}
+                taxRateBps={amounts.taxRateBps ?? 0}
+                taxCents={amounts.taxCents}
+                totalCents={amounts.totalCents}
+                isLocked={isPaymentLocked}
+                amountError={shownErrors.amount}
+                taxRateError={shownErrors.taxRate}
+                jobAmountHint={jobAmountHint}
+              />
+            </InvoiceFormSection>
+
+            <InvoiceFormSection
+              id="invoice-notes-heading"
+              title="Notes"
+              icon={StickyNote}
+              isOptional
+              actions={(
+                <button type="button" className="invf-text-btn" onClick={actions.addNote}>
+                  <Plus size={16} aria-hidden="true" /> Add note
+                </button>
+              )}
+            >
+              <InvoiceNotesEditor
+                notes={state.notes}
+                onChangeNote={actions.changeNote}
+                onRemoveNote={actions.removeNote}
+                error={shownErrors.notes}
+              />
+            </InvoiceFormSection>
+
+            <InvoiceFormSection id="invoice-photos-heading" title="Job photos" icon={ImageIcon}>
+              <InvoicePhotosOption
+                includePhotos={state.includePhotos}
+                onIncludePhotosChange={actions.setIncludePhotos}
+                beforeCount={beforePhotoCount}
+                afterCount={jobPhotos.length - beforePhotoCount}
+                hasJob={!!selectedProperty}
+              />
+            </InvoiceFormSection>
+
+            <InvoiceFormSection id="invoice-payment-heading" title="Payment" icon={CreditCard}>
+              <InvoicePaymentFields
+                status={state.status}
+                onStatusChange={actions.setStatus}
+                payment={state.payment}
+                onPaymentMethodChange={actions.setPaymentMethod}
+                onPaymentFieldChange={actions.setPaymentField}
+                savedStatus={invoice?.status ?? null}
+                paymentDateError={shownErrors.paymentDate}
+                paymentReferenceError={shownErrors.paymentReference}
+                paymentNoteError={shownErrors.paymentNote}
+              />
+            </InvoiceFormSection>
+          </div>
+
+          <footer className="invf-footer">
+            {saveError && <p className="invf-error invf-footer-error" role="alert">{saveError}</p>}
+            <button type="button" className="invf-secondary-btn" disabled={isSaving} onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary invf-submit-btn" disabled={isSaving}>
+              {isSaving ? 'Saving…' : submitLabel}
+            </button>
+          </footer>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default InvoiceFormModal;

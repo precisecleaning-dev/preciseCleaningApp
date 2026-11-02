@@ -1,0 +1,46 @@
+/* =====================================================================
+   ⭐ Invoices New — página del módulo nuevo (el encabezado y cada bloque
+   tienen su CSS en features/invoices-new/components).
+   ===================================================================== */
+/* App.css fija `* { font-family: system-ui }`: la letra del diseño se aplica
+   a cada elemento. */
+.invn-page,
+.invn-page * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+.invn-page {
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* Texto solo para lectores de pantalla (lo usan los componentes del módulo). */
+.invn-sr-only {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.invn-register-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invn-clear-btn {
+  background: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #1d3fcf;
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 8px;
+  padding: 8px 16px;
+}

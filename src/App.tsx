@@ -4,6 +4,7 @@ import ViewErrorBoundary from './components/ViewErrorBoundary';
 import { startIdlePrefetch, prefetchView } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import { getClientsReportPermissionModule } from './utils/clientsReport';
+import { INVOICES_NEW_MODULE } from './features/invoices-new/invoicesNewPermissions';
 import ViewAsUserModal, { ViewAsBanner, type ViewAsSelection } from './components/ViewAsUserModal';
 import Sidebar from './components/Sidebar';
 // ⭐ Notificaciones / Ver como / Log Out: un solo componente (barra arriba en
@@ -30,6 +31,8 @@ const InvoicesView = lazy(() => import('./views/InvoicesView'));
 // ⭐ CLIENTS REPORT — trabajos y Final Cost por cliente en el periodo (como la
 //    tabla dinámica de la hoja del mes).
 const ClientsReportView = lazy(() => import('./views/ClientsReportView'));
+// ⭐ INVOICES NEW — módulo nuevo de invoices (el de arriba sigue sin cambios).
+const InvoicesNewView = lazy(() => import('./views/InvoicesNewView'));
 // ⭐ NO STATUS — casas sin estado asignado (salieron de Overview y Pipeline)
 // ⭐ ACTIVITY LOG — bitacora de todo lo que se hace en la app
 const ActivityLogView = lazy(() => import('./views/ActivityLogView'));
@@ -66,7 +69,7 @@ import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import { onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'clients_report' | 'qc_report' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
+export type TabOptions = 'houses' | 'pipeline' | 'activity_log' | 'trash' | 'calendar' | 'invoices' | 'clients_report' | 'qc_report' | 'qc_dashboard' | 'owner' | 'manager' | 'task_list' | 'payroll' | 'customers' | 'invoices_new' | 'settings' | 'company' | 'photo_settings' | 'roles' | 'users' | 'data_import';
 
 // ⭐ Persistencia de la pestaña activa: al recargar, la app vuelve a la misma
 //    vista en la que estabas (p. ej. Quality Check) en vez de regresar a Houses.
@@ -75,13 +78,13 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 /** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
 const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
-  'qc_dashboard', 'owner', 'manager', 'clients_report',
+  'qc_dashboard', 'owner', 'manager', 'clients_report', 'invoices_new',
 ]);
 /** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
 const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'calendar', 'invoices', 'payroll', 'qc_report', 'qc_dashboard', 'owner', 'manager',
 ]);
-const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'clients_report', 'qc_report', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'roles', 'users', 'data_import'];
+const VALID_TABS: TabOptions[] = ['houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'clients_report', 'qc_report', 'qc_dashboard', 'owner', 'manager', 'task_list', 'payroll', 'customers', 'invoices_new', 'settings', 'company', 'roles', 'users', 'data_import'];
 const getInitialTab = (): TabOptions => {
   if (typeof window === 'undefined') return 'houses';
   // ⭐ Deep-link de ruta compartida (?qcRoute=<id>): abre la app directo en
@@ -350,7 +353,8 @@ export default function App() {
       clients_report: [getClientsReportPermissionModule(activeRole)],
       owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'],
       payroll: ['Payroll'],
-      customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
+      customers: ['Customers'], invoices_new: [INVOICES_NEW_MODULE],
+      roles: ['Roles & Permissions'], users: ['System Users'],
       data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'],
       settings: ['Settings'],
     };
@@ -664,6 +668,16 @@ export default function App() {
         )}
 
         {activeTab === 'customers' && <CustomersView onOpenMenu={toggleMenu} />}
+
+        {activeTab === 'invoices_new' && (
+          <InvoicesNewView
+            onOpenMenu={toggleMenu}
+            properties={visibleProperties}
+            currentUser={effectiveUser}
+            activeRole={activeRole}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
         
         {activeTab === 'settings' && (
           <SettingsView 
