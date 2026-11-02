@@ -1,46 +1,11 @@
 /* Formulario Create / Edit Invoice (InvoiceFormModal y sus secciones). El
-   overlay y el ancho vienen de las clases globales .modal-overlay-centered y
-   .modal-70; la letra la pone views/InvoicesNewView.css (.invn-page *). */
-.invf-dialog {
-  overflow: hidden;
-}
-
-.invf-header {
-  align-items: flex-start;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 20px 24px 16px;
-}
-
-.invf-title {
-  color: #0f172a;
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.invf-subtitle {
-  color: #64748b;
-  font-size: 0.875rem;
-  margin: 4px 0 0;
-}
-
+   diálogo (encabezado, cuerpo, pie) está en InvoiceDialog.css; la letra la
+   pone views/InvoicesNewView.css (.invn-page *). */
 .invf-form {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-}
-
-.invf-body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 24px;
-  overflow-y: auto;
-  padding: 20px 24px;
 }
 
 .invf-section {
@@ -336,43 +301,18 @@
   font-size: 0.8rem;
 }
 
-.invf-option-summary {
-  margin: 0 0 0 28px;
-}
-
-.invf-footer {
+.invf-photo-controls {
   align-items: center;
-  border-top: 1px solid #e2e8f0;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  padding: 14px 24px;
+  gap: 8px 14px;
+  padding-left: 28px;
 }
 
-.invf-footer-error {
-  flex: 1 1 100%;
-}
-
-.invf-secondary-btn {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  color: #334155;
-  cursor: pointer;
-  font-weight: 600;
-  height: 42px;
-  padding: 0 18px;
-}
-
-.invf-secondary-btn:hover {
-  background: #f8fafc;
-}
-
-.invf-submit-btn:disabled,
-.invf-secondary-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.invf-photo-mode {
+  min-height: 36px;
+  padding: 4px 10px;
+  width: auto;
 }
 
 @media (max-width: 768px) {
@@ -380,16 +320,5 @@
   .invf-grid-2,
   .invf-grid-3 {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .invf-body,
-  .invf-footer,
-  .invf-header {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .invf-secondary-btn,
-  .invf-submit-btn {
-    flex: 1 1 0;
-    justify-content: center;
   }
 }

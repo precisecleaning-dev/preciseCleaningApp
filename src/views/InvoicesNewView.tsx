@@ -20,6 +20,8 @@ import InvoiceFiltersBar from '../features/invoices-new/components/InvoiceFilter
 import InvoiceRegister from '../features/invoices-new/components/InvoiceRegister';
 import InvoiceFormModal from '../features/invoices-new/components/InvoiceFormModal';
 import InvoiceSavedNotice from '../features/invoices-new/components/InvoiceSavedNotice';
+import InvoiceDetailModal from '../features/invoices-new/components/InvoiceDetailModal';
+import RecordPaymentDialog from '../features/invoices-new/components/RecordPaymentDialog';
 import './InvoicesNewView.css';
 
 interface InvoicesNewViewProps {
@@ -41,13 +43,25 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
   const { filters, actions: filterActions, hasActiveFilters } = useInvoiceFilters();
   const invoiceList = useInvoiceList(invoicesWindow.invoices, filters, today);
   const [formTarget, setFormTarget] = useState<InvoiceFormTarget>(null);
+  // Detalle y Record payment guardan el id: el invoice se toma EN VIVO de la lista.
+  const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState('');
+  const findInvoice = (invoiceId: string | null) =>
+    invoicesWindow.invoices.find((windowInvoice) => windowInvoice.id === invoiceId) ?? null;
+  const detailInvoice = findInvoice(detailInvoiceId);
+  const paymentInvoice = findInvoice(paymentInvoiceId);
 
   const handleInvoiceSaved = (result: { number: string; isNew: boolean }) => {
     setFormTarget(null);
     setSavedMessage(result.isNew ? `Invoice ${result.number} created.` : `Invoice ${result.number} saved.`);
     // Al crear se limpian los filtros para que el invoice nuevo quede a la vista (alcance §9).
     if (result.isNew) filterActions.clear();
+  };
+
+  const handlePaymentRecorded = (invoice: Invoice) => {
+    setPaymentInvoiceId(null);
+    setSavedMessage(`Payment recorded for ${invoice.number}.`);
   };
 
   return (
@@ -89,8 +103,22 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
         onPageSizeChange={filterActions.setPageSize}
         onClearFilters={filterActions.clear}
         canEdit={rights.canEdit}
+        onViewInvoice={(invoice) => setDetailInvoiceId(invoice.id)}
         onEditInvoice={(invoice) => setFormTarget({ invoice })}
+        onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
       />
+      {detailInvoice && (
+        <InvoiceDetailModal
+          invoice={detailInvoice}
+          jobProperty={properties.find((property) => property.id === detailInvoice.propertyId) ?? null}
+          today={today}
+          canEdit={rights.canEdit}
+          currentUser={currentUser}
+          onClose={() => setDetailInvoiceId(null)}
+          onEditInvoice={(invoice) => setFormTarget({ invoice })}
+          onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
+        />
+      )}
       {formTarget && (
         <InvoiceFormModal
           invoice={formTarget.invoice}
@@ -98,6 +126,14 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
           currentUser={currentUser}
           onClose={() => setFormTarget(null)}
           onSaved={handleInvoiceSaved}
+        />
+      )}
+      {paymentInvoice && (
+        <RecordPaymentDialog
+          invoice={paymentInvoice}
+          currentUser={currentUser}
+          onClose={() => setPaymentInvoiceId(null)}
+          onRecorded={handlePaymentRecorded}
         />
       )}
     </div>

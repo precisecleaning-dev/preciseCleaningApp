@@ -1,17 +1,16 @@
 // Tabla de invoices de la página actual. En pantallas chicas se desplaza de
 // lado (alcance §17: la tabla se conserva en el teléfono).
 import type { Invoice, YmdDate } from '../../../types/index';
-import InvoiceRow from './InvoiceRow';
+import InvoiceRow, { type InvoiceRowActions } from './InvoiceRow';
 import './InvoiceTable.css';
 
-interface InvoiceTableProps {
+interface InvoiceTableProps extends InvoiceRowActions {
   invoices: Invoice[];
   today: YmdDate;
   canEdit: boolean;
-  onEditInvoice: (invoice: Invoice) => void;
 }
 
-const InvoiceTable = ({ invoices, today, canEdit, onEditInvoice }: InvoiceTableProps) => (
+const InvoiceTable = ({ invoices, today, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid }: InvoiceTableProps) => (
   <div className="invt-scroll">
     <table className="invt-table">
       <thead>
@@ -27,7 +26,15 @@ const InvoiceTable = ({ invoices, today, canEdit, onEditInvoice }: InvoiceTableP
       </thead>
       <tbody>
         {invoices.map((invoice) => (
-          <InvoiceRow key={invoice.id} invoice={invoice} today={today} canEdit={canEdit} onEditInvoice={onEditInvoice} />
+          <InvoiceRow
+            key={invoice.id}
+            invoice={invoice}
+            today={today}
+            canEdit={canEdit}
+            onViewInvoice={onViewInvoice}
+            onEditInvoice={onEditInvoice}
+            onMarkAsPaid={onMarkAsPaid}
+          />
         ))}
       </tbody>
     </table>

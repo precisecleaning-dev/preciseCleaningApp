@@ -1,0 +1,140 @@
+/* Contenedor de los diálogos de Invoices New (InvoiceDialog.tsx): encabezado,
+   cuerpo con scroll y pie. El overlay y el ancho "wide" vienen de las clases
+   globales .modal-overlay-centered y .modal-70. */
+.invd-dialog {
+  overflow: hidden;
+}
+
+.invd-narrow {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  max-width: 520px;
+  width: 100%;
+}
+
+.invd-header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+}
+
+.invd-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.invd-title {
+  color: #0f172a;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.invd-subtitle {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.invd-close-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 36px;
+  justify-content: center;
+  min-height: 0;
+  width: 36px;
+}
+
+.invd-close-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.invd-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.invd-footer {
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 24px;
+}
+
+.invd-footer-error {
+  color: #dc2626;
+  flex: 1 1 100%;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.invd-secondary-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 6px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 18px;
+}
+
+.invd-secondary-btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.invd-primary-btn:disabled,
+.invd-secondary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+  .invd-narrow {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    max-width: 100%;
+  }
+  .invd-body,
+  .invd-footer,
+  .invd-header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .invd-primary-btn,
+  .invd-secondary-btn {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}

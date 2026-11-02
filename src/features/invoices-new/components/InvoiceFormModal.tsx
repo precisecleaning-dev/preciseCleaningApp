@@ -1,10 +1,10 @@
 // Formulario Create / Edit Invoice. Se elige el JOB (no hay selector de
 // cliente): el cliente y los montos salen del job y se pueden editar. Pie con
 // solo Cancel y Create Invoice (o Save Changes al editar).
-// Pendiente en etapas siguientes: Preview PDF, galería "Selected photos" y las
-// opciones de envío por correo / Stripe.
-import { useEffect, useState, type FormEvent } from 'react';
-import { CreditCard, FileText, Image as ImageIcon, Plus, StickyNote, X } from 'lucide-react';
+// Pendiente en etapas siguientes: Preview PDF y las opciones de envío por
+// correo / Stripe.
+import { useState, type FormEvent } from 'react';
+import { CreditCard, FileText, Image as ImageIcon, Plus, StickyNote } from 'lucide-react';
 import type { Invoice, InvoiceNote, Property, SystemUser } from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
@@ -21,6 +21,9 @@ import {
 } from '../hooks/useInvoiceForm';
 import { useInvoiceJobOptions } from '../hooks/useInvoiceJobOptions';
 import { useJobInvoices } from '../hooks/useJobInvoices';
+import { useInvoicePhotoSelection } from '../hooks/useInvoicePhotoSelection';
+import { usePhotoChoice } from '../hooks/usePhotoChoice';
+import InvoiceDialog from './InvoiceDialog';
 import InvoiceFormSection from './InvoiceFormSection';
 import InvoiceJobPicker from './InvoiceJobPicker';
 import InvoiceDatesFields from './InvoiceDatesFields';
@@ -67,6 +70,11 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const jobRecords = useHouseRecords(isEditing ? null : state.propertyId || null);
   const jobInvoices = useJobInvoices(state.propertyId, invoice?.id ?? null);
   const selectedCustomer = selectedProperty ? findCustomer(customers, selectedProperty.client) : null;
+  // Fotos actuales del job (null si el job no está en la ventana: al editar, así
+  // no se guarda una selección vacía por no tener el job cargado).
+  const jobPhotos = selectedProperty ? buildAllJobPhotoItems(selectedProperty) : null;
+  const savedPhotos = useInvoicePhotoSelection(invoice?.id ?? null);
+  const photoChoice = usePhotoChoice(savedPhotos.selection, jobPhotos ?? []);
 
   const jobDefaults = selectedProperty && jobRecords.loaded
     ? getInvoiceDefaults({
@@ -79,12 +87,10 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const amounts = getInvoiceFormAmounts(state, jobDefaults);
   const errors = getInvoiceFormErrors(state, amounts, isEditing);
   const shownErrors = hasTriedSubmit ? errors : {};
-  const isFormValid = Object.keys(errors).length === 0;
+  const isFormValid = Object.keys(errors).length === 0 && !photoChoice.error;
 
   const client = invoice?.client ?? (selectedProperty ? buildClientSnapshot(selectedProperty, customers) : null);
   const serviceDate = invoice?.job.serviceDate ?? selectedProperty?.scheduleDate ?? '';
-  const jobPhotos = selectedProperty ? buildAllJobPhotoItems(selectedProperty) : [];
-  const beforePhotoCount = jobPhotos.filter((photo) => photo.category === 'before').length;
 
   const jobWarnings = [
     ...(selectedProperty?.invoiceHold ? ['This job is on invoice hold (failed Quality Check).'] : []),
@@ -102,14 +108,11 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const title = isEditing ? 'Edit Invoice' : 'Create Invoice';
   const submitLabel = isEditing ? 'Save Changes' : 'Create Invoice';
 
-  // Escape cierra (salvo mientras se guarda).
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isSaving) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSaving, onClose]);
+  // Otro job: vuelven su monto y tasa, y la selección de fotos pasa a todas las del job nuevo.
+  const handleSelectJob = (propertyId: string) => {
+    actions.selectJob(propertyId);
+    photoChoice.resetForNewJob();
+  };
 
   const createInvoice = async (actor: InvoiceActor) => {
     if (!selectedProperty || !client) throw new Error('Select a job.');
@@ -126,7 +129,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       recipientEmail: client.email,
       paymentLinkUrl: '',
       noteTexts: state.notes.map((note) => note.text),
-      photos: { include: state.includePhotos, mode: 'all', items: jobPhotos },
+      photos: photoChoice.toInput(),
       status: state.status,
       initialPayment: state.status === 'paid' ? state.payment : null,
     }, actor);
@@ -141,10 +144,8 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       ...(isPaymentLocked ? {} : { subtotalCents: amounts.subtotalCents ?? 0, taxRateBps: amounts.taxRateBps ?? 0 }),
       notes: buildSavedNotes(state.notes, actor),
     }, actor);
-    if (state.includePhotos !== savedInvoice.photos.include) {
-      await invoicesService.updatePhotoSelection(savedInvoice.id, {
-        include: state.includePhotos, mode: 'all', items: jobPhotos,
-      }, actor);
+    if (jobPhotos && !savedPhotos.isLoading && photoChoice.isChanged) {
+      await invoicesService.updatePhotoSelection(savedInvoice.id, photoChoice.toInput(), actor);
     }
     onSaved({ id: savedInvoice.id, number: savedInvoice.number, isNew: false });
   };
@@ -173,113 +174,101 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   };
 
   return (
-    <div className="modal-overlay-centered">
-      <div className="invf-dialog modal-70" role="dialog" aria-modal="true" aria-labelledby="invoice-form-title">
-        <header className="invf-header">
-          <div>
-            <h2 className="invf-title" id="invoice-form-title">{title}</h2>
-            <p className="invf-subtitle">Choose the job, review the amount and decide how the invoice is recorded.</p>
-          </div>
-          <button type="button" className="invf-icon-btn" aria-label={`Close ${title.toLowerCase()}`} disabled={isSaving} onClick={onClose}>
-            <X size={20} aria-hidden="true" />
+    <InvoiceDialog
+      title={title}
+      subtitle="Choose the job, review the amount and decide how the invoice is recorded."
+      isCloseDisabled={isSaving}
+      onClose={onClose}
+    >
+      <form className="invf-form" noValidate onSubmit={handleSubmit}>
+        <div className="invd-body modal-body-scroll">
+          <InvoiceFormSection id="invoice-details-heading" title="Invoice details" icon={FileText}>
+            <InvoiceJobPicker
+              jobOptions={jobOptions}
+              selectedPropertyId={state.propertyId}
+              onSelectJob={handleSelectJob}
+              showAllJobs={showAllJobs}
+              onShowAllJobsChange={setShowAllJobs}
+              isLocked={isEditing}
+              error={shownErrors.job}
+              warnings={jobWarnings}
+              client={client}
+              serviceDate={serviceDate}
+            />
+            <InvoiceDatesFields
+              issueDate={state.issueDate}
+              paymentTerms={state.paymentTerms}
+              dueDate={state.dueDate}
+              onIssueDateChange={actions.setIssueDate}
+              onPaymentTermsChange={actions.setPaymentTerms}
+              onDueDateChange={actions.setDueDate}
+              issueDateError={shownErrors.issueDate}
+              dueDateError={shownErrors.dueDate}
+            />
+            <InvoiceAmountFields
+              amountText={amounts.amountText}
+              taxRateText={amounts.taxRateText}
+              onAmountChange={actions.setAmount}
+              onTaxRateChange={actions.setTaxRate}
+              subtotalCents={amounts.subtotalCents ?? 0}
+              taxRateBps={amounts.taxRateBps ?? 0}
+              taxCents={amounts.taxCents}
+              totalCents={amounts.totalCents}
+              isLocked={isPaymentLocked}
+              amountError={shownErrors.amount}
+              taxRateError={shownErrors.taxRate}
+              jobAmountHint={jobAmountHint}
+            />
+          </InvoiceFormSection>
+
+          <InvoiceFormSection
+            id="invoice-notes-heading"
+            title="Notes"
+            icon={StickyNote}
+            isOptional
+            actions={(
+              <button type="button" className="invf-text-btn" onClick={actions.addNote}>
+                <Plus size={16} aria-hidden="true" /> Add note
+              </button>
+            )}
+          >
+            <InvoiceNotesEditor
+              notes={state.notes}
+              onChangeNote={actions.changeNote}
+              onRemoveNote={actions.removeNote}
+              error={shownErrors.notes}
+            />
+          </InvoiceFormSection>
+
+          <InvoiceFormSection id="invoice-photos-heading" title="Job photos" icon={ImageIcon}>
+            <InvoicePhotosOption
+              photoChoice={photoChoice}
+              jobPhotos={jobPhotos}
+              error={hasTriedSubmit ? photoChoice.error : ''}
+            />
+          </InvoiceFormSection>
+
+          <InvoiceFormSection id="invoice-payment-heading" title="Payment" icon={CreditCard}>
+            <InvoicePaymentFields
+              status={state.status}
+              onStatusChange={actions.setStatus}
+              payment={state.payment}
+              onPaymentChange={actions.setPaymentField}
+              savedStatus={invoice?.status ?? null}
+              paymentErrors={shownErrors}
+            />
+          </InvoiceFormSection>
+        </div>
+
+        <footer className="invd-footer">
+          {saveError && <p className="invd-footer-error" role="alert">{saveError}</p>}
+          <button type="button" className="invd-secondary-btn" disabled={isSaving} onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary invd-primary-btn" disabled={isSaving}>
+            {isSaving ? 'Saving…' : submitLabel}
           </button>
-        </header>
-
-        <form className="invf-form" noValidate onSubmit={handleSubmit}>
-          <div className="invf-body modal-body-scroll">
-            <InvoiceFormSection id="invoice-details-heading" title="Invoice details" icon={FileText}>
-              <InvoiceJobPicker
-                jobOptions={jobOptions}
-                selectedPropertyId={state.propertyId}
-                onSelectJob={actions.selectJob}
-                showAllJobs={showAllJobs}
-                onShowAllJobsChange={setShowAllJobs}
-                isLocked={isEditing}
-                error={shownErrors.job}
-                warnings={jobWarnings}
-                client={client}
-                serviceDate={serviceDate}
-              />
-              <InvoiceDatesFields
-                issueDate={state.issueDate}
-                paymentTerms={state.paymentTerms}
-                dueDate={state.dueDate}
-                onIssueDateChange={actions.setIssueDate}
-                onPaymentTermsChange={actions.setPaymentTerms}
-                onDueDateChange={actions.setDueDate}
-                issueDateError={shownErrors.issueDate}
-                dueDateError={shownErrors.dueDate}
-              />
-              <InvoiceAmountFields
-                amountText={amounts.amountText}
-                taxRateText={amounts.taxRateText}
-                onAmountChange={actions.setAmount}
-                onTaxRateChange={actions.setTaxRate}
-                subtotalCents={amounts.subtotalCents ?? 0}
-                taxRateBps={amounts.taxRateBps ?? 0}
-                taxCents={amounts.taxCents}
-                totalCents={amounts.totalCents}
-                isLocked={isPaymentLocked}
-                amountError={shownErrors.amount}
-                taxRateError={shownErrors.taxRate}
-                jobAmountHint={jobAmountHint}
-              />
-            </InvoiceFormSection>
-
-            <InvoiceFormSection
-              id="invoice-notes-heading"
-              title="Notes"
-              icon={StickyNote}
-              isOptional
-              actions={(
-                <button type="button" className="invf-text-btn" onClick={actions.addNote}>
-                  <Plus size={16} aria-hidden="true" /> Add note
-                </button>
-              )}
-            >
-              <InvoiceNotesEditor
-                notes={state.notes}
-                onChangeNote={actions.changeNote}
-                onRemoveNote={actions.removeNote}
-                error={shownErrors.notes}
-              />
-            </InvoiceFormSection>
-
-            <InvoiceFormSection id="invoice-photos-heading" title="Job photos" icon={ImageIcon}>
-              <InvoicePhotosOption
-                includePhotos={state.includePhotos}
-                onIncludePhotosChange={actions.setIncludePhotos}
-                beforeCount={beforePhotoCount}
-                afterCount={jobPhotos.length - beforePhotoCount}
-                hasJob={!!selectedProperty}
-              />
-            </InvoiceFormSection>
-
-            <InvoiceFormSection id="invoice-payment-heading" title="Payment" icon={CreditCard}>
-              <InvoicePaymentFields
-                status={state.status}
-                onStatusChange={actions.setStatus}
-                payment={state.payment}
-                onPaymentMethodChange={actions.setPaymentMethod}
-                onPaymentFieldChange={actions.setPaymentField}
-                savedStatus={invoice?.status ?? null}
-                paymentDateError={shownErrors.paymentDate}
-                paymentReferenceError={shownErrors.paymentReference}
-                paymentNoteError={shownErrors.paymentNote}
-              />
-            </InvoiceFormSection>
-          </div>
-
-          <footer className="invf-footer">
-            {saveError && <p className="invf-error invf-footer-error" role="alert">{saveError}</p>}
-            <button type="button" className="invf-secondary-btn" disabled={isSaving} onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary invf-submit-btn" disabled={isSaving}>
-              {isSaving ? 'Saving…' : submitLabel}
-            </button>
-          </footer>
-        </form>
-      </div>
-    </div>
+        </footer>
+      </form>
+    </InvoiceDialog>
   );
 };
 

@@ -3210,3 +3210,18 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   consultas con cursor. Las tarjetas se calculan sobre búsqueda + fechas, nunca sobre la tarjeta o el estado
   elegidos. Cualquier cambio de filtro vuelve a la página 1 en el reducer (`useInvoiceFilters`), sin efectos.
   En el teléfono la tabla se desplaza de lado (alcance §17), no hay tarjetas.
+- Invoices New · detalle y pagos (11/2026): el detalle y Record payment guardan el ID y toman el invoice EN VIVO
+  de la lista (`useInvoicesWindow`): tras Mark as Paid o una nota se actualizan solos, sin parchar copias.
+  Mark as Paid relee el invoice en una transacción (`recordManualPayment`) y muestra "already paid" si otro lo
+  pagó antes. Activity se lee una vez al abrir la pestaña (`getEvents`, lectura única). Los diálogos usan
+  `InvoiceDialog`: Escape cierra solo el de ARRIBA (pila en el módulo; el formulario y Record payment se abren
+  encima del detalle) y un clic afuera no cierra. `shared/components/ActionMenu` se dibuja en un PORTAL con
+  posición fija porque la tabla tiene `overflow-x: auto` y lo recortaría; se cierra con scroll o resize.
+- Invoices New · fotos (11/2026): las fotos del job (`properties.beforePhotos` / `afterPhotos`) no tienen id: se
+  identifican por URL. "All job photos" = las fotos ACTUALES del job (el detalle y el PDF las toman del job);
+  "Selected photos" = las URLs elegidas que el job todavía tiene (una foto borrada del job se cae y el detalle
+  avisa). `usePhotoChoice` deriva lo elegido en el render (lo guardado, que llega en vivo con
+  `useInvoicePhotoSelection`, o lo que tocó el usuario), sin efecto que lo copie. Si el job no está en la
+  ventana de 12 meses, el formulario y el detalle NO guardan fotos (se guardaría una selección vacía).
+  Cambiar de job vuelve a "todas" las fotos del job nuevo. `shared/components/PhotoPickerGrid` carga por bloques
+  de 18 (jobs con 50+ fotos).

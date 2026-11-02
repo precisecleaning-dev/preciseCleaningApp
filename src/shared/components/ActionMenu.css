@@ -1,0 +1,62 @@
+/* Menú de acciones compartido (ActionMenu.tsx). El menú vive en un portal
+   (document.body): la letra se fija aquí porque no hereda la de la vista. */
+.acm-trigger {
+  align-items: center;
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  min-height: 0;
+  width: 32px;
+}
+
+.acm-trigger:hover,
+.acm-trigger.active {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.acm-menu {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  position: fixed;
+  z-index: 10000;
+}
+
+.acm-menu,
+.acm-menu * {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+.acm-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 500;
+  gap: 10px;
+  min-height: 0;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.acm-item:hover,
+.acm-item:focus-visible {
+  background: #f1f5f9;
+  color: #0f172a;
+  outline: none;
+}

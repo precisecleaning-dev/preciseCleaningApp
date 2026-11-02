@@ -40,9 +40,19 @@
 }
 
 .invt-number {
+  background: none;
+  border: 0;
   color: #1d3fcf;
+  cursor: pointer;
+  font-size: 0.875rem;
   font-weight: 700;
+  min-height: 0;
+  padding: 0;
   white-space: nowrap;
+}
+
+.invt-number:hover {
+  text-decoration: underline;
 }
 
 .invt-client {
@@ -89,23 +99,4 @@
 .invt-actions {
   text-align: right;
   width: 1%;
-}
-
-.invt-action-btn {
-  align-items: center;
-  background: none;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  color: #475569;
-  cursor: pointer;
-  display: inline-flex;
-  height: 32px;
-  justify-content: center;
-  min-height: 0;
-  width: 32px;
-}
-
-.invt-action-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
 }

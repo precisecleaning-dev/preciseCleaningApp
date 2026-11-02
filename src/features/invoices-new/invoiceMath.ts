@@ -15,6 +15,15 @@ const TERM_DAYS: Record<Exclude<InvoicePaymentTerms, 'custom'>, number> = {
   net_30: 30,
 };
 
+/** Nombre de cada plazo en la pantalla. */
+export const INVOICE_PAYMENT_TERM_LABELS: Record<InvoicePaymentTerms, string> = {
+  due_on_receipt: 'Due on receipt',
+  net_7: 'Within 7 days',
+  net_15: 'Within 15 days',
+  net_30: 'Within 30 days',
+  custom: 'Custom date',
+};
+
 const BASIS_POINTS_PER_UNIT = 10000;
 const DAY_MS = 86_400_000;
 const NUMBER_PREFIX = 'INV';

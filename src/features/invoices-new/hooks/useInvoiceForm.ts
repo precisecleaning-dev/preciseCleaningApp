@@ -9,12 +9,13 @@
 // ============================================================================
 import { useMemo, useReducer } from 'react';
 import type {
-  Invoice, InvoiceManualMethod, InvoiceManualPaymentInput, InvoiceNote, InvoicePaymentTerms,
+  Invoice, InvoiceManualPaymentInput, InvoiceNote, InvoicePaymentTerms,
   YmdDate,
 } from '../../../types/index';
 import { todayIso } from '../../../utils/dateFormat';
 import { bpsToPercent, computeTotals, dueFromTerms, termsFromDates } from '../invoiceMath';
 import { isPaidStatus } from '../invoiceStatus';
+import { createEmptyManualPayment, getManualPaymentErrors } from '../invoicePayment';
 import { INVOICE_LIMITS } from '../../../services/invoicesService';
 
 const DEFAULT_TERMS: InvoicePaymentTerms = 'net_15';
@@ -37,7 +38,6 @@ export interface InvoiceFormState {
   /** null = sin tocar: se muestra la tasa que trae el job. */
   taxRateText: string | null;
   notes: InvoiceFormNote[];
-  includePhotos: boolean;
   status: 'awaiting_payment' | 'paid';
   payment: InvoiceManualPaymentInput;
 }
@@ -52,13 +52,10 @@ type InvoiceFormAction =
   | { type: 'addNote' }
   | { type: 'changeNote'; key: string; text: string }
   | { type: 'removeNote'; key: string }
-  | { type: 'setIncludePhotos'; includePhotos: boolean }
   | { type: 'setStatus'; status: 'awaiting_payment' | 'paid' }
   | { type: 'setPayment'; field: keyof InvoiceManualPaymentInput; value: string };
 
 const emptyNote = (): InvoiceFormNote => ({ key: crypto.randomUUID(), text: '', original: null });
-
-const emptyPayment = (): InvoiceManualPaymentInput => ({ method: 'Cash', paidDate: todayIso(), reference: '', note: '' });
 
 const centsToText = (cents: number): string => (cents / 100).toFixed(2);
 
@@ -73,9 +70,8 @@ const createInitialState = (invoice: Invoice | null): InvoiceFormState => {
       amountText: null,
       taxRateText: null,
       notes: [emptyNote()],
-      includePhotos: true,
       status: 'awaiting_payment',
-      payment: emptyPayment(),
+      payment: createEmptyManualPayment(),
     };
   }
   const savedNotes = invoice.notes.map((note) => ({ key: note.id, text: note.text, original: note }));
@@ -87,9 +83,8 @@ const createInitialState = (invoice: Invoice | null): InvoiceFormState => {
     amountText: centsToText(invoice.subtotalCents),
     taxRateText: String(bpsToPercent(invoice.taxRateBps)),
     notes: savedNotes.length > 0 ? savedNotes : [emptyNote()],
-    includePhotos: invoice.photos.include,
     status: isPaidStatus(invoice.status) ? 'paid' : 'awaiting_payment',
-    payment: emptyPayment(),
+    payment: createEmptyManualPayment(),
   };
 };
 
@@ -125,8 +120,6 @@ function invoiceFormReducer(state: InvoiceFormState, action: InvoiceFormAction):
       const remainingNotes = state.notes.filter((note) => note.key !== action.key);
       return { ...state, notes: remainingNotes.length > 0 ? remainingNotes : [emptyNote()] };
     }
-    case 'setIncludePhotos':
-      return { ...state, includePhotos: action.includePhotos };
     case 'setStatus':
       return { ...state, status: action.status };
     case 'setPayment':
@@ -197,17 +190,8 @@ export function getInvoiceFormErrors(state: InvoiceFormState, amounts: InvoiceFo
   if (state.notes.some((note) => note.text.length > INVOICE_LIMITS.noteText)) {
     formErrors.notes = `Each note can have up to ${INVOICE_LIMITS.noteText} characters.`;
   }
-  if (!isEditing && state.status === 'paid') {
-    const { paidDate, reference, note } = state.payment;
-    if (!paidDate) formErrors.paymentDate = 'Enter the payment date.';
-    else if (paidDate > todayIso()) formErrors.paymentDate = 'The payment date cannot be in the future.';
-    else if (state.issueDate && paidDate < state.issueDate) formErrors.paymentDate = 'The payment date cannot be before the issue date.';
-    if (reference.length > INVOICE_LIMITS.paymentReference) {
-      formErrors.paymentReference = `Up to ${INVOICE_LIMITS.paymentReference} characters.`;
-    }
-    if (note.length > INVOICE_LIMITS.paymentNote) formErrors.paymentNote = `Up to ${INVOICE_LIMITS.paymentNote} characters.`;
-  }
-  return formErrors;
+  const paymentErrors = !isEditing && state.status === 'paid' ? getManualPaymentErrors(state.payment, state.issueDate) : {};
+  return { ...formErrors, ...paymentErrors };
 }
 
 /** Estado del formulario. `invoice` = el invoice que se edita (null al crear). */
@@ -224,9 +208,7 @@ export function useInvoiceForm(invoice: Invoice | null) {
     addNote: () => dispatch({ type: 'addNote' }),
     changeNote: (key: string, text: string) => dispatch({ type: 'changeNote', key, text }),
     removeNote: (key: string) => dispatch({ type: 'removeNote', key }),
-    setIncludePhotos: (includePhotos: boolean) => dispatch({ type: 'setIncludePhotos', includePhotos }),
     setStatus: (status: 'awaiting_payment' | 'paid') => dispatch({ type: 'setStatus', status }),
-    setPaymentMethod: (method: InvoiceManualMethod) => dispatch({ type: 'setPayment', field: 'method', value: method }),
     setPaymentField: (field: keyof InvoiceManualPaymentInput, value: string) => dispatch({ type: 'setPayment', field, value }),
   }), []);
 

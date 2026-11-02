@@ -3,7 +3,8 @@
 // Colección `invoices` (módulo Invoices New). Tipos en src/types/invoices.ts.
 //
 //   create · update · addNote · updatePhotoSelection · recordManualPayment
-//   subscribeWindow · getOne · getEvents · getPhotoSelection · findByProperty
+//   subscribeWindow · subscribePhotoSelection · getOne · getEvents · getPhotoSelection
+//   findByProperty
 //
 // ⭐ No hay `delete`: el número no debe dejar huecos y el historial se conserva
 //    (mismo criterio que propertiesService). Tampoco hay getAll: la lista
@@ -471,6 +472,16 @@ export const invoicesService = {
       publish();
     }, onError));
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  },
+
+  /** Escucha las fotos elegidas de UN invoice (un documento), mientras el
+   *  detalle o el formulario están abiertos. `null` = sin selección guardada. */
+  subscribePhotoSelection(
+    invoiceId: string,
+    onData: (selection: InvoicePhotoSelection | null) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    return onSnapshot(photoSelectionRef(invoiceId), (snap) => onData(snap.exists() ? snap.data() : null), onError);
   },
 
   /** Invoices de un job: el formulario avisa si el job ya tiene alguno. */

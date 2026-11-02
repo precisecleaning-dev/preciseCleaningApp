@@ -2,15 +2,10 @@
 // con el plazo; si se elige a mano, el plazo pasa a Custom date.
 import type { InvoicePaymentTerms, YmdDate } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
+import { INVOICE_PAYMENT_TERM_LABELS } from '../invoiceMath';
 import InvoiceFormField from './InvoiceFormField';
 
-const PAYMENT_TERM_OPTIONS: { value: InvoicePaymentTerms; label: string }[] = [
-  { value: 'due_on_receipt', label: 'Due on receipt' },
-  { value: 'net_7', label: 'Within 7 days' },
-  { value: 'net_15', label: 'Within 15 days' },
-  { value: 'net_30', label: 'Within 30 days' },
-  { value: 'custom', label: 'Custom date' },
-];
+const PAYMENT_TERM_OPTIONS = Object.entries(INVOICE_PAYMENT_TERM_LABELS) as [InvoicePaymentTerms, string][];
 
 interface InvoiceDatesFieldsProps {
   issueDate: YmdDate;
@@ -37,8 +32,8 @@ const InvoiceDatesFields = ({
         value={paymentTerms}
         onChange={(event) => onPaymentTermsChange(event.target.value as InvoicePaymentTerms)}
       >
-        {PAYMENT_TERM_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
+        {PAYMENT_TERM_OPTIONS.map(([termValue, termLabel]) => (
+          <option key={termValue} value={termValue}>{termLabel}</option>
         ))}
       </select>
     </InvoiceFormField>

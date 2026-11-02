@@ -3,10 +3,11 @@
 import type { Invoice, YmdDate } from '../../../types/index';
 import PaginationBar from '../../../shared/components/PaginationBar';
 import InvoiceTable from './InvoiceTable';
+import type { InvoiceRowActions } from './InvoiceRow';
 import InvoicesEmptyState from './InvoicesEmptyState';
 import { INVOICE_PAGE_SIZES } from '../hooks/useInvoiceFilters';
 
-interface InvoiceRegisterProps {
+interface InvoiceRegisterProps extends InvoiceRowActions {
   pageInvoices: Invoice[];
   filteredCount: number;
   /** Invoices en la ventana, antes de filtrar (0 = todavía no hay ninguno). */
@@ -21,12 +22,11 @@ interface InvoiceRegisterProps {
   onPageSizeChange: (pageSize: number) => void;
   onClearFilters: () => void;
   canEdit: boolean;
-  onEditInvoice: (invoice: Invoice) => void;
 }
 
 const InvoiceRegister = ({
   pageInvoices, filteredCount, windowCount, isLoading, hasError, today, page, pageCount, pageSize, onPageChange,
-  onPageSizeChange, onClearFilters, canEdit, onEditInvoice,
+  onPageSizeChange, onClearFilters, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid,
 }: InvoiceRegisterProps) => {
   if (isLoading) {
     return (
@@ -63,7 +63,14 @@ const InvoiceRegister = ({
 
   return (
     <section aria-label="Invoices">
-      <InvoiceTable invoices={pageInvoices} today={today} canEdit={canEdit} onEditInvoice={onEditInvoice} />
+      <InvoiceTable
+        invoices={pageInvoices}
+        today={today}
+        canEdit={canEdit}
+        onViewInvoice={onViewInvoice}
+        onEditInvoice={onEditInvoice}
+        onMarkAsPaid={onMarkAsPaid}
+      />
       <PaginationBar
         page={page}
         pageCount={pageCount}
