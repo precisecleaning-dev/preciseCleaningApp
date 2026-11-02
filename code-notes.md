@@ -3182,3 +3182,32 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). Mientras cargan los
   datos no lleva color (un $0 aún no es ganancia). No es sticky: `.inv-page` tiene `overflow-x: hidden` y eso
   rompe `position: sticky`.
+  Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). No es sticky:
+  `.inv-page` tiene `overflow-x: hidden` y eso rompe `position: sticky`.
+- Pipeline → Excel (10/2026, pedido de Omar) — REEMPLAZADA en parte por "Finanzas por trabajo" (los montos de la
+  app ya no son Final Cost = Price − 8.25%): botón "Excel" en el Pipeline (grupo Financial de Houses + elemento
+  "btn_operationsSheet" de Configure Fields, visible por defecto) abre `OperationsSheetDialog`: exporta la hoja
+  "Daily Operations" del periodo (default Month) y compara un Excel subido. MATCH por calle (número + primera
+  palabra: "401 twin") + misma fecha; entre varios trabajos de la misma calle y día (Twin Creek) gana unidad /
+  Service Price / Payroll / cliente / nota; lo que sobra se intenta ±7 días ("Different date"). Solo compara
+  con la empresa elegida (Normal / Cavalry): las filas de la otra salen "Only in Excel" y el resumen lo dice.
+  OJO hoja de October: 145 filas con `IF(...,F+G,F+G)` (suma el impuesto siempre). Export: fórmulas propias
+  cuando los montos caben (Taxes = F×8.25%, Final Cost = F±G, Profit = H−G−I con impuesto sumado o H−I,
+  Margin, WEEKNUM); si no (sin impuesto, otro %, trabajo que suma y resta) va el valor. NO el XLOOKUP a la
+  pestaña Customers (no viene en el archivo → #REF!). Notes = notas de oficina solo si el rol puede verlas.
+  Las listas de Invoice/Drip pans van por RANGO (`dataValidations.add`): por celda exceljs arma rangos
+  encimados. Pendiente: QC Status, Recall Completed, Move in, Number of Days y Drip pans salen vacíos (la app
+  no guarda esos datos).
+- Pipeline → Excel · por qué exceljs ADEMÁS de xlsx: `xlsx` (SheetJS 0.18, ya lo usa Data Import) LEE el archivo
+  subido, pero su versión gratuita no ESCRIBE estilos (colores, bordes, letra), listas de validación ni la fila
+  fija: para que el export se vea igual a la hoja se escribe con `exceljs`. Los dos se cargan solo al usarse
+  (import dinámico). exceljs NO va al precache del Service Worker (`globIgnores` en vite.config.ts, decisión de
+  Omar): se baja la primera vez que alguien exporta (necesita internet); antes lo bajaba cada teléfono (~270 kB
+  gzip, el precache pasó de 4.1 MB a 3.2 MB).
+- Pipeline → Excel · CR del PR #25 (10/2026): el Excel subido lo guarda HouseList (`uploadedOperationsSheet`), no
+  el diálogo: "Open" cierra el diálogo para mostrar el detalle y, al volver, sigue el mismo archivo. Clase del
+  botón: la compartida del header, `.hv-btn-header` (antes `.hv-btn-history`, la de "Mi historial"). Los
+  filtros de la comparación son botones con `aria-pressed` (no hay paneles: no usar role="tablist"). El diálogo
+  cierra con Escape y devuelve el foco al botón Excel. `isSameAmount` (menos de un centavo) vive en
+  utils/jobFinancials.ts y lo usan la comparación y la exportación. Lectura: la coma es decimal solo con 1–2
+  dígitos al final ("$1,234" = 1234) y la fecha con hora toma su día (Math.floor, no round).

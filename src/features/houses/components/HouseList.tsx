@@ -4,9 +4,10 @@
 //    los abre HousesView (props on*). Extraído de HousesView.
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import {
-  AlertTriangle, Briefcase, ChevronRight, Clock, CloudOff, FileText, Filter, Plus, Search, ShieldCheck, Wrench,
+  AlertTriangle, Briefcase, ChevronRight, Clock, CloudOff, FileSpreadsheet, FileText, Filter, Plus, Search, ShieldCheck,
+  Wrench,
 } from "lucide-react";
-import type { Property, Status, SystemUser } from "../../../types/index";
+import type { Property, Status, SystemUser, UploadedOperationsSheet } from "../../../types/index";
 import { propertiesService } from "../../../services/propertiesService";
 import { logActivity } from "../../../services/activityLogService";
 import { resolveCustomerName } from "../../../utils/customerDocs";
@@ -39,6 +40,7 @@ import StatusPillSelector from "./StatusPillSelector";
 import PropertyDateFixTool from "./PropertyDateFixTool";
 import MyHistoryModal from "./MyHistoryModal";
 import RepairClientsModal from "./RepairClientsModal";
+import OperationsSheetDialog from "./OperationsSheetDialog";
 import VirtualItems from "../../../shared/components/VirtualItems";
 import BusinessTabs from "../../../shared/components/BusinessTabs";
 import { useBusiness } from "../../../shared/hooks/useBusiness";
@@ -164,6 +166,11 @@ const HouseList = ({
 
   // ⭐ MI HISTORIAL (features/houses/components/MyHistoryModal).
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // ⭐ Pipeline → Excel: exportar la hoja Daily Operations y compararla con la app.
+  const [isOperationsSheetOpen, setIsOperationsSheetOpen] = useState(false);
+  // El Excel subido vive aquí y no en el diálogo: al abrir un trabajo desde la
+  // comparación ("Open") el diálogo se cierra, y al volver sigue el mismo archivo.
+  const [uploadedOperationsSheet, setUploadedOperationsSheet] = useState<UploadedOperationsSheet | null>(null);
 
   // ⭐ PERF: este componente solo se monta en la página completa de Houses;
   //    en modo 'modals-only' (encima de Quality Check, Payroll, Invoices,
@@ -600,6 +607,8 @@ const HouseList = ({
   const rowEditAllowed = !!canEdit && isVisible("admin") && isElementVisible("btn_editDetails");
   const rowDeleteAllowed = !!canDelete && isVisible("admin") && isElementVisible("btn_deleteProperty");
   const cardPhotos = isVisible("media") && isElementVisible("btn_tabMedia") && isElementVisible("card_photos");
+  const isOperationsSheetButtonVisible =
+    viewMode === "board" && isVisible("financial") && isElementVisible("btn_operationsSheet");
   const statusLocked = !canEdit || !isVisible("workflow") || isFieldRO("statusId");
   const renderRowStatus = useCallback(
     (prop: Property) => (
@@ -617,6 +626,11 @@ const HouseList = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [statuses, statusLocked, rowStatus, customersList],
   );
+  // Cierra la ventana del Excel y abre el detalle del trabajo elegido.
+  const handleOpenHouseFromOperationsSheet = (house: Property) => {
+    setIsOperationsSheetOpen(false);
+    onOpenDetail(house);
+  };
   const wasRecall = useCallback(
     (prop: Property) => recallHouseIds.has(prop.id) || isRecallText(findStatusOf(prop)?.name || prop.statusId),
     // findStatusOf solo cambia con statusIndex
@@ -663,6 +677,20 @@ const HouseList = ({
               className="hv-search-input"
             />
           </div>
+
+          {/* ⭐ Excel de operaciones: solo en el Pipeline, para quien ve las
+              finanzas (grupo Financial de Houses: montos y nómina) y con el
+              botón activo en Configure Fields. */}
+          {isOperationsSheetButtonVisible && (
+            <button
+              type="button"
+              className="hv-btn-header"
+              onClick={() => setIsOperationsSheetOpen(true)}
+              title="Export the Daily Operations Excel or compare it with the app"
+            >
+              <FileSpreadsheet size={16} /> Excel
+            </button>
+          )}
 
           {isElementVisible("btn_myHistory") && (
             <button
@@ -972,6 +1000,18 @@ const HouseList = ({
             onOpenDetail(p);
           }}
           onClose={() => setIsHistoryOpen(false)}
+        />
+      )}
+
+      {isOperationsSheetOpen && (
+        <OperationsSheetDialog
+          jobs={propertiesWithScope}
+          businessName={business}
+          canSeeOfficeNotes={canSeeOfficeNotes()}
+          uploadedSheet={uploadedOperationsSheet}
+          onUploadedSheetChange={setUploadedOperationsSheet}
+          onOpenHouse={handleOpenHouseFromOperationsSheet}
+          onClose={() => setIsOperationsSheetOpen(false)}
         />
       )}
 
