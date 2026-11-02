@@ -2431,27 +2431,27 @@
   border-color: #bbf7d0;
 }
 
-/* ⭐ Botón "Mi historial" del header (casas asignadas al usuario) */
-.hv-btn-history {
-  display: flex;
+/* ⭐ Botones secundarios del header de Houses (Excel del Pipeline, Mi historial) */
+.hv-btn-header {
   align-items: center;
-  gap: 8px;
   background-color: #ffffff;
-  color: #334155;
   border: 1px solid #e2e8f0;
-  padding: 0 18px;
-  height: 44px;
   border-radius: 999px;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 0.9rem;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  color: #334155;
+  cursor: pointer;
+  display: flex;
   flex-shrink: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease;
 }
-.hv-btn-history:hover {
+.hv-btn-header:hover {
   background-color: #f8fafc;
   border-color: #cbd5e1;
 }
@@ -3478,18 +3478,18 @@
   color: #94a3b8;
 }
 
-.houses-view .hv-btn-history {
-  height: 44px;
-  border-radius: 999px;
-  border: 1px solid #e2e8f0;
-  color: #334155;
+.houses-view .hv-btn-header {
   background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #334155;
   font-weight: 600;
+  height: 44px;
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease;
 }
-.houses-view .hv-btn-history:hover {
+.houses-view .hv-btn-header:hover {
   background-color: #f8fafc;
   border-color: #cbd5e1;
 }
@@ -3610,9 +3610,9 @@
   .houses-view .hv-btn-add.add-btn-mobile {
     flex: 1 1 auto;
   }
-  .houses-view .hv-btn-history {
-    height: 48px;
+  .houses-view .hv-btn-header {
     flex: 1 1 auto;
+    height: 48px;
     justify-content: center;
   }
 

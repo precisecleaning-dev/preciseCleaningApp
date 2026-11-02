@@ -1,6 +1,5 @@
 // src/features/houses/houseDrafts.ts
-import type { PayrollRecord, Property } from '../../types/index';
-import type { ServiceRecord } from './serviceRecords';
+import type { PayrollRecord, Property, ServiceRecord } from '../../types/index';
 
 // ============================================================================
 // ⭐ BORRADORES del formulario de casas (localStorage, por dispositivo).

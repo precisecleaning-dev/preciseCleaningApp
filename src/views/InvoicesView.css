@@ -804,8 +804,8 @@
 /* =====================================================================
    ⭐ Invoices con el lenguaje visual del Overview unificado (diseño
    "Precise Cleaning – Unified Jobs View"): misma letra, fondo, barra de
-   periodo, tiles, chips y pastillas. PeriodBar.css y KpiGrid.css traen
-   los componentes compartidos.
+   periodo, chips y pastillas. PeriodBar.css trae la barra compartida y
+   components/InvoicesTotalsBar.css los totales del teléfono.
    ===================================================================== */
 /* App.css fija `* { font-family: system-ui }`: se aplica a cada elemento. */
 .inv-page.inv-unified,

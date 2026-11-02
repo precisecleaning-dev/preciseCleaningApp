@@ -666,7 +666,8 @@ const HouseList = ({
 
           {isElementVisible("btn_myHistory") && (
             <button
-              className="hv-btn-history"
+              type="button"
+              className="hv-btn-header"
               onClick={() => setIsHistoryOpen(true)}
               title="Historial de casas asignadas a mí"
             >
