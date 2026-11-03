@@ -11,11 +11,12 @@ import { fullName } from '../../../utils/homeData';
 import { pluralize } from '../../../utils/countFormat';
 import { INVOICE_LIMITS } from '../invoiceLimits';
 import { canMoveToTrash, isDeletedInvoice } from '../invoiceStatus';
-import { describeBulkResult } from '../invoiceBulk';
 import { deleteInvoicesInBulk } from '../services/invoiceBulkService';
+import { getBulkProgressLabel, useBulkRun } from '../hooks/useBulkRun';
 import InvoiceDialog from './InvoiceDialog';
 import InvoiceFormField from './InvoiceFormField';
 import InvoiceBulkIssueList from './InvoiceBulkIssueList';
+import InvoiceBulkResultView from './InvoiceBulkResultView';
 import './InvoiceFormModal.css';
 import './InvoiceBulkDialog.css';
 
@@ -44,73 +45,48 @@ interface DeleteInvoicesDialogProps {
 
 const DeleteInvoicesDialog = ({ invoices, currentUser, onClose, onFinished }: DeleteInvoicesDialogProps) => {
   const reasonId = useId();
-  const [plan] = useState(() => planDeletion(invoices));
+  const bulkRun = useBulkRun(invoices, { onClose, onFinished });
+  const { frozenInvoices, progress, isRunning, result } = bulkRun;
+  const [plan] = useState(() => planDeletion(frozenInvoices));
   const [reason, setReason] = useState('');
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
-  const [progress, setProgress] = useState<{ doneCount: number; totalCount: number } | null>(null);
-  const [result, setResult] = useState<InvoiceBulkResult | null>(null);
-  const [deleteError, setDeleteError] = useState('');
-  const isDeleting = progress !== null;
-  const isSingle = invoices.length === 1;
+  const isSingle = frozenInvoices.length === 1;
   const deleteCount = plan.deletableInvoices.length;
-  const title = isSingle ? `Delete ${invoices[0].number}` : `Delete ${pluralize(invoices.length, 'invoice', 'invoices')}`;
+  const title = isSingle
+    ? `Delete ${frozenInvoices[0].number}`
+    : `Delete ${pluralize(frozenInvoices.length, 'invoice', 'invoices')}`;
   const reasonError = reason.trim() ? '' : 'Write why the invoice is deleted.';
   const submitLabel = progress
-    ? `Deleting ${Math.min(progress.doneCount + 1, progress.totalCount)} of ${progress.totalCount}…`
+    ? getBulkProgressLabel('Deleting', progress)
     : `Delete ${isSingle ? 'Invoice' : pluralize(deleteCount, 'Invoice', 'Invoices')}`;
-
-  const handleClose = () => {
-    if (result) onFinished(result);
-    else onClose();
-  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setHasTriedSubmit(true);
-    if (reasonError || isDeleting || deleteCount === 0) return;
+    if (reasonError || isRunning || deleteCount === 0) return;
     if (!currentUser) {
-      setDeleteError('Your user profile is not loaded. Reload the app and try again.');
+      bulkRun.setRunError('Your user profile is not loaded. Reload the app and try again.');
       return;
     }
-    setDeleteError('');
-    setProgress({ doneCount: 0, totalCount: deleteCount });
-    try {
-      const runResult = await deleteInvoicesInBulk(
-        plan.deletableInvoices,
-        reason,
-        { id: currentUser.id, name: fullName(currentUser) },
-        (doneCount, totalCount) => setProgress({ doneCount, totalCount }),
-      );
-      const finalResult = { ...runResult, skipped: [...plan.skipped, ...runResult.skipped] };
-      // Uno solo y sin problemas: se cierra y la página avisa (con Undo).
-      const isCleanSingle = isSingle && finalResult.doneInvoices.length === 1;
-      if (isCleanSingle) onFinished(finalResult);
-      else setResult(finalResult);
-    } catch (error) {
-      console.error('Could not delete the invoices:', error);
-      setDeleteError('Could not delete the invoices. Check your connection and try again.');
-    } finally {
-      setProgress(null);
-    }
+    const actor = { id: currentUser.id, name: fullName(currentUser) };
+    const runResult = await bulkRun.run(
+      deleteCount,
+      (onProgress) => deleteInvoicesInBulk(plan.deletableInvoices, reason, actor, onProgress),
+      { skipped: plan.skipped, errorMessage: 'Could not delete the invoices. Check your connection and try again.' },
+    );
+    if (!runResult) return;
+    // Uno solo y sin problemas: se cierra y la página avisa (con Undo).
+    const isCleanSingle = isSingle && runResult.doneInvoices.length === 1;
+    if (isCleanSingle) onFinished(runResult);
+    else bulkRun.showResult(runResult);
   };
 
   if (result) {
-    return (
-      <InvoiceDialog title={title} size="narrow" onClose={handleClose}>
-        <div className="invd-body">
-          <p className="invbd-result-text">{describeBulkResult(RESULT_ACTION_TEXT, result).text}</p>
-          <InvoiceBulkIssueList title="Failed" issues={result.failed} tone="error" />
-          <InvoiceBulkIssueList title="Skipped" issues={result.skipped} tone="warning" />
-        </div>
-        <footer className="invd-footer">
-          <button type="button" className="btn-primary invd-primary-btn" onClick={handleClose}>Done</button>
-        </footer>
-      </InvoiceDialog>
-    );
+    return <InvoiceBulkResultView title={title} actionText={RESULT_ACTION_TEXT} result={result} onDone={bulkRun.handleClose} />;
   }
 
   return (
-    <InvoiceDialog title={title} size="narrow" isCloseDisabled={isDeleting} onClose={handleClose}>
+    <InvoiceDialog title={title} size="narrow" isCloseDisabled={isRunning} onClose={bulkRun.handleClose}>
       <form className="invbd-form" noValidate onSubmit={handleSubmit}>
         <div className="invd-body">
           <p className="invf-help">
@@ -135,17 +111,17 @@ const DeleteInvoicesDialog = ({ invoices, currentUser, onClose, onFinished }: De
                 maxLength={INVOICE_LIMITS.deletionReason}
                 placeholder="Duplicated, created by mistake…"
                 value={reason}
-                disabled={isDeleting}
+                disabled={isRunning}
                 onChange={(event) => setReason(event.target.value)}
               />
             </InvoiceFormField>
           )}
         </div>
         <footer className="invd-footer">
-          {deleteError && <p className="invd-footer-error" role="alert">{deleteError}</p>}
-          <button type="button" className="invd-secondary-btn" disabled={isDeleting} onClick={onClose}>Cancel</button>
-          <button type="submit" className="invd-danger-btn" disabled={isDeleting || deleteCount === 0}>
-            {isDeleting ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
+          {bulkRun.runError && <p className="invd-footer-error" role="alert">{bulkRun.runError}</p>}
+          <button type="button" className="invd-secondary-btn" disabled={isRunning} onClick={onClose}>Cancel</button>
+          <button type="submit" className="invd-danger-btn" disabled={isRunning || deleteCount === 0}>
+            {isRunning ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
             {` ${submitLabel}`}
           </button>
         </footer>

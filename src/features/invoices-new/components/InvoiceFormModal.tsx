@@ -11,7 +11,7 @@
 import { useState, type FormEvent } from 'react';
 import { CreditCard, Eye, FileText, Image as ImageIcon, Percent, Plus, Send, StickyNote } from 'lucide-react';
 import type {
-  Actor, Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, InvoiceNote, Property, SystemUser,
+  Actor, Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, InvoiceNote, InvoiceSaveResult, Property, SystemUser,
 } from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
@@ -61,7 +61,7 @@ interface InvoiceFormModalProps {
   currentUser: SystemUser | null;
   onClose: () => void;
   /** `delivery` = resultado del envío por correo (null si no se pidió). */
-  onSaved: (result: { id: string; number: string; isNew: boolean; delivery: InvoiceDeliveryOutcome | null }) => void;
+  onSaved: (result: InvoiceSaveResult) => void;
 }
 
 /** Paso del guardado: guardar el invoice y, si se pidió, mandarlo por correo. */

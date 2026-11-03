@@ -1,13 +1,12 @@
 // Bloque de la lista: tabla con su paginación, o el estado que corresponda
 // (cargando, error de lectura, sin invoices todavía, sin resultados).
-import type { Invoice, YmdDate } from '../../../types/index';
+import type { Invoice, InvoiceActions, InvoicesNewRights, YmdDate } from '../../../types/index';
 import PaginationBar from '../../../shared/components/PaginationBar';
 import InvoiceTable, { type InvoiceTableSelection } from './InvoiceTable';
-import type { InvoiceRowActions } from './InvoiceRow';
 import InvoicesEmptyState from './InvoicesEmptyState';
 import { INVOICE_PAGE_SIZES } from '../hooks/useInvoiceFilters';
 
-interface InvoiceRegisterProps extends InvoiceRowActions {
+interface InvoiceRegisterProps {
   pageInvoices: Invoice[];
   filteredCount: number;
   /** Invoices en la ventana, antes de filtrar (0 = todavía no hay ninguno). */
@@ -21,16 +20,16 @@ interface InvoiceRegisterProps extends InvoiceRowActions {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onClearFilters: () => void;
-  canEdit: boolean;
-  canDelete: boolean;
+  rights: InvoicesNewRights;
+  /** Lo que se hace con cada invoice (menú de la fila). */
+  actions: InvoiceActions;
   /** Checkboxes de la tabla (null = sin columna de selección). */
   selection: InvoiceTableSelection | null;
 }
 
 const InvoiceRegister = ({
   pageInvoices, filteredCount, windowCount, isLoading, hasError, today, page, pageCount, pageSize, onPageChange,
-  onPageSizeChange, onClearFilters, canEdit, canDelete, selection, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf,
-  onDownloadPdf, onSendInvoice, onOpenClientAccount, onDeleteInvoice, onRestoreInvoice,
+  onPageSizeChange, onClearFilters, rights, actions, selection,
 }: InvoiceRegisterProps) => {
   if (isLoading) {
     return (
@@ -70,18 +69,9 @@ const InvoiceRegister = ({
       <InvoiceTable
         invoices={pageInvoices}
         today={today}
-        canEdit={canEdit}
-        canDelete={canDelete}
+        rights={rights}
+        actions={actions}
         selection={selection}
-        onViewInvoice={onViewInvoice}
-        onEditInvoice={onEditInvoice}
-        onMarkAsPaid={onMarkAsPaid}
-        onPreviewPdf={onPreviewPdf}
-        onDownloadPdf={onDownloadPdf}
-        onSendInvoice={onSendInvoice}
-        onOpenClientAccount={onOpenClientAccount}
-        onDeleteInvoice={onDeleteInvoice}
-        onRestoreInvoice={onRestoreInvoice}
       />
       <PaginationBar
         page={page}

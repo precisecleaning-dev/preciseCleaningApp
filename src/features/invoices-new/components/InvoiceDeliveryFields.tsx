@@ -6,6 +6,7 @@ import { useId } from 'react';
 import type { InvoiceDeliveryChoice } from '../../../types/index';
 import { STRIPE_PAYMENT_LINK_PLACEHOLDER, isDeliveryRequested, type InvoiceDeliveryErrors } from '../invoiceDelivery';
 import InvoiceFormField from './InvoiceFormField';
+import InvoiceDeliveryOptions from './InvoiceDeliveryOptions';
 import './InvoiceFormModal.css';
 
 interface InvoiceDeliveryFieldsProps {
@@ -20,8 +21,6 @@ interface InvoiceDeliveryFieldsProps {
 
 const InvoiceDeliveryFields = ({ choice, onChange, isPaid, totalText, errors }: InvoiceDeliveryFieldsProps) => {
   const fieldIdPrefix = useId();
-  const pdfId = `${fieldIdPrefix}-pdf`;
-  const paymentLinkOptionId = `${fieldIdPrefix}-card`;
   const emailId = `${fieldIdPrefix}-email`;
   const paymentLinkId = `${fieldIdPrefix}-link`;
   const paymentLinkHelp = isPaid
@@ -29,32 +28,14 @@ const InvoiceDeliveryFields = ({ choice, onChange, isPaid, totalText, errors }: 
     : 'The email includes a button to pay with a card through Stripe.';
 
   return (
-    <div className="invf-option-card">
-      <label className="invf-option-row" htmlFor={pdfId}>
-        <input
-          id={pdfId}
-          type="checkbox"
-          checked={choice.sendPdf}
-          onChange={(event) => onChange({ sendPdf: event.target.checked })}
-        />
-        <span className="invf-option-copy">
-          <span className="invf-option-title">Email invoice as PDF</span>
-          <span className="invf-option-help">The client receives the invoice PDF as an attachment.</span>
-        </span>
-      </label>
-      <label className="invf-option-row" htmlFor={paymentLinkOptionId}>
-        <input
-          id={paymentLinkOptionId}
-          type="checkbox"
-          checked={choice.sendPaymentLink && !isPaid}
-          disabled={isPaid}
-          onChange={(event) => onChange({ sendPaymentLink: event.target.checked })}
-        />
-        <span className="invf-option-copy">
-          <span className="invf-option-title">Email invoice for card payment</span>
-          <span className="invf-option-help">{paymentLinkHelp}</span>
-        </span>
-      </label>
+    <InvoiceDeliveryOptions
+      sendPdf={choice.sendPdf}
+      sendPaymentLink={choice.sendPaymentLink}
+      onChange={onChange}
+      pdfHelp="The client receives the invoice PDF as an attachment."
+      paymentLinkHelp={paymentLinkHelp}
+      isPaymentLinkDisabled={isPaid}
+    >
       {isDeliveryRequested(choice) && (
         <InvoiceFormField htmlFor={emailId} label="Client email" error={errors.recipientEmail}>
           <input
@@ -86,7 +67,7 @@ const InvoiceDeliveryFields = ({ choice, onChange, isPaid, totalText, errors }: 
         </InvoiceFormField>
       )}
       {errors.options && <p className="invf-error" role="alert">{errors.options}</p>}
-    </div>
+    </InvoiceDeliveryOptions>
   );
 };
 

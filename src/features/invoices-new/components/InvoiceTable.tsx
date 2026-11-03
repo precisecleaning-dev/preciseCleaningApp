@@ -2,8 +2,8 @@
 // lado (alcance §17: la tabla se conserva en el teléfono). Con permiso Edit, la
 // primera columna marca invoices para las acciones en bloque; el checkbox del
 // encabezado marca o desmarca toda la página.
-import type { Invoice, YmdDate } from '../../../types/index';
-import InvoiceRow, { type InvoiceRowActions } from './InvoiceRow';
+import type { Invoice, InvoiceActions, InvoicesNewRights, YmdDate } from '../../../types/index';
+import InvoiceRow from './InvoiceRow';
 import './InvoiceTable.css';
 
 /** Selección de la página (useInvoiceSelection). */
@@ -15,19 +15,16 @@ export interface InvoiceTableSelection {
   onToggleAll: () => void;
 }
 
-interface InvoiceTableProps extends InvoiceRowActions {
+interface InvoiceTableProps {
   invoices: Invoice[];
   today: YmdDate;
-  canEdit: boolean;
-  canDelete: boolean;
+  rights: InvoicesNewRights;
+  actions: InvoiceActions;
   /** null = sin columna de selección. */
   selection: InvoiceTableSelection | null;
 }
 
-const InvoiceTable = ({
-  invoices, today, canEdit, canDelete, selection, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
-  onSendInvoice, onOpenClientAccount, onDeleteInvoice, onRestoreInvoice,
-}: InvoiceTableProps) => {
+const InvoiceTable = ({ invoices, today, rights, actions, selection }: InvoiceTableProps) => {
   // "Algunos marcados" no tiene atributo en HTML: se pone en el elemento.
   const setHeaderCheckboxState = (headerCheckbox: HTMLInputElement | null) => {
     if (headerCheckbox && selection) {
@@ -69,19 +66,10 @@ const InvoiceTable = ({
               key={invoice.id}
               invoice={invoice}
               today={today}
-              canEdit={canEdit}
-              canDelete={canDelete}
+              rights={rights}
+              actions={actions}
               isSelected={selection ? selection.selectedIds.has(invoice.id) : null}
               onToggleSelected={selection?.onToggleInvoice}
-              onViewInvoice={onViewInvoice}
-              onEditInvoice={onEditInvoice}
-              onMarkAsPaid={onMarkAsPaid}
-              onPreviewPdf={onPreviewPdf}
-              onDownloadPdf={onDownloadPdf}
-              onSendInvoice={onSendInvoice}
-              onOpenClientAccount={onOpenClientAccount}
-              onDeleteInvoice={onDeleteInvoice}
-              onRestoreInvoice={onRestoreInvoice}
             />
           ))}
         </tbody>

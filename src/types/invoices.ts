@@ -456,6 +456,56 @@ export interface BulkSendPlan {
   skipped: InvoiceBulkIssue[];
 }
 
+/**
+ * Acciones sobre UN invoice: las usan la fila de la tabla, el detalle y la
+ * cuenta del cliente. Las arma la vista (hooks/useInvoicePageActions.ts).
+ */
+export interface InvoiceActions {
+  viewInvoice: (invoice: Invoice) => void;
+  editInvoice: (invoice: Invoice) => void;
+  markAsPaid: (invoice: Invoice) => void;
+  previewPdf: (invoice: Invoice) => void;
+  downloadPdf: (invoice: Invoice) => void;
+  sendInvoice: (invoice: Invoice) => void;
+  openClientAccount: (invoice: Invoice) => void;
+  /** Delete: a la papelera (nunca un pagado). */
+  deleteInvoice: (invoice: Invoice) => void;
+  /** Restore: saca de la papelera. */
+  restoreInvoice: (invoice: Invoice) => void;
+}
+
+/** Resultado del formulario Create / Edit (InvoiceFormModal → onSaved). */
+export interface InvoiceSaveResult {
+  id: string;
+  number: string;
+  isNew: boolean;
+  /** Resultado del envío por correo (null si no se pidió). */
+  delivery: InvoiceDeliveryOutcome | null;
+}
+
+/** Qué se puede hacer con UN invoice según el rol y su estado
+ *  (invoicesNewPermissions.getInvoiceActionRights). */
+export interface InvoiceActionRights {
+  isDeleted: boolean;
+  /** Editar, notas y fotos: con Edit y fuera de la papelera. */
+  canEdit: boolean;
+  canSend: boolean;
+  canMarkAsPaid: boolean;
+  /** A la papelera: con Delete, nunca un pagado ni uno ya borrado. */
+  canDelete: boolean;
+  /** Sacar de la papelera: con Delete. */
+  canRestore: boolean;
+}
+
+/** Aviso de la página (hooks/useInvoiceNotice.ts). `id` = el pedido que lo
+ *  mostró: el resultado de una acción vieja no pisa un aviso más nuevo. */
+export interface InvoiceNotice {
+  id: number;
+  message: string;
+  tone: InvoiceNoticeTone;
+  action?: InvoiceNoticeAction;
+}
+
 /** Lo que necesita un envío por correo (services/invoiceEmailService.ts). */
 export interface SendInvoiceEmailInput {
   /** El invoice con el correo y el enlace ya guardados. */

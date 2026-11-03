@@ -3333,3 +3333,13 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `sendinvoiceemail`). `deletion` NO se escribe al crear (ausente = activo): así la lista de campos al crear no
   creció (límite de 1000 expresiones). La regla de Delete/Restore no pasa por invoiceFieldsOk a propósito: así se
   pueden mandar a la papelera los invoices de prueba viejos (sin `lineItems`).
+- Invoices New · estructura de la vista (11/2026, refactor de la revisión): `InvoicesNewView` solo compone. Qué
+  diálogo está abierto y sobre qué invoice vive en `useInvoiceDialogs` (guarda IDS y los resuelve con un Map: la
+  lista y, para un invoice viejo abierto desde la cuenta del cliente, `useClientInvoices`); todos los diálogos se
+  dibujan en `InvoiceDialogsHost`, en el orden de apilado (la cuenta debajo del detalle). Lo que hace cada acción
+  y lo que pasa al cerrar un diálogo está en `useInvoicePageActions` (`invoiceActions` = UN objeto que usan la
+  fila, el detalle y la cuenta; `finish*`). Qué botón se ve para UN invoice sale de `getInvoiceActionRights`
+  (invoicesNewPermissions.ts): el menú de la fila y el pie del detalle no deben calcularlo por su cuenta. Un diálogo
+  nuevo va en el host, no en la vista. Los avisos van por `useInvoiceNotice` (un resultado viejo no pisa uno nuevo).
+  Las acciones en bloque y Delete congelan los invoices al abrir (`useBulkRun`): los marcados salen de la página
+  al cambiar de estado y el diálogo no debe recalcularse a medio camino.

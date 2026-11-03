@@ -13,13 +13,17 @@ import { isDeletedInvoice } from '../invoiceStatus';
 import { useClientAccountFilters, type ClientAccountTab } from '../hooks/useClientAccountFilters';
 import { downloadClientStatement } from '../clientStatementFile';
 import InvoiceDialog from './InvoiceDialog';
+import InvoiceTabs, { type InvoiceTabItem } from './InvoiceTabs';
+import { getTabPanelProps } from '../invoiceTabs';
 import ClientAccountSummary from './ClientAccountSummary';
 import ClientInvoicesTab from './ClientInvoicesTab';
 import ClientPaymentsTab from './ClientPaymentsTab';
 import './InvoiceDetailModal.css';
 import './ClientAccountModal.css';
 
-const ACCOUNT_TABS: { key: ClientAccountTab; label: string }[] = [
+const ACCOUNT_TABS_ID = 'client-account';
+
+const ACCOUNT_TABS: InvoiceTabItem<ClientAccountTab>[] = [
   { key: 'invoices', label: 'Invoices' },
   { key: 'payments', label: 'Payments' },
 ];
@@ -121,23 +125,15 @@ const ClientAccountModal = ({
           onSelectCard={actions.selectCard}
           isLoading={isLoading}
         />
-        <div className="cam-tabs invdt-tabs" role="tablist" aria-label="Client account sections">
-          {ACCOUNT_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              id={`client-account-tab-${tab.key}`}
-              aria-selected={filters.tab === tab.key}
-              aria-controls={`client-account-panel-${tab.key}`}
-              className={`invdt-tab${filters.tab === tab.key ? ' active' : ''}`}
-              onClick={() => actions.setTab(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div role="tabpanel" id={`client-account-panel-${filters.tab}`} aria-labelledby={`client-account-tab-${filters.tab}`}>
+        <InvoiceTabs
+          tabs={ACCOUNT_TABS}
+          activeTab={filters.tab}
+          onChange={actions.setTab}
+          idPrefix={ACCOUNT_TABS_ID}
+          label="Client account sections"
+          className="cam-tabs"
+        />
+        <div {...getTabPanelProps(ACCOUNT_TABS_ID, filters.tab)}>
           {renderPanel()}
         </div>
       </div>

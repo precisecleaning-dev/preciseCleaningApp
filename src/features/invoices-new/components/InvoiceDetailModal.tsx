@@ -8,10 +8,13 @@ import { useState } from 'react';
 import {
   CheckCircle2, DollarSign, Download, Eye, FileText, Image as ImageIcon, Pencil, RotateCcw, Send, StickyNote, Trash2,
 } from 'lucide-react';
-import type { Invoice, Property, SystemUser, YmdDate } from '../../../types/index';
-import { canMoveToTrash, getDisplayStatus, isDeletedInvoice, isPaidStatus } from '../invoiceStatus';
+import type { Invoice, InvoiceActions, InvoicesNewRights, Property, SystemUser, YmdDate } from '../../../types/index';
+import { getDisplayStatus } from '../invoiceStatus';
+import { getInvoiceActionRights } from '../invoicesNewPermissions';
 import { formatDate } from '../../../utils/dateFormat';
 import InvoiceDialog from './InvoiceDialog';
+import InvoiceTabs, { type InvoiceTabItem } from './InvoiceTabs';
+import { getTabPanelProps } from '../invoiceTabs';
 import InvoiceStatusBadge from './InvoiceStatusBadge';
 import InvoiceFormSection from './InvoiceFormSection';
 import InvoiceDetailFacts from './InvoiceDetailFacts';
@@ -25,7 +28,9 @@ import './InvoiceDetailModal.css';
 
 type DetailTab = 'overview' | 'activity';
 
-const DETAIL_TABS: { key: DetailTab; label: string }[] = [
+const DETAIL_TABS_ID = 'invoice-detail';
+
+const DETAIL_TABS: InvoiceTabItem<DetailTab>[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'activity', label: 'Activity' },
 ];
@@ -35,31 +40,20 @@ interface InvoiceDetailModalProps {
   /** Casa del job (null si no está en la ventana de 12 meses). */
   jobProperty: Property | null;
   today: YmdDate;
-  canEdit: boolean;
-  canDelete: boolean;
+  rights: InvoicesNewRights;
   currentUser: SystemUser | null;
+  /** Lo que se hace con el invoice (las mismas acciones del menú de la fila). */
+  actions: InvoiceActions;
   onClose: () => void;
-  onEditInvoice: (invoice: Invoice) => void;
-  onMarkAsPaid: (invoice: Invoice) => void;
-  onPreviewPdf: (invoice: Invoice) => void;
-  onDownloadPdf: (invoice: Invoice) => void;
-  onSendInvoice: (invoice: Invoice) => void;
-  onOpenClientAccount: (invoice: Invoice) => void;
-  onDeleteInvoice: (invoice: Invoice) => void;
-  onRestoreInvoice: (invoice: Invoice) => void;
 }
 
 const InvoiceDetailModal = ({
-  invoice, jobProperty, today, canEdit, canDelete, currentUser, onClose, onEditInvoice, onMarkAsPaid, onPreviewPdf,
-  onDownloadPdf, onSendInvoice, onOpenClientAccount, onDeleteInvoice, onRestoreInvoice,
+  invoice, jobProperty, today, rights, currentUser, actions, onClose,
 }: InvoiceDetailModalProps) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const { deletion } = invoice;
-  const isDeleted = isDeletedInvoice(invoice);
-  // En la papelera no se cambia nada hasta restaurarlo.
-  const canChange = canEdit && !isDeleted;
-  const canMarkAsPaid = canChange && !isPaidStatus(invoice.status);
-  const canDeleteThis = canDelete && canMoveToTrash(invoice);
+  // Mismas reglas que el menú de la fila; en la papelera solo PDF y Restore.
+  const actionRights = getInvoiceActionRights(invoice, rights);
   const deletionText = deletion
     ? `Deleted on ${formatDate(deletion.deletedAt.slice(0, 10))} by ${deletion.deletedByUserName} · Reason: ${deletion.reason}`
     : '';
@@ -73,43 +67,34 @@ const InvoiceDetailModal = ({
       headerExtra={<InvoiceStatusBadge status={getDisplayStatus(invoice, today)} />}
       onClose={onClose}
     >
-      <div className="invdt-tabs" role="tablist" aria-label="Invoice sections">
-        {DETAIL_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            id={`invoice-detail-tab-${tab.key}`}
-            aria-selected={activeTab === tab.key}
-            aria-controls={`invoice-detail-panel-${tab.key}`}
-            className={`invdt-tab${activeTab === tab.key ? ' active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <InvoiceTabs
+        tabs={DETAIL_TABS}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        idPrefix={DETAIL_TABS_ID}
+        label="Invoice sections"
+      />
 
-      <div
-        className="invd-body"
-        role="tabpanel"
-        id={`invoice-detail-panel-${activeTab}`}
-        aria-labelledby={`invoice-detail-tab-${activeTab}`}
-      >
+      <div className="invd-body" {...getTabPanelProps(DETAIL_TABS_ID, activeTab)}>
         {activeTab === 'overview' && (
           <>
-            {isDeleted && <p className="invf-warning" role="status">{deletionText}</p>}
+            {actionRights.isDeleted && <p className="invf-warning" role="status">{deletionText}</p>}
             <InvoiceFormSection id="invoice-detail-info" title="Invoice" icon={FileText}>
-              <InvoiceDetailFacts invoice={invoice} today={today} onOpenClientAccount={onOpenClientAccount} />
+              <InvoiceDetailFacts invoice={invoice} today={today} onOpenClientAccount={actions.openClientAccount} />
             </InvoiceFormSection>
             <InvoiceFormSection id="invoice-detail-amounts" title="Amounts" icon={DollarSign}>
               <InvoiceDetailAmounts invoice={invoice} />
             </InvoiceFormSection>
             <InvoiceFormSection id="invoice-detail-notes" title="Notes" icon={StickyNote}>
-              <InvoiceDetailNotes invoice={invoice} canEdit={canChange} currentUser={currentUser} />
+              <InvoiceDetailNotes invoice={invoice} canEdit={actionRights.canEdit} currentUser={currentUser} />
             </InvoiceFormSection>
             <InvoiceFormSection id="invoice-detail-photos" title="Job photos" icon={ImageIcon}>
-              <InvoiceDetailPhotos invoice={invoice} jobProperty={jobProperty} canEdit={canChange} currentUser={currentUser} />
+              <InvoiceDetailPhotos
+                invoice={invoice}
+                jobProperty={jobProperty}
+                canEdit={actionRights.canEdit}
+                currentUser={currentUser}
+              />
             </InvoiceFormSection>
             <InvoiceFormSection id="invoice-detail-delivery" title="Delivery" icon={Send}>
               <InvoiceDetailDelivery invoice={invoice} />
@@ -120,34 +105,34 @@ const InvoiceDetailModal = ({
       </div>
 
       <footer className="invd-footer">
-        <button type="button" className="invd-secondary-btn" onClick={() => onPreviewPdf(invoice)}>
+        <button type="button" className="invd-secondary-btn" onClick={() => actions.previewPdf(invoice)}>
           <Eye size={16} aria-hidden="true" /> Preview PDF
         </button>
-        <button type="button" className="invd-secondary-btn" onClick={() => onDownloadPdf(invoice)}>
+        <button type="button" className="invd-secondary-btn" onClick={() => actions.downloadPdf(invoice)}>
           <Download size={16} aria-hidden="true" /> Download PDF
         </button>
-        {canDeleteThis && (
-          <button type="button" className="invd-secondary-btn is-danger" onClick={() => onDeleteInvoice(invoice)}>
+        {actionRights.canDelete && (
+          <button type="button" className="invd-secondary-btn is-danger" onClick={() => actions.deleteInvoice(invoice)}>
             <Trash2 size={16} aria-hidden="true" /> Delete
           </button>
         )}
-        {canChange && (
-          <button type="button" className="invd-secondary-btn" onClick={() => onEditInvoice(invoice)}>
+        {actionRights.canEdit && (
+          <button type="button" className="invd-secondary-btn" onClick={() => actions.editInvoice(invoice)}>
             <Pencil size={16} aria-hidden="true" /> Edit
           </button>
         )}
-        {canChange && (
-          <button type="button" className="invd-secondary-btn" onClick={() => onSendInvoice(invoice)}>
+        {actionRights.canSend && (
+          <button type="button" className="invd-secondary-btn" onClick={() => actions.sendInvoice(invoice)}>
             <Send size={16} aria-hidden="true" /> {sendLabel}
           </button>
         )}
-        {canMarkAsPaid && (
-          <button type="button" className="btn-primary invd-primary-btn" onClick={() => onMarkAsPaid(invoice)}>
+        {actionRights.canMarkAsPaid && (
+          <button type="button" className="btn-primary invd-primary-btn" onClick={() => actions.markAsPaid(invoice)}>
             <CheckCircle2 size={16} aria-hidden="true" /> Mark as Paid
           </button>
         )}
-        {isDeleted && canDelete && (
-          <button type="button" className="btn-primary invd-primary-btn" onClick={() => onRestoreInvoice(invoice)}>
+        {actionRights.canRestore && (
+          <button type="button" className="btn-primary invd-primary-btn" onClick={() => actions.restoreInvoice(invoice)}>
             <RotateCcw size={16} aria-hidden="true" /> Restore
           </button>
         )}
