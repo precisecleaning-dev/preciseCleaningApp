@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import type { InvoicePhotoItem } from '../../../types/index';
 import PhotoPickerGrid, { type PickablePhoto } from '../../../shared/components/PhotoPickerGrid';
+import { getPhotoLabel } from '../invoicePhotos';
 import InvoiceDialog from './InvoiceDialog';
 
 const PHOTO_CATEGORIES = [
@@ -15,7 +16,7 @@ const toPickablePhoto = (photo: InvoicePhotoItem): PickablePhoto => ({
   id: photo.url,
   url: photo.url,
   category: photo.category,
-  label: `${photo.category === 'before' ? 'Before' : 'After'} ${photo.order + 1}`,
+  label: getPhotoLabel(photo),
 });
 
 interface JobPhotoPickerModalProps {

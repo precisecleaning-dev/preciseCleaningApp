@@ -19,7 +19,9 @@ import InvoiceSummaryCards from '../features/invoices-new/components/InvoiceSumm
 import InvoiceFiltersBar from '../features/invoices-new/components/InvoiceFiltersBar';
 import InvoiceRegister from '../features/invoices-new/components/InvoiceRegister';
 import InvoiceFormModal from '../features/invoices-new/components/InvoiceFormModal';
-import InvoiceSavedNotice from '../features/invoices-new/components/InvoiceSavedNotice';
+import InvoiceSavedNotice, { type InvoiceNoticeTone } from '../features/invoices-new/components/InvoiceSavedNotice';
+import SavedInvoicePdfPreview from '../features/invoices-new/components/SavedInvoicePdfPreview';
+import { downloadSavedInvoicePdf, getMissingPhotosWarning } from '../features/invoices-new/invoicePdfFile';
 import InvoiceDetailModal from '../features/invoices-new/components/InvoiceDetailModal';
 import RecordPaymentDialog from '../features/invoices-new/components/RecordPaymentDialog';
 import './InvoicesNewView.css';
@@ -46,22 +48,42 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
   // Detalle y Record payment guardan el id: el invoice se toma EN VIVO de la lista.
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
-  const [savedMessage, setSavedMessage] = useState('');
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ message: string; tone: InvoiceNoticeTone } | null>(null);
   const findInvoice = (invoiceId: string | null) =>
     invoicesWindow.invoices.find((windowInvoice) => windowInvoice.id === invoiceId) ?? null;
+  const findJobProperty = (invoice: Invoice) => properties.find((property) => property.id === invoice.propertyId) ?? null;
   const detailInvoice = findInvoice(detailInvoiceId);
   const paymentInvoice = findInvoice(paymentInvoiceId);
+  const previewInvoice = findInvoice(previewInvoiceId);
 
   const handleInvoiceSaved = (result: { number: string; isNew: boolean }) => {
     setFormTarget(null);
-    setSavedMessage(result.isNew ? `Invoice ${result.number} created.` : `Invoice ${result.number} saved.`);
+    const message = result.isNew ? `Invoice ${result.number} created.` : `Invoice ${result.number} saved.`;
+    setNotice({ message, tone: 'success' });
     // Al crear se limpian los filtros para que el invoice nuevo quede a la vista (alcance §9).
     if (result.isNew) filterActions.clear();
   };
 
   const handlePaymentRecorded = (invoice: Invoice) => {
     setPaymentInvoiceId(null);
-    setSavedMessage(`Payment recorded for ${invoice.number}.`);
+    setNotice({ message: `Payment recorded for ${invoice.number}.`, tone: 'success' });
+  };
+
+  // Download PDF desde el menú o el detalle (sin abrir la vista previa).
+  const handleDownloadPdf = async (invoice: Invoice) => {
+    setNotice({ message: `Preparing the PDF of ${invoice.number}…`, tone: 'info' });
+    try {
+      const { missingPhotoCount } = await downloadSavedInvoicePdf(invoice, findJobProperty(invoice));
+      if (missingPhotoCount > 0) {
+        setNotice({ message: `PDF of ${invoice.number} downloaded. ${getMissingPhotosWarning(missingPhotoCount)}`, tone: 'error' });
+      } else {
+        setNotice({ message: `PDF of ${invoice.number} downloaded.`, tone: 'success' });
+      }
+    } catch (error) {
+      console.error('Could not create the PDF:', error);
+      setNotice({ message: `Could not create the PDF of ${invoice.number}. Check your connection and try again.`, tone: 'error' });
+    }
   };
 
   return (
@@ -72,7 +94,7 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
         onCreateInvoice={() => setFormTarget({ invoice: null })}
       />
       <HistoryWindowNotice />
-      {savedMessage && <InvoiceSavedNotice message={savedMessage} onDismiss={() => setSavedMessage('')} />}
+      {notice && <InvoiceSavedNotice message={notice.message} tone={notice.tone} onDismiss={() => setNotice(null)} />}
       <InvoiceSummaryCards
         summary={invoiceList.summary}
         selectedCard={filters.card}
@@ -106,17 +128,21 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
         onViewInvoice={(invoice) => setDetailInvoiceId(invoice.id)}
         onEditInvoice={(invoice) => setFormTarget({ invoice })}
         onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
+        onPreviewPdf={(invoice) => setPreviewInvoiceId(invoice.id)}
+        onDownloadPdf={handleDownloadPdf}
       />
       {detailInvoice && (
         <InvoiceDetailModal
           invoice={detailInvoice}
-          jobProperty={properties.find((property) => property.id === detailInvoice.propertyId) ?? null}
+          jobProperty={findJobProperty(detailInvoice)}
           today={today}
           canEdit={rights.canEdit}
           currentUser={currentUser}
           onClose={() => setDetailInvoiceId(null)}
           onEditInvoice={(invoice) => setFormTarget({ invoice })}
           onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
+          onPreviewPdf={(invoice) => setPreviewInvoiceId(invoice.id)}
+          onDownloadPdf={handleDownloadPdf}
         />
       )}
       {formTarget && (
@@ -134,6 +160,13 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
           currentUser={currentUser}
           onClose={() => setPaymentInvoiceId(null)}
           onRecorded={handlePaymentRecorded}
+        />
+      )}
+      {previewInvoice && (
+        <SavedInvoicePdfPreview
+          invoice={previewInvoice}
+          jobProperty={findJobProperty(previewInvoice)}
+          onClose={() => setPreviewInvoiceId(null)}
         />
       )}
     </div>

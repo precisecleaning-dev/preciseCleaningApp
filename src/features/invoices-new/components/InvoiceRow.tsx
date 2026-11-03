@@ -1,6 +1,6 @@
 // Una fila de la tabla de invoices: número (abre el detalle), cliente / job,
 // emisión, vencimiento (con días de atraso), total, estado y menú de acciones.
-import { CheckCircle2, Eye, Pencil } from 'lucide-react';
+import { CheckCircle2, Download, Eye, FileText, Pencil } from 'lucide-react';
 import type { Invoice, YmdDate } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { formatCents } from '../invoiceMath';
@@ -13,6 +13,8 @@ export interface InvoiceRowActions {
   onViewInvoice: (invoice: Invoice) => void;
   onEditInvoice: (invoice: Invoice) => void;
   onMarkAsPaid: (invoice: Invoice) => void;
+  onPreviewPdf: (invoice: Invoice) => void;
+  onDownloadPdf: (invoice: Invoice) => void;
 }
 
 interface InvoiceRowProps extends InvoiceRowActions {
@@ -21,13 +23,17 @@ interface InvoiceRowProps extends InvoiceRowActions {
   canEdit: boolean;
 }
 
-const InvoiceRow = ({ invoice, today, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid }: InvoiceRowProps) => {
+const InvoiceRow = ({
+  invoice, today, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
+}: InvoiceRowProps) => {
   const lateDays = getLateDays(invoice, today);
   const jobLine = [invoice.job.address, invoice.job.unit, invoice.job.serviceName].filter(Boolean).join(' · ');
   const lateText = lateDays === 1 ? '1 day overdue' : `${lateDays} days overdue`;
   const menuItems: ActionMenuItem[] = [
     { key: 'view', label: 'View details', icon: Eye, onSelect: () => onViewInvoice(invoice) },
     ...(canEdit ? [{ key: 'edit', label: 'Edit', icon: Pencil, onSelect: () => onEditInvoice(invoice) }] : []),
+    { key: 'preview-pdf', label: 'Preview PDF', icon: FileText, onSelect: () => onPreviewPdf(invoice) },
+    { key: 'download-pdf', label: 'Download PDF', icon: Download, onSelect: () => onDownloadPdf(invoice) },
     ...(canEdit && !isPaidStatus(invoice.status)
       ? [{ key: 'mark-paid', label: 'Mark as Paid', icon: CheckCircle2, onSelect: () => onMarkAsPaid(invoice) }]
       : []),

@@ -1,9 +1,10 @@
 // Detalle · fotos del PDF: resumen, miniaturas y Manage photos (con Edit y con
-// el job cargado). En modo "All job photos" se muestran las fotos ACTUALES del
-// job; en "Selected photos", las elegidas que el job todavía tiene.
+// el job cargado). Qué fotos van lo decide resolveInvoicePhotos (invoicePhotos.ts),
+// lo mismo que usa el PDF.
 import { useState } from 'react';
 import type { Invoice, Property, SystemUser } from '../../../types/index';
 import { buildAllJobPhotoItems } from '../invoiceSnapshot';
+import { getPhotoLabel, resolveInvoicePhotos } from '../invoicePhotos';
 import { useInvoicePhotoSelection } from '../hooks/useInvoicePhotoSelection';
 import ManagePhotosDialog from './ManagePhotosDialog';
 
@@ -21,12 +22,9 @@ const InvoiceDetailPhotos = ({ invoice, jobProperty, canEdit, currentUser }: Inv
   const [isManageOpen, setIsManageOpen] = useState(false);
   const { selection, isLoading, hasError } = useInvoicePhotoSelection(invoice.id);
   const jobPhotos = jobProperty ? buildAllJobPhotoItems(jobProperty) : null;
-  const jobPhotoUrls = new Set(jobPhotos?.map((photo) => photo.url) ?? []);
-  const savedItems = selection?.items ?? [];
-  const selectedItems = jobPhotos ? savedItems.filter((photo) => jobPhotoUrls.has(photo.url)) : savedItems;
-  const shownPhotos = selection?.mode === 'all' && jobPhotos ? jobPhotos : selectedItems;
-  const missingCount = jobPhotos && selection?.mode === 'selected' ? savedItems.length - selectedItems.length : 0;
-  const isIncluded = selection?.include ?? invoice.photos.include;
+  const { include: isIncluded, photos: shownPhotos, missingCount } = resolveInvoicePhotos(
+    selection, jobPhotos, invoice.photos.include,
+  );
   const beforeCount = shownPhotos.filter((photo) => photo.category === 'before').length;
   const summaryText = isIncluded
     ? `${shownPhotos.length} photo(s) in the PDF · ${beforeCount} before / ${shownPhotos.length - beforeCount} after`
@@ -50,7 +48,7 @@ const InvoiceDetailPhotos = ({ invoice, jobProperty, canEdit, currentUser }: Inv
         <ul className="invdt-thumbnails">
           {shownPhotos.slice(0, THUMBNAIL_LIMIT).map((photo) => (
             <li key={photo.url}>
-              <img className="invdt-thumbnail" src={photo.url} alt={`${photo.category === 'before' ? 'Before' : 'After'} ${photo.order + 1}`} loading="lazy" />
+              <img className="invdt-thumbnail" src={photo.url} alt={getPhotoLabel(photo)} loading="lazy" />
             </li>
           ))}
           {hiddenThumbnailCount > 0 && <li className="invdt-thumbnail-more">{`+${hiddenThumbnailCount}`}</li>}

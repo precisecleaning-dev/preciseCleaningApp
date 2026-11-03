@@ -1,0 +1,51 @@
+/* Vista previa del PDF (InvoicePdfPreviewModal.tsx). Cada página es un iframe
+   del ancho de una A4 en el PDF (718 px, utils/pdfGenerator.ts); en pantallas
+   chicas se desplaza de lado. */
+.ipp-body {
+  background: #e2e8f0;
+}
+
+.ipp-page-scroll {
+  overflow-x: auto;
+}
+
+.ipp-page {
+  background: #ffffff;
+  border: 0;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+  display: block;
+  height: 1040px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 766px;
+}
+
+.ipp-footer {
+  justify-content: space-between;
+}
+
+.ipp-pager {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.ipp-nav-btn {
+  padding: 0 10px;
+}
+
+.ipp-counter {
+  color: #334155;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 90px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .ipp-pager {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}

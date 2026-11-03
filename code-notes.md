@@ -3225,3 +3225,20 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   ventana de 12 meses, el formulario y el detalle NO guardan fotos (se guardaría una selección vacía).
   Cambiar de job vuelve a "todas" las fotos del job nuevo. `shared/components/PhotoPickerGrid` carga por bloques
   de 18 (jobs con 50+ fotos).
+- Invoices New · PDF (11/2026): `features/invoices-new/invoicePdf.ts` arma las PÁGINAS explícitamente (1:
+  datos, montos, enlace e inicio de notas; luego páginas de notas; luego fotos de 6 en 6) para que la vista
+  previa (un iframe `srcDoc` + `sandbox` por página) y el archivo sean el mismo HTML. Las notas se reparten
+  por renglones estimados (~88 caracteres) con margen amplio: mejor una página de más que una nota cortada.
+  El archivo lo genera `generatePDFBlob` (html2pdf, A4); NO se agregó jsPDF. Antes de descargar, las fotos se
+  pasan a data URL (`shared/utils/imageDataUrl.ts`, mismo criterio que qcReportPdf) para que salgan sin
+  depender de CORS. Sin número (al crear) el PDF dice DRAFT. Todo texto pasa por `escapeHtml`.
+  ⚠ El `<style>` del PDF va DENTRO del `<body>` y con todos los selectores bajo `.invpdf`: html2pdf 0.14
+  (`toContainer`) clona solo el `<body>` del iframe de generatePDFBlob a la página principal, así que un
+  `<style>` en el `<head>` se pierde (el archivo salía sin formato y con una foto gigante por página, aunque
+  la vista previa se veía bien) y uno sin prefijo cambiaría la app mientras se genera.
+  Fotos en el ARCHIVO: se leen con fetch (CORS) y se incrustan como data URL; una foto cuyo servidor no
+  permite leerla desde la app saldría en blanco, así que va con "Photo could not be added" y la descarga avisa
+  cuántas faltaron (la vista previa sí la muestra: un <img> no necesita CORS). Si pasa con las fotos de
+  Firebase Storage, falta configurar CORS en el bucket (`gsutil cors set cors.json gs://<bucket>`): el
+  cors.json del repo tiene dominios de otro proyecto (precise-app-94dd6) y no el de Cloudflare.
+  `shared/utils/downloadFile.ts` es idéntico al de la rama del Excel (backup/fix-slot-1) para que no choquen.

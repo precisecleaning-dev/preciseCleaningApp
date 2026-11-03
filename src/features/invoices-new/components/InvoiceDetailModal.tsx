@@ -1,9 +1,11 @@
 // Detalle de un invoice: pestañas Overview (datos, montos, pago, notas, fotos
-// con Manage photos, y entrega) y Activity. Acciones: Edit y Mark as Paid (solo sin pagar), según
-// el permiso Edit. Recibe el invoice EN VIVO de la lista: se actualiza solo.
-// Preview / Download PDF y Send llegan en sus etapas.
+// con Manage photos, y entrega) y Activity. Acciones: Preview / Download PDF y,
+// con el permiso Edit, Edit y Mark as Paid (solo sin pagar). Recibe el invoice
+// EN VIVO de la lista: se actualiza solo. Send llega en su etapa.
 import { useState } from 'react';
-import { CheckCircle2, DollarSign, FileText, Image as ImageIcon, Pencil, Send, StickyNote } from 'lucide-react';
+import {
+  CheckCircle2, DollarSign, Download, Eye, FileText, Image as ImageIcon, Pencil, Send, StickyNote,
+} from 'lucide-react';
 import type { Invoice, Property, SystemUser, YmdDate } from '../../../types/index';
 import { isPaidStatus } from '../invoiceStatus';
 import InvoiceDialog from './InvoiceDialog';
@@ -34,10 +36,12 @@ interface InvoiceDetailModalProps {
   onClose: () => void;
   onEditInvoice: (invoice: Invoice) => void;
   onMarkAsPaid: (invoice: Invoice) => void;
+  onPreviewPdf: (invoice: Invoice) => void;
+  onDownloadPdf: (invoice: Invoice) => void;
 }
 
 const InvoiceDetailModal = ({
-  invoice, jobProperty, today, canEdit, currentUser, onClose, onEditInvoice, onMarkAsPaid,
+  invoice, jobProperty, today, canEdit, currentUser, onClose, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
 }: InvoiceDetailModalProps) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const canMarkAsPaid = canEdit && !isPaidStatus(invoice.status);
@@ -95,18 +99,24 @@ const InvoiceDetailModal = ({
         {activeTab === 'activity' && <InvoiceActivityTab invoiceId={invoice.id} />}
       </div>
 
-      {canEdit && (
-        <footer className="invd-footer">
+      <footer className="invd-footer">
+        <button type="button" className="invd-secondary-btn" onClick={() => onPreviewPdf(invoice)}>
+          <Eye size={16} aria-hidden="true" /> Preview PDF
+        </button>
+        <button type="button" className="invd-secondary-btn" onClick={() => onDownloadPdf(invoice)}>
+          <Download size={16} aria-hidden="true" /> Download PDF
+        </button>
+        {canEdit && (
           <button type="button" className="invd-secondary-btn" onClick={() => onEditInvoice(invoice)}>
             <Pencil size={16} aria-hidden="true" /> Edit
           </button>
-          {canMarkAsPaid && (
-            <button type="button" className="btn-primary invd-primary-btn" onClick={() => onMarkAsPaid(invoice)}>
-              <CheckCircle2 size={16} aria-hidden="true" /> Mark as Paid
-            </button>
-          )}
-        </footer>
-      )}
+        )}
+        {canMarkAsPaid && (
+          <button type="button" className="btn-primary invd-primary-btn" onClick={() => onMarkAsPaid(invoice)}>
+            <CheckCircle2 size={16} aria-hidden="true" /> Mark as Paid
+          </button>
+        )}
+      </footer>
     </InvoiceDialog>
   );
 };

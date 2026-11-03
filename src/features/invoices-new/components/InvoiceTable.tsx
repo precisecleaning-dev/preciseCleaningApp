@@ -10,7 +10,9 @@ interface InvoiceTableProps extends InvoiceRowActions {
   canEdit: boolean;
 }
 
-const InvoiceTable = ({ invoices, today, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid }: InvoiceTableProps) => (
+const InvoiceTable = ({
+  invoices, today, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
+}: InvoiceTableProps) => (
   <div className="invt-scroll">
     <table className="invt-table">
       <thead>
@@ -34,6 +36,8 @@ const InvoiceTable = ({ invoices, today, canEdit, onViewInvoice, onEditInvoice, 
             onViewInvoice={onViewInvoice}
             onEditInvoice={onEditInvoice}
             onMarkAsPaid={onMarkAsPaid}
+            onPreviewPdf={onPreviewPdf}
+            onDownloadPdf={onDownloadPdf}
           />
         ))}
       </tbody>

@@ -1,10 +1,10 @@
 // Formulario Create / Edit Invoice. Se elige el JOB (no hay selector de
 // cliente): el cliente y los montos salen del job y se pueden editar. Pie con
 // solo Cancel y Create Invoice (o Save Changes al editar).
-// Pendiente en etapas siguientes: Preview PDF y las opciones de envío por
-// correo / Stripe.
+// "Preview PDF" muestra el documento provisional (DRAFT al crear) sin guardar.
+// Pendiente en etapas siguientes: las opciones de envío por correo / Stripe.
 import { useState, type FormEvent } from 'react';
-import { CreditCard, FileText, Image as ImageIcon, Plus, StickyNote } from 'lucide-react';
+import { CreditCard, Eye, FileText, Image as ImageIcon, Plus, StickyNote } from 'lucide-react';
 import type { Invoice, InvoiceNote, Property, SystemUser } from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
@@ -13,6 +13,7 @@ import { findCustomer } from '../../../utils/customerDocs';
 import { fullName } from '../../../utils/homeData';
 import { invoicesService, buildInvoiceNote, type InvoiceActor } from '../../../services/invoicesService';
 import { formatCents } from '../invoiceMath';
+import type { InvoicePdfData } from '../invoicePdf';
 import {
   buildAllJobPhotoItems, buildClientSnapshot, buildJobSnapshot, getInvoiceDefaults,
 } from '../invoiceSnapshot';
@@ -31,6 +32,7 @@ import InvoiceAmountFields from './InvoiceAmountFields';
 import InvoiceNotesEditor from './InvoiceNotesEditor';
 import InvoicePhotosOption from './InvoicePhotosOption';
 import InvoicePaymentFields from './InvoicePaymentFields';
+import InvoicePdfPreviewModal from './InvoicePdfPreviewModal';
 import './InvoiceFormModal.css';
 
 interface InvoiceFormModalProps {
@@ -62,6 +64,8 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const { state, actions, isEditing, isPaymentLocked } = useInvoiceForm(invoice);
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
+  /** Datos del PDF provisional abierto (null = sin vista previa). */
+  const [previewData, setPreviewData] = useState<InvoicePdfData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -150,6 +154,34 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     onSaved({ id: savedInvoice.id, number: savedInvoice.number, isNew: false });
   };
 
+  // Preview PDF: pide los datos principales válidos (job, fechas, monto y tasa),
+  // no los opcionales; al crear el documento sale como DRAFT.
+  const handlePreviewPdf = () => {
+    const mainFieldErrors = [errors.job, errors.issueDate, errors.dueDate, errors.amount, errors.taxRate].filter(Boolean);
+    const job = invoice?.job ?? (selectedProperty ? buildJobSnapshot(selectedProperty, services) : null);
+    if (mainFieldErrors.length > 0 || !client || !job) {
+      setHasTriedSubmit(true);
+      return;
+    }
+    setPreviewData({
+      number: invoice?.number ?? null,
+      status: invoice?.status ?? state.status,
+      client,
+      recipientEmail: invoice?.recipientEmail ?? client.email,
+      job,
+      issueDate: state.issueDate,
+      paymentTerms: state.paymentTerms,
+      dueDate: state.dueDate,
+      subtotalCents: amounts.subtotalCents ?? 0,
+      taxRateBps: amounts.taxRateBps ?? 0,
+      taxCents: amounts.taxCents,
+      totalCents: amounts.totalCents,
+      notes: state.notes.map((note) => note.text),
+      paymentLinkUrl: invoice?.paymentLinkUrl ?? '',
+      photos: photoChoice.include ? photoChoice.items : [],
+    });
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setHasTriedSubmit(true);
@@ -182,7 +214,16 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     >
       <form className="invf-form" noValidate onSubmit={handleSubmit}>
         <div className="invd-body modal-body-scroll">
-          <InvoiceFormSection id="invoice-details-heading" title="Invoice details" icon={FileText}>
+          <InvoiceFormSection
+            id="invoice-details-heading"
+            title="Invoice details"
+            icon={FileText}
+            actions={(
+              <button type="button" className="invf-text-btn" onClick={handlePreviewPdf}>
+                <Eye size={16} aria-hidden="true" /> Preview PDF
+              </button>
+            )}
+          >
             <InvoiceJobPicker
               jobOptions={jobOptions}
               selectedPropertyId={state.propertyId}
@@ -268,6 +309,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
           </button>
         </footer>
       </form>
+      {previewData && <InvoicePdfPreviewModal data={previewData} onClose={() => setPreviewData(null)} />}
     </InvoiceDialog>
   );
 };

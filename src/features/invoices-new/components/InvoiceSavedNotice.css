@@ -12,6 +12,18 @@
   padding: 10px 14px;
 }
 
+.invn-saved-notice.tone-info {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+.invn-saved-notice.tone-error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
 .invn-saved-text {
   flex: 1 1 auto;
 }
