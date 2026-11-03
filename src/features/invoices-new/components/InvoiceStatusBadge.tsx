@@ -1,10 +1,10 @@
-// Badge del estado de pago de un invoice.
-import type { InvoiceStatus } from '../../../types/index';
+// Badge del estado de un invoice: el que se ve (Overdue si está vencido).
+import type { InvoiceDisplayStatus } from '../../../types/index';
 import { INVOICE_STATUS_LABELS } from '../invoiceStatus';
 import './InvoiceStatusBadge.css';
 
 interface InvoiceStatusBadgeProps {
-  status: InvoiceStatus;
+  status: InvoiceDisplayStatus;
 }
 
 const InvoiceStatusBadge = ({ status }: InvoiceStatusBadgeProps) => (

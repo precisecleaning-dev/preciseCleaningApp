@@ -3,8 +3,10 @@
 // enlace, si el invoice tiene uno y no está pagado. Si cambian el correo o el
 // enlace, se guardan en el invoice antes de enviar (quedan en su Activity).
 import { useState, type FormEvent } from 'react';
-import type { Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, Property, SystemUser } from '../../../types/index';
-import { invoicesService, type InvoiceActor } from '../../../services/invoicesService';
+import type {
+  Actor, Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, Property, SystemUser,
+} from '../../../types/index';
+import { invoicesService } from '../../../services/invoicesService';
 import { fullName } from '../../../utils/homeData';
 import { formatCents } from '../invoiceMath';
 import { isPaidStatus } from '../invoiceStatus';
@@ -44,7 +46,7 @@ const SendInvoiceDialog = ({ invoice, jobProperty, currentUser, onClose, onSent 
   };
 
   // Correo y enlace nuevos se guardan antes de enviar: la función los lee del invoice.
-  const saveDeliveryFields = async (actor: InvoiceActor): Promise<Invoice> => {
+  const saveDeliveryFields = async (actor: Actor): Promise<Invoice> => {
     const recipientEmail = effectiveChoice.recipientEmail.trim();
     const paymentLinkUrl = effectiveChoice.paymentLinkUrl.trim();
     const patch = {
@@ -64,7 +66,7 @@ const SendInvoiceDialog = ({ invoice, jobProperty, currentUser, onClose, onSent 
       setSendError('Your user profile is not loaded. Reload the app and try again.');
       return;
     }
-    const actor: InvoiceActor = { id: currentUser.id, name: fullName(currentUser) };
+    const actor: Actor = { id: currentUser.id, name: fullName(currentUser) };
     const to = effectiveChoice.recipientEmail.trim();
     setIsSending(true);
     setSendError('');

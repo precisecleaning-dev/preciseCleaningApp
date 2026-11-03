@@ -140,7 +140,8 @@
   border-radius: 10px;
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Subtotal, Tax, un recuadro por fee y el total: se acomodan solos. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   padding: 12px 16px;
 }
 
@@ -219,6 +220,107 @@
 .invf-client-warning {
   color: #9a3412;
   font-size: 0.78rem;
+}
+
+/* Servicios del job (InvoiceServicesList.tsx). */
+.invf-services {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-services-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invf-services-scroll {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.invf-services-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 520px;
+  width: 100%;
+}
+
+.invf-services-table th,
+.invf-services-table td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.invf-services-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.invf-services-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.invf-services-table .invf-services-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.invf-services-name {
+  color: #0f172a;
+  display: block;
+  font-weight: 600;
+}
+
+.invf-services-notes {
+  color: #64748b;
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.invf-services-refresh {
+  align-self: flex-start;
+}
+
+/* Fees (InvoiceFeesEditor.tsx): nombre, %, monto y quitar. */
+.invf-fees {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-fee-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.invf-fee-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.invf-fee-rate {
+  flex: 0 0 110px;
+}
+
+.invf-fee-amount {
+  color: #0f172a;
+  flex: 0 0 90px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
 }
 
 .invf-notes {
@@ -320,5 +422,11 @@
   .invf-grid-2,
   .invf-grid-3 {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .invf-fee-row {
+    flex-wrap: wrap;
+  }
+  .invf-fee-name {
+    flex-basis: 100%;
   }
 }

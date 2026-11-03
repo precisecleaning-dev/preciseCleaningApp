@@ -1,0 +1,62 @@
+/* Cuenta del cliente (ClientAccountModal.tsx, ClientInvoicesTab.tsx,
+   ClientPaymentsTab.tsx). Tarjetas, pestañas y tablas reutilizan las clases de
+   la lista (invs-*, invdt-tab, invt-*). */
+.cam-summary.invs-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cam-summary .invs-card.tone-paid .invs-icon {
+  color: #16a34a;
+}
+
+/* Las pestañas van dentro del cuerpo con padding: sin el padding lateral del detalle. */
+.cam-tabs.invdt-tabs {
+  padding: 0;
+}
+
+.cam-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cam-status-select {
+  align-self: flex-start;
+}
+
+.cam-table.invt-table {
+  min-width: 640px;
+}
+
+.cam-job,
+.cam-reference {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cam-tab-total {
+  color: #334155;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.cam-empty {
+  color: #64748b;
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.cam-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 1024px) {
+  .cam-summary.invs-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -7,7 +7,7 @@ aquí. Es la propuesta para revisar, probar y publicar a mano cuando se decida.
 |---|---|
 | `firestore.rules` | Reglas de Firestore por módulo y rol. |
 | `storage.rules` | Reglas de Storage: solo usuarios activos de la lista. |
-| `tests/firestore.rules.test.mjs` | 44 pruebas contra el emulador (`npm run test:rules`). |
+| `tests/firestore.rules.test.mjs` | 47 pruebas contra el emulador (`npm run test:rules`). |
 | `firestore.indexes.json` | Índices compuestos que pide el código: la bitácora (`activity_logs` filtrada por usuario o acción y ordenada por `ts`) y la pestaña Done del Task list (`user_tasks` hechas, por persona asignada, por quien la asignó o todas, ordenadas por `doneAt`). Lo demás usa índices de un solo campo, que Firestore crea solo. |
 | `../functions/src/userAccess.ts` | Funciones que mantienen el espejo `user_access/{email}`. |
 
@@ -93,12 +93,17 @@ todo. Con esta propuesta:
    `src/services/invoicesService.ts`):
    - el número sale de `invoice_counters/{año}` en la misma transacción que crea
      el invoice: el contador sube de 1 en 1 y solo junto con ese invoice nuevo;
-   - montos en centavos enteros: `taxCents` = subtotal × tasa redondeado al
-     centavo y `totalCents` = subtotal + impuesto; tasa entre 0 y 10000;
-   - el navegador solo pone Awaiting Payment y Paid (pago manual completo, una
-     sola vez). Payment Link Sent, Paid via Stripe y `delivery` son solo del
-     servidor (correo y Stripe, Admin SDK);
-   - pagado: subtotal, tasa y montos quedan fijos;
+   - montos en centavos enteros: `totalCents` = subtotal + impuesto + fees,
+     con 1 a 50 servicios copiados del job (`lineItems`) y hasta 10 fees. Cada
+     servicio y fee lo valida el service (las reglas no recorren listas);
+   - el navegador solo pone Needs Invoice, Pending y Paid (pago manual completo,
+     una sola vez, también desde Edit junto con los demás cambios). En Edit el
+     estado solo va de Needs Invoice a Pending o al revés. Payment Link Sent,
+     Paid via Stripe y `delivery` son solo del servidor (correo y Stripe, Admin SDK);
+   - pagado: servicios, fees y montos quedan fijos;
+   - Delete es una papelera (`deletion` con motivo), con el permiso Delete
+     (`d`) y nunca en un pagado; un invoice en la papelera no se edita ni se
+     paga hasta restaurarlo. Borrar el documento sigue prohibido;
    - el enlace de pago solo puede ser un Payment Link de Stripe (`https://buy.stripe.com/...`);
    - número, cliente, job, empresa y quién lo creó no cambian nunca;
    - Activity (`events`) solo se agrega, a nombre de quien hace el cambio;
@@ -195,7 +200,7 @@ npm run test:rules
 Necesita el Firebase CLI (`npm i -g firebase-tools`), Java 21 o superior (las
 versiones actuales del CLI ya no aceptan Java 11 ni 17) y `npm install` en la
 raíz (`@firebase/rules-unit-testing`). Usa un proyecto `demo-precise-rules`,
-que no toca producción. Las 44 pasan en el emulador.
+que no toca producción. Las 47 pasan en el emulador.
 
 ## No cubierto
 

@@ -60,3 +60,13 @@
   color: #0f172a;
   outline: none;
 }
+
+.acm-item.is-danger {
+  color: #b91c1c;
+}
+
+.acm-item.is-danger:hover,
+.acm-item.is-danger:focus-visible {
+  background: #fef2f2;
+  color: #991b1b;
+}

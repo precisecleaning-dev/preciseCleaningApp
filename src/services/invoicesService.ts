@@ -3,11 +3,13 @@
 // Colección `invoices` (módulo Invoices New). Tipos en src/types/invoices.ts.
 //
 //   create · update · addNote · updatePhotoSelection · recordManualPayment
-//   subscribeWindow · subscribePhotoSelection · getOne · getEvents · getPhotoSelection
-//   findByProperty
+//   moveToTrash · restore
+//   subscribeWindow · subscribeByClient · subscribePhotoSelection · getOne · getEvents
+//   getPhotoSelection · findByProperty
 //
 // ⭐ No hay `delete`: el número no debe dejar huecos y el historial se conserva
-//    (mismo criterio que propertiesService). Tampoco hay getAll: la lista
+//    (mismo criterio que propertiesService). "Delete" en la pantalla es la
+//    PAPELERA (moveToTrash): `deletion` con motivo; se restaura con restore. Tampoco hay getAll: la lista
 //    escucha una ventana acotada (subscribeWindow, como propertiesWindow).
 // ⭐ Cada cambio escribe su evento de Activity (invoices/{id}/events) en la
 //    MISMA transacción o batch: si el cambio se guarda, su evento también.
@@ -15,11 +17,15 @@
 //    dos personas creando a la vez nunca reciben el mismo. Sin conexión no se
 //    puede crear (las transacciones necesitan al servidor).
 // ⭐ `payment_link_sent`, `paid_via_stripe` y `delivery` los escribe SOLO el
-//    servidor (correo y webhook de Stripe, etapas posteriores).
+//    servidor (correo y webhook de Stripe). Enviar un Needs Invoice por correo
+//    lo pasa a Pending (functions/src/invoiceEmail.ts).
+// ⭐ `awaiting_payment` es el nombre anterior de Pending (11/2026): solo lo
+//    tienen invoices de prueba y se lee como 'pending' (invoiceConverter).
 // ============================================================================
 import {
   collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, where, writeBatch,
-  type CollectionReference, type DocumentReference, type Transaction, type Unsubscribe, type WriteBatch,
+  type CollectionReference, type DocumentReference, type FirestoreDataConverter, type Query, type Transaction,
+  type Unsubscribe, type WriteBatch,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { COLLECTIONS } from '../lib/firebase/collections';
@@ -27,15 +33,20 @@ import { typedConverter } from '../lib/firebase/typedConverter';
 import { logActivity } from './activityLogService';
 import { formatDate, todayIso } from '../utils/dateFormat';
 import type {
-  Invoice, InvoiceCounter, InvoiceCreateInput, InvoiceEvent, InvoiceEventType, InvoiceFieldChange,
-  InvoiceManualPaymentInput, InvoiceNote, InvoicePatch, InvoicePayment, InvoicePhotoSelection,
-  InvoicePhotoSelectionInput, InvoicePhotoSummary,
+  Actor, ClientAccountKey, Invoice, InvoiceCounter, InvoiceCreateInput, InvoiceEvent, InvoiceEventType, InvoiceFeeInput,
+  InvoiceFieldChange, InvoiceLineItem, InvoiceManualPaymentInput, InvoiceNormalizedPatch, InvoiceNote, InvoicePatch,
+  InvoicePayment, InvoicePhotoSelection, InvoicePhotoSelectionInput, InvoicePhotoSummary,
 } from '../types/index';
 import {
-  INVOICE_PAYMENT_TERM_LABELS, buildSearchText, computeTotals, formatCents, formatInvoiceNumber, getNumberKey,
+  INVOICE_PAYMENT_TERM_LABELS, bpsToPercent, buildSearchText, computeInvoiceTotals, formatCents, formatInvoiceNumber,
+  getNumberKey,
 } from '../features/invoices-new/invoiceMath';
-import { AWAITING_STATUSES, INVOICE_STATUS_LABELS, isPaidStatus } from '../features/invoices-new/invoiceStatus';
+import {
+  INVOICE_STATUS_LABELS, UNPAID_STATUSES, isDeletedInvoice, isPaidStatus,
+} from '../features/invoices-new/invoiceStatus';
 import { INVOICE_EMAIL_PATTERN, STRIPE_PAYMENT_LINK_PATTERN } from '../features/invoices-new/invoiceDelivery';
+import { INVOICE_LIMITS, getFeesProblem, getLineItemsProblem } from '../features/invoices-new/invoiceLimits';
+import { getManualPaymentErrors } from '../features/invoices-new/invoicePayment';
 import { windowStartIso } from '../shared/data/propertiesWindow';
 import { INVOICES_NEW_MODULE as MODULE_NAME } from '../features/invoices-new/invoicesNewPermissions';
 
@@ -43,27 +54,44 @@ const EVENTS_SUBCOLLECTION = 'events';
 const PHOTOS_SUBCOLLECTION = 'photos';
 const PHOTO_SELECTION_DOC_ID = 'selection';
 
-/** Límites de texto (alcance §17); los valida el service, las reglas no pueden recorrer listas. */
-export const INVOICE_LIMITS = {
-  noteText: 3000,
-  paymentReference: 160,
-  paymentNote: 1500,
-  maxNotes: 20,
-  maxTaxRateBps: 10000,
-} as const;
+/** Campos que no cambian en un invoice pagado (Paid o Paid via Stripe): los
+ *  servicios y los fees (de ellos salen los montos). */
+const PAID_LOCKED_FIELDS: readonly (keyof InvoicePatch)[] = ['lineItems', 'fees'];
 
-
-/** Campos que no cambian en un invoice pagado (Paid o Paid via Stripe). */
-const PAID_LOCKED_FIELDS: readonly (keyof InvoicePatch)[] = ['subtotalCents', 'taxRateBps'];
+/** Nombre anterior de Pending (11/2026). Solo lo tienen invoices de prueba. */
+const LEGACY_PENDING_STATUS = 'awaiting_payment';
 
 // ---------------------------------------------------------------------------
 // Referencias tipadas (la colección se tipa una sola vez, aquí)
 // ---------------------------------------------------------------------------
+const baseInvoiceConverter = typedConverter<Invoice>();
+
+/**
+ * typedConverter + lo que les falta a los invoices de prueba viejos: el estado
+ * `awaiting_payment` se lee como 'pending', y sin servicios ni fees (antes de
+ * 11/2026) se leen `lineItems` y `fees` vacíos y `feesCents` 0 (el PDF y el
+ * detalle muestran entonces una sola línea con el subtotal).
+ */
+const invoiceConverter: FirestoreDataConverter<Invoice> = {
+  toFirestore: baseInvoiceConverter.toFirestore,
+  fromFirestore: (snap) => {
+    const invoice = baseInvoiceConverter.fromFirestore(snap);
+    return {
+      ...invoice,
+      status: (invoice.status as string) === LEGACY_PENDING_STATUS ? 'pending' : invoice.status,
+      lineItems: invoice.lineItems ?? [],
+      fees: invoice.fees ?? [],
+      feesCents: invoice.feesCents ?? 0,
+      deletion: invoice.deletion ?? null,
+    };
+  },
+};
+
 export const invoicesCol: CollectionReference<Invoice> =
-  collection(db, COLLECTIONS.invoices).withConverter(typedConverter<Invoice>());
+  collection(db, COLLECTIONS.invoices).withConverter(invoiceConverter);
 
 export const invoiceRef = (invoiceId: string): DocumentReference<Invoice> =>
-  doc(db, COLLECTIONS.invoices, invoiceId).withConverter(typedConverter<Invoice>());
+  doc(db, COLLECTIONS.invoices, invoiceId).withConverter(invoiceConverter);
 
 const invoiceEventsCol = (invoiceId: string): CollectionReference<InvoiceEvent> =>
   collection(db, COLLECTIONS.invoices, invoiceId, EVENTS_SUBCOLLECTION).withConverter(typedConverter<InvoiceEvent>());
@@ -74,12 +102,6 @@ const photoSelectionRef = (invoiceId: string): DocumentReference<InvoicePhotoSel
 
 const counterRef = (year: number): DocumentReference<InvoiceCounter> =>
   doc(db, COLLECTIONS.invoiceCounters, String(year)).withConverter(typedConverter<InvoiceCounter>());
-
-/** Quién hace el cambio. */
-export interface InvoiceActor {
-  id: string;
-  name: string;
-}
 
 /** Otra persona guardó el invoice mientras se editaba: no se pisa su cambio. */
 export class InvoiceChangedError extends Error {
@@ -97,6 +119,19 @@ export class InvoiceAlreadyPaidError extends Error {
   }
 }
 
+/** Un invoice pagado (Paid o Paid via Stripe) no se manda a la papelera. */
+export class InvoicePaidCannotBeDeletedError extends Error {
+  constructor(invoiceNumber: string) {
+    super(`Invoice ${invoiceNumber} is paid: paid invoices cannot be deleted.`);
+    this.name = 'InvoicePaidCannotBeDeletedError';
+  }
+}
+
+/** El invoice está en la papelera: no se cambia hasta restaurarlo. */
+const assertNotDeleted = (invoice: Invoice): void => {
+  if (isDeletedInvoice(invoice)) throw new Error(`Invoice ${invoice.number} was deleted. Restore it first.`);
+};
+
 const nowIso = () => new Date().toISOString();
 
 // ---------------------------------------------------------------------------
@@ -104,15 +139,18 @@ const nowIso = () => new Date().toISOString();
 // todavía no están publicadas, ver security/README.md)
 // ---------------------------------------------------------------------------
 type ValidatedFields = Pick<Invoice,
-  'issueDate' | 'dueDate' | 'subtotalCents' | 'taxRateBps' | 'recipientEmail' | 'paymentLinkUrl' | 'notes'
+  'issueDate' | 'dueDate' | 'subtotalCents' | 'recipientEmail' | 'paymentLinkUrl' | 'notes'
 >;
+
+/** Servicios y fees que se van a guardar (al crear, o si cambian al editar). */
+const assertValidCharges = (lineItems: readonly InvoiceLineItem[], fees: readonly InvoiceFeeInput[]): void => {
+  const problem = getLineItemsProblem(lineItems) ?? getFeesProblem(fees);
+  if (problem) throw new Error(problem);
+};
 
 const assertValidInvoice = (fields: ValidatedFields): void => {
   if (!Number.isInteger(fields.subtotalCents) || fields.subtotalCents < 1) {
-    throw new Error('The invoice amount must be at least $0.01.');
-  }
-  if (!Number.isInteger(fields.taxRateBps) || fields.taxRateBps < 0 || fields.taxRateBps > INVOICE_LIMITS.maxTaxRateBps) {
-    throw new Error('The tax rate must be between 0% and 100%, with up to two decimals.');
+    throw new Error('The services of the invoice must add up to at least $0.01.');
   }
   if (!fields.issueDate || !fields.dueDate) throw new Error('Issue date and due date are required.');
   if (fields.dueDate < fields.issueDate) throw new Error('The due date cannot be before the issue date.');
@@ -126,23 +164,17 @@ const assertValidInvoice = (fields: ValidatedFields): void => {
   }
 };
 
+/** Mismas reglas y mensajes que el formulario (getManualPaymentErrors). */
 const assertValidPayment = (payment: InvoiceManualPaymentInput, issueDate: string): void => {
-  if (!payment.paidDate) throw new Error('The payment date is required.');
-  if (payment.paidDate > todayIso()) throw new Error('The payment date cannot be in the future.');
-  if (payment.paidDate < issueDate) throw new Error('The payment date cannot be before the issue date.');
-  if (payment.reference.length > INVOICE_LIMITS.paymentReference) {
-    throw new Error(`The reference can have up to ${INVOICE_LIMITS.paymentReference} characters.`);
-  }
-  if (payment.note.length > INVOICE_LIMITS.paymentNote) {
-    throw new Error(`The payment note can have up to ${INVOICE_LIMITS.paymentNote} characters.`);
-  }
+  const [firstError] = Object.values(getManualPaymentErrors(payment, issueDate));
+  if (firstError) throw new Error(firstError);
 };
 
 // ---------------------------------------------------------------------------
 // Piezas que se escriben junto con cada cambio
 // ---------------------------------------------------------------------------
 /** Nota nueva (las vacías no se guardan: se filtran antes). */
-export const buildInvoiceNote = (text: string, actor: InvoiceActor): InvoiceNote => ({
+export const buildInvoiceNote = (text: string, actor: Actor): InvoiceNote => ({
   id: crypto.randomUUID(),
   text: text.trim(),
   createdAt: nowIso(),
@@ -159,7 +191,7 @@ const buildPhotoSummary = (photos: InvoicePhotoSelectionInput): InvoicePhotoSumm
 });
 
 const buildManualPayment = (
-  payment: InvoiceManualPaymentInput, amountCents: number, actor: InvoiceActor,
+  payment: InvoiceManualPaymentInput, amountCents: number, actor: Actor,
 ): InvoicePayment => ({
   source: 'manual',
   method: payment.method,
@@ -181,7 +213,7 @@ interface EventInput {
 }
 
 /** Escribe un evento de Activity dentro de la transacción o el batch del cambio. */
-const writeEvent = (writer: Transaction | WriteBatch, invoiceId: string, actor: InvoiceActor, event: EventInput): void => {
+const writeEvent = (writer: Transaction | WriteBatch, invoiceId: string, actor: Actor, event: EventInput): void => {
   const eventRef = doc(invoiceEventsCol(invoiceId));
   const invoiceEvent: InvoiceEvent = {
     id: eventRef.id,
@@ -202,21 +234,32 @@ const FIELD_LABELS: Record<keyof InvoicePatch, string> = {
   issueDate: 'Issue date',
   paymentTerms: 'Payment terms',
   dueDate: 'Due date',
-  subtotalCents: 'Amount',
-  taxRateBps: 'Tax rate',
+  lineItems: 'Services',
+  fees: 'Fees',
   recipientEmail: 'Client email',
   paymentLinkUrl: 'Stripe payment link',
   notes: 'Notes',
+  status: 'Status',
 };
 
 /** Texto corto de un valor para la lista de cambios de Activity (fechas MM/DD/YYYY). */
 const describeValue = (field: keyof InvoicePatch, value: unknown): string => {
-  if (field === 'subtotalCents' && typeof value === 'number') return formatCents(value);
-  if (field === 'taxRateBps' && typeof value === 'number') return `${value / 100}%`;
+  if (field === 'lineItems' && Array.isArray(value)) {
+    const lineItems = value as InvoiceLineItem[];
+    const lineTotal = lineItems.reduce((total, lineItem) => total + lineItem.amountCents + lineItem.taxCents, 0);
+    return `${lineItems.length} service(s) · ${formatCents(lineTotal)}`;
+  }
+  if (field === 'fees' && Array.isArray(value)) {
+    const fees = value as InvoiceFeeInput[];
+    return fees.length > 0 ? fees.map((fee) => `${fee.label} ${bpsToPercent(fee.rateBps)}%`).join(', ') : 'None';
+  }
   if (field === 'notes' && Array.isArray(value)) return `${value.length} note(s)`;
   if ((field === 'issueDate' || field === 'dueDate') && typeof value === 'string') return formatDate(value);
   if (field === 'paymentTerms' && typeof value === 'string') {
     return INVOICE_PAYMENT_TERM_LABELS[value as keyof typeof INVOICE_PAYMENT_TERM_LABELS] ?? value;
+  }
+  if (field === 'status' && typeof value === 'string') {
+    return INVOICE_STATUS_LABELS[value as keyof typeof INVOICE_STATUS_LABELS] ?? value;
   }
   return String(value ?? '');
 };
@@ -227,14 +270,57 @@ const describePayment = (payment: InvoicePayment): string =>
     .filter(Boolean)
     .join(' · ');
 
+/**
+ * Lo que se escribe al registrar el pago manual COMPLETO (Mark as Paid, o Paid
+ * en Edit Invoice): estado, pago y, si el pago trae nota y hay lugar, esa nota
+ * en las notas del invoice (alcance §13.5; si no hay lugar queda en el pago).
+ * `invoice` = como queda guardado (con los cambios del mismo Edit).
+ */
+const buildManualPaymentUpdate = (
+  invoice: Pick<Invoice, 'status' | 'issueDate' | 'notes' | 'totalCents'>,
+  paymentInput: InvoiceManualPaymentInput,
+  actor: Actor,
+): { fields: Pick<Invoice, 'status' | 'payment'> & Partial<Pick<Invoice, 'notes'>>; event: EventInput } => {
+  assertValidPayment(paymentInput, invoice.issueDate);
+  const payment = buildManualPayment(paymentInput, invoice.totalCents, actor);
+  const hasRoomForNote = invoice.notes.length < INVOICE_LIMITS.maxNotes;
+  const paymentNotes = payment.note && hasRoomForNote ? [buildInvoiceNote(payment.note, actor)] : [];
+  return {
+    fields: {
+      status: 'paid',
+      payment,
+      ...(paymentNotes.length > 0 ? { notes: [...invoice.notes, ...paymentNotes] } : {}),
+    },
+    event: {
+      type: 'payment_recorded',
+      summary: describePayment(payment),
+      changes: [{ field: FIELD_LABELS.status, before: INVOICE_STATUS_LABELS[invoice.status], after: INVOICE_STATUS_LABELS.paid }],
+    },
+  };
+};
+
+/** Estados desde los que Edit puede pasar a Needs Invoice o Pending (no con el
+ *  enlace de Stripe enviado ni pagado: ver getSelectableStatuses). */
+const DRAFT_OR_PENDING_STATUSES: readonly Invoice['status'][] = ['needs_invoice', 'pending'];
+
+/** JSON con las claves ordenadas: Firestore no devuelve los mapas en el orden
+ *  en que se escribieron, y un orden distinto no es un cambio. */
+const stableStringify = (value: unknown): string => JSON.stringify(value, (_key, nestedValue: unknown) => (
+  nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)
+    ? Object.fromEntries(Object.entries(nestedValue).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)))
+    : nestedValue
+));
+
 /** Campos del patch que de verdad cambian, con su antes y después. */
-const getPatchChanges = (invoice: Invoice, patch: InvoicePatch): { changedPatch: InvoicePatch; changes: InvoiceFieldChange[] } => {
+const getPatchChanges = (
+  invoice: Invoice, patch: InvoiceNormalizedPatch,
+): { changedPatch: InvoiceNormalizedPatch; changes: InvoiceFieldChange[] } => {
   const changedPatch: Record<string, unknown> = {};
   const changes: InvoiceFieldChange[] = [];
   Object.entries(patch).forEach(([field, value]) => {
     if (value === undefined) return;
     const fieldName = field as keyof InvoicePatch;
-    if (JSON.stringify(invoice[fieldName]) === JSON.stringify(value)) return;
+    if (stableStringify(invoice[fieldName]) === stableStringify(value)) return;
     changedPatch[field] = value;
     changes.push({
       field: FIELD_LABELS[fieldName] ?? field,
@@ -242,7 +328,8 @@ const getPatchChanges = (invoice: Invoice, patch: InvoicePatch): { changedPatch:
       after: describeValue(fieldName, value),
     });
   });
-  return { changedPatch: changedPatch as InvoicePatch, changes };
+  // Se arma campo por campo (Object.entries pierde el tipo de cada valor).
+  return { changedPatch: changedPatch as InvoiceNormalizedPatch, changes };
 };
 
 // ---------------------------------------------------------------------------
@@ -254,11 +341,13 @@ export const invoicesService = {
    * transacción. Creado como Paid, guarda también el pago (con sus datos
    * reales: no se inventa el método). Devuelve id y número.
    */
-  async create(input: InvoiceCreateInput, actor: InvoiceActor): Promise<{ id: string; number: string }> {
+  async create(input: InvoiceCreateInput, actor: Actor): Promise<{ id: string; number: string }> {
     const notes = input.noteTexts.filter((text) => text.trim() !== '').map((text) => buildInvoiceNote(text, actor));
     const recipientEmail = input.recipientEmail.trim();
     const paymentLinkUrl = input.paymentLinkUrl.trim();
-    assertValidInvoice({ ...input, recipientEmail, paymentLinkUrl, notes });
+    assertValidCharges(input.lineItems, input.fees);
+    const totals = computeInvoiceTotals(input.lineItems, input.fees);
+    assertValidInvoice({ ...input, ...totals, recipientEmail, paymentLinkUrl, notes });
     if (input.status === 'paid') {
       if (!input.initialPayment) throw new Error('Record the payment details to create a paid invoice.');
       assertValidPayment(input.initialPayment, input.issueDate);
@@ -269,7 +358,7 @@ export const invoicesService = {
 
     const year = Number(todayIso().slice(0, 4));
     const newInvoiceRef = doc(invoicesCol);
-    const { taxCents, totalCents } = computeTotals(input.subtotalCents, input.taxRateBps);
+    const { totalCents } = totals;
 
     const number = await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef(year));
@@ -291,9 +380,12 @@ export const invoicesService = {
         issueDate: input.issueDate,
         paymentTerms: input.paymentTerms,
         dueDate: input.dueDate,
-        subtotalCents: input.subtotalCents,
-        taxRateBps: input.taxRateBps,
-        taxCents,
+        lineItems: input.lineItems,
+        fees: totals.fees,
+        subtotalCents: totals.subtotalCents,
+        taxRateBps: totals.taxRateBps,
+        taxCents: totals.taxCents,
+        feesCents: totals.feesCents,
         totalCents,
         propertyId: input.job.propertyId,
         customerId: input.client.customerId,
@@ -348,25 +440,61 @@ export const invoicesService = {
   /**
    * Guarda solo los campos que cambiaron, con su evento "updated". Relee el
    * invoice en la transacción: si ya está pagado (Paid o Paid via Stripe), no
-   * se pueden cambiar subtotal ni tasa. Si cambian, se recalculan impuesto y total.
+   * se pueden cambiar servicios ni fees. Si cambian, se recalculan todos los
+   * montos (computeInvoiceTotals); los fees se guardan con su monto.
    * `expectedUpdatedAt` (Edit Invoice): el `updatedAt` del invoice al abrir el
    * formulario. Si otra persona lo guardó después, falla con InvoiceChangedError
    * en vez de pisar sus notas, montos o fechas con la copia del formulario.
+   * `manualPayment` (Paid elegido en Edit): registra el pago completo en la
+   * MISMA transacción, con el total ya actualizado; falla si ya estaba pagado.
    */
-  async update(invoiceId: string, patch: InvoicePatch, actor: InvoiceActor, expectedUpdatedAt?: string): Promise<void> {
+  async update(
+    invoiceId: string,
+    patch: InvoicePatch,
+    actor: Actor,
+    expectedUpdatedAt?: string,
+    manualPayment?: InvoiceManualPaymentInput | null,
+  ): Promise<void> {
     await runTransaction(db, async (transaction) => {
       const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
       if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
       const invoice = invoiceSnap.data();
+      assertNotDeleted(invoice);
       if (expectedUpdatedAt && invoice.updatedAt !== expectedUpdatedAt) throw new InvoiceChangedError(invoice.number);
-      const { changedPatch, changes } = getPatchChanges(invoice, patch);
-      if (changes.length === 0) return;
+      // Servicios o fees nuevos: los fees llevan su monto con el subtotal que
+      // queda (así un fee igual al guardado no cuenta como cambio).
+      const touchesCharges = patch.lineItems !== undefined || patch.fees !== undefined;
+      const chargeTotals = touchesCharges
+        ? computeInvoiceTotals(patch.lineItems ?? invoice.lineItems, patch.fees ?? invoice.fees)
+        : null;
+      const { fees: _feeInputs, ...patchWithoutFees } = patch;
+      const normalizedPatch: InvoiceNormalizedPatch = chargeTotals
+        ? { ...patchWithoutFees, fees: chargeTotals.fees }
+        : patchWithoutFees;
+      const { changedPatch, changes } = getPatchChanges(invoice, normalizedPatch);
+      if (changes.length === 0 && !manualPayment) return;
 
+      if (manualPayment && isPaidStatus(invoice.status)) throw new InvoiceAlreadyPaidError(invoice.number);
+      if ('status' in changedPatch && !DRAFT_OR_PENDING_STATUSES.includes(invoice.status)) {
+        throw new Error(`Invoice ${invoice.number} is ${INVOICE_STATUS_LABELS[invoice.status]}: its status can only change by recording the payment.`);
+      }
       const touchesLockedField = PAID_LOCKED_FIELDS.some((field) => field in changedPatch);
       if (isPaidStatus(invoice.status) && touchesLockedField) {
-        throw new Error('A paid invoice cannot change its amount or tax rate.');
+        throw new Error('A paid invoice cannot change its services or fees.');
       }
-      const merged = { ...invoice, ...changedPatch };
+      const chargesChanged = 'lineItems' in changedPatch || 'fees' in changedPatch;
+      if (chargesChanged) assertValidCharges(patch.lineItems ?? invoice.lineItems, patch.fees ?? invoice.fees);
+      const totals: Partial<Pick<Invoice, 'subtotalCents' | 'taxRateBps' | 'taxCents' | 'feesCents' | 'totalCents'>> =
+        chargesChanged && chargeTotals
+          ? {
+            subtotalCents: chargeTotals.subtotalCents,
+            taxRateBps: chargeTotals.taxRateBps,
+            taxCents: chargeTotals.taxCents,
+            feesCents: chargeTotals.feesCents,
+            totalCents: chargeTotals.totalCents,
+          }
+          : {};
+      const merged: Invoice = { ...invoice, ...changedPatch, ...totals, fees: changedPatch.fees ?? invoice.fees };
       assertValidInvoice({
         ...merged, recipientEmail: merged.recipientEmail.trim(), paymentLinkUrl: merged.paymentLinkUrl.trim(),
       });
@@ -374,25 +502,31 @@ export const invoicesService = {
         throw new Error(`The issue date cannot be after the payment date (${formatDate(merged.payment.paidDate)}).`);
       }
 
-      const amountsChanged = 'subtotalCents' in changedPatch || 'taxRateBps' in changedPatch;
+      const paymentUpdate = manualPayment ? buildManualPaymentUpdate(merged, manualPayment, actor) : null;
       transaction.update(invoiceRef(invoiceId), {
         ...changedPatch,
-        ...(amountsChanged ? computeTotals(merged.subtotalCents, merged.taxRateBps) : {}),
+        ...totals,
+        ...paymentUpdate?.fields,
         updatedAt: nowIso(),
         updatedByUserId: actor.id,
         updatedByUserName: actor.name,
       });
-      writeEvent(transaction, invoiceId, actor, { type: 'updated', summary: `Invoice ${invoice.number} updated`, changes });
+      if (changes.length > 0) {
+        writeEvent(transaction, invoiceId, actor, { type: 'updated', summary: `Invoice ${invoice.number} updated`, changes });
+      }
+      if (paymentUpdate) writeEvent(transaction, invoiceId, actor, paymentUpdate.event);
     });
 
-    void logActivity({ action: 'update', module: MODULE_NAME, user: actor, targetId: invoiceId, detail: 'Invoice updated' });
+    void logActivity(manualPayment
+      ? { action: 'status_change', module: MODULE_NAME, user: actor, targetId: invoiceId, detail: 'Payment recorded' }
+      : { action: 'update', module: MODULE_NAME, user: actor, targetId: invoiceId, detail: 'Invoice updated' });
   },
 
   /**
    * Agrega una nota (sale en el PDF) con su evento. Transacción: relee las
    * notas para no pasar del máximo aunque dos personas agreguen a la vez.
    */
-  async addNote(invoiceId: string, text: string, actor: InvoiceActor): Promise<void> {
+  async addNote(invoiceId: string, text: string, actor: Actor): Promise<void> {
     const trimmedText = text.trim();
     if (!trimmedText) throw new Error('The note is empty.');
     if (trimmedText.length > INVOICE_LIMITS.noteText) {
@@ -401,7 +535,9 @@ export const invoicesService = {
     await runTransaction(db, async (transaction) => {
       const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
       if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
-      const { notes } = invoiceSnap.data();
+      const noteInvoice = invoiceSnap.data();
+      assertNotDeleted(noteInvoice);
+      const { notes } = noteInvoice;
       if (notes.length >= INVOICE_LIMITS.maxNotes) {
         throw new Error(`An invoice can have up to ${INVOICE_LIMITS.maxNotes} notes.`);
       }
@@ -416,7 +552,7 @@ export const invoicesService = {
   },
 
   /** Cambia las fotos del PDF: la selección completa y el resumen del encabezado. */
-  async updatePhotoSelection(invoiceId: string, photos: InvoicePhotoSelectionInput, actor: InvoiceActor): Promise<void> {
+  async updatePhotoSelection(invoiceId: string, photos: InvoicePhotoSelectionInput, actor: Actor): Promise<void> {
     if (photos.include && photos.mode === 'selected' && photos.items.length === 0) {
       throw new Error('Select at least one photo, or turn off "Include before & after photos".');
     }
@@ -437,38 +573,79 @@ export const invoicesService = {
   /**
    * Mark as Paid: registra el pago COMPLETO recibido fuera de Stripe. Relee el
    * invoice en la transacción y falla con InvoiceAlreadyPaidError si ya está
-   * pagado: dos clics o dos personas dejan un solo pago. Si el pago trae nota,
-   * también se agrega a las notas del invoice (alcance §13.5), salvo que ya
-   * tenga el máximo de notas (la nota queda igual en el pago).
+   * pagado: dos clics o dos personas dejan un solo pago (buildManualPaymentUpdate).
    */
-  async recordManualPayment(invoiceId: string, paymentInput: InvoiceManualPaymentInput, actor: InvoiceActor): Promise<void> {
+  async recordManualPayment(invoiceId: string, paymentInput: InvoiceManualPaymentInput, actor: Actor): Promise<void> {
     await runTransaction(db, async (transaction) => {
       const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
       if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
       const invoice = invoiceSnap.data();
+      assertNotDeleted(invoice);
       if (isPaidStatus(invoice.status)) throw new InvoiceAlreadyPaidError(invoice.number);
-      assertValidPayment(paymentInput, invoice.issueDate);
-
-      const payment = buildManualPayment(paymentInput, invoice.totalCents, actor);
-      const hasRoomForNote = invoice.notes.length < INVOICE_LIMITS.maxNotes;
-      const paymentNote = payment.note && hasRoomForNote ? [buildInvoiceNote(payment.note, actor)] : [];
+      const paymentUpdate = buildManualPaymentUpdate(invoice, paymentInput, actor);
       transaction.update(invoiceRef(invoiceId), {
-        status: 'paid',
-        payment,
-        ...(paymentNote.length > 0 ? { notes: [...invoice.notes, ...paymentNote] } : {}),
+        ...paymentUpdate.fields,
         updatedAt: nowIso(),
         updatedByUserId: actor.id,
         updatedByUserName: actor.name,
       });
-      writeEvent(transaction, invoiceId, actor, {
-        type: 'payment_recorded',
-        summary: describePayment(payment),
-        changes: [{ field: 'status', before: INVOICE_STATUS_LABELS[invoice.status], after: INVOICE_STATUS_LABELS.paid }],
-      });
+      writeEvent(transaction, invoiceId, actor, paymentUpdate.event);
     });
 
     void logActivity({
       action: 'status_change', module: MODULE_NAME, user: actor, targetId: invoiceId, detail: 'Payment recorded',
+    });
+  },
+
+  /**
+   * Delete: manda el invoice a la papelera con su motivo (transacción). Relee el
+   * invoice: falla si está pagado (InvoicePaidCannotBeDeletedError) o si ya
+   * estaba borrado. Conserva número, montos y Activity; se deshace con restore.
+   */
+  async moveToTrash(invoiceId: string, reason: string, actor: Actor): Promise<void> {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) throw new Error('Write why the invoice is deleted.');
+    if (trimmedReason.length > INVOICE_LIMITS.deletionReason) {
+      throw new Error(`The reason can have up to ${INVOICE_LIMITS.deletionReason} characters.`);
+    }
+    const number = await runTransaction(db, async (transaction) => {
+      const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
+      if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
+      const invoice = invoiceSnap.data();
+      if (isPaidStatus(invoice.status)) throw new InvoicePaidCannotBeDeletedError(invoice.number);
+      if (isDeletedInvoice(invoice)) throw new Error(`Invoice ${invoice.number} is already deleted.`);
+      const deletedAt = nowIso();
+      transaction.update(invoiceRef(invoiceId), {
+        deletion: { deletedAt, deletedByUserId: actor.id, deletedByUserName: actor.name, reason: trimmedReason },
+        updatedAt: deletedAt,
+        updatedByUserId: actor.id,
+        updatedByUserName: actor.name,
+      });
+      writeEvent(transaction, invoiceId, actor, { type: 'deleted', summary: `Invoice deleted · ${trimmedReason}`.slice(0, 500) });
+      return invoice.number;
+    });
+    void logActivity({ action: 'delete', module: MODULE_NAME, user: actor, targetId: invoiceId, targetLabel: number });
+  },
+
+  /** Restore: saca el invoice de la papelera (vuelve con el estado que tenía). */
+  async restore(invoiceId: string, actor: Actor): Promise<void> {
+    const number = await runTransaction(db, async (transaction) => {
+      const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
+      if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
+      const invoice = invoiceSnap.data();
+      if (!isDeletedInvoice(invoice)) return invoice.number;
+      const restoredAt = nowIso();
+      transaction.update(invoiceRef(invoiceId), {
+        deletion: null,
+        updatedAt: restoredAt,
+        updatedByUserId: actor.id,
+        updatedByUserName: actor.name,
+      });
+      writeEvent(transaction, invoiceId, actor, { type: 'restored', summary: 'Invoice restored' });
+      return invoice.number;
+    });
+    void logActivity({
+      action: 'update', module: MODULE_NAME, user: actor, targetId: invoiceId, targetLabel: number, detail: 'Invoice restored',
     });
   },
 
@@ -492,7 +669,8 @@ export const invoicesService = {
 
   /**
    * Escucha la lista de invoices. Con ventana: los emitidos desde el día 1 de
-   * hace 12 meses MÁS los que siguen sin pagar de cualquier fecha (dos
+   * hace 12 meses MÁS los que siguen sin pagar de cualquier fecha (Needs
+   * Invoice, Pending, Payment Link Sent y el viejo awaiting_payment; dos
    * consultas de un solo campo, sin índices compuestos), unidos por id. Con
    * `isFullHistory`, la colección completa. `onData` recibe la lista entera
    * cada vez que algo cambia.
@@ -507,7 +685,7 @@ export const invoicesService = {
     }
     const windowQueries = [
       query(invoicesCol, where('issueDate', '>=', windowStartIso())),
-      query(invoicesCol, where('status', 'in', [...AWAITING_STATUSES])),
+      query(invoicesCol, where('status', 'in', [...UNPAID_STATUSES, LEGACY_PENDING_STATUS])),
     ];
     const parts = windowQueries.map(() => new Map<string, Invoice>());
     const arrived = windowQueries.map(() => false);
@@ -523,6 +701,23 @@ export const invoicesService = {
       publish();
     }, onError));
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  },
+
+  /**
+   * Escucha TODOS los invoices de un cliente, de cualquier fecha (cuenta del
+   * cliente), mientras la ventana está abierta. Por customerId o, si el cliente
+   * no se encontró al crear, por client.clientRef: consultas de un solo campo,
+   * sin índice compuesto; el orden se hace en el navegador.
+   */
+  subscribeByClient(
+    clientKey: ClientAccountKey,
+    onData: (invoices: Invoice[]) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    const clientQuery: Query<Invoice> = clientKey.customerId
+      ? query(invoicesCol, where('customerId', '==', clientKey.customerId))
+      : query(invoicesCol, where('client.clientRef', '==', clientKey.clientRef));
+    return onSnapshot(clientQuery, (snap) => onData(snap.docs.map((invoiceDoc) => invoiceDoc.data())), onError);
   },
 
   /** Escucha las fotos elegidas de UN invoice (un documento), mientras el

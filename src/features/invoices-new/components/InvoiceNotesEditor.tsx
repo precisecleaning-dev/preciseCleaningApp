@@ -2,7 +2,7 @@
 // vacías no se guardan.
 import { X } from 'lucide-react';
 import type { InvoiceFormNote } from '../hooks/useInvoiceForm';
-import { INVOICE_LIMITS } from '../../../services/invoicesService';
+import { INVOICE_LIMITS } from '../invoiceLimits';
 
 interface InvoiceNotesEditorProps {
   notes: InvoiceFormNote[];

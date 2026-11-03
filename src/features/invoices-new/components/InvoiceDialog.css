@@ -118,6 +118,37 @@
   background: #f8fafc;
 }
 
+/* Acción destructiva (Delete): mismo tamaño que los demás botones del pie. */
+.invd-danger-btn {
+  align-items: center;
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 6px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 18px;
+}
+
+.invd-danger-btn:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+/* Delete en el pie del detalle: botón secundario en rojo. */
+.invd-secondary-btn.is-danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.invd-secondary-btn.is-danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.invd-danger-btn:disabled,
 .invd-primary-btn:disabled,
 .invd-secondary-btn:disabled {
   cursor: not-allowed;
@@ -137,6 +168,7 @@
     padding-left: 16px;
     padding-right: 16px;
   }
+  .invd-danger-btn,
   .invd-primary-btn,
   .invd-secondary-btn {
     flex: 1 1 0;

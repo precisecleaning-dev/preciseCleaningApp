@@ -1,5 +1,5 @@
-// Detalle · datos del invoice: cliente, job, fechas (servicio, emisión,
-// vencimiento con días de atraso) y correo registrado.
+// Detalle · datos del invoice: cliente (abre su cuenta), job, fechas
+// (servicio, emisión, vencimiento con días de atraso) y correo registrado.
 import type { Invoice, YmdDate } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { INVOICE_PAYMENT_TERM_LABELS } from '../invoiceMath';
@@ -8,9 +8,10 @@ import { getLateDays } from '../invoiceStatus';
 interface InvoiceDetailFactsProps {
   invoice: Invoice;
   today: YmdDate;
+  onOpenClientAccount: (invoice: Invoice) => void;
 }
 
-const InvoiceDetailFacts = ({ invoice, today }: InvoiceDetailFactsProps) => {
+const InvoiceDetailFacts = ({ invoice, today, onOpenClientAccount }: InvoiceDetailFactsProps) => {
   const lateDays = getLateDays(invoice, today);
   const jobText = [invoice.job.address, invoice.job.unit, invoice.job.city].filter(Boolean).join(' · ');
   const clientContact = [invoice.client.phone, [invoice.client.address, invoice.client.cityStateZip].filter(Boolean).join(', ')]
@@ -23,7 +24,9 @@ const InvoiceDetailFacts = ({ invoice, today }: InvoiceDetailFactsProps) => {
       <div className="invdt-fact">
         <dt>Client</dt>
         <dd>
-          {invoice.client.name || 'Unknown client'}
+          <button type="button" className="invdt-client-btn" onClick={() => onOpenClientAccount(invoice)}>
+            {invoice.client.name || 'Unknown client'}
+          </button>
           {clientContact && <span className="invdt-secondary">{clientContact}</span>}
         </dd>
       </div>

@@ -24,6 +24,23 @@
   color: #1d3fcf;
 }
 
+/* Nombre del cliente en el detalle: abre su cuenta (ClientAccountModal). */
+.invdt-client-btn {
+  background: none;
+  border: 0;
+  color: #1d3fcf;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.invdt-client-btn:hover {
+  text-decoration: underline;
+}
+
 .invdt-facts {
   display: grid;
   gap: 14px 24px;
@@ -73,6 +90,46 @@
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.invdt-services {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.invdt-service {
+  align-items: flex-start;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+
+.invdt-service-name {
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  font-weight: 600;
+  gap: 2px;
+  min-width: 0;
+}
+
+.invdt-service-name .invdt-secondary {
+  font-weight: 400;
+}
+
+.invdt-service-amount {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .invdt-amount-list {

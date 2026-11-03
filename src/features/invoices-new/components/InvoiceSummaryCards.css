@@ -2,7 +2,7 @@
 .invs-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .invs-card {
@@ -52,16 +52,16 @@
   color: #94a3b8;
 }
 
-.invs-card.tone-paid .invs-icon {
-  color: #16a34a;
+.invs-card.tone-overdue .invs-icon {
+  color: #dc2626;
 }
 
-.invs-card.tone-awaiting .invs-icon {
+.invs-card.tone-outstanding .invs-icon {
   color: #d97706;
 }
 
-.invs-card.tone-overdue .invs-icon {
-  color: #dc2626;
+.invs-card.tone-draft .invs-icon {
+  color: #64748b;
 }
 
 .invs-value {
@@ -81,13 +81,10 @@
   font-size: 0.8rem;
 }
 
-@media (max-width: 1024px) {
-  .invs-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 768px) {
+  .invs-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .invs-value {
     font-size: 1.2rem;
   }

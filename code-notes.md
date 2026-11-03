@@ -3202,8 +3202,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   de pisar sus notas, montos o fechas con la copia del formulario. Las escrituras del servidor (envío) no
   cambian `updatedAt` y no cuentan como conflicto.
 - Invoices New · lista (11/2026): `invoicesService.subscribeWindow` une DOS consultas de un solo campo
-  (`issueDate >=` día 1 de hace 12 meses, `windowStartIso()` de propertiesWindow, y `status in` [awaiting,
-  link_sent] para los pendientes de cualquier fecha): sin índices compuestos. "Ver todo el historial" (el mismo
+  (`issueDate >=` día 1 de hace 12 meses, `windowStartIso()` de propertiesWindow, y `status in` los sin pagar
+  — `UNPAID_STATUSES` + el viejo `awaiting_payment` — de cualquier fecha): sin índices compuestos. "Ver todo el historial" (el mismo
   interruptor de las casas) escucha la colección completa. Búsqueda, tarjetas, orden y paginación numerada se
   hacen en el cliente sobre esa ventana, A PROPÓSITO (CLAUDE.md pide paginar en el servidor): la búsqueda es
   por texto parcial y las tarjetas deben cubrir TODO el conjunto buscado, no la página (alcance §6). Vale hasta
@@ -3268,3 +3268,68 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Enlace de pago: solo `https://buy.stripe.com/...` (app, service y reglas), creado a mano en Stripe. El correo
   y el PDF lo mandan con `client_reference_id=<invoiceId>` para que el webhook de Stripe (Etapa 9) sepa qué
   invoice se pagó aunque el mismo enlace se use para varios.
+- Invoices New · estados (11/2026, pedido de Omar): los MISMOS del módulo Invoices viejo (`needs_invoice` =
+  "Needs Invoice", borrador no enviado · `pending` · `paid`; sin Pre-Paid) más los automáticos de Stripe
+  (`payment_link_sent`, `paid_via_stripe`, solo el servidor). Overdue NO se guarda: Pending o Payment Link Sent
+  con el vencimiento pasado (`getDisplayStatus`, invoiceStatus.ts); un borrador no vence. Badge, filtro de la
+  tabla y tarjetas usan el estado que se VE (Pending no incluye los vencidos). Tarjetas: Overdue, Total
+  Outstanding (Pending + Payment Link Sent, con los vencidos) e In Draft (Needs Invoice); tocar la elegida la
+  quita. Un invoice nuevo empieza en Needs Invoice y ENVIARLO por correo lo pasa a Pending (con enlace, a
+  Payment Link Sent): lo hace `sendinvoiceemail` (functions), así que cambiar esa regla pide desplegar la
+  función. En Edit: Needs Invoice ↔ Pending va en el patch; Paid se registra con su pago en la MISMA
+  transacción que el resto del formulario (`invoicesService.update(..., manualPayment)`); con el enlace ya
+  enviado solo se puede registrar el pago (`getSelectableStatuses`, y las reglas lo exigen). El PDF le muestra
+  al cliente "Awaiting Payment" en cualquier estado sin pagar (no "Needs Invoice"). `awaiting_payment` era el
+  nombre de Pending: solo lo tienen invoices de prueba y `invoiceConverter` (invoicesService.ts) lo lee como
+  'pending'; la función del correo también lo acepta. Se puede quitar cuando no quede ninguno.
+- Invoices New · selección y acciones en bloque (11/2026, decisiones de Omar): checkbox por fila y uno en el
+  encabezado que marca SOLO la página visible. La selección se guarda con la clave de la página (filtros +
+  página, `getSelectionScopeKey`): al cambiar de página, filtro, tarjeta o búsqueda vale vacía en el render, sin
+  efecto que la limpie; tampoco cuenta un invoice que ya no está en la página. Solo con permiso Edit (las dos
+  acciones lo piden). Con 1 o más marcados aparece `InvoiceBulkBar` arriba de la tabla (Mark as Paid / Send
+  invoice / Clear); el "..." de cada fila sigue actuando sobre ESA fila. Mark as Paid en bloque: un solo pago
+  (método, fecha, referencia, nota) que se registra en cada uno por su propio total; los pagados se saltan.
+  Send en bloque: PDF y/o enlace una vez, cada invoice a SU correo (el guardado o el del cliente; si no lo tenía
+  se guarda antes, como en Send Invoice), máximo `MAX_BULK_SEND` = 20 (cada uno arma su PDF en el navegador).
+  Se saltan los sin correo válido, sin enlace de Stripe (si se pidió) y los pagados sin PDF. Cada invoice va por
+  su camino de siempre (`recordManualPayment` / `sendInvoiceEmail`), UNO TRAS OTRO y NO todo-o-nada a propósito
+  (`services/invoiceBulkService.ts`): uno que otra persona pagó en ese momento no debe frenar los demás; el
+  diálogo termina con la lista de saltados y fallidos.
+- Invoices New · cuenta del cliente (11/2026, decisiones de Omar): tocar el cliente en la tabla (o en el detalle)
+  abre `ClientAccountModal` sobre la lista: tarjetas Outstanding / Overdue / Paid / In Draft y pestañas Invoices
+  (todos, con filtro de estado) y Payments, paginadas en el navegador. Trae TODO el historial del cliente en
+  Invoices New, de cualquier fecha (no la ventana de 12 meses): `invoicesService.subscribeByClient` escucha
+  `customerId ==` o, si el invoice no encontró al cliente al crearse, `client.clientRef ==`; son consultas de UN
+  campo (sin índice compuesto) y el orden se hace en el navegador. NO agregar `orderBy` ahí sin crear el índice.
+  El listener vive en la VISTA (`useClientInvoices`) solo mientras la cuenta está abierta, porque la vista también
+  busca ahí un invoice viejo para abrir su detalle, Mark as Paid, PDF… en vivo (`findInvoice`: ventana y luego la
+  cuenta). La cuenta va DEBAJO del detalle: abrirla desde el detalle cierra el detalle. "Download statement"
+  (`clientStatementPdf.ts`): saldo, vencido, invoices ENVIADOS sin pagar y pagos de los últimos 12 meses; los
+  borradores (Needs Invoice) NO van porque el cliente todavía no los recibió. No hay invoices del módulo viejo.
+- Invoices New · servicios y fees (11/2026, decisiones de Omar): el invoice ya NO lleva monto ni tasa escritos a
+  mano. Sus `lineItems` son COPIA de los `billing_services` del job (lo de "Services" en el formulario de la
+  casa) al crear, con las MISMAS reglas que las finanzas del job (`getBilledServiceAmounts`): Apply Tax Yes /
+  Minus Tax No suma el impuesto aparte, No / Yes lo resta del monto, lo demás o casa `taxExempt` sin impuesto.
+  Sin fees, el total = Final Cost del job. Editar el servicio en el job NO cambia el invoice: en Edit (sin pagar)
+  "Refresh from job" vuelve a copiarlos, y el formulario avisa si cambiaron (`areSameLineItems`). Un job sin
+  servicios no deja crear. Fees: nombre libre + %, del SUBTOTAL de servicios (sin impuesto; el fee no paga
+  impuesto): `computeInvoiceTotals` (invoiceMath.ts) es la ÚNICA fórmula, la usan formulario, service y PDF.
+  `taxRateBps` quedó como "tasa común" de los servicios con impuesto (0 si hay tasas distintas: el PDF dice Tax
+  sin %). Los invoices de prueba sin `lineItems` se leen con listas vacías (`invoiceConverter`) y el PDF muestra su
+  línea única. ⚠ Reglas (`security/`): ya no revisan el redondeo de UNA tasa (no pueden recorrer listas); exigen
+  total = subtotal + impuesto + fees, 1–50 servicios y hasta 10 fees. Crear como Paid quedó cerca del límite de
+  1000 expresiones por petición de Firestore: por eso la lista de campos al crear usa solo `hasOnly`, el update
+  evalúa UN camino (pago o edición) y el autor del pago se compara con `updatedByUserId` en vez de otro `byMe`.
+  Si se agrega una validación ahí, correr `npm run test:rules` (la prueba de crear como Paid avisa si se pasa).
+- Invoices New · Delete = PAPELERA (11/2026, decisiones de Omar): sigue sin existir `delete` de Firestore (el número
+  no deja huecos, Activity se conserva; `allow delete: if false`). "Delete" escribe `deletion` (quién, cuándo, motivo
+  obligatorio de 1–300) con `invoicesService.moveToTrash`; `restore` lo vuelve a null. NO es un estado: `status` no
+  cambia y al restaurar vuelve igual. Nunca un pagado (Paid / Paid via Stripe). Permiso: la columna Delete del
+  módulo "Invoices New" en Roles (`canDelete`, derecho `d` en las reglas). Payment Link Sent SÍ se puede borrar, con
+  aviso de desactivar el enlace en Stripe; en la Etapa 9 un pago de Stripe sobre un invoice borrado va "por revisar".
+  Los borrados se separan EN EL NAVEGADOR (`isDeletedInvoice`): no salen en la lista, las tarjetas, la selección,
+  la cuenta del cliente, el statement ni el aviso "este job ya tiene invoices"; se ven con el filtro "Deleted"
+  (getDisplayStatus → 'deleted'). En la papelera no se edita, ni se paga, ni se envía (service, reglas y la función
+  `sendinvoiceemail`). `deletion` NO se escribe al crear (ausente = activo): así la lista de campos al crear no
+  creció (límite de 1000 expresiones). La regla de Delete/Restore no pasa por invoiceFieldsOk a propósito: así se
+  pueden mandar a la papelera los invoices de prueba viejos (sin `lineItems`).

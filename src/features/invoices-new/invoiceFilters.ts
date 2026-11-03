@@ -5,38 +5,16 @@
 //   1. Búsqueda + rango de fechas → el conjunto buscado.
 //   2. Las tarjetas se calculan sobre ESE conjunto (no sobre la página ni sobre
 //      la tarjeta o el estado elegidos), así siguen comparando grupos.
-//   3. Tarjeta + estado puntual → lo que muestra la tabla.
+//   3. Tarjeta + estado puntual → lo que muestra la tabla. 'all' = ninguna
+//      tarjeta elegida (tocar la tarjeta elegida la quita).
 //   4. Orden: emisión descendente; empate, número descendente (numberKey).
+// El estado puntual es el que se ve (getDisplayStatus): Pending deja fuera los
+// vencidos, que se filtran con Overdue.
 // ============================================================================
-import type { Invoice, InvoiceStatus, YmdDate } from '../../types/index';
-import { AWAITING_STATUSES, PAID_STATUSES, isOverdue, isPaidStatus } from './invoiceStatus';
-
-/** Tarjeta del resumen (y grupo de la tabla). */
-export type InvoiceCardKey = 'total' | 'paid' | 'awaiting' | 'overdue';
-
-/** Campo de fecha del filtro de rango. */
-export type InvoiceDateField = 'issueDate' | 'dueDate';
-
-/** Rango de fechas: extremos inclusivos; '' = sin límite de ese lado. */
-export interface InvoiceDateRange {
-  field: InvoiceDateField;
-  from: YmdDate;
-  to: YmdDate;
-}
-
-export interface InvoiceCardSummary {
-  count: number;
-  totalCents: number;
-}
-
-export interface InvoiceSummary {
-  total: InvoiceCardSummary;
-  paid: InvoiceCardSummary;
-  /** Parte de Paid que llegó por Stripe. */
-  paidViaStripe: InvoiceCardSummary;
-  awaiting: InvoiceCardSummary;
-  overdue: InvoiceCardSummary;
-}
+import type {
+  Invoice, InvoiceCardKey, InvoiceCardSummary, InvoiceDateRange, InvoiceDisplayStatus, InvoiceSummary, YmdDate,
+} from '../../types/index';
+import { OUTSTANDING_STATUSES, getDisplayStatus, isOverdue } from './invoiceStatus';
 
 export const ALL_DATES: InvoiceDateRange = { field: 'issueDate', from: '', to: '' };
 
@@ -56,38 +34,43 @@ export const filterBySearchAndDates = (invoices: readonly Invoice[], search: str
   return invoices.filter((invoice) => matchesSearch(invoice, normalizedSearch) && matchesDateRange(invoice, dateRange));
 };
 
-const sumCards = (invoices: readonly Invoice[]): InvoiceCardSummary => ({
+export const sumCards = (invoices: readonly Invoice[]): InvoiceCardSummary => ({
   count: invoices.length,
   totalCents: invoices.reduce((total, invoice) => total + invoice.totalCents, 0),
 });
 
-/** Paso 2: las cuatro tarjetas. Overdue ya está dentro de Awaiting: no se suma otra vez. */
-export const summarizeInvoices = (invoices: readonly Invoice[], today: YmdDate): InvoiceSummary => ({
-  total: sumCards(invoices),
-  paid: sumCards(invoices.filter((invoice) => isPaidStatus(invoice.status))),
-  paidViaStripe: sumCards(invoices.filter((invoice) => invoice.status === 'paid_via_stripe')),
-  awaiting: sumCards(invoices.filter((invoice) => AWAITING_STATUSES.includes(invoice.status))),
-  overdue: sumCards(invoices.filter((invoice) => isOverdue(invoice, today))),
-});
-
 const matchesCard = (invoice: Invoice, card: InvoiceCardKey, today: YmdDate): boolean => {
-  if (card === 'paid') return PAID_STATUSES.includes(invoice.status);
-  if (card === 'awaiting') return AWAITING_STATUSES.includes(invoice.status);
   if (card === 'overdue') return isOverdue(invoice, today);
+  if (card === 'outstanding') return OUTSTANDING_STATUSES.includes(invoice.status);
+  if (card === 'draft') return invoice.status === 'needs_invoice';
   return true;
 };
 
-const compareByIssueDateDesc = (invoiceA: Invoice, invoiceB: Invoice): number =>
+/** Paso 2: las tres tarjetas. Overdue ya está dentro de Outstanding: no se suma otra vez. */
+export const summarizeInvoices = (invoices: readonly Invoice[], today: YmdDate): InvoiceSummary => ({
+  overdue: sumCards(invoices.filter((invoice) => matchesCard(invoice, 'overdue', today))),
+  outstanding: sumCards(invoices.filter((invoice) => matchesCard(invoice, 'outstanding', today))),
+  draft: sumCards(invoices.filter((invoice) => matchesCard(invoice, 'draft', today))),
+});
+
+/** Orden de las listas: emisión descendente; empate, número descendente. */
+export const compareByIssueDateDesc = (invoiceA: Invoice, invoiceB: Invoice): number =>
   invoiceB.issueDate.localeCompare(invoiceA.issueDate) || invoiceB.numberKey - invoiceA.numberKey;
 
 /** Pasos 3 y 4: lo que muestra la tabla, ya ordenado. */
 export const filterByCardAndStatus = (
-  invoices: readonly Invoice[], card: InvoiceCardKey, status: InvoiceStatus | 'all', today: YmdDate,
+  invoices: readonly Invoice[], card: InvoiceCardKey, status: InvoiceDisplayStatus | 'all', today: YmdDate,
 ): Invoice[] =>
   invoices
-    .filter((invoice) => matchesCard(invoice, card, today) && (status === 'all' || invoice.status === status))
+    .filter((invoice) => matchesCard(invoice, card, today)
+      && (status === 'all' || getDisplayStatus(invoice, today) === status))
     .sort(compareByIssueDateDesc);
 
-/** Tarjeta que corresponde a un estado puntual (al elegirlo en el filtro). */
-export const cardForStatus = (status: InvoiceStatus): InvoiceCardKey =>
-  (isPaidStatus(status) ? 'paid' : 'awaiting');
+/** Tarjeta que corresponde a un estado puntual (al elegirlo en el filtro);
+ *  los pagados no tienen tarjeta. */
+export const cardForStatus = (status: InvoiceDisplayStatus): InvoiceCardKey => {
+  if (status === 'overdue') return 'overdue';
+  if (status === 'needs_invoice') return 'draft';
+  if (status === 'pending' || status === 'payment_link_sent') return 'outstanding';
+  return 'all';
+};

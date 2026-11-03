@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import type { Invoice } from '../../../types/index';
 import { invoicesService } from '../../../services/invoicesService';
+import { isDeletedInvoice } from '../invoiceStatus';
 
 interface JobInvoicesResult {
   /** Invoices del job, sin el que se está editando. */
@@ -37,7 +38,10 @@ export function useJobInvoices(propertyId: string, excludedInvoiceId: string | n
 
   const isCurrentJob = result?.propertyId === propertyId;
   return {
-    invoices: isCurrentJob ? result.invoices.filter((jobInvoice) => jobInvoice.id !== excludedInvoiceId) : [],
+    // Los de la papelera no cuentan para el aviso "This job already has N invoices".
+    invoices: isCurrentJob
+      ? result.invoices.filter((jobInvoice) => jobInvoice.id !== excludedInvoiceId && !isDeletedInvoice(jobInvoice))
+      : [],
     isLoading: !!propertyId && !isCurrentJob,
     hasError: isCurrentJob && result.hasError,
   };

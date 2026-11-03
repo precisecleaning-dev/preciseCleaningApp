@@ -367,6 +367,11 @@ service cloud.firestore {
     function invoiceIsPaid(invoice) {
       return invoice.status in ['paid', 'paid_via_stripe'];
     }
+    // En la papelera (Delete): `deletion` no es null. Los invoices nuevos no
+    // traen el campo (ausente = activo).
+    function invoiceIsDeleted(invoice) {
+      return invoice.get('deletion', null) != null;
+    }
     // "INV-2026-0007": consecutivo con al menos 4 dígitos (invoiceMath.ts).
     function padSeq(seq) {
       return seq < 10 ? '000' + string(seq)
@@ -378,11 +383,14 @@ service cloud.firestore {
     function invoiceFieldsOk(d) {
       return d.subtotalCents is int && d.subtotalCents >= 1
         && d.taxRateBps is int && d.taxRateBps >= 0 && d.taxRateBps <= 10000
-        && d.taxCents is int
-        // redondeo al centavo: |tax × 10000 − subtotal × tasa| ≤ 5000
-        && d.taxCents * 10000 - d.subtotalCents * d.taxRateBps <= 5000
-        && d.subtotalCents * d.taxRateBps - d.taxCents * 10000 <= 5000
-        && d.totalCents == d.subtotalCents + d.taxCents
+        && d.taxCents is int && d.taxCents >= 0
+        && d.feesCents is int && d.feesCents >= 0
+        // Los montos salen de los servicios copiados del job y de los fees
+        // (invoiceMath.computeInvoiceTotals). Las reglas no recorren listas:
+        // validan la suma y el tamaño de cada lista; cada línea la valida el service.
+        && d.totalCents == d.subtotalCents + d.taxCents + d.feesCents
+        && d.lineItems is list && d.lineItems.size() >= 1 && d.lineItems.size() <= 50
+        && d.fees is list && d.fees.size() <= 10
         && isYmd(d.issueDate) && isYmd(d.dueDate) && d.dueDate >= d.issueDate
         && d.paymentTerms in ['due_on_receipt', 'net_7', 'net_15', 'net_30', 'custom']
         && d.recipientEmail is string && d.recipientEmail.size() <= 254
@@ -407,7 +415,9 @@ service cloud.firestore {
         && p.reference is string && p.reference.size() <= 160
         && p.note is string && p.note.size() <= 1500
         && p.stripePaymentIntentId == null && p.stripeEventId == null
-        && p.recordedAt is string && byMe(p.recordedByUserId);
+        // Quien registra el pago es quien guarda el cambio (updatedByUserId ya
+        // pasa por byMe en invoiceFieldsOk): así no se evalúa byMe otra vez.
+        && p.recordedAt is string && p.recordedByUserId == d.updatedByUserId;
     }
     // El número es el que dejó el contador del año en esta misma transacción.
     function invoiceNumberOk(d, invoiceId) {
@@ -422,12 +432,16 @@ service cloud.firestore {
       let d = request.resource.data;
       let invoiceKeys = [
         'number', 'numberYear', 'numberSeq', 'numberKey', 'status', 'currency',
-        'issueDate', 'paymentTerms', 'dueDate', 'subtotalCents', 'taxRateBps', 'taxCents', 'totalCents',
+        'issueDate', 'paymentTerms', 'dueDate', 'lineItems', 'fees',
+        'subtotalCents', 'taxRateBps', 'taxCents', 'feesCents', 'totalCents',
         'propertyId', 'customerId', 'business', 'client', 'job', 'jobAmountsAtIssue',
         'recipientEmail', 'notes', 'photos', 'payment', 'delivery', 'paymentLinkUrl', 'searchText',
         'createdAt', 'createdByUserId', 'createdByUserName', 'updatedAt', 'updatedByUserId', 'updatedByUserName'
       ];
-      return d.keys().hasOnly(invoiceKeys) && d.keys().hasAll(invoiceKeys)
+      // Solo hasOnly (sin hasAll): cada campo obligatorio ya se valida abajo y
+      // falta = error = no pasa. Las dos listas juntas pasaban el límite de 1000
+      // expresiones por petición al crear como Paid.
+      return d.keys().hasOnly(invoiceKeys)
         && invoiceFieldsOk(d) && invoiceNumberOk(d, invoiceId)
         && d.currency == 'USD'
         && d.business in ['Normal', 'Cavalry']
@@ -440,34 +454,73 @@ service cloud.firestore {
           'sendCount': 0, 'lastAt': null, 'lastTo': '', 'lastIncludedPdf': false,
           'lastIncludedPaymentLink': false, 'lastResult': null
         }
-        && byMe(d.createdByUserId) && d.createdByUserId == d.updatedByUserId
+        // Autor = updatedByUserId, que ya pasa por byMe en invoiceFieldsOk.
+        && d.createdByUserId == d.updatedByUserId
         && d.createdAt == d.updatedAt
-        && ((d.status == 'awaiting_payment' && d.payment == null)
+        && ((d.status in ['needs_invoice', 'pending'] && d.payment == null)
             || (d.status == 'paid' && manualPaymentOk(d.payment, d)));
     }
-    // Edit Invoice, notas y fotos: fechas, montos (si no está pagado), correo,
-    // enlace, notas y resumen de fotos. El estado no cambia por aquí.
-    function invoiceEditOk() {
-      return onlyChanges([
-          'issueDate', 'paymentTerms', 'dueDate', 'subtotalCents', 'taxRateBps', 'taxCents', 'totalCents',
-          'recipientEmail', 'paymentLinkUrl', 'notes', 'photos', 'updatedAt', 'updatedByUserId', 'updatedByUserName'
-        ])
-        && (!invoiceIsPaid(resource.data)
-            || !changed().hasAny(['subtotalCents', 'taxRateBps', 'taxCents', 'totalCents']));
+    // Campos de Edit Invoice, notas y fotos.
+    function invoiceEditFields() {
+      return [
+        'issueDate', 'paymentTerms', 'dueDate', 'lineItems', 'fees',
+        'subtotalCents', 'taxRateBps', 'taxCents', 'feesCents', 'totalCents',
+        'recipientEmail', 'paymentLinkUrl', 'notes', 'photos', 'updatedAt', 'updatedByUserId', 'updatedByUserName'
+      ];
     }
-    // Mark as Paid: de pendiente a Paid con el pago completo, una sola vez.
+    // Edit Invoice, notas y fotos: fechas, servicios y fees (si no está pagado), correo,
+    // enlace, notas y resumen de fotos. El estado solo va de Needs Invoice a
+    // Pending o al revés (Payment Link Sent y los pagados no vuelven atrás).
+    function invoiceEditOk() {
+      return onlyChanges(invoiceEditFields().concat(['status']))
+        && (!changed().hasAny(['status'])
+            || (resource.data.status in ['needs_invoice', 'pending']
+                && request.resource.data.status in ['needs_invoice', 'pending']))
+        && (!invoiceIsPaid(resource.data)
+            || !changed().hasAny(['lineItems', 'fees', 'subtotalCents', 'taxRateBps', 'taxCents', 'feesCents', 'totalCents']));
+    }
+    // Mark as Paid, o Paid elegido en Edit Invoice (con los demás cambios del
+    // formulario): de sin pagar a Paid con el pago completo, una sola vez.
     function invoicePaymentOk() {
-      return onlyChanges(['status', 'payment', 'notes', 'updatedAt', 'updatedByUserId', 'updatedByUserName'])
+      return onlyChanges(invoiceEditFields().concat(['status', 'payment']))
         && !invoiceIsPaid(resource.data)
         && request.resource.data.status == 'paid'
         && manualPaymentOk(request.resource.data.payment, request.resource.data);
     }
 
+    // Delete (papelera) y Restore, con el permiso Delete ('d'): solo cambian
+    // `deletion` y quién / cuándo. Nunca un pagado. No pasa por invoiceFieldsOk:
+    // así también se pueden mandar a la papelera los invoices de prueba viejos.
+    function invoiceDeletionOk() {
+      let after = request.resource.data;
+      return canDo('Invoices New', 'd')
+        && onlyChanges(['deletion', 'updatedAt', 'updatedByUserId', 'updatedByUserName'])
+        && after.updatedAt is string && byMe(after.updatedByUserId)
+        && !invoiceIsPaid(resource.data)
+        && (after.deletion == null
+            ? invoiceIsDeleted(resource.data)
+            : !invoiceIsDeleted(resource.data)
+              && after.deletion.keys().hasOnly(['deletedAt', 'deletedByUserId', 'deletedByUserName', 'reason'])
+              && after.deletion.deletedAt is string
+              && after.deletion.deletedByUserId == after.updatedByUserId
+              && after.deletion.deletedByUserName is string
+              && after.deletion.reason is string
+              && after.deletion.reason.size() >= 1 && after.deletion.reason.size() <= 300);
+    }
+
     match /invoices/{invoiceId} {
       allow read: if has('Invoices New');
       allow create: if canDo('Invoices New', 'a') && invoiceCreateOk(invoiceId);
-      allow update: if canDo('Invoices New', 'e') && invoiceFieldsOk(request.resource.data)
-        && (invoiceEditOk() || invoicePaymentOk());
+      // Se evalúa UNO de los dos caminos (pasar a Paid o editar): evaluar los dos
+      // pasaba el límite de 1000 expresiones por petición.
+      // Un invoice en la papelera no se edita ni se paga hasta restaurarlo.
+      allow update: if changed().hasAny(['deletion'])
+        ? invoiceDeletionOk()
+        : canDo('Invoices New', 'e') && !invoiceIsDeleted(resource.data)
+          && invoiceFieldsOk(request.resource.data)
+          && (request.resource.data.status == 'paid' && !invoiceIsPaid(resource.data)
+              ? invoicePaymentOk()
+              : invoiceEditOk());
       allow delete: if false;
 
       // Activity: solo se agrega. "created" va en la transacción que crea el
@@ -501,7 +554,8 @@ service cloud.firestore {
         && existsAfter(invoicePath(invoiceId))
         && ((isNewInvoice && canDo('Invoices New', 'a') && e.type in ['created', 'payment_recorded'])
             || (!isNewInvoice && canDo('Invoices New', 'e')
-                && e.type in ['updated', 'note_added', 'photos_updated', 'payment_recorded']));
+                && e.type in ['updated', 'note_added', 'photos_updated', 'payment_recorded'])
+            || (!isNewInvoice && canDo('Invoices New', 'd') && e.type in ['deleted', 'restored']));
     }
 
     function invoicePhotosOk() {

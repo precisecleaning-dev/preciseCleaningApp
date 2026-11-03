@@ -1,46 +1,40 @@
-// Las cuatro tarjetas del resumen: Total Invoiced, Paid, Awaiting Payment y
-// Overdue, con monto y cantidad del conjunto buscado. Elegir una filtra la
-// tabla por ese grupo (solo una a la vez).
+// Las tres tarjetas del resumen: Overdue, Total Outstanding e In Draft, con
+// monto y cantidad del conjunto buscado. Elegir una filtra la tabla por ese
+// grupo (solo una a la vez); tocar la elegida otra vez la quita.
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, CheckCircle2, Clock, FileText } from 'lucide-react';
-import type { InvoiceCardKey, InvoiceCardSummary, InvoiceSummary } from '../invoiceFilters';
+import { AlertTriangle, Clock, FilePen } from 'lucide-react';
+import type { InvoiceCardKey, InvoiceSummary, InvoiceSummaryCardKey } from '../../../types/index';
 import { formatCents } from '../invoiceMath';
 import { pluralize } from '../../../utils/countFormat';
 import './InvoiceSummaryCards.css';
 
 interface SummaryCardConfig {
-  key: InvoiceCardKey;
+  key: InvoiceSummaryCardKey;
   label: string;
   icon: LucideIcon;
+  /** Texto después de la cantidad ("3 invoices · includes overdue"). */
+  detailSuffix: string;
 }
 
 const SUMMARY_CARDS: SummaryCardConfig[] = [
-  { key: 'total', label: 'Total Invoiced', icon: FileText },
-  { key: 'paid', label: 'Paid', icon: CheckCircle2 },
-  { key: 'awaiting', label: 'Awaiting Payment', icon: Clock },
-  { key: 'overdue', label: 'Overdue', icon: AlertTriangle },
+  { key: 'overdue', label: 'Overdue', icon: AlertTriangle, detailSuffix: 'past due date' },
+  { key: 'outstanding', label: 'Total Outstanding', icon: Clock, detailSuffix: 'includes overdue' },
+  { key: 'draft', label: 'In Draft', icon: FilePen, detailSuffix: 'not sent yet' },
 ];
 
 interface InvoiceSummaryCardsProps {
   summary: InvoiceSummary;
   selectedCard: InvoiceCardKey;
-  onSelectCard: (card: InvoiceCardKey) => void;
+  onSelectCard: (card: InvoiceSummaryCardKey) => void;
   isLoading: boolean;
 }
 
-/** Línea de detalle de cada tarjeta. */
-const getCardDetail = (cardKey: InvoiceCardKey, cardSummary: InvoiceCardSummary, summary: InvoiceSummary): string => {
-  const invoiceCount = pluralize(cardSummary.count, 'invoice', 'invoices');
-  if (cardKey === 'paid') return `${invoiceCount} · ${formatCents(summary.paidViaStripe.totalCents)} via Stripe`;
-  if (cardKey === 'awaiting') return `${invoiceCount} · includes overdue`;
-  return invoiceCount;
-};
-
 const InvoiceSummaryCards = ({ summary, selectedCard, onSelectCard, isLoading }: InvoiceSummaryCardsProps) => (
   <section className="invs-grid" aria-label="Payment summary">
-    {SUMMARY_CARDS.map(({ key, label, icon: Icon }) => {
+    {SUMMARY_CARDS.map(({ key, label, icon: Icon, detailSuffix }) => {
       const cardSummary = summary[key];
       const isSelected = selectedCard === key;
+      const detailText = `${pluralize(cardSummary.count, 'invoice', 'invoices')} · ${detailSuffix}`;
       return (
         <button
           key={key}
@@ -58,7 +52,7 @@ const InvoiceSummaryCards = ({ summary, selectedCard, onSelectCard, isLoading }:
           ) : (
             <strong className="invs-value">{formatCents(cardSummary.totalCents)}</strong>
           )}
-          <span className="invs-detail">{isLoading ? 'Loading…' : getCardDetail(key, cardSummary, summary)}</span>
+          <span className="invs-detail">{isLoading ? 'Loading…' : detailText}</span>
         </button>
       );
     })}

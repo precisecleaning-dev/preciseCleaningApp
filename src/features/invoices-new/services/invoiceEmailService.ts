@@ -9,11 +9,10 @@
 // nada de eso.
 // ============================================================================
 import { ref, uploadBytes } from 'firebase/storage';
-import type { Invoice, InvoiceSendRequest, Property } from '../../../types/index';
+import type { InvoiceSendRequest, SendInvoiceEmailInput } from '../../../types/index';
 import { storage } from '../../../config/storage';
 import { callable } from '../../../config/functions';
 import { logActivity } from '../../../services/activityLogService';
-import type { InvoiceActor } from '../../../services/invoicesService';
 import { createSavedInvoicePdfFile } from '../invoicePdfFile';
 import { MAX_INVOICE_PDF_BYTES } from '../invoiceDelivery';
 import { INVOICES_NEW_MODULE } from '../invoicesNewPermissions';
@@ -35,17 +34,6 @@ const toSendErrorMessage = (error: unknown): string => {
   }
   return message;
 };
-
-export interface SendInvoiceEmailInput {
-  /** El invoice con el correo y el enlace ya guardados. */
-  invoice: Invoice;
-  /** Casa del job (null si no está en la ventana de 12 meses): sus fotos van al PDF. */
-  jobProperty: Property | null;
-  to: string;
-  includePdf: boolean;
-  includePaymentLink: boolean;
-  actor: InvoiceActor;
-}
 
 /**
  * Manda el invoice por correo. Lanza un Error con un mensaje para el usuario

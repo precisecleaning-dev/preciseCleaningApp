@@ -1,31 +1,36 @@
 // Formulario Create / Edit Invoice. Se elige el JOB (no hay selector de
-// cliente): el cliente y los montos salen del job y se pueden editar. Pie con
-// solo Cancel y Create Invoice (o Save Changes al editar).
+// cliente): el cliente y los SERVICIOS que se cobran salen del job (no se
+// escriben a mano); se agregan fees porcentuales. Pie con solo Cancel y Create
+// Invoice (o Save Changes al editar).
 // "Preview PDF" muestra el documento provisional (DRAFT al crear) sin guardar.
 // "Send by email": al guardar, manda el PDF y/o el enlace de Stripe. Si el
 // correo falla, el invoice queda guardado y el aviso lo dice (se reintenta con
-// Send Invoice).
+// Send Invoice). Enviarlo pasa un Needs Invoice a Pending (lo hace el servidor).
+// Status: Needs Invoice / Pending / Paid. Elegir Paid al editar registra el
+// pago en la MISMA transacción que los demás cambios.
 import { useState, type FormEvent } from 'react';
-import { CreditCard, Eye, FileText, Image as ImageIcon, Plus, Send, StickyNote } from 'lucide-react';
+import { CreditCard, Eye, FileText, Image as ImageIcon, Percent, Plus, Send, StickyNote } from 'lucide-react';
 import type {
-  Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, InvoiceNote, Property, SystemUser,
+  Actor, Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, InvoiceNote, Property, SystemUser,
 } from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
 import { cavalryClientKeys, houseBusiness } from '../../../shared/utils/businesses';
-import { findCustomer } from '../../../utils/customerDocs';
 import { fullName } from '../../../utils/homeData';
 import {
-  InvoiceChangedError, invoicesService, buildInvoiceNote, type InvoiceActor,
+  InvoiceChangedError, invoicesService, buildInvoiceNote,
 } from '../../../services/invoicesService';
 import { formatCents } from '../invoiceMath';
 import type { InvoicePdfData } from '../invoicePdf';
 import {
-  buildAllJobPhotoItems, buildClientSnapshot, buildJobSnapshot, getInvoiceDefaults,
+  areSameLineItems, buildAllJobPhotoItems, buildClientSnapshot, buildInvoiceLineItems, buildJobSnapshot,
+  getJobAmountsAtIssue,
 } from '../invoiceSnapshot';
 import {
-  getInvoiceFormAmounts, getInvoiceFormDelivery, getInvoiceFormErrors, useInvoiceForm, type InvoiceFormNote,
+  getInvoiceFormCharges, getInvoiceFormDelivery, getInvoiceFormErrors, isRecordingPayment, useInvoiceForm,
+  type InvoiceFormNote,
 } from '../hooks/useInvoiceForm';
+import { isManualStatus, isPaidStatus } from '../invoiceStatus';
 import {
   INVOICE_EMAIL_PATTERN, buildStripePaymentUrl, getDeliveryErrors, isDeliveryRequested,
 } from '../invoiceDelivery';
@@ -38,7 +43,9 @@ import InvoiceDialog from './InvoiceDialog';
 import InvoiceFormSection from './InvoiceFormSection';
 import InvoiceJobPicker from './InvoiceJobPicker';
 import InvoiceDatesFields from './InvoiceDatesFields';
-import InvoiceAmountFields from './InvoiceAmountFields';
+import InvoiceServicesList from './InvoiceServicesList';
+import InvoiceFeesEditor from './InvoiceFeesEditor';
+import InvoiceTotalsSummary from './InvoiceTotalsSummary';
 import InvoiceNotesEditor from './InvoiceNotesEditor';
 import InvoicePhotosOption from './InvoicePhotosOption';
 import InvoicePaymentFields from './InvoicePaymentFields';
@@ -62,7 +69,7 @@ type SaveStep = 'saving' | 'sending' | null;
 
 /** Notas a guardar: las sin cambios quedan igual, las editadas conservan
  *  autor y fecha, las nuevas llevan a quien las escribió; las vacías se van. */
-const buildSavedNotes = (formNotes: InvoiceFormNote[], actor: InvoiceActor): InvoiceNote[] =>
+const buildSavedNotes = (formNotes: InvoiceFormNote[], actor: Actor): InvoiceNote[] =>
   formNotes
     .filter((formNote) => formNote.text.trim() !== '')
     .map((formNote) => {
@@ -74,8 +81,8 @@ const buildSavedNotes = (formNotes: InvoiceFormNote[], actor: InvoiceActor): Inv
 const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }: InvoiceFormModalProps) => {
   const customers = useLiveData('customers');
   const services = useLiveData('services');
+  const products = useLiveData('products');
   const statuses = useLiveData('statuses');
-  const taxes = useLiveData('taxes');
   const { state, actions, isEditing, isPaymentLocked } = useInvoiceForm(invoice);
   const [showAllJobs, setShowAllJobs] = useState(false);
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
@@ -87,25 +94,28 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
 
   const jobOptions = useInvoiceJobOptions(properties, statuses, customers, showAllJobs, state.propertyId);
   const selectedProperty = properties.find((property) => property.id === state.propertyId) ?? null;
-  const jobRecords = useHouseRecords(isEditing ? null : state.propertyId || null);
+  // Servicios cobrados del job: al crear, las líneas del invoice; al editar,
+  // para "Refresh from job" y para avisar si cambiaron.
+  const jobRecords = useHouseRecords(state.propertyId || null);
   const jobInvoices = useJobInvoices(state.propertyId, invoice?.id ?? null);
-  const selectedCustomer = selectedProperty ? findCustomer(customers, selectedProperty.client) : null;
   // Fotos actuales del job (null si el job no está en la ventana: al editar, así
   // no se guarda una selección vacía por no tener el job cargado).
   const jobPhotos = selectedProperty ? buildAllJobPhotoItems(selectedProperty) : null;
   const savedPhotos = useInvoicePhotoSelection(invoice?.id ?? null);
   const photoChoice = usePhotoChoice(savedPhotos.selection, jobPhotos ?? []);
 
-  const jobDefaults = selectedProperty && jobRecords.loaded
-    ? getInvoiceDefaults({
-      property: selectedProperty,
-      billedServices: jobRecords.services,
-      customer: selectedCustomer,
-      defaultTaxPercentage: Number(taxes[0]?.percentage ?? 0),
-    })
+  const jobLineItems = selectedProperty && jobRecords.loaded
+    ? buildInvoiceLineItems(selectedProperty, jobRecords.services, [products, services])
     : null;
-  const amounts = getInvoiceFormAmounts(state, jobDefaults);
-  const errors = getInvoiceFormErrors(state, amounts, isEditing);
+  const charges = getInvoiceFormCharges(state, invoice, jobLineItems);
+  const { totals } = charges;
+  const savedStatus = invoice?.status ?? null;
+  const errors = getInvoiceFormErrors(state, charges, savedStatus);
+  // Edit: los servicios del job ya no son los del invoice (o el invoice no tiene).
+  const canRefreshFromJob = isEditing && !isPaymentLocked && jobLineItems !== null && jobLineItems.length > 0;
+  const hasJobServiceChanges = isEditing && jobLineItems !== null && !!charges.lineItems
+    && !areSameLineItems(jobLineItems, charges.lineItems);
+  const recordsPayment = isRecordingPayment(state, savedStatus);
   const shownErrors = hasTriedSubmit ? errors : {};
 
   const client = invoice?.client ?? (selectedProperty ? buildClientSnapshot(selectedProperty, customers) : null);
@@ -121,11 +131,6 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       : []),
     ...(jobInvoices.hasError ? ['Could not check if this job already has invoices.'] : []),
   ];
-  const isJobAmountDifferent = !!jobDefaults && jobDefaults.jobAmountsAtIssue.servicePriceCents > 0
-    && !jobDefaults.matchesJobFinalCost && state.amountText === null;
-  const jobAmountHint = isJobAmountDifferent && jobDefaults
-    ? `Review the amount: this job's Final Cost is ${formatCents(jobDefaults.jobAmountsAtIssue.finalCostCents)}.`
-    : null;
 
   const title = isEditing ? 'Edit Invoice' : 'Create Invoice';
   const submitLabel = isEditing ? 'Save Changes' : 'Create Invoice';
@@ -144,37 +149,51 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     photoChoice.resetForNewJob();
   };
 
-  const createInvoice = async (actor: InvoiceActor): Promise<{ id: string; number: string }> => {
+  // Edit: trae los servicios actuales del job (se guardan al guardar el invoice).
+  const handleRefreshFromJob = () => {
+    if (jobLineItems) actions.refreshLineItems(jobLineItems);
+  };
+
+  const createInvoice = async (actor: Actor): Promise<{ id: string; number: string }> => {
     if (!selectedProperty || !client) throw new Error('Select a job.');
+    if (!isManualStatus(state.status)) throw new Error('Choose Needs Invoice, Pending or Paid.');
     return invoicesService.create({
       client,
       job: buildJobSnapshot(selectedProperty, services),
       business: houseBusiness(selectedProperty, cavalryClientKeys(customers)),
-      jobAmountsAtIssue: jobDefaults?.jobAmountsAtIssue ?? null,
+      jobAmountsAtIssue: jobRecords.loaded ? getJobAmountsAtIssue(selectedProperty, jobRecords.services) : null,
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
       dueDate: state.dueDate,
-      subtotalCents: amounts.subtotalCents ?? 0,
-      taxRateBps: amounts.taxRateBps ?? 0,
+      lineItems: charges.lineItems ?? [],
+      fees: charges.feeInputs,
       recipientEmail: isDeliveryRequested(delivery) ? savedRecipientEmail : fallbackRecipientEmail,
       paymentLinkUrl: delivery.sendPaymentLink ? savedPaymentLinkUrl : '',
       noteTexts: state.notes.map((note) => note.text),
       photos: photoChoice.toInput(),
       status: state.status,
-      initialPayment: state.status === 'paid' ? state.payment : null,
+      initialPayment: recordsPayment ? state.payment : null,
     }, actor);
   };
 
-  const updateInvoice = async (savedInvoice: Invoice, actor: InvoiceActor): Promise<{ id: string; number: string }> => {
+  const updateInvoice = async (savedInvoice: Invoice, actor: Actor): Promise<{ id: string; number: string }> => {
+    // Needs Invoice ↔ Pending va en el patch; Paid, con su pago (misma transacción).
+    const draftOrPendingStatus = state.status === 'needs_invoice' || state.status === 'pending' ? state.status : null;
+    const changedStatus = draftOrPendingStatus !== savedInvoice.status ? draftOrPendingStatus : null;
     await invoicesService.update(savedInvoice.id, {
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
       dueDate: state.dueDate,
-      ...(isPaymentLocked ? {} : { subtotalCents: amounts.subtotalCents ?? 0, taxRateBps: amounts.taxRateBps ?? 0 }),
+      // Servicios solo si se trajeron del job; fees siempre (el service guarda solo lo que cambió).
+      ...(isPaymentLocked ? {} : {
+        fees: charges.feeInputs,
+        ...(state.refreshedLineItems ? { lineItems: state.refreshedLineItems } : {}),
+      }),
       notes: buildSavedNotes(state.notes, actor),
       ...(isDeliveryRequested(delivery) ? { recipientEmail: savedRecipientEmail } : {}),
       ...(delivery.sendPaymentLink ? { paymentLinkUrl: savedPaymentLinkUrl } : {}),
-    }, actor, savedInvoice.updatedAt);
+      ...(changedStatus ? { status: changedStatus } : {}),
+    }, actor, savedInvoice.updatedAt, recordsPayment ? state.payment : null);
     if (jobPhotos && !savedPhotos.isLoading && photoChoice.isChanged) {
       await invoicesService.updatePhotoSelection(savedInvoice.id, photoChoice.toInput(), actor);
     }
@@ -183,7 +202,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
 
   // Envío después de guardar: un error aquí NO deshace el invoice guardado.
   const emailSavedInvoice = async (
-    invoiceId: string, deliveryChoice: InvoiceDeliveryChoice, actor: InvoiceActor,
+    invoiceId: string, deliveryChoice: InvoiceDeliveryChoice, actor: Actor,
   ): Promise<InvoiceDeliveryOutcome> => {
     try {
       const savedInvoice = await invoicesService.getOne(invoiceId);
@@ -210,7 +229,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const previewPaymentLinkUrl = delivery.sendPaymentLink ? savedPaymentLinkUrl : savedPaymentLinkWithReference;
 
   const handlePreviewPdf = () => {
-    const mainFieldErrors = [errors.job, errors.issueDate, errors.dueDate, errors.amount, errors.taxRate].filter(Boolean);
+    const mainFieldErrors = [errors.job, errors.issueDate, errors.dueDate, errors.services, errors.fees].filter(Boolean);
     const job = invoice?.job ?? (selectedProperty ? buildJobSnapshot(selectedProperty, services) : null);
     if (mainFieldErrors.length > 0 || !client || !job) {
       setHasTriedSubmit(true);
@@ -218,17 +237,20 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     }
     setPreviewData({
       number: invoice?.number ?? null,
-      status: invoice?.status ?? state.status,
+      status: state.status,
       client,
       recipientEmail: isDeliveryRequested(delivery) ? savedRecipientEmail : (invoice?.recipientEmail ?? fallbackRecipientEmail),
       job,
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
       dueDate: state.dueDate,
-      subtotalCents: amounts.subtotalCents ?? 0,
-      taxRateBps: amounts.taxRateBps ?? 0,
-      taxCents: amounts.taxCents,
-      totalCents: amounts.totalCents,
+      lineItems: charges.lineItems ?? [],
+      fees: totals.fees,
+      subtotalCents: totals.subtotalCents,
+      taxRateBps: totals.taxRateBps,
+      taxCents: totals.taxCents,
+      feesCents: totals.feesCents,
+      totalCents: totals.totalCents,
       notes: state.notes.map((note) => note.text),
       paymentLinkUrl: previewPaymentLinkUrl,
       photos: photoChoice.include ? photoChoice.items : [],
@@ -243,7 +265,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       setSaveError('Your user profile is not loaded. Reload the app and try again.');
       return;
     }
-    const actor: InvoiceActor = { id: currentUser.id, name: fullName(currentUser) };
+    const actor: Actor = { id: currentUser.id, name: fullName(currentUser) };
     setSaveStep('saving');
     setSaveError('');
     let saved: { id: string; number: string };
@@ -270,7 +292,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   return (
     <InvoiceDialog
       title={title}
-      subtitle="Choose the job, review the amount and decide how the invoice is recorded."
+      subtitle="Choose the job, review the services it charges and add fees if needed."
       isCloseDisabled={isSaving}
       onClose={onClose}
     >
@@ -308,20 +330,40 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
               issueDateError={shownErrors.issueDate}
               dueDateError={shownErrors.dueDate}
             />
-            <InvoiceAmountFields
-              amountText={amounts.amountText}
-              taxRateText={amounts.taxRateText}
-              onAmountChange={actions.setAmount}
-              onTaxRateChange={actions.setTaxRate}
-              subtotalCents={amounts.subtotalCents ?? 0}
-              taxRateBps={amounts.taxRateBps ?? 0}
-              taxCents={amounts.taxCents}
-              totalCents={amounts.totalCents}
-              isLocked={isPaymentLocked}
-              amountError={shownErrors.amount}
-              taxRateError={shownErrors.taxRate}
-              jobAmountHint={jobAmountHint}
+          </InvoiceFormSection>
+
+          <InvoiceFormSection id="invoice-services-heading" title="Services" icon={FileText}>
+            <InvoiceServicesList
+              lineItems={charges.lineItems}
+              hasJob={!!state.propertyId}
+              error={shownErrors.services}
+              canRefresh={canRefreshFromJob}
+              hasJobChanges={hasJobServiceChanges}
+              isRefreshed={state.refreshedLineItems !== null}
+              onRefresh={handleRefreshFromJob}
             />
+          </InvoiceFormSection>
+
+          <InvoiceFormSection
+            id="invoice-fees-heading"
+            title="Fees"
+            icon={Percent}
+            isOptional
+            actions={isPaymentLocked ? undefined : (
+              <button type="button" className="invf-text-btn" onClick={actions.addFee}>
+                <Plus size={16} aria-hidden="true" /> Add fee
+              </button>
+            )}
+          >
+            <InvoiceFeesEditor
+              fees={state.fees}
+              computedFees={totals.fees}
+              onChangeFee={actions.changeFee}
+              onRemoveFee={actions.removeFee}
+              isLocked={isPaymentLocked}
+              error={shownErrors.fees}
+            />
+            <InvoiceTotalsSummary totals={totals} />
           </InvoiceFormSection>
 
           <InvoiceFormSection
@@ -357,7 +399,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
               onStatusChange={actions.setStatus}
               payment={state.payment}
               onPaymentChange={actions.setPaymentField}
-              savedStatus={invoice?.status ?? null}
+              savedStatus={savedStatus}
               paymentErrors={shownErrors}
             />
           </InvoiceFormSection>
@@ -366,8 +408,8 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
             <InvoiceDeliveryFields
               choice={{ ...state.delivery, recipientEmail: delivery.recipientEmail }}
               onChange={actions.setDelivery}
-              isPaid={state.status === 'paid'}
-              totalText={formatCents(amounts.totalCents)}
+              isPaid={isPaidStatus(state.status)}
+              totalText={formatCents(totals.totalCents)}
               errors={hasTriedSubmit ? deliveryErrors : {}}
             />
           </InvoiceFormSection>

@@ -4,7 +4,7 @@ import { useId } from 'react';
 import type { InvoiceManualMethod, InvoiceManualPaymentInput } from '../../../types/index';
 import type { ManualPaymentErrors } from '../invoicePayment';
 import { MANUAL_PAYMENT_METHODS } from '../invoicePayment';
-import { INVOICE_LIMITS } from '../../../services/invoicesService';
+import { INVOICE_LIMITS } from '../invoiceLimits';
 import DateInput from '../../../shared/components/DateInput';
 import InvoiceFormField from './InvoiceFormField';
 

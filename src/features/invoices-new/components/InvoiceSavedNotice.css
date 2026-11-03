@@ -28,6 +28,23 @@
   flex: 1 1 auto;
 }
 
+.invn-saved-action {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-height: 0;
+  padding: 4px 12px;
+}
+
+.invn-saved-action:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
 .invn-saved-close {
   align-items: center;
   background: none;

@@ -2,7 +2,7 @@
 // (cargando, error de lectura, sin invoices todavía, sin resultados).
 import type { Invoice, YmdDate } from '../../../types/index';
 import PaginationBar from '../../../shared/components/PaginationBar';
-import InvoiceTable from './InvoiceTable';
+import InvoiceTable, { type InvoiceTableSelection } from './InvoiceTable';
 import type { InvoiceRowActions } from './InvoiceRow';
 import InvoicesEmptyState from './InvoicesEmptyState';
 import { INVOICE_PAGE_SIZES } from '../hooks/useInvoiceFilters';
@@ -22,12 +22,15 @@ interface InvoiceRegisterProps extends InvoiceRowActions {
   onPageSizeChange: (pageSize: number) => void;
   onClearFilters: () => void;
   canEdit: boolean;
+  canDelete: boolean;
+  /** Checkboxes de la tabla (null = sin columna de selección). */
+  selection: InvoiceTableSelection | null;
 }
 
 const InvoiceRegister = ({
   pageInvoices, filteredCount, windowCount, isLoading, hasError, today, page, pageCount, pageSize, onPageChange,
-  onPageSizeChange, onClearFilters, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
-  onSendInvoice,
+  onPageSizeChange, onClearFilters, canEdit, canDelete, selection, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf,
+  onDownloadPdf, onSendInvoice, onOpenClientAccount, onDeleteInvoice, onRestoreInvoice,
 }: InvoiceRegisterProps) => {
   if (isLoading) {
     return (
@@ -68,12 +71,17 @@ const InvoiceRegister = ({
         invoices={pageInvoices}
         today={today}
         canEdit={canEdit}
+        canDelete={canDelete}
+        selection={selection}
         onViewInvoice={onViewInvoice}
         onEditInvoice={onEditInvoice}
         onMarkAsPaid={onMarkAsPaid}
         onPreviewPdf={onPreviewPdf}
         onDownloadPdf={onDownloadPdf}
         onSendInvoice={onSendInvoice}
+        onOpenClientAccount={onOpenClientAccount}
+        onDeleteInvoice={onDeleteInvoice}
+        onRestoreInvoice={onRestoreInvoice}
       />
       <PaginationBar
         page={page}

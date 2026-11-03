@@ -17,7 +17,8 @@
      (settings_company/main.email), para que las respuestas lleguen a la oficina.
    · Registro: `delivery` del invoice y eventos de Activity (delivery_requested,
      delivery_sent, delivery_failed). Un error NUNCA queda como enviado.
-   · Enlace de pago enviado a un invoice sin pagar → "Payment Link Sent".
+   · Estado: enlace de pago enviado a un invoice sin pagar → "Payment Link Sent";
+     un borrador (Needs Invoice) enviado sin enlace → "Pending".
    · Candado: mientras un envío del mismo invoice está en proceso (3 min) no se
      acepta otro, así un doble clic no manda dos correos.
    ============================================================================ */
@@ -44,6 +45,17 @@ const MAX_PDF_BYTES = 18 * 1024 * 1024;
 const SENDING_LOCK_MS = 3 * 60 * 1000;
 const INVOICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const PAID_STATUSES = ["paid", "paid_via_stripe"];
+/** Nombre de cada estado en Activity (los mismos de src/features/invoices-new/invoiceStatus.ts).
+ *  `awaiting_payment` es el nombre anterior de Pending (11/2026, invoices de prueba). */
+const STATUS_LABELS: Record<string, string> = {
+  needs_invoice: "Needs Invoice",
+  pending: "Pending",
+  awaiting_payment: "Pending",
+  payment_link_sent: "Payment Link Sent",
+  paid: "Paid",
+  paid_via_stripe: "Paid via Stripe",
+};
+const UNPAID_STATUSES = ["needs_invoice", "pending", "awaiting_payment"];
 const MAX_ERROR_LENGTH = 300;
 
 /** El PDF de un envío solo puede estar en la carpeta de ese invoice (invoiceEmailService.ts). */
@@ -69,6 +81,8 @@ interface InvoiceDoc {
   paymentLinkUrl?: string;
   client?: { name?: string };
   delivery?: { sendCount?: number; lastAt?: string | null; lastResult?: string | null };
+  /** En la papelera (Delete de Invoices New): no se envía. */
+  deletion?: { deletedAt?: string } | null;
 }
 
 interface Actor {
@@ -168,6 +182,9 @@ const startDelivery = (request: SendInvoiceRequest, actor: Actor): Promise<Invoi
     if (!snap.exists) throw new HttpsError("not-found", "This invoice no longer exists.");
     const invoice = snap.data() as InvoiceDoc;
     const delivery = invoice.delivery ?? {};
+    if (invoice.deletion) {
+      throw new HttpsError("failed-precondition", "This invoice was deleted. Restore it before sending it.");
+    }
     const isPaid = PAID_STATUSES.includes(invoice.status);
     if (request.includePaymentLink && isPaid) {
       throw new HttpsError("failed-precondition", "This invoice is paid: it cannot be sent with a payment link.");
@@ -195,7 +212,18 @@ const startDelivery = (request: SendInvoiceRequest, actor: Actor): Promise<Invoi
   });
 };
 
-/** Paso 3: resultado (transacción). Con enlace a un invoice pendiente → Payment Link Sent. */
+/**
+ * Estado después de un envío que salió bien: con el enlace de Stripe, un
+ * invoice sin pagar pasa a Payment Link Sent; sin enlace, un borrador (Needs
+ * Invoice) pasa a Pending porque el cliente ya lo recibió. null = no cambia.
+ */
+const getStatusAfterSend = (status: string, includesPaymentLink: boolean): string | null => {
+  if (!UNPAID_STATUSES.includes(status)) return null;
+  if (includesPaymentLink) return "payment_link_sent";
+  return status === "pending" ? null : "pending";
+};
+
+/** Paso 3: resultado (transacción) y el estado que deja el envío (getStatusAfterSend). */
 const finishDelivery = (request: SendInvoiceRequest, actor: Actor, errorMessage: string | null): Promise<void> => {
   const invoiceRef = db().doc(`invoices/${request.invoiceId}`);
   return db().runTransaction(async (transaction) => {
@@ -208,14 +236,16 @@ const finishDelivery = (request: SendInvoiceRequest, actor: Actor, errorMessage:
         `Email to ${request.to} failed: ${errorMessage}`);
       return;
     }
-    const marksLinkSent = request.includePaymentLink && invoice.status === "awaiting_payment";
+    const nextStatus = getStatusAfterSend(invoice.status, request.includePaymentLink);
     transaction.update(invoiceRef, {
       "delivery.lastResult": "sent",
-      ...(marksLinkSent ? { status: "payment_link_sent" } : {}),
+      ...(nextStatus ? { status: nextStatus } : {}),
     });
+    const statusChange = nextStatus
+      ? [{ field: "Status", before: STATUS_LABELS[invoice.status] ?? invoice.status, after: STATUS_LABELS[nextStatus] }]
+      : [];
     writeEvent(transaction, request.invoiceId, actor, "delivery_sent",
-      `Sent ${describeContent(request)} to ${request.to}`,
-      marksLinkSent ? [{ field: "status", before: "Awaiting Payment", after: "Payment Link Sent" }] : []);
+      `Sent ${describeContent(request)} to ${request.to}`, statusChange);
   });
 };
 

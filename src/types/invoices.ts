@@ -10,18 +10,36 @@
 //   invoice_counters/{YYYY}                 InvoiceCounter (consecutivo del año)
 //
 // Montos en CENTAVOS enteros y tasa en puntos base (8.25% = 825): sumas
-// exactas (Paid + Awaiting = Total) y las reglas pueden validar enteros. La
+// exactas (las tarjetas suman sin redondeos) y las reglas pueden validar enteros. La
 // conversión con el resto de la app (dólares) vive en
 // features/invoices-new/invoiceMath.ts.
 // Cliente y job se COPIAN al crear: editar después el cliente o la casa no
 // cambia un invoice emitido. Ver la nota "Invoices New" de code-notes.md.
 // ============================================================================
-import type { IsoDateTime, YmdDate } from './index';
+import type { Actor, IsoDateTime, Property, YmdDate } from './index';
 
-/** Estado de pago. `payment_link_sent` y `paid_via_stripe` los pone solo el
- *  servidor (envío del correo y webhook de Stripe). Overdue NO es un estado:
- *  se calcula (features/invoices-new/invoiceStatus.ts). */
-export type InvoiceStatus = 'awaiting_payment' | 'payment_link_sent' | 'paid' | 'paid_via_stripe';
+/** Estado guardado, los mismos del módulo Invoices (sin Pre-Paid):
+ *  needs_invoice = borrador, todavía no se envía al cliente · pending = enviado,
+ *  esperando el pago · paid = pago recibido fuera de Stripe. `payment_link_sent`
+ *  y `paid_via_stripe` los pone solo el servidor (envío del correo y webhook de
+ *  Stripe). Overdue NO se guarda: se calcula (features/invoices-new/invoiceStatus.ts). */
+export type InvoiceStatus = 'needs_invoice' | 'pending' | 'payment_link_sent' | 'paid' | 'paid_via_stripe';
+
+/** Estados que el usuario elige en Create / Edit Invoice. */
+export type InvoiceManualStatus = 'needs_invoice' | 'pending' | 'paid';
+
+/** Estado que ve el usuario (badge, filtro): el guardado, Overdue (calculado) o
+ *  Deleted (en la papelera: `deletion` no es null). */
+export type InvoiceDisplayStatus = InvoiceStatus | 'overdue' | 'deleted';
+
+/** Invoice en la papelera (Delete): sale de la lista y de los totales, conserva
+ *  su número y su Activity, y se puede restaurar. Nunca uno pagado. */
+export interface InvoiceDeletion {
+  deletedAt: IsoDateTime;
+  deletedByUserId: string; //           FK → system_users
+  deletedByUserName: string; //         copia del nombre
+  reason: string; //                    motivo obligatorio (1 a 300)
+}
 
 /** Plazo de pago: al recibir, 7, 15 o 30 días después de la emisión, o fecha elegida. */
 export type InvoicePaymentTerms = 'due_on_receipt' | 'net_7' | 'net_15' | 'net_30' | 'custom';
@@ -62,6 +80,51 @@ export interface InvoiceJobAmounts {
   servicePriceCents: number; //         Service Price del job
   taxesCents: number; //                Taxes del job
   finalCostCents: number; //            Final Cost del job
+}
+
+/** Cómo trata su impuesto un servicio del invoice (regla "Total Minus Tax" de
+ *  AppSheet, shared/utils/billedServiceAmounts.ts): added = Apply Tax Yes +
+ *  Minus Tax No (se suma) · subtracted = No + Yes (se resta del precio) · none =
+ *  cualquier otra combinación o casa exenta (taxExempt). */
+export type InvoiceLineTaxMode = 'added' | 'subtracted' | 'none';
+
+/** Un servicio cobrado del job (billing_services) COPIADO al crear el invoice o
+ *  al usar "Refresh from job". Editar después el servicio en el job no lo cambia. */
+export interface InvoiceLineItem {
+  billingServiceId: string; //          FK → billing_services
+  serviceId: string; //                 FK → settings_products / settings_services
+  serviceName: string; //               copia del nombre del servicio
+  notes: string; //                     notas del servicio en el job ('' si no tiene)
+  quantity: number;
+  unitPriceCents: number; //            precio unitario sin impuesto
+  amountCents: number; //               lo que suma al subtotal: precio sin impuesto (con subtracted, ya sin el impuesto)
+  taxMode: InvoiceLineTaxMode;
+  taxRateBps: number; //                tasa del servicio (0 con none)
+  taxCents: number; //                  impuesto que se AGREGA al total (0 si no es added)
+}
+
+/** Fee porcentual del invoice: % del subtotal de servicios, sin impuesto
+ *  (decisión de Omar, 11/2026). */
+export interface InvoiceFee {
+  id: string; //                        id local (crypto.randomUUID)
+  label: string; //                     nombre libre ("Card processing"), hasta 60
+  rateBps: number; //                   1 a 10000 (3% = 300)
+  amountCents: number; //               round(subtotalCents × rateBps / 10000)
+}
+
+/** Fee que escribe el usuario: el monto lo calcula invoiceMath.computeInvoiceTotals. */
+export type InvoiceFeeInput = Pick<InvoiceFee, 'id' | 'label' | 'rateBps'>;
+
+/** Montos de un invoice a partir de sus servicios y fees. */
+export interface InvoiceTotals {
+  subtotalCents: number; //             Σ amountCents de los servicios
+  taxCents: number; //                  Σ impuesto que se agrega
+  /** Tasa común de los servicios con impuesto que se agrega; 0 si no hay o
+   *  si tienen tasas distintas (el PDF dice "Tax" sin %). */
+  taxRateBps: number;
+  fees: InvoiceFee[];
+  feesCents: number;
+  totalCents: number; //                subtotal + impuesto + fees
 }
 
 /** Nota del invoice: sale en el PDF (no es una nota privada del personal). */
@@ -119,10 +182,13 @@ export interface Invoice {
   issueDate: YmdDate; //                fecha de emisión
   paymentTerms: InvoicePaymentTerms;
   dueDate: YmdDate; //                  vencimiento (no antes de la emisión)
-  subtotalCents: number; //             monto antes del impuesto (≥ 1)
-  taxRateBps: number; //                tasa en puntos base: 0 a 10000 (8.25% = 825)
-  taxCents: number; //                  round(subtotalCents * taxRateBps / 10000)
-  totalCents: number; //                subtotalCents + taxCents
+  lineItems: InvoiceLineItem[]; //      servicios cobrados del job, copiados ([] en invoices de prueba viejos)
+  fees: InvoiceFee[]; //                fees porcentuales (0 a 10)
+  subtotalCents: number; //             Σ amountCents de los servicios (≥ 1)
+  taxRateBps: number; //                tasa común del impuesto (InvoiceTotals.taxRateBps)
+  taxCents: number; //                  Σ impuesto que se agrega
+  feesCents: number; //                 Σ fees
+  totalCents: number; //                subtotalCents + taxCents + feesCents
   propertyId: string; //                FK → properties (igual a job.propertyId; para where())
   customerId: string | null; //         FK → customers (igual a client.customerId; para where())
   business: InvoiceBusiness; //         empresa del job al emitir
@@ -135,6 +201,8 @@ export interface Invoice {
   payment: InvoicePayment | null; //    null = sin pagar
   delivery: InvoiceDeliverySummary; //  SOLO SERVIDOR
   paymentLinkUrl: string; //            enlace de Stripe pegado ('' = sin enlace)
+  /** En la papelera. Ausente o null = activo (no se escribe al crear). */
+  deletion?: InvoiceDeletion | null;
   searchText: string; //                número, cliente y job en minúsculas (búsqueda)
   createdAt: IsoDateTime; //            no cambia
   createdByUserId: string; //           FK → system_users
@@ -167,7 +235,8 @@ export interface InvoicePhotoSelection {
 export type InvoiceEventType =
   | 'created' | 'updated' | 'note_added' | 'photos_updated'
   | 'payment_recorded' | 'payment_confirmed_stripe'
-  | 'delivery_requested' | 'delivery_sent' | 'delivery_failed';
+  | 'delivery_requested' | 'delivery_sent' | 'delivery_failed'
+  | 'deleted' | 'restored';
 
 /** Un campo que cambió (mismo formato que activity_logs). */
 export interface InvoiceFieldChange {
@@ -203,6 +272,7 @@ export interface InvoicesNewRights {
   canView: boolean; //                  ver la lista, el detalle, el PDF y Activity
   canCreate: boolean; //                crear invoices (Add)
   canEdit: boolean; //                  editar, notas, fotos, enviar y registrar pagos (Edit)
+  canDelete: boolean; //                mandar a la papelera y restaurar, nunca un pagado (Delete)
 }
 
 /** Datos de un pago manual que escribe el usuario. */
@@ -225,13 +295,13 @@ export interface InvoiceCreateInput {
   issueDate: YmdDate;
   paymentTerms: InvoicePaymentTerms;
   dueDate: YmdDate;
-  subtotalCents: number;
-  taxRateBps: number;
+  lineItems: InvoiceLineItem[]; //      servicios del job (al menos uno)
+  fees: InvoiceFeeInput[];
   recipientEmail: string;
   paymentLinkUrl: string;
   noteTexts: string[]; //               las vacías se descartan
   photos: InvoicePhotoSelectionInput;
-  status: 'awaiting_payment' | 'paid';
+  status: InvoiceManualStatus;
   initialPayment: InvoiceManualPaymentInput | null; // obligatorio si status = 'paid'
 }
 
@@ -258,8 +328,142 @@ export type InvoiceDeliveryOutcome =
   | { status: 'sent'; to: string; missingPhotoCount: number }
   | { status: 'failed'; message: string };
 
+/** De quién es una cuenta de cliente (Client account): su customerId o, si el
+ *  invoice no encontró al cliente al crearse, su clientRef (properties.client). */
+export interface ClientAccountKey {
+  customerId: string | null;
+  clientRef: string;
+  name: string;
+}
+
+/** Tarjeta elegida en la cuenta del cliente ('all' = ninguna). */
+export type ClientAccountCardKey = 'all' | 'outstanding' | 'overdue' | 'paid' | 'draft';
+
+/** Un pago de la pestaña Payments: el pago y su invoice. */
+export interface ClientAccountPayment {
+  invoice: Invoice;
+  payment: InvoicePayment;
+}
+
+/** El patch tal como se guarda: los fees ya llevan su monto (invoicesService.update). */
+export type InvoiceNormalizedPatch = Omit<InvoicePatch, 'fees'> & { fees?: InvoiceFee[] };
+
+/** Un invoice que una acción en bloque no hizo (saltado o con error), y por qué. */
+export interface InvoiceBulkIssue {
+  invoice: Invoice;
+  reason: string;
+}
+
+/** Resultado de Mark as Paid o Send invoice en bloque. */
+export interface InvoiceBulkResult {
+  doneInvoices: Invoice[]; //           pagados o enviados
+  skipped: InvoiceBulkIssue[]; //       no se intentaron (ya pagado, sin correo, sin enlace…)
+  failed: InvoiceBulkIssue[]; //        se intentaron y fallaron
+}
+
+/** Un envío de Send invoice en bloque: cada invoice a SU cliente. */
+export interface InvoiceBulkSendItem {
+  invoice: Invoice;
+  to: string;
+  includePdf: boolean;
+  includePaymentLink: boolean;
+}
+
 /** Campos que el formulario de Edit Invoice puede cambiar. Cliente, job y
- *  número no cambian; en un invoice pagado tampoco subtotal ni tasa. */
+ *  número no cambian; en un invoice pagado tampoco servicios ni fees (los
+ *  montos los recalcula el service). El estado solo va de Needs Invoice a
+ *  Pending o al revés: Paid se registra con su pago (invoicesService.update
+ *  con `manualPayment`, o Mark as Paid). */
 export type InvoicePatch = Partial<Pick<Invoice,
-  'issueDate' | 'paymentTerms' | 'dueDate' | 'subtotalCents' | 'taxRateBps' | 'recipientEmail' | 'paymentLinkUrl' | 'notes'
->>;
+  'issueDate' | 'paymentTerms' | 'dueDate' | 'lineItems' | 'recipientEmail' | 'paymentLinkUrl' | 'notes'
+> & { status: Exclude<InvoiceManualStatus, 'paid'>; fees: InvoiceFeeInput[] }>;
+
+// ---------------------------------------------------------------------------
+// Lista, tarjetas, avisos y acciones en bloque (features/invoices-new)
+// ---------------------------------------------------------------------------
+
+/** Tarjeta del resumen (y grupo de la tabla); 'all' = sin tarjeta elegida. */
+export type InvoiceCardKey = 'all' | 'overdue' | 'outstanding' | 'draft';
+
+/** Tarjetas que se ven (todas menos 'all'). */
+export type InvoiceSummaryCardKey = Exclude<InvoiceCardKey, 'all'>;
+
+/** Campo de fecha del filtro de rango. */
+export type InvoiceDateField = 'issueDate' | 'dueDate';
+
+/** Rango de fechas: extremos inclusivos; '' = sin límite de ese lado. */
+export interface InvoiceDateRange {
+  field: InvoiceDateField;
+  from: YmdDate;
+  to: YmdDate;
+}
+
+/** Monto y cantidad de una tarjeta. */
+export interface InvoiceCardSummary {
+  count: number;
+  totalCents: number;
+}
+
+/** Overdue = enviados y vencidos · Outstanding = enviados sin pagar (incluye
+ *  los vencidos) · Draft = Needs Invoice (todavía no se envían). */
+export type InvoiceSummary = Record<InvoiceSummaryCardKey, InvoiceCardSummary>;
+
+/** Filtros de la lista (hooks/useInvoiceFilters.ts). */
+export interface InvoiceFiltersState {
+  search: string;
+  card: InvoiceCardKey;
+  status: InvoiceDisplayStatus | 'all';
+  dateRange: InvoiceDateRange;
+  page: number;
+  pageSize: number;
+}
+
+/** Tarjetas de la cuenta del cliente (todas menos 'all'). */
+export type ClientAccountSummaryKey = Exclude<ClientAccountCardKey, 'all'>;
+
+export type ClientAccountSummary = Record<ClientAccountSummaryKey, InvoiceCardSummary>;
+
+/** Tono del aviso de la página. */
+export type InvoiceNoticeTone = 'success' | 'info' | 'error';
+
+/** Botón del aviso ("Undo"). */
+export interface InvoiceNoticeAction {
+  label: string;
+  onAction: () => void;
+}
+
+/** Qué hace Mark as Paid en bloque con los invoices marcados (invoiceBulk.ts). */
+export interface BulkPaymentPlan {
+  /** Sin pagar: se les registra el pago. */
+  unpaidInvoices: Invoice[];
+  /** Ya pagados: se saltan. */
+  skipped: InvoiceBulkIssue[];
+  /** Suma de los totales que se van a registrar. */
+  totalCents: number;
+  /** Emisión más reciente: la fecha de pago no puede ser anterior ('' sin invoices). */
+  latestIssueDate: YmdDate;
+}
+
+/** Qué se manda en Send invoice en bloque. */
+export interface BulkSendOptions {
+  sendPdf: boolean;
+  sendPaymentLink: boolean;
+}
+
+/** Qué hace Send invoice en bloque con los invoices marcados. */
+export interface BulkSendPlan {
+  items: InvoiceBulkSendItem[];
+  skipped: InvoiceBulkIssue[];
+}
+
+/** Lo que necesita un envío por correo (services/invoiceEmailService.ts). */
+export interface SendInvoiceEmailInput {
+  /** El invoice con el correo y el enlace ya guardados. */
+  invoice: Invoice;
+  /** Casa del job (null si no está en la ventana de 12 meses): sus fotos van al PDF. */
+  jobProperty: Property | null;
+  to: string;
+  includePdf: boolean;
+  includePaymentLink: boolean;
+  actor: Actor;
+}

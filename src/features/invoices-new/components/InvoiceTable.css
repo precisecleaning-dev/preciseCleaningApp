@@ -42,7 +42,7 @@
 
 .invt-table {
   border-collapse: collapse;
-  min-width: 820px;
+  min-width: 860px;
   width: 100%;
 }
 
@@ -77,6 +77,36 @@
   cursor: pointer;
 }
 
+.invt-table tbody tr.selected td {
+  background: #eef2ff;
+}
+
+/* Columna de selección. El área para tocar es toda la celda (el label la
+   llena); min-height 0 en el checkbox quita el mínimo táctil global de 48 px
+   (index.css), que agrandaría cada fila. */
+.invt-table .invt-select {
+  padding: 0;
+  width: 1%;
+}
+
+.invt-select-label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 6px 0 16px;
+}
+
+.invt-checkbox {
+  accent-color: #1d3fcf;
+  cursor: pointer;
+  height: 18px;
+  margin: 0;
+  min-height: 0;
+  width: 18px;
+}
+
 .invt-number {
   background: none;
   border: 0;
@@ -108,6 +138,23 @@
 .invt-client-name {
   color: #0f172a;
   font-weight: 600;
+}
+
+/* Nombre del cliente como botón: abre su cuenta (ClientAccountModal). */
+.invt-client-btn {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.invt-client-btn:hover {
+  color: #1d3fcf;
+  text-decoration: underline;
 }
 
 .invt-job {

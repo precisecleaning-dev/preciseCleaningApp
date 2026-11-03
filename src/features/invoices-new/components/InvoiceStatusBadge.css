@@ -8,9 +8,24 @@
   white-space: nowrap;
 }
 
-.invb-badge.status-awaiting_payment {
+.invb-badge.status-needs_invoice {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.invb-badge.status-pending {
   background: #fef3c7;
   color: #92400e;
+}
+
+.invb-badge.status-deleted {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.invb-badge.status-overdue {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .invb-badge.status-payment_link_sent {

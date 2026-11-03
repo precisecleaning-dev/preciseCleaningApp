@@ -1,27 +1,27 @@
 // Barra de filtros de la lista: búsqueda (número, cliente o job), estado
-// puntual, rango de fechas y Clear filters.
+// puntual (el que se ve, con Overdue), rango de fechas y Clear filters.
 import { Search } from 'lucide-react';
-import type { InvoiceStatus } from '../../../types/index';
-import type { InvoiceDateField, InvoiceDateRange } from '../invoiceFilters';
-import { INVOICE_STATUS_LABELS } from '../invoiceStatus';
+import type { InvoiceDateField, InvoiceDateRange, InvoiceDisplayStatus } from '../../../types/index';
+import { INVOICE_DISPLAY_STATUSES, INVOICE_STATUS_LABELS } from '../invoiceStatus';
 import DateRangePopover from '../../../shared/components/DateRangePopover';
 import './InvoiceFiltersBar.css';
 
-const STATUS_OPTIONS: (InvoiceStatus | 'all')[] = ['all', 'awaiting_payment', 'payment_link_sent', 'paid', 'paid_via_stripe'];
+/** Deleted va al final: muestra solo los invoices de la papelera. */
+const STATUS_OPTIONS: (InvoiceDisplayStatus | 'all')[] = ['all', ...INVOICE_DISPLAY_STATUSES, 'deleted'];
 
 const DATE_FIELD_OPTIONS: { value: InvoiceDateField; label: string }[] = [
   { value: 'issueDate', label: 'Issue date' },
   { value: 'dueDate', label: 'Due date' },
 ];
 
-const getStatusOptionLabel = (status: InvoiceStatus | 'all'): string =>
+const getStatusOptionLabel = (status: InvoiceDisplayStatus | 'all'): string =>
   (status === 'all' ? 'All statuses' : INVOICE_STATUS_LABELS[status]);
 
 interface InvoiceFiltersBarProps {
   search: string;
   onSearchChange: (search: string) => void;
-  status: InvoiceStatus | 'all';
-  onStatusChange: (status: InvoiceStatus | 'all') => void;
+  status: InvoiceDisplayStatus | 'all';
+  onStatusChange: (status: InvoiceDisplayStatus | 'all') => void;
   dateRange: InvoiceDateRange;
   onDateRangeChange: (dateRange: InvoiceDateRange) => void;
   hasActiveFilters: boolean;
@@ -48,7 +48,7 @@ const InvoiceFiltersBar = ({
       className="invfb-select"
       aria-label="Payment status"
       value={status}
-      onChange={(event) => onStatusChange(event.target.value as InvoiceStatus | 'all')}
+      onChange={(event) => onStatusChange(event.target.value as InvoiceDisplayStatus | 'all')}
     >
       {STATUS_OPTIONS.map((statusOption) => (
         <option key={statusOption} value={statusOption}>{getStatusOptionLabel(statusOption)}</option>

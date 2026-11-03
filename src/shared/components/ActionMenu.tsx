@@ -15,6 +15,8 @@ export interface ActionMenuItem {
   label: string;
   icon: LucideIcon;
   onSelect: () => void;
+  /** 'danger' = acción destructiva (Delete): en rojo. */
+  tone?: 'danger';
 }
 
 interface ActionMenuProps {
@@ -131,7 +133,13 @@ const ActionMenu = ({ label, items }: ActionMenuProps) => {
           onKeyDown={handleMenuKeyDown}
         >
           {items.map((item) => (
-            <button key={item.key} type="button" role="menuitem" className="acm-item" onClick={() => handleSelect(item)}>
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              className={`acm-item${item.tone === 'danger' ? ' is-danger' : ''}`}
+              onClick={() => handleSelect(item)}
+            >
               <item.icon size={16} aria-hidden="true" />
               {item.label}
             </button>

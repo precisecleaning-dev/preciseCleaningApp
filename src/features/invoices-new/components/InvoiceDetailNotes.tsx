@@ -2,7 +2,8 @@
 // caja para agregar una nueva.
 import { useState, type FormEvent } from 'react';
 import type { Invoice, SystemUser } from '../../../types/index';
-import { invoicesService, INVOICE_LIMITS } from '../../../services/invoicesService';
+import { invoicesService } from '../../../services/invoicesService';
+import { INVOICE_LIMITS } from '../invoiceLimits';
 import { formatDateTime } from '../../../utils/dateFormat';
 import { fullName } from '../../../utils/homeData';
 

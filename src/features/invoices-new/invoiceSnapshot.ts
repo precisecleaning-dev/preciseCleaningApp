@@ -1,17 +1,18 @@
 // src/features/invoices-new/invoiceSnapshot.ts
 // ============================================================================
 // Lo que el invoice COPIA del job (casa de `properties`) y de su cliente al
-// crearse, y los montos con que se prellena el formulario. El usuario elige
-// el job; el cliente sale del job (no hay selector de cliente).
+// crearse: cliente, job y sus servicios cobrados (billing_services) como
+// líneas. El usuario elige el job; el cliente y los montos salen del job (no
+// hay selector de cliente ni monto escrito a mano, decisión de Omar 11/2026).
 // ============================================================================
 import type {
-  BilledServiceAmounts, Customer, InvoiceClientSnapshot, InvoiceJobAmounts, InvoiceJobSnapshot, InvoicePhotoItem,
-  Property, Service,
+  Customer, InvoiceClientSnapshot, InvoiceJobAmounts, InvoiceJobSnapshot, InvoiceLineItem, InvoiceLineTaxMode,
+  InvoicePhotoItem, Property, ServiceRecord, Service,
 } from '../../types/index';
 import { findCustomer } from '../../utils/customerDocs';
 import { getJobFinancials } from '../../utils/jobFinancials';
-import { getBilledServiceAmounts, getServiceTaxSign } from '../../shared/utils/billedServiceAmounts';
-import { computeTotals, percentToBps, toCents } from './invoiceMath';
+import { getBilledServiceAmounts } from '../../shared/utils/billedServiceAmounts';
+import { computeTax, percentToBps, toCents } from './invoiceMath';
 
 /** Datos del cliente del job, copiados tal como están hoy. */
 export const buildClientSnapshot = (property: Property, customers: Customer[]): InvoiceClientSnapshot => {
@@ -45,74 +46,103 @@ export const buildAllJobPhotoItems = (property: Property): InvoicePhotoItem[] =>
   ...(property.afterPhotos ?? []).map((url, order) => ({ url, category: 'after' as const, order })),
 ];
 
-interface InvoiceDefaultsInput {
-  property: Property;
-  /** Servicios cobrados del job (billing_services con su propertyId). */
-  billedServices: BilledServiceAmounts[];
-  /** Cliente del job (findCustomer), para saber si factura con impuesto. */
-  customer: Customer | null;
-  /** Tasa del catálogo de impuestos (settings_tax) para un job sin servicios. */
-  defaultTaxPercentage: number;
+/** Catálogo donde se busca el nombre de un servicio cobrado ({ id, name }). */
+interface NamedCatalogItem {
+  id: string;
+  name: string;
 }
 
-/** Montos con que abre el formulario y lo que decía el job al emitir. */
-export interface InvoiceDefaults {
-  subtotalCents: number;
-  taxRateBps: number;
-  jobAmountsAtIssue: InvoiceJobAmounts;
-  /** ¿subtotal + impuesto da exactamente el Final Cost del job? Si no (tasas
-   *  mezcladas entre servicios), el formulario avisa para revisar el monto. */
-  matchesJobFinalCost: boolean;
-}
-
-/** Tasa de un servicio que SUMA impuesto (Apply Tax Yes / Minus Tax No), en
- *  puntos base. null si ninguno lo suma. */
-const getAddedTaxRateBps = (billedServices: BilledServiceAmounts[]): number | null => {
-  const taxedService = billedServices.find(
-    (billedService) => getServiceTaxSign(billedService.applyTax, billedService.minusTax) === 1,
-  );
-  if (!taxedService) return null;
-  const { basePrice, signedTax } = getBilledServiceAmounts(taxedService);
-  return basePrice > 0 ? percentToBps((signedTax / basePrice) * 100) : null;
+/** Nombre del servicio: primero en settings_products y después en
+ *  settings_services, como getServiceName de useHouseCatalogs. */
+const findServiceName = (serviceId: string, catalogs: readonly (readonly NamedCatalogItem[])[]): string => {
+  const normalizedId = serviceId.toLowerCase().trim();
+  if (!normalizedId) return '';
+  const isSameItem = (item: NamedCatalogItem) =>
+    String(item.id).toLowerCase().trim() === normalizedId || String(item.name).toLowerCase().trim() === normalizedId;
+  for (const catalog of catalogs) {
+    const foundItem = catalog.find(isSameItem);
+    if (foundItem) return foundItem.name;
+  }
+  return '';
 };
 
+const toNumberOr = (value: unknown, fallback: number): number => {
+  const parsedNumber = typeof value === 'number' ? value : Number(value);
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(parsedNumber) ? parsedNumber : fallback;
+};
+
+/** Orden de las líneas: como se agregaron en el job (createdAt) y, sin fecha, por id. */
+const compareBilledServices = (serviceA: ServiceRecord, serviceB: ServiceRecord): number =>
+  String(serviceA.createdAt ?? '').localeCompare(String(serviceB.createdAt ?? ''))
+  || String(serviceA.id ?? '').localeCompare(String(serviceB.id ?? ''));
+
 /**
- * Prellena el formulario con las finanzas del job (utils/jobFinancials.ts,
- * decisión del usuario: editables):
- *  - Sin servicios cobrados: subtotal 0 y la tasa del catálogo, o 0 si el job
- *    es exento o el cliente no factura con impuesto.
- *  - Con algún servicio que RESTA el impuesto (Minus Tax): el invoice no puede
- *    restar impuesto, así que subtotal = Final Cost del job y tasa 0.
- *  - Si no: subtotal = Service Price y la tasa del servicio que suma impuesto
- *    (0 si ninguno lo suma o el job es exento).
+ * Un servicio cobrado del job como línea del invoice, con las MISMAS reglas
+ * que las finanzas del job (getBilledServiceAmounts, utils/jobFinancials.ts):
+ *  - added (Apply Tax Yes + Minus Tax No): monto = precio sin impuesto; el
+ *    impuesto se suma aparte.
+ *  - subtracted (No + Yes): monto = precio − impuesto; no se suma impuesto.
+ *  - none (otra combinación, registro viejo con solo `total`, o casa exenta):
+ *    monto = precio.
+ * Sin fees, la suma de las líneas da el Final Cost del job.
  */
-export const getInvoiceDefaults = ({
-  property, billedServices, customer, defaultTaxPercentage,
-}: InvoiceDefaultsInput): InvoiceDefaults => {
+const toLineItem = (billedService: ServiceRecord, isTaxExempt: boolean, serviceName: string): InvoiceLineItem => {
+  const { basePrice, signedTax } = getBilledServiceAmounts(billedService);
+  const baseCents = toCents(basePrice);
+  const taxMode: InvoiceLineTaxMode = isTaxExempt || signedTax === 0 ? 'none' : signedTax > 0 ? 'added' : 'subtracted';
+  const taxRateBps = taxMode === 'none' || basePrice === 0 ? 0 : percentToBps((Math.abs(signedTax) / basePrice) * 100);
+  const lineTaxCents = computeTax(baseCents, taxRateBps);
+  const quantity = toNumberOr(billedService.quantity, 1);
+  return {
+    billingServiceId: billedService.id ?? '',
+    serviceId: billedService.serviceId ?? '',
+    serviceName,
+    notes: String(billedService.notes ?? '').trim(),
+    quantity,
+    unitPriceCents: toCents(toNumberOr(billedService.price, quantity > 0 ? basePrice / quantity : basePrice)),
+    amountCents: taxMode === 'subtracted' ? baseCents - lineTaxCents : baseCents,
+    taxMode,
+    taxRateBps,
+    taxCents: taxMode === 'added' ? lineTaxCents : 0,
+  };
+};
+
+/** Líneas del invoice con los servicios cobrados del job (billing_services). */
+export const buildInvoiceLineItems = (
+  property: Property,
+  billedServices: readonly ServiceRecord[],
+  catalogs: readonly (readonly NamedCatalogItem[])[],
+): InvoiceLineItem[] =>
+  [...billedServices]
+    .sort(compareBilledServices)
+    .map((billedService) => toLineItem(
+      billedService,
+      !!property.taxExempt,
+      findServiceName(billedService.serviceId ?? '', catalogs) || 'Service',
+    ));
+
+/** ¿Las líneas son las mismas? (para avisar que los servicios del job cambiaron). */
+export const areSameLineItems = (lineItemsA: readonly InvoiceLineItem[], lineItemsB: readonly InvoiceLineItem[]): boolean =>
+  lineItemsA.length === lineItemsB.length
+  && lineItemsA.every((lineItemA, lineIndex) => {
+    const lineItemB = lineItemsB[lineIndex];
+    return lineItemA.billingServiceId === lineItemB.billingServiceId
+      && lineItemA.serviceName === lineItemB.serviceName
+      && lineItemA.notes === lineItemB.notes
+      && lineItemA.quantity === lineItemB.quantity
+      && lineItemA.unitPriceCents === lineItemB.unitPriceCents
+      && lineItemA.amountCents === lineItemB.amountCents
+      && lineItemA.taxMode === lineItemB.taxMode
+      && lineItemA.taxRateBps === lineItemB.taxRateBps
+      && lineItemA.taxCents === lineItemB.taxCents;
+  });
+
+/** Montos que tenía el job al emitir (auditoría: jobAmountsAtIssue). */
+export const getJobAmountsAtIssue = (property: Property, billedServices: ServiceRecord[]): InvoiceJobAmounts => {
   const jobFinancials = getJobFinancials(property, billedServices, []);
-  const jobAmountsAtIssue: InvoiceJobAmounts = {
+  return {
     servicePriceCents: toCents(jobFinancials.servicePrice),
     taxesCents: toCents(jobFinancials.taxes),
     finalCostCents: toCents(jobFinancials.finalCost),
-  };
-
-  if (billedServices.length === 0) {
-    const isTaxFree = !!property.taxExempt || customer?.applyTax === 'No';
-    const taxRateBps = isTaxFree ? 0 : percentToBps(defaultTaxPercentage);
-    return { subtotalCents: 0, taxRateBps, jobAmountsAtIssue, matchesJobFinalCost: false };
-  }
-
-  const hasSubtractedTax = billedServices.some(
-    (billedService) => getServiceTaxSign(billedService.applyTax, billedService.minusTax) === -1,
-  );
-  const subtotalCents = hasSubtractedTax ? jobAmountsAtIssue.finalCostCents : jobAmountsAtIssue.servicePriceCents;
-  const addedTaxRateBps = hasSubtractedTax || property.taxExempt ? null : getAddedTaxRateBps(billedServices);
-  const taxRateBps = addedTaxRateBps ?? 0;
-  const { totalCents } = computeTotals(subtotalCents, taxRateBps);
-  return {
-    subtotalCents,
-    taxRateBps,
-    jobAmountsAtIssue,
-    matchesJobFinalCost: totalCents === jobAmountsAtIssue.finalCostCents,
   };
 };

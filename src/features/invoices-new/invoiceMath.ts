@@ -4,7 +4,9 @@
 // enteros y la tasa en puntos base (8.25% = 825). Aquí está la ÚNICA
 // conversión con el resto de la app, que trabaja en dólares (jobFinancials).
 // ============================================================================
-import type { InvoicePaymentTerms, InvoiceJobSnapshot, YmdDate } from '../../types/index';
+import type {
+  InvoiceFeeInput, InvoiceJobSnapshot, InvoiceLineItem, InvoicePaymentTerms, InvoiceTotals, YmdDate,
+} from '../../types/index';
 import { money } from '../../utils/jobFinancials';
 
 /** Días que suma cada plazo a la fecha de emisión (custom no suma: se elige). */
@@ -45,10 +47,42 @@ export const bpsToPercent = (basisPoints: number): number => basisPoints / 100;
 export const computeTax = (subtotalCents: number, taxRateBps: number): number =>
   Math.round((subtotalCents * taxRateBps) / BASIS_POINTS_PER_UNIT);
 
-/** Impuesto y total de un subtotal: USD 100 al 10% → { taxCents: 1000, totalCents: 11000 }. */
-export const computeTotals = (subtotalCents: number, taxRateBps: number) => {
-  const taxCents = computeTax(subtotalCents, taxRateBps);
-  return { taxCents, totalCents: subtotalCents + taxCents };
+/** Monto de un fee: round(subtotal × tasa). $200.00 al 3% (300 bps) → 600. */
+export const computeFeeCents = (subtotalCents: number, rateBps: number): number =>
+  Math.round((subtotalCents * rateBps) / BASIS_POINTS_PER_UNIT);
+
+/**
+ * Montos del invoice con sus servicios y fees (decisión de Omar, 11/2026):
+ * subtotal = Σ servicios sin el impuesto que se agrega · impuesto = Σ de esos
+ * impuestos · cada fee = su % del SUBTOTAL (sin impuesto, el fee no paga
+ * impuesto) · total = subtotal + impuesto + fees. Sin fees, el total es el
+ * Final Cost del job (utils/jobFinancials.ts).
+ * Ej.: un servicio de $200.00 al 8.25% + fee de 3% → 20000 + 1650 + 600 = 22250.
+ */
+export const computeInvoiceTotals = (
+  lineItems: readonly InvoiceLineItem[], feeInputs: readonly InvoiceFeeInput[],
+): InvoiceTotals => {
+  const subtotalCents = lineItems.reduce((total, lineItem) => total + lineItem.amountCents, 0);
+  const taxCents = lineItems.reduce((total, lineItem) => total + lineItem.taxCents, 0);
+  const addedTaxRates = [...new Set(
+    lineItems.filter((lineItem) => lineItem.taxMode === 'added').map((lineItem) => lineItem.taxRateBps),
+  )];
+  // Claves en orden alfabético: el service compara fees guardados con los del formulario.
+  const fees = feeInputs.map((feeInput) => ({
+    amountCents: computeFeeCents(subtotalCents, feeInput.rateBps),
+    id: feeInput.id,
+    label: feeInput.label.trim(),
+    rateBps: feeInput.rateBps,
+  }));
+  const feesCents = fees.reduce((total, fee) => total + fee.amountCents, 0);
+  return {
+    subtotalCents,
+    taxCents,
+    taxRateBps: addedTaxRates.length === 1 ? addedTaxRates[0] : 0,
+    fees,
+    feesCents,
+    totalCents: subtotalCents + taxCents + feesCents,
+  };
 };
 
 /** "2026-11-02" → milisegundos a medianoche UTC (solo para contar días). */

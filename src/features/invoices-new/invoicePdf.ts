@@ -2,8 +2,10 @@
 // ============================================================================
 // HTML del PDF de un invoice, sin React. Las PÁGINAS se arman aquí para que la
 // vista previa y el archivo descargado sean iguales:
-//   · página 1: marca, datos del invoice, montos, enlace de pago y el inicio
-//     de las notas;
+//   · página 1: marca, datos del invoice, los servicios del job (una fila por
+//     servicio), montos con impuesto y fees, enlace de pago y el inicio de las
+//     notas; si hay muchos servicios, siguen en páginas "Services (continued)"
+//     y los montos van al final de la última;
 //   · páginas de notas: lo que no cupo (las notas no se cortan ni se pierden);
 //   · páginas de fotos: 6 por página (2 columnas × 3 filas) con Before / After.
 // El archivo lo arma generatePDFBlob (utils/pdfGenerator.ts, html2pdf ya
@@ -11,7 +13,8 @@
 // ⚠ Todo texto escrito por usuarios pasa por escapeHtml (hubo XSS en PDFs).
 // ============================================================================
 import type {
-  Invoice, InvoiceClientSnapshot, InvoiceJobSnapshot, InvoicePaymentTerms, InvoicePhotoItem, InvoiceStatus, YmdDate,
+  Invoice, InvoiceClientSnapshot, InvoiceFee, InvoiceJobSnapshot, InvoiceLineItem, InvoicePaymentTerms, InvoicePhotoItem,
+  InvoiceStatus, YmdDate,
 } from '../../types/index';
 import type { Branding } from '../../utils/companyBranding';
 import { brandingHeaderHTML } from '../../utils/companyBranding';
@@ -33,9 +36,13 @@ export interface InvoicePdfData {
   issueDate: YmdDate;
   paymentTerms: InvoicePaymentTerms;
   dueDate: YmdDate;
+  /** Servicios del job ([] en un invoice de prueba viejo: sale una sola línea). */
+  lineItems: InvoiceLineItem[];
+  fees: InvoiceFee[];
   subtotalCents: number;
   taxRateBps: number;
   taxCents: number;
+  feesCents: number;
   totalCents: number;
   notes: string[];
   paymentLinkUrl: string;
@@ -48,6 +55,14 @@ const CHARS_PER_LINE = 88;
 const FIRST_PAGE_NOTE_LINES = 12;
 const NOTE_PAGE_LINES = 46;
 const PHOTOS_PER_PAGE = 6;
+/** Servicios que caben en la página 1 (con los montos); los demás siguen en
+ *  páginas "Services (continued)" de SERVICE_PAGE_ROWS. */
+const FIRST_PAGE_SERVICE_ROWS = 6;
+const SERVICE_PAGE_ROWS = 24;
+/** Renglones de notas que quita de la página 1 cada servicio o fee de más. */
+const NOTE_LINES_PER_EXTRA_ROW = 2;
+/** Estado que ve el cliente en un invoice sin pagar. */
+const CLIENT_UNPAID_STATUS_TEXT = 'Awaiting Payment';
 
 /** Una nota partida en renglones aproximados (respeta los saltos de línea). */
 const splitNoteIntoLines = (noteText: string): string[] =>
@@ -71,9 +86,9 @@ const splitNoteIntoLines = (noteText: string): string[] =>
 
 /** Bloques de notas por página: [lo que va en la 1, lo de la 2, …]. Cada
  *  bloque es una lista de notas (o pedazos de nota) con sus renglones. */
-const paginateNotes = (notes: string[]): string[][][] => {
+const paginateNotes = (notes: string[], firstPageLines: number): string[][][] => {
   const pages: string[][][] = [[]];
-  let freeLines = FIRST_PAGE_NOTE_LINES;
+  let freeLines = firstPageLines;
   notes.forEach((noteText) => {
     let pendingLines = splitNoteIntoLines(noteText);
     while (pendingLines.length > 0) {
@@ -101,16 +116,77 @@ const factHtml = (label: string, value: string): string =>
 const amountRowHtml = (label: string, value: string, className = ''): string =>
   `<tr class="${className}"><td>${escapeHtml(label)}</td><td class="money">${escapeHtml(value)}</td></tr>`;
 
-const firstPageHtml = (data: InvoicePdfData, branding: Branding, firstNoteBlocks: string[][]): string => {
+/** Una fila de la tabla de servicios, ya con texto. */
+interface PdfServiceRow {
+  description: string;
+  detail: string;
+  quantity: string;
+  unitPrice: string;
+  amount: string;
+}
+
+/** Filas de servicios: una por servicio del job, o la línea única de un invoice viejo. */
+const getServiceRows = (data: InvoicePdfData): PdfServiceRow[] => {
+  if (data.lineItems.length === 0) {
+    const serviceName = data.job.serviceName || 'Cleaning service';
+    return [{
+      description: data.job.address ? `${serviceName} · ${data.job.address}` : serviceName,
+      detail: '',
+      quantity: '1',
+      unitPrice: formatCents(data.subtotalCents),
+      amount: formatCents(data.subtotalCents),
+    }];
+  }
+  return data.lineItems.map((lineItem) => ({
+    description: lineItem.serviceName,
+    detail: [lineItem.notes, lineItem.taxMode === 'subtracted' ? 'Tax deducted' : ''].filter(Boolean).join(' · '),
+    quantity: String(lineItem.quantity),
+    unitPrice: formatCents(lineItem.unitPriceCents),
+    amount: formatCents(lineItem.amountCents),
+  }));
+};
+
+const serviceRowsHtml = (rows: PdfServiceRow[]): string => `
+  <table class="items">
+    <thead><tr><th>Description</th><th class="qty">Qty</th><th class="money">Unit price</th><th class="money">Amount</th></tr></thead>
+    <tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.description)}${row.detail ? `<div class="item-detail">${escapeHtml(row.detail)}</div>` : ''}</td>`
+      + `<td class="qty">${escapeHtml(row.quantity)}</td><td class="money">${escapeHtml(row.unitPrice)}</td>`
+      + `<td class="money">${escapeHtml(row.amount)}</td></tr>`).join('')}</tbody>
+  </table>`;
+
+/** Montos (subtotal, impuesto, cada fee, total y saldo) y el enlace de pago. */
+const totalsHtml = (data: InvoicePdfData): string => {
   const isPaid = isPaidStatus(data.status);
   const balanceCents = isPaid ? 0 : data.totalCents;
+  const taxLabel = data.taxRateBps > 0 ? `Tax (${bpsToPercent(data.taxRateBps)}%)` : 'Tax';
+  const paymentLink = !isPaid && data.paymentLinkUrl
+    ? `<div class="pay-link"><strong>Pay online:</strong> ${escapeHtml(data.paymentLinkUrl)}</div>`
+    : '';
+  return `
+    <table class="totals">
+      ${amountRowHtml('Subtotal', formatCents(data.subtotalCents))}
+      ${amountRowHtml(taxLabel, formatCents(data.taxCents))}
+      ${data.fees.map((fee) => amountRowHtml(`${fee.label} (${bpsToPercent(fee.rateBps)}%)`, formatCents(fee.amountCents))).join('')}
+      ${amountRowHtml('Total (USD)', formatCents(data.totalCents), 'grand')}
+      ${amountRowHtml('Balance due', formatCents(balanceCents), 'balance')}
+    </table>
+    ${paymentLink}`;
+};
+
+/** Página 1. `serviceRows` = los servicios que caben; `showsTotals` = si los
+ *  montos van aquí (todos los servicios cupieron). */
+const firstPageHtml = (
+  data: InvoicePdfData, branding: Branding, serviceRows: PdfServiceRow[], showsTotals: boolean, firstNoteBlocks: string[][],
+): string => {
+  const isPaid = isPaidStatus(data.status);
+  const balanceCents = isPaid ? 0 : data.totalCents;
+  // El PDF lo lee el cliente: los estados internos sin pagar (Needs Invoice,
+  // Pending, Payment Link Sent) salen como "Awaiting Payment".
+  const statusText = isPaid ? INVOICE_STATUS_LABELS[data.status] : CLIENT_UNPAID_STATUS_TEXT;
   const clientLines = [data.recipientEmail || data.client.email, data.client.phone, data.client.address, data.client.cityStateZip]
     .filter(Boolean);
   const jobLines = [[data.job.address, data.job.unit].filter(Boolean).join(' · '), data.job.city].filter(Boolean);
   const serviceName = data.job.serviceName || 'Cleaning service';
-  const paymentLink = !isPaid && data.paymentLinkUrl
-    ? `<div class="pay-link"><strong>Pay online:</strong> ${escapeHtml(data.paymentLinkUrl)}</div>`
-    : '';
   const notesSection = firstNoteBlocks.length > 0 ? `<h3>Notes</h3>${notesHtml(firstNoteBlocks)}` : '';
 
   return `
@@ -119,7 +195,7 @@ const firstPageHtml = (data: InvoicePdfData, branding: Branding, firstNoteBlocks
       <div>
         <span class="doc-tag">${data.number ? 'Invoice' : 'Draft'}</span>
         <div class="doc-title">${data.number ? `Invoice ${escapeHtml(data.number)}` : 'DRAFT invoice'}</div>
-        <div class="doc-status">${escapeHtml(INVOICE_STATUS_LABELS[data.status])}</div>
+        <div class="doc-status">${escapeHtml(statusText)}</div>
       </div>
       <div class="total-box">
         <div class="total-label">Balance due</div>
@@ -144,20 +220,15 @@ const firstPageHtml = (data: InvoicePdfData, branding: Branding, firstNoteBlocks
       ${factHtml('Due date', formatDate(data.dueDate))}
       ${factHtml('Terms', INVOICE_PAYMENT_TERM_LABELS[data.paymentTerms])}
     </div>
-    <table class="items">
-      <thead><tr><th>Description</th><th class="qty">Qty</th><th class="money">Amount</th></tr></thead>
-      <tbody><tr><td>${escapeHtml(serviceName)}${data.job.address ? ` · ${escapeHtml(data.job.address)}` : ''}</td><td class="qty">1</td><td class="money">${escapeHtml(formatCents(data.subtotalCents))}</td></tr></tbody>
-    </table>
-    <table class="totals">
-      ${amountRowHtml('Subtotal', formatCents(data.subtotalCents))}
-      ${amountRowHtml(`Tax (${bpsToPercent(data.taxRateBps)}%)`, formatCents(data.taxCents))}
-      ${amountRowHtml('Total (USD)', formatCents(data.totalCents), 'grand')}
-      ${amountRowHtml('Balance due', formatCents(balanceCents), 'balance')}
-    </table>
-    ${paymentLink}
+    ${serviceRowsHtml(serviceRows)}
+    ${showsTotals ? totalsHtml(data) : '<p class="muted">Services continue on the next page.</p>'}
     ${notesSection}
   `;
 };
+
+/** Página de servicios que no cupieron en la 1; la última lleva los montos. */
+const servicesPageHtml = (serviceRows: PdfServiceRow[], pageLabel: string, data: InvoicePdfData, showsTotals: boolean): string =>
+  `<h3>Services <span class="muted">${escapeHtml(pageLabel)}</span></h3>${serviceRowsHtml(serviceRows)}${showsTotals ? totalsHtml(data) : ''}`;
 
 const notesPageHtml = (noteBlocks: string[][], pageLabel: string): string =>
   `<h3>Notes <span class="muted">${escapeHtml(pageLabel)}</span></h3>${notesHtml(noteBlocks)}`;
@@ -182,12 +253,33 @@ const photosPageHtml = (pagePhotos: InvoicePhotoItem[], pageLabel: string): stri
 
 /** Contenido (cuerpo HTML) de cada página, en orden. */
 export const buildInvoicePdfPages = (data: InvoicePdfData, branding: Branding): string[] => {
-  const notePages = paginateNotes(data.notes.filter((noteText) => noteText.trim() !== ''));
+  const serviceRows = getServiceRows(data);
+  const firstPageServiceRows = serviceRows.slice(0, FIRST_PAGE_SERVICE_ROWS);
+  const serviceChunks: PdfServiceRow[][] = [];
+  for (let rowIndex = FIRST_PAGE_SERVICE_ROWS; rowIndex < serviceRows.length; rowIndex += SERVICE_PAGE_ROWS) {
+    serviceChunks.push(serviceRows.slice(rowIndex, rowIndex + SERVICE_PAGE_ROWS));
+  }
+  // Con los montos en la página 1, cada servicio o fee de más deja menos lugar
+  // para las notas; si los servicios siguen en otra página, las notas también.
+  const showsTotalsOnFirstPage = serviceChunks.length === 0;
+  const extraRowCount = Math.max(0, firstPageServiceRows.length - 1) + data.fees.length;
+  const firstPageNoteLines = showsTotalsOnFirstPage
+    ? Math.max(0, FIRST_PAGE_NOTE_LINES - extraRowCount * NOTE_LINES_PER_EXTRA_ROW)
+    : 0;
+  const notePages = paginateNotes(data.notes.filter((noteText) => noteText.trim() !== ''), firstPageNoteLines);
   const photoPageCount = Math.ceil(data.photos.length / PHOTOS_PER_PAGE);
-  const extraNotePages = notePages.slice(1);
-  const pages = [firstPageHtml(data, branding, notePages[0] ?? [])];
+  const firstNoteBlocks = notePages[0] ?? [];
+  const extraNotePages = notePages.slice(1).filter((noteBlocks) => noteBlocks.length > 0);
+  const pages = [firstPageHtml(data, branding, firstPageServiceRows, showsTotalsOnFirstPage, firstNoteBlocks)];
+  serviceChunks.forEach((serviceChunk, chunkIndex) => {
+    const isLastChunk = chunkIndex === serviceChunks.length - 1;
+    pages.push(servicesPageHtml(serviceChunk, `(continued ${chunkIndex + 1} of ${serviceChunks.length})`, data, isLastChunk));
+  });
   extraNotePages.forEach((noteBlocks, index) => {
-    pages.push(notesPageHtml(noteBlocks, `(continued ${index + 1} of ${extraNotePages.length})`));
+    const pageLabel = firstNoteBlocks.length > 0
+      ? `(continued ${index + 1} of ${extraNotePages.length})`
+      : `(${index + 1} of ${extraNotePages.length})`;
+    pages.push(notesPageHtml(noteBlocks, pageLabel));
   });
   for (let photoPageIndex = 0; photoPageIndex < photoPageCount; photoPageIndex += 1) {
     const pagePhotos = data.photos.slice(photoPageIndex * PHOTOS_PER_PAGE, (photoPageIndex + 1) * PHOTOS_PER_PAGE);
@@ -234,6 +326,7 @@ const PDF_STYLES = `
   .invpdf .items { margin-top: 20px; }
   .invpdf .items th { text-align: left; font-size: 10px; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding: 6px 4px; }
   .invpdf .items td { border-bottom: 1px solid #e2e8f0; padding: 10px 4px; }
+  .invpdf .item-detail { color: #64748b; font-size: 11px; margin-top: 2px; word-break: break-word; }
   .invpdf .qty { text-align: center; width: 60px; }
   .invpdf .money { text-align: right; white-space: nowrap; }
   .invpdf .totals { width: 280px; margin: 14px 0 0 auto; }
@@ -275,9 +368,12 @@ export const buildPdfDataFromInvoice = (invoice: Invoice, photos: InvoicePhotoIt
   issueDate: invoice.issueDate,
   paymentTerms: invoice.paymentTerms,
   dueDate: invoice.dueDate,
+  lineItems: invoice.lineItems,
+  fees: invoice.fees,
   subtotalCents: invoice.subtotalCents,
   taxRateBps: invoice.taxRateBps,
   taxCents: invoice.taxCents,
+  feesCents: invoice.feesCents,
   totalCents: invoice.totalCents,
   notes: invoice.notes.map((note) => note.text),
   // Con la referencia del invoice: un pago hecho desde el PDF también se reconoce.
