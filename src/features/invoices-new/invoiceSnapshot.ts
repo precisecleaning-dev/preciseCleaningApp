@@ -38,8 +38,8 @@ export const buildJobSnapshot = (property: Property, services: Service[]): Invoi
   serviceName: services.find((service) => service.id === property.serviceId)?.name ?? '',
 });
 
-/** Todas las fotos del job (Before y After) para el modo "All job photos".
- *  La galería para elegir solo algunas llega en la etapa de fotos. */
+/** Todas las fotos del job (Before y After): el modo "All job photos" y la
+ *  galería de "Selected photos" (JobPhotoPickerModal). */
 export const buildAllJobPhotoItems = (property: Property): InvoicePhotoItem[] => [
   ...(property.beforePhotos ?? []).map((url, order) => ({ url, category: 'before' as const, order })),
   ...(property.afterPhotos ?? []).map((url, order) => ({ url, category: 'after' as const, order })),

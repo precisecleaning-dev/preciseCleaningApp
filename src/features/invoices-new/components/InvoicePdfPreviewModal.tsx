@@ -6,7 +6,8 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useCompanyBranding } from '../../../shared/hooks/useCompanyBranding';
 import { buildInvoicePdfPages, buildInvoicePdfPreviewPage, type InvoicePdfData } from '../invoicePdf';
-import { downloadInvoicePdf, getMissingPhotosWarning } from '../invoicePdfFile';
+import { downloadInvoicePdf } from '../invoicePdfFile';
+import { getMissingPhotosWarning } from '../invoiceDelivery';
 import InvoiceDialog from './InvoiceDialog';
 import './InvoicePdfPreviewModal.css';
 

@@ -2,24 +2,34 @@
 // cliente): el cliente y los montos salen del job y se pueden editar. Pie con
 // solo Cancel y Create Invoice (o Save Changes al editar).
 // "Preview PDF" muestra el documento provisional (DRAFT al crear) sin guardar.
-// Pendiente en etapas siguientes: las opciones de envío por correo / Stripe.
+// "Send by email": al guardar, manda el PDF y/o el enlace de Stripe. Si el
+// correo falla, el invoice queda guardado y el aviso lo dice (se reintenta con
+// Send Invoice).
 import { useState, type FormEvent } from 'react';
-import { CreditCard, Eye, FileText, Image as ImageIcon, Plus, StickyNote } from 'lucide-react';
-import type { Invoice, InvoiceNote, Property, SystemUser } from '../../../types/index';
+import { CreditCard, Eye, FileText, Image as ImageIcon, Plus, Send, StickyNote } from 'lucide-react';
+import type {
+  Invoice, InvoiceDeliveryChoice, InvoiceDeliveryOutcome, InvoiceNote, Property, SystemUser,
+} from '../../../types/index';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { useHouseRecords } from '../../houses/hooks/useLiveHouse';
 import { cavalryClientKeys, houseBusiness } from '../../../shared/utils/businesses';
 import { findCustomer } from '../../../utils/customerDocs';
 import { fullName } from '../../../utils/homeData';
-import { invoicesService, buildInvoiceNote, type InvoiceActor } from '../../../services/invoicesService';
+import {
+  InvoiceChangedError, invoicesService, buildInvoiceNote, type InvoiceActor,
+} from '../../../services/invoicesService';
 import { formatCents } from '../invoiceMath';
 import type { InvoicePdfData } from '../invoicePdf';
 import {
   buildAllJobPhotoItems, buildClientSnapshot, buildJobSnapshot, getInvoiceDefaults,
 } from '../invoiceSnapshot';
 import {
-  getInvoiceFormAmounts, getInvoiceFormErrors, useInvoiceForm, type InvoiceFormNote,
+  getInvoiceFormAmounts, getInvoiceFormDelivery, getInvoiceFormErrors, useInvoiceForm, type InvoiceFormNote,
 } from '../hooks/useInvoiceForm';
+import {
+  INVOICE_EMAIL_PATTERN, buildStripePaymentUrl, getDeliveryErrors, isDeliveryRequested,
+} from '../invoiceDelivery';
+import { sendInvoiceEmail } from '../services/invoiceEmailService';
 import { useInvoiceJobOptions } from '../hooks/useInvoiceJobOptions';
 import { useJobInvoices } from '../hooks/useJobInvoices';
 import { useInvoicePhotoSelection } from '../hooks/useInvoicePhotoSelection';
@@ -32,6 +42,7 @@ import InvoiceAmountFields from './InvoiceAmountFields';
 import InvoiceNotesEditor from './InvoiceNotesEditor';
 import InvoicePhotosOption from './InvoicePhotosOption';
 import InvoicePaymentFields from './InvoicePaymentFields';
+import InvoiceDeliveryFields from './InvoiceDeliveryFields';
 import InvoicePdfPreviewModal from './InvoicePdfPreviewModal';
 import './InvoiceFormModal.css';
 
@@ -42,8 +53,12 @@ interface InvoiceFormModalProps {
   properties: Property[];
   currentUser: SystemUser | null;
   onClose: () => void;
-  onSaved: (result: { id: string; number: string; isNew: boolean }) => void;
+  /** `delivery` = resultado del envío por correo (null si no se pidió). */
+  onSaved: (result: { id: string; number: string; isNew: boolean; delivery: InvoiceDeliveryOutcome | null }) => void;
 }
+
+/** Paso del guardado: guardar el invoice y, si se pidió, mandarlo por correo. */
+type SaveStep = 'saving' | 'sending' | null;
 
 /** Notas a guardar: las sin cambios quedan igual, las editadas conservan
  *  autor y fecha, las nuevas llevan a quien las escribió; las vacías se van. */
@@ -66,8 +81,9 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
   /** Datos del PDF provisional abierto (null = sin vista previa). */
   const [previewData, setPreviewData] = useState<InvoicePdfData | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [saveStep, setSaveStep] = useState<SaveStep>(null);
   const [saveError, setSaveError] = useState('');
+  const isSaving = saveStep !== null;
 
   const jobOptions = useInvoiceJobOptions(properties, statuses, customers, showAllJobs, state.propertyId);
   const selectedProperty = properties.find((property) => property.id === state.propertyId) ?? null;
@@ -91,9 +107,11 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const amounts = getInvoiceFormAmounts(state, jobDefaults);
   const errors = getInvoiceFormErrors(state, amounts, isEditing);
   const shownErrors = hasTriedSubmit ? errors : {};
-  const isFormValid = Object.keys(errors).length === 0 && !photoChoice.error;
 
   const client = invoice?.client ?? (selectedProperty ? buildClientSnapshot(selectedProperty, customers) : null);
+  const delivery = getInvoiceFormDelivery(state, client?.email ?? '');
+  const deliveryErrors = getDeliveryErrors(delivery, false);
+  const isFormValid = Object.keys(errors).length === 0 && Object.keys(deliveryErrors).length === 0 && !photoChoice.error;
   const serviceDate = invoice?.job.serviceDate ?? selectedProperty?.scheduleDate ?? '';
 
   const jobWarnings = [
@@ -111,6 +129,14 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
 
   const title = isEditing ? 'Edit Invoice' : 'Create Invoice';
   const submitLabel = isEditing ? 'Save Changes' : 'Create Invoice';
+  const savingLabel = saveStep === 'sending' ? 'Sending…' : 'Saving…';
+  // Correo y enlace se guardan solo si se usan en este envío (si no, quedan los de antes).
+  const savedRecipientEmail = delivery.recipientEmail.trim();
+  const savedPaymentLinkUrl = delivery.paymentLinkUrl.trim();
+  // Sin envío, el correo del cliente se guarda solo si es válido: un correo mal
+  // escrito en Customers no debe impedir crear el invoice.
+  const clientEmail = client?.email.trim() ?? '';
+  const fallbackRecipientEmail = INVOICE_EMAIL_PATTERN.test(clientEmail) ? clientEmail : '';
 
   // Otro job: vuelven su monto y tasa, y la selección de fotos pasa a todas las del job nuevo.
   const handleSelectJob = (propertyId: string) => {
@@ -118,9 +144,9 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     photoChoice.resetForNewJob();
   };
 
-  const createInvoice = async (actor: InvoiceActor) => {
+  const createInvoice = async (actor: InvoiceActor): Promise<{ id: string; number: string }> => {
     if (!selectedProperty || !client) throw new Error('Select a job.');
-    const created = await invoicesService.create({
+    return invoicesService.create({
       client,
       job: buildJobSnapshot(selectedProperty, services),
       business: houseBusiness(selectedProperty, cavalryClientKeys(customers)),
@@ -130,32 +156,59 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       dueDate: state.dueDate,
       subtotalCents: amounts.subtotalCents ?? 0,
       taxRateBps: amounts.taxRateBps ?? 0,
-      recipientEmail: client.email,
-      paymentLinkUrl: '',
+      recipientEmail: isDeliveryRequested(delivery) ? savedRecipientEmail : fallbackRecipientEmail,
+      paymentLinkUrl: delivery.sendPaymentLink ? savedPaymentLinkUrl : '',
       noteTexts: state.notes.map((note) => note.text),
       photos: photoChoice.toInput(),
       status: state.status,
       initialPayment: state.status === 'paid' ? state.payment : null,
     }, actor);
-    onSaved({ ...created, isNew: true });
   };
 
-  const updateInvoice = async (savedInvoice: Invoice, actor: InvoiceActor) => {
+  const updateInvoice = async (savedInvoice: Invoice, actor: InvoiceActor): Promise<{ id: string; number: string }> => {
     await invoicesService.update(savedInvoice.id, {
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
       dueDate: state.dueDate,
       ...(isPaymentLocked ? {} : { subtotalCents: amounts.subtotalCents ?? 0, taxRateBps: amounts.taxRateBps ?? 0 }),
       notes: buildSavedNotes(state.notes, actor),
-    }, actor);
+      ...(isDeliveryRequested(delivery) ? { recipientEmail: savedRecipientEmail } : {}),
+      ...(delivery.sendPaymentLink ? { paymentLinkUrl: savedPaymentLinkUrl } : {}),
+    }, actor, savedInvoice.updatedAt);
     if (jobPhotos && !savedPhotos.isLoading && photoChoice.isChanged) {
       await invoicesService.updatePhotoSelection(savedInvoice.id, photoChoice.toInput(), actor);
     }
-    onSaved({ id: savedInvoice.id, number: savedInvoice.number, isNew: false });
+    return { id: savedInvoice.id, number: savedInvoice.number };
+  };
+
+  // Envío después de guardar: un error aquí NO deshace el invoice guardado.
+  const emailSavedInvoice = async (
+    invoiceId: string, deliveryChoice: InvoiceDeliveryChoice, actor: InvoiceActor,
+  ): Promise<InvoiceDeliveryOutcome> => {
+    try {
+      const savedInvoice = await invoicesService.getOne(invoiceId);
+      if (!savedInvoice) throw new Error('The invoice was saved but could not be read back.');
+      const to = deliveryChoice.recipientEmail.trim();
+      const { missingPhotoCount } = await sendInvoiceEmail({
+        invoice: savedInvoice,
+        jobProperty: selectedProperty,
+        to,
+        includePdf: deliveryChoice.sendPdf,
+        includePaymentLink: deliveryChoice.sendPaymentLink,
+        actor,
+      });
+      return { status: 'sent', to, missingPhotoCount };
+    } catch (error) {
+      console.error('Could not email the invoice:', error);
+      return { status: 'failed', message: error instanceof Error ? error.message : 'Unknown error.' };
+    }
   };
 
   // Preview PDF: pide los datos principales válidos (job, fechas, monto y tasa),
   // no los opcionales; al crear el documento sale como DRAFT.
+  const savedPaymentLinkWithReference = invoice?.paymentLinkUrl ? buildStripePaymentUrl(invoice.paymentLinkUrl, invoice.id) : '';
+  const previewPaymentLinkUrl = delivery.sendPaymentLink ? savedPaymentLinkUrl : savedPaymentLinkWithReference;
+
   const handlePreviewPdf = () => {
     const mainFieldErrors = [errors.job, errors.issueDate, errors.dueDate, errors.amount, errors.taxRate].filter(Boolean);
     const job = invoice?.job ?? (selectedProperty ? buildJobSnapshot(selectedProperty, services) : null);
@@ -167,7 +220,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       number: invoice?.number ?? null,
       status: invoice?.status ?? state.status,
       client,
-      recipientEmail: invoice?.recipientEmail ?? client.email,
+      recipientEmail: isDeliveryRequested(delivery) ? savedRecipientEmail : (invoice?.recipientEmail ?? fallbackRecipientEmail),
       job,
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
@@ -177,7 +230,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       taxCents: amounts.taxCents,
       totalCents: amounts.totalCents,
       notes: state.notes.map((note) => note.text),
-      paymentLinkUrl: invoice?.paymentLinkUrl ?? '',
+      paymentLinkUrl: previewPaymentLinkUrl,
       photos: photoChoice.include ? photoChoice.items : [],
     });
   };
@@ -191,18 +244,27 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       return;
     }
     const actor: InvoiceActor = { id: currentUser.id, name: fullName(currentUser) };
-    setIsSaving(true);
+    setSaveStep('saving');
     setSaveError('');
+    let saved: { id: string; number: string };
     try {
-      if (invoice) await updateInvoice(invoice, actor);
-      else await createInvoice(actor);
+      saved = invoice ? await updateInvoice(invoice, actor) : await createInvoice(actor);
     } catch (error) {
       console.error('Could not save the invoice:', error);
       const detail = error instanceof Error ? error.message : '';
-      setSaveError(`Could not save the invoice. ${detail} Check your connection and try again.`.trim());
-    } finally {
-      setIsSaving(false);
+      setSaveError(error instanceof InvoiceChangedError
+        ? detail
+        : `Could not save the invoice. ${detail} Check your connection and try again.`.trim());
+      setSaveStep(null);
+      return;
     }
+    let deliveryOutcome: InvoiceDeliveryOutcome | null = null;
+    if (isDeliveryRequested(delivery)) {
+      setSaveStep('sending');
+      deliveryOutcome = await emailSavedInvoice(saved.id, delivery, actor);
+    }
+    setSaveStep(null);
+    onSaved({ ...saved, isNew: !invoice, delivery: deliveryOutcome });
   };
 
   return (
@@ -299,13 +361,23 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
               paymentErrors={shownErrors}
             />
           </InvoiceFormSection>
+
+          <InvoiceFormSection id="invoice-delivery-heading" title="Send by email" icon={Send} isOptional>
+            <InvoiceDeliveryFields
+              choice={{ ...state.delivery, recipientEmail: delivery.recipientEmail }}
+              onChange={actions.setDelivery}
+              isPaid={state.status === 'paid'}
+              totalText={formatCents(amounts.totalCents)}
+              errors={hasTriedSubmit ? deliveryErrors : {}}
+            />
+          </InvoiceFormSection>
         </div>
 
         <footer className="invd-footer">
           {saveError && <p className="invd-footer-error" role="alert">{saveError}</p>}
           <button type="button" className="invd-secondary-btn" disabled={isSaving} onClick={onClose}>Cancel</button>
           <button type="submit" className="btn-primary invd-primary-btn" disabled={isSaving}>
-            {isSaving ? 'Saving…' : submitLabel}
+            {isSaving ? savingLabel : submitLabel}
           </button>
         </footer>
       </form>

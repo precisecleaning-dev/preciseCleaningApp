@@ -20,6 +20,7 @@ import { formatDate, formatDateForFile } from '../../utils/dateFormat';
 import { INVOICE_PAYMENT_TERM_LABELS, bpsToPercent, formatCents } from './invoiceMath';
 import { INVOICE_STATUS_LABELS, isPaidStatus } from './invoiceStatus';
 import { getPhotoLabel } from './invoicePhotos';
+import { buildStripePaymentUrl } from './invoiceDelivery';
 
 /** Lo que necesita el PDF (de un invoice guardado o del formulario). */
 export interface InvoicePdfData {
@@ -279,7 +280,8 @@ export const buildPdfDataFromInvoice = (invoice: Invoice, photos: InvoicePhotoIt
   taxCents: invoice.taxCents,
   totalCents: invoice.totalCents,
   notes: invoice.notes.map((note) => note.text),
-  paymentLinkUrl: invoice.paymentLinkUrl,
+  // Con la referencia del invoice: un pago hecho desde el PDF también se reconoce.
+  paymentLinkUrl: invoice.paymentLinkUrl ? buildStripePaymentUrl(invoice.paymentLinkUrl, invoice.id) : '',
   photos,
 });
 

@@ -17,6 +17,7 @@ const InvoiceDetailNotes = ({ invoice, canEdit, currentUser }: InvoiceDetailNote
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const isNoteEmpty = noteText.trim() === '';
+  const isAtNoteLimit = invoice.notes.length >= INVOICE_LIMITS.maxNotes;
 
   const handleAddNote = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -28,7 +29,8 @@ const InvoiceDetailNotes = ({ invoice, canEdit, currentUser }: InvoiceDetailNote
       setNoteText('');
     } catch (error) {
       console.error('Could not add the note:', error);
-      setSaveError('Could not add the note. Check your connection and try again.');
+      const detail = error instanceof Error ? error.message : '';
+      setSaveError(`Could not add the note. ${detail} Check your connection and try again.`.trim());
     } finally {
       setIsSaving(false);
     }
@@ -43,7 +45,10 @@ const InvoiceDetailNotes = ({ invoice, canEdit, currentUser }: InvoiceDetailNote
           <span className="invdt-secondary">{`${note.createdByUserName} · ${formatDateTime(note.createdAt)}`}</span>
         </article>
       ))}
-      {canEdit && (
+      {canEdit && isAtNoteLimit && (
+        <p className="invdt-secondary">{`This invoice has the maximum of ${INVOICE_LIMITS.maxNotes} notes.`}</p>
+      )}
+      {canEdit && !isAtNoteLimit && (
         <form className="invdt-note-form" onSubmit={handleAddNote}>
           <label className="invn-sr-only" htmlFor={`invoice-new-note-${invoice.id}`}>New note</label>
           <textarea

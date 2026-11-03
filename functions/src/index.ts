@@ -15,6 +15,8 @@
    6) syncuseraccessonuser / syncuseraccessonrole (triggers) y
       rebuilduseraccess (callable, solo admin): mantienen user_access/{email},
       el espejo de permisos que leen las Security Rules (userAccess.ts).
+   7) sendinvoiceemail       (callable)  : Invoices New, manda un invoice por
+      correo con su PDF y/o su enlace de pago de Stripe (invoiceEmail.ts).
 
    AUTENTICACIÓN — OAuth de usuario con refresh token
    La cuenta account@precisecleaningtx.com autoriza la app UNA SOLA VEZ desde
@@ -47,6 +49,8 @@ export {
   syncuseraccessonrole,
   rebuilduseraccess,
 } from "./userAccess";
+// ⭐ Invoices New: Send / Resend por correo (PDF y/o enlace de Stripe).
+export { sendinvoiceemail } from "./invoiceEmail";
 
 admin.initializeApp();
 const db = admin.firestore();

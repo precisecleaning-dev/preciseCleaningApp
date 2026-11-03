@@ -1,7 +1,7 @@
 // Detalle de un invoice: pestañas Overview (datos, montos, pago, notas, fotos
 // con Manage photos, y entrega) y Activity. Acciones: Preview / Download PDF y,
-// con el permiso Edit, Edit y Mark as Paid (solo sin pagar). Recibe el invoice
-// EN VIVO de la lista: se actualiza solo. Send llega en su etapa.
+// con el permiso Edit, Edit, Send / Resend y Mark as Paid (solo sin pagar).
+// Recibe el invoice EN VIVO de la lista: se actualiza solo.
 import { useState } from 'react';
 import {
   CheckCircle2, DollarSign, Download, Eye, FileText, Image as ImageIcon, Pencil, Send, StickyNote,
@@ -38,14 +38,17 @@ interface InvoiceDetailModalProps {
   onMarkAsPaid: (invoice: Invoice) => void;
   onPreviewPdf: (invoice: Invoice) => void;
   onDownloadPdf: (invoice: Invoice) => void;
+  onSendInvoice: (invoice: Invoice) => void;
 }
 
 const InvoiceDetailModal = ({
   invoice, jobProperty, today, canEdit, currentUser, onClose, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
+  onSendInvoice,
 }: InvoiceDetailModalProps) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const canMarkAsPaid = canEdit && !isPaidStatus(invoice.status);
   const subtitle = [invoice.client.name, invoice.job.address].filter(Boolean).join(' · ');
+  const sendLabel = invoice.delivery.sendCount > 0 ? 'Resend' : 'Send';
 
   return (
     <InvoiceDialog
@@ -109,6 +112,11 @@ const InvoiceDetailModal = ({
         {canEdit && (
           <button type="button" className="invd-secondary-btn" onClick={() => onEditInvoice(invoice)}>
             <Pencil size={16} aria-hidden="true" /> Edit
+          </button>
+        )}
+        {canEdit && (
+          <button type="button" className="invd-secondary-btn" onClick={() => onSendInvoice(invoice)}>
+            <Send size={16} aria-hidden="true" /> {sendLabel}
           </button>
         )}
         {canMarkAsPaid && (

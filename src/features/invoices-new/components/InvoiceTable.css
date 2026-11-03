@@ -6,6 +6,40 @@
   overflow-x: auto;
 }
 
+/* App.css da a todo lo que está dentro de `.fade-in` una barra fina y casi
+   transparente que en Chrome anula ::-webkit-scrollbar: aquí se devuelve a
+   `auto` para que se vea la barra horizontal (tabla más ancha que la pantalla). */
+.fade-in .invt-scroll {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+.fade-in .invt-scroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.fade-in .invt-scroll::-webkit-scrollbar-track {
+  background: #eef1f6;
+  border-radius: 0 0 14px 14px;
+}
+
+.fade-in .invt-scroll::-webkit-scrollbar-thumb {
+  background: #b8c1d1;
+  border: 3px solid #eef1f6;
+  border-radius: 8px;
+}
+
+.fade-in .invt-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a0b8;
+}
+
+/* Firefox (no tiene ::-webkit-scrollbar) */
+@supports not selector(::-webkit-scrollbar) {
+  .fade-in .invt-scroll {
+    scrollbar-color: #b8c1d1 #eef1f6;
+  }
+}
+
 .invt-table {
   border-collapse: collapse;
   min-width: 820px;
@@ -37,6 +71,10 @@
 
 .invt-table tbody tr:hover td {
   background: #f8fafc;
+}
+
+.invt-row {
+  cursor: pointer;
 }
 
 .invt-number {

@@ -235,6 +235,29 @@ export interface InvoiceCreateInput {
   initialPayment: InvoiceManualPaymentInput | null; // obligatorio si status = 'paid'
 }
 
+/** Qué se manda por correo (formulario y Send / Resend). */
+export interface InvoiceDeliveryChoice {
+  sendPdf: boolean; //                  adjuntar el PDF
+  sendPaymentLink: boolean; //          incluir el enlace de pago de Stripe (nunca en un invoice pagado)
+  recipientEmail: string; //            un solo destinatario para las dos opciones
+  paymentLinkUrl: string; //            Payment Link creado a mano en Stripe (https://buy.stripe.com/...)
+}
+
+/** Lo que recibe la Cloud Function sendinvoiceemail (functions/src/invoiceEmail.ts). */
+export interface InvoiceSendRequest {
+  invoiceId: string;
+  to: string;
+  includePdf: boolean;
+  includePaymentLink: boolean;
+  /** PDF subido para ESTE envío (invoices/{id}/email/{uuid}.pdf); null sin PDF. */
+  pdfPath: string | null;
+}
+
+/** Resultado de mandar un invoice por correo, para el aviso de la página. */
+export type InvoiceDeliveryOutcome =
+  | { status: 'sent'; to: string; missingPhotoCount: number }
+  | { status: 'failed'; message: string };
+
 /** Campos que el formulario de Edit Invoice puede cambiar. Cliente, job y
  *  número no cambian; en un invoice pagado tampoco subtotal ni tasa. */
 export type InvoicePatch = Partial<Pick<Invoice,

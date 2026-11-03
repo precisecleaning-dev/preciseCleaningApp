@@ -27,6 +27,7 @@ interface InvoiceRegisterProps extends InvoiceRowActions {
 const InvoiceRegister = ({
   pageInvoices, filteredCount, windowCount, isLoading, hasError, today, page, pageCount, pageSize, onPageChange,
   onPageSizeChange, onClearFilters, canEdit, onViewInvoice, onEditInvoice, onMarkAsPaid, onPreviewPdf, onDownloadPdf,
+  onSendInvoice,
 }: InvoiceRegisterProps) => {
   if (isLoading) {
     return (
@@ -72,6 +73,7 @@ const InvoiceRegister = ({
         onMarkAsPaid={onMarkAsPaid}
         onPreviewPdf={onPreviewPdf}
         onDownloadPdf={onDownloadPdf}
+        onSendInvoice={onSendInvoice}
       />
       <PaginationBar
         page={page}

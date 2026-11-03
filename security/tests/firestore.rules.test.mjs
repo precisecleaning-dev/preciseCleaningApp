@@ -4,7 +4,7 @@
 //
 // (firebase emulators:exec levanta el emulador con un proyecto "demo-" que no
 // toca producción, corre `node --test` y lo apaga). Necesita el Firebase CLI
-// (npm i -g firebase-tools) y Java 11 o superior.
+// (npm i -g firebase-tools) y Java 21 o superior.
 //
 // Cada persona de prueba tiene su espejo en user_access/{email}, como lo
 // dejan las Cloud Functions de functions/src/userAccess.ts.
@@ -22,7 +22,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
@@ -80,6 +82,15 @@ const PEOPLE = {
   'reporter@precise.test': {
     active: true, admin: false, fin: true, roleId: 'r-reporter', userId: 'u-reporter',
     m: { 'Clients Report': R() },
+  },
+  // Invoices New: crea y edita (sin borrar); otro solo lo ve.
+  'billing@precise.test': {
+    active: true, admin: false, fin: true, roleId: 'r-billing', userId: 'u-billing',
+    m: { 'Invoices New': R(true, true, true, false) },
+  },
+  'invviewer@precise.test': {
+    active: true, admin: false, fin: true, roleId: 'r-invviewer', userId: 'u-invviewer',
+    m: { 'Invoices New': R() },
   },
   'inactive@precise.test': {
     active: false, admin: false, fin: true, roleId: 'r-owner', userId: 'u-inactive', m: { Houses: ALL },
@@ -472,5 +483,228 @@ describe('hallazgos de la revisión', () => {
     await assertFails(setDoc(doc(as('employee@precise.test'), 'app_settings', 'task_list_tabs'), { tabOrder }));
     await assertFails(setDoc(doc(as('employee@precise.test'), 'app_settings', 'photo_config'), { quality: 1 }));
     await assertSucceeds(getDoc(doc(as('employee@precise.test'), 'app_settings', 'task_list_tabs')));
+  });
+});
+
+// ------------------------------------------------------------- Invoices New
+// Los datos imitan lo que escribe src/services/invoicesService.ts (el converter
+// no guarda `id` como campo).
+const YEAR = new Date().getUTCFullYear();
+const NOW_ISO = `${YEAR}-01-15T15:00:00.000Z`;
+const EMPTY_DELIVERY = {
+  sendCount: 0, lastAt: null, lastTo: '', lastIncludedPdf: false, lastIncludedPaymentLink: false, lastResult: null,
+};
+const invoiceNumber = (seq) => `INV-${YEAR}-${String(seq).padStart(4, '0')}`;
+
+const invoiceData = (seq, overrides = {}) => ({
+  number: invoiceNumber(seq), numberYear: YEAR, numberSeq: seq, numberKey: YEAR * 1_000_000 + seq,
+  status: 'awaiting_payment', currency: 'USD',
+  issueDate: `${YEAR}-01-15`, paymentTerms: 'net_15', dueDate: `${YEAR}-01-30`,
+  subtotalCents: 10000, taxRateBps: 825, taxCents: 825, totalCents: 10825,
+  propertyId: 'h1', customerId: 'c1', business: 'Normal',
+  client: { customerId: 'c1', clientRef: 'c1', name: 'Ana', email: 'ana@client.test', phone: '', address: '', cityStateZip: '' },
+  job: { propertyId: 'h1', address: '1 Main St', unit: '', city: '', serviceDate: `${YEAR}-01-10`, serviceId: '', serviceName: '' },
+  jobAmountsAtIssue: null, recipientEmail: 'ana@client.test', notes: [],
+  photos: { include: true, mode: 'all', selectedCount: 0, beforeCount: 0, afterCount: 0 },
+  payment: null, delivery: EMPTY_DELIVERY, paymentLinkUrl: '',
+  searchText: `${invoiceNumber(seq).toLowerCase()} ana 1 main st`,
+  createdAt: NOW_ISO, createdByUserId: 'u-billing', createdByUserName: 'Bill',
+  updatedAt: NOW_ISO, updatedByUserId: 'u-billing', updatedByUserName: 'Bill',
+  ...overrides,
+});
+const manualPayment = (amountCents, overrides = {}) => ({
+  source: 'manual', method: 'Check', paidDate: `${YEAR}-01-16`, amountCents, reference: 'CHK 101', note: '',
+  recordedAt: NOW_ISO, recordedByUserId: 'u-billing', recordedByUserName: 'Bill',
+  stripePaymentIntentId: null, stripeEventId: null,
+  ...overrides,
+});
+const eventData = (type, overrides = {}) => ({
+  type, at: NOW_ISO, actorType: 'user', actorUserId: 'u-billing', actorUserName: 'Bill', summary: type, changes: [],
+  ...overrides,
+});
+const selectionData = (overrides = {}) => ({
+  include: true, mode: 'all', items: [], updatedAt: NOW_ISO, updatedByUserId: 'u-billing', updatedByUserName: 'Bill',
+  ...overrides,
+});
+const updatedBy = { updatedAt: NOW_ISO, updatedByUserId: 'u-billing', updatedByUserName: 'Bill' };
+
+/** Un invoice ya guardado (con su contador y sus fotos), sin pasar por las reglas. */
+const seedInvoice = (invoiceId, seq, overrides = {}) => env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'invoices', invoiceId), invoiceData(seq, overrides));
+  await setDoc(doc(db, 'invoice_counters', String(YEAR)), { lastSeq: seq, lastInvoiceId: invoiceId, updatedAt: NOW_ISO });
+  await setDoc(doc(db, 'invoices', invoiceId, 'photos', 'selection'), selectionData());
+  await setDoc(doc(db, 'invoices', invoiceId, 'events', 'e-created'), eventData('created'));
+});
+
+/**
+ * La transacción de invoicesService.create: contador +1, invoice, fotos y
+ * evento. `overrides` cambia el invoice; `seqStep` y `withCounter` prueban
+ * números que no salen del contador.
+ */
+const createInvoice = (db, invoiceId, { overrides = {}, seqStep = 1, withCounter = true, eventType = 'created' } = {}) =>
+  runTransaction(db, async (transaction) => {
+    const counterRef = doc(db, 'invoice_counters', String(YEAR));
+    const counterSnap = await transaction.get(counterRef);
+    const seq = (counterSnap.exists() ? counterSnap.data().lastSeq : 0) + seqStep;
+    const invoice = invoiceData(seq, overrides);
+    if (withCounter) transaction.set(counterRef, { lastSeq: seq, lastInvoiceId: invoiceId, updatedAt: NOW_ISO });
+    transaction.set(doc(db, 'invoices', invoiceId), invoice);
+    transaction.set(doc(db, 'invoices', invoiceId, 'photos', 'selection'), selectionData());
+    transaction.set(doc(collection(db, 'invoices', invoiceId, 'events')), eventData(eventType));
+    if (invoice.payment) transaction.set(doc(collection(db, 'invoices', invoiceId, 'events')), eventData('payment_recorded'));
+  });
+
+/** Un cambio con su evento en el mismo batch (update, addNote, fotos). */
+const updateInvoice = (db, invoiceId, patch, eventType = 'updated') => {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'invoices', invoiceId), { ...patch, ...updatedBy });
+  batch.set(doc(collection(db, 'invoices', invoiceId, 'events')), eventData(eventType));
+  return batch.commit();
+};
+
+describe('Invoices New', () => {
+  test('lee quien ve Invoices New (lista, Activity y fotos); los demás no', async () => {
+    await seedInvoice('i1', 1);
+    const viewer = as('invviewer@precise.test');
+    await assertSucceeds(getDocs(collection(viewer, 'invoices')));
+    await assertSucceeds(getDocs(query(collection(viewer, 'invoices'), where('issueDate', '>=', `${YEAR - 1}-01-01`))));
+    await assertSucceeds(getDocs(query(collection(viewer, 'invoices'), where('status', 'in', ['awaiting_payment', 'payment_link_sent']))));
+    await assertSucceeds(getDocs(query(collection(viewer, 'invoices', 'i1', 'events'), orderBy('at', 'desc'))));
+    await assertSucceeds(getDoc(doc(viewer, 'invoices', 'i1', 'photos', 'selection')));
+    await assertFails(getDocs(collection(as('cleaner@precise.test'), 'invoices')));
+    await assertFails(getDoc(doc(as('sandy@precise.test'), 'invoices', 'i1')));
+    await assertFails(getDoc(doc(as('sandy@precise.test'), 'invoices', 'i1', 'events', 'e-created')));
+  });
+
+  test('crear: contador, invoice, fotos y evento en una transacción (Add)', async () => {
+    const billing = as('billing@precise.test');
+    await assertSucceeds(createInvoice(billing, 'i1'));
+    await assertSucceeds(createInvoice(billing, 'i2'));
+    await assertSucceeds(createInvoice(billing, 'i3', {
+      overrides: { status: 'paid', payment: manualPayment(10825) },
+    }));
+    await assertFails(createInvoice(as('invviewer@precise.test'), 'i4', {
+      overrides: { createdByUserId: 'u-invviewer', updatedByUserId: 'u-invviewer' },
+    }));
+    // Administrator con "View As User": la app escribe el id de la otra persona.
+    await assertSucceeds(createInvoice(as('admin@precise.test'), 'i5'));
+  });
+
+  test('crear: el número sale del contador, sin saltos ni repetidos', async () => {
+    const billing = as('billing@precise.test');
+    await assertFails(createInvoice(billing, 'i1', { withCounter: false }));
+    await assertFails(createInvoice(billing, 'i1', { seqStep: 2 }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { number: `INV-${YEAR}-1` } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { numberKey: 1 } }));
+    await assertSucceeds(createInvoice(billing, 'i1'));
+    // El contador solo se mueve junto con SU invoice nuevo.
+    await assertFails(setDoc(doc(billing, 'invoice_counters', String(YEAR)), { lastSeq: 2, lastInvoiceId: 'i1', updatedAt: NOW_ISO }));
+    await assertFails(setDoc(doc(billing, 'invoice_counters', String(YEAR)), { lastSeq: 9, lastInvoiceId: 'nope', updatedAt: NOW_ISO }));
+    await assertFails(deleteDoc(doc(billing, 'invoice_counters', String(YEAR))));
+  });
+
+  test('crear: montos exactos, estados del navegador y nada del servidor', async () => {
+    const billing = as('billing@precise.test');
+    await assertFails(createInvoice(billing, 'i1', { overrides: { totalCents: 99999 } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { taxCents: 900, totalCents: 10900 } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { subtotalCents: 0, taxCents: 0, totalCents: 0 } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { subtotalCents: 100.5 } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { dueDate: `${YEAR - 1}-12-31` } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { status: 'paid_via_stripe' } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { status: 'payment_link_sent' } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { delivery: { ...EMPTY_DELIVERY, sendCount: 1 } } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { createdByUserId: 'u-owner' } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { propertyId: 'no-house', job: { ...invoiceData(1).job, propertyId: 'no-house' } } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { status: 'paid' } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { status: 'paid', payment: manualPayment(5000) } }));
+    await assertFails(createInvoice(billing, 'i1', {
+      overrides: { status: 'paid', payment: manualPayment(10825, { source: 'stripe', method: 'Stripe' }) },
+    }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { paymentLinkUrl: 'javascript:alert(1)' } }));
+    await assertFails(createInvoice(billing, 'i1', { overrides: { paymentLinkUrl: 'https://pay.example.test/x' } }));
+    await assertFails(createInvoice(billing, 'i1', { eventType: 'payment_confirmed_stripe' }));
+    // Tasa 0 (exento) y redondeo al centavo (1234 × 8.25% = 101.805 → 102).
+    await assertSucceeds(createInvoice(billing, 'i1', { overrides: { taxRateBps: 0, taxCents: 0, totalCents: 10000 } }));
+    await assertSucceeds(createInvoice(billing, 'i2', { overrides: { subtotalCents: 1234, taxCents: 102, totalCents: 1336 } }));
+  });
+
+  test('editar: fechas, montos, notas y correo (Edit); número, cliente y estado no', async () => {
+    await seedInvoice('i1', 1);
+    const billing = as('billing@precise.test');
+    await assertSucceeds(updateInvoice(billing, 'i1', { dueDate: `${YEAR}-02-14`, paymentTerms: 'custom' }));
+    await assertSucceeds(updateInvoice(billing, 'i1', {
+      recipientEmail: 'billing@client.test', paymentLinkUrl: 'https://buy.stripe.com/test_abc123',
+    }));
+    await assertSucceeds(updateInvoice(billing, 'i1', { subtotalCents: 20000, taxCents: 1650, totalCents: 21650 }));
+    await assertSucceeds(updateInvoice(billing, 'i1', {
+      notes: [{ id: 'n1', text: 'Thanks', createdAt: NOW_ISO, createdByUserId: 'u-billing', createdByUserName: 'Bill' }],
+    }, 'note_added'));
+    await assertFails(updateInvoice(billing, 'i1', { subtotalCents: 30000 }));
+    await assertFails(updateInvoice(billing, 'i1', { number: 'INV-1999-0001' }));
+    await assertFails(updateInvoice(billing, 'i1', { client: { ...invoiceData(1).client, name: 'Other' } }));
+    await assertFails(updateInvoice(billing, 'i1', { createdByUserId: 'u-owner' }));
+    await assertFails(updateInvoice(billing, 'i1', { status: 'payment_link_sent' }));
+    await assertFails(updateInvoice(billing, 'i1', { delivery: { ...EMPTY_DELIVERY, sendCount: 3 } }));
+    await assertFails(updateInvoice(billing, 'i1', { dueDate: `${YEAR - 1}-01-01` }));
+    await assertFails(updateDoc(doc(billing, 'invoices', 'i1'), { dueDate: `${YEAR}-03-01`, updatedByUserId: 'u-owner' }));
+    await assertFails(updateInvoice(as('invviewer@precise.test'), 'i1', { dueDate: `${YEAR}-03-01` }));
+    await assertFails(deleteDoc(doc(billing, 'invoices', 'i1')));
+    await assertFails(deleteDoc(doc(as('admin@precise.test'), 'invoices', 'i1')));
+  });
+
+  test('Mark as Paid: el pago completo, una sola vez', async () => {
+    await seedInvoice('i1', 1);
+    const billing = as('billing@precise.test');
+    await assertFails(updateInvoice(billing, 'i1', { status: 'paid', payment: manualPayment(100) }, 'payment_recorded'));
+    await assertFails(updateInvoice(billing, 'i1', {
+      status: 'paid', payment: manualPayment(10825, { stripeEventId: 'evt_1' }),
+    }, 'payment_recorded'));
+    await assertFails(updateInvoice(billing, 'i1', { status: 'paid_via_stripe', payment: manualPayment(10825) }, 'payment_recorded'));
+    await assertSucceeds(updateInvoice(billing, 'i1', { status: 'paid', payment: manualPayment(10825) }, 'payment_recorded'));
+    // Ya pagado: no se registra otro pago.
+    await assertFails(updateInvoice(billing, 'i1', {
+      payment: manualPayment(10825, { reference: 'second' }),
+    }, 'payment_recorded'));
+  });
+
+  test('pagado: subtotal, tasa y montos fijos; notas y fotos sí', async () => {
+    await seedInvoice('i1', 1, { status: 'paid', payment: manualPayment(10825) });
+    const billing = as('billing@precise.test');
+    await assertFails(updateInvoice(billing, 'i1', { subtotalCents: 20000, taxCents: 1650, totalCents: 21650 }));
+    await assertFails(updateInvoice(billing, 'i1', { status: 'awaiting_payment', payment: null }));
+    await assertSucceeds(updateInvoice(billing, 'i1', {
+      notes: [{ id: 'n1', text: 'Paid in full', createdAt: NOW_ISO, createdByUserId: 'u-billing', createdByUserName: 'Bill' }],
+    }, 'note_added'));
+    await assertSucceeds(updateInvoice(billing, 'i1', {
+      photos: { include: false, mode: 'all', selectedCount: 0, beforeCount: 0, afterCount: 0 },
+    }, 'photos_updated'));
+  });
+
+  test('Activity: solo se agrega, a nombre de quien hace el cambio', async () => {
+    await seedInvoice('i1', 1);
+    const billing = as('billing@precise.test');
+    const events = collection(billing, 'invoices', 'i1', 'events');
+    await assertSucceeds(setDoc(doc(events), eventData('updated')));
+    await assertFails(setDoc(doc(events), eventData('created')));
+    await assertFails(setDoc(doc(events), eventData('delivery_sent')));
+    await assertFails(setDoc(doc(events), eventData('updated', { actorUserId: 'u-owner' })));
+    await assertFails(setDoc(doc(events), eventData('updated', { actorType: 'stripe' })));
+    await assertFails(setDoc(doc(collection(billing, 'invoices', 'nope', 'events')), eventData('updated')));
+    await assertFails(setDoc(doc(collection(as('invviewer@precise.test'), 'invoices', 'i1', 'events')), eventData('updated', { actorUserId: 'u-invviewer' })));
+    await assertFails(updateDoc(doc(billing, 'invoices', 'i1', 'events', 'e-created'), { summary: 'edited' }));
+    await assertFails(deleteDoc(doc(billing, 'invoices', 'i1', 'events', 'e-created')));
+  });
+
+  test('fotos elegidas: un solo documento, con Edit', async () => {
+    await seedInvoice('i1', 1);
+    const billing = as('billing@precise.test');
+    const photo = { url: 'https://x/1.jpg', category: 'before', order: 0 };
+    await assertSucceeds(setDoc(doc(billing, 'invoices', 'i1', 'photos', 'selection'), selectionData({ mode: 'selected', items: [photo] })));
+    await assertFails(setDoc(doc(billing, 'invoices', 'i1', 'photos', 'other'), selectionData()));
+    await assertFails(setDoc(doc(billing, 'invoices', 'i1', 'photos', 'selection'), selectionData({ mode: 'some' })));
+    await assertFails(setDoc(doc(billing, 'invoices', 'nope', 'photos', 'selection'), selectionData()));
+    await assertFails(setDoc(doc(as('invviewer@precise.test'), 'invoices', 'i1', 'photos', 'selection'), selectionData({ updatedByUserId: 'u-invviewer' })));
+    await assertFails(deleteDoc(doc(billing, 'invoices', 'i1', 'photos', 'selection')));
   });
 });

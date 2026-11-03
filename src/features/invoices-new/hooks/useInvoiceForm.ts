@@ -5,11 +5,12 @@
 //
 // Monto y tasa: mientras el usuario no los toca (`null`), el formulario
 // muestra los del job (getInvoiceDefaults) en el render; no hay un efecto que
-// los copie al estado cuando llegan los servicios del job.
+// los copie al estado cuando llegan los servicios del job. Lo mismo el correo
+// del envío: `null` = el del cliente del job.
 // ============================================================================
 import { useMemo, useReducer } from 'react';
 import type {
-  Invoice, InvoiceManualPaymentInput, InvoiceNote, InvoicePaymentTerms,
+  Invoice, InvoiceDeliveryChoice, InvoiceManualPaymentInput, InvoiceNote, InvoicePaymentTerms,
   YmdDate,
 } from '../../../types/index';
 import { todayIso } from '../../../utils/dateFormat';
@@ -28,6 +29,9 @@ export interface InvoiceFormNote {
   original: InvoiceNote | null;
 }
 
+/** Opciones de envío del formulario. `recipientEmail` null = sin tocar: el del cliente. */
+export type InvoiceFormDelivery = Omit<InvoiceDeliveryChoice, 'recipientEmail'> & { recipientEmail: string | null };
+
 export interface InvoiceFormState {
   propertyId: string;
   issueDate: YmdDate;
@@ -40,6 +44,8 @@ export interface InvoiceFormState {
   notes: InvoiceFormNote[];
   status: 'awaiting_payment' | 'paid';
   payment: InvoiceManualPaymentInput;
+  /** Al guardar: mandar el PDF y/o el enlace de pago (desmarcados al abrir: editar no reenvía). */
+  delivery: InvoiceFormDelivery;
 }
 
 type InvoiceFormAction =
@@ -53,11 +59,19 @@ type InvoiceFormAction =
   | { type: 'changeNote'; key: string; text: string }
   | { type: 'removeNote'; key: string }
   | { type: 'setStatus'; status: 'awaiting_payment' | 'paid' }
-  | { type: 'setPayment'; field: keyof InvoiceManualPaymentInput; value: string };
+  | { type: 'setPayment'; field: keyof InvoiceManualPaymentInput; value: string }
+  | { type: 'setDelivery'; patch: Partial<InvoiceDeliveryChoice> };
 
 const emptyNote = (): InvoiceFormNote => ({ key: crypto.randomUUID(), text: '', original: null });
 
 const centsToText = (cents: number): string => (cents / 100).toFixed(2);
+
+const createInitialDelivery = (invoice: Invoice | null): InvoiceFormDelivery => ({
+  sendPdf: false,
+  sendPaymentLink: false,
+  recipientEmail: invoice?.recipientEmail || null,
+  paymentLinkUrl: invoice?.paymentLinkUrl ?? '',
+});
 
 const createInitialState = (invoice: Invoice | null): InvoiceFormState => {
   if (!invoice) {
@@ -72,6 +86,7 @@ const createInitialState = (invoice: Invoice | null): InvoiceFormState => {
       notes: [emptyNote()],
       status: 'awaiting_payment',
       payment: createEmptyManualPayment(),
+      delivery: createInitialDelivery(null),
     };
   }
   const savedNotes = invoice.notes.map((note) => ({ key: note.id, text: note.text, original: note }));
@@ -85,6 +100,7 @@ const createInitialState = (invoice: Invoice | null): InvoiceFormState => {
     notes: savedNotes.length > 0 ? savedNotes : [emptyNote()],
     status: isPaidStatus(invoice.status) ? 'paid' : 'awaiting_payment',
     payment: createEmptyManualPayment(),
+    delivery: createInitialDelivery(invoice),
   };
 };
 
@@ -124,6 +140,8 @@ function invoiceFormReducer(state: InvoiceFormState, action: InvoiceFormAction):
       return { ...state, status: action.status };
     case 'setPayment':
       return { ...state, payment: { ...state.payment, [action.field]: action.value } };
+    case 'setDelivery':
+      return { ...state, delivery: { ...state.delivery, ...action.patch } };
     default:
       return state;
   }
@@ -176,6 +194,18 @@ export function getInvoiceFormAmounts(state: InvoiceFormState, jobDefaults: Invo
   return { amountText, taxRateText, subtotalCents, taxRateBps, taxCents, totalCents };
 }
 
+/**
+ * Opciones de envío listas para validar y mandar: el correo es el que escribió
+ * el usuario o el del cliente, y un invoice pagado no manda enlace de pago.
+ */
+export function getInvoiceFormDelivery(state: InvoiceFormState, clientEmail: string): InvoiceDeliveryChoice {
+  return {
+    ...state.delivery,
+    recipientEmail: state.delivery.recipientEmail ?? clientEmail,
+    sendPaymentLink: state.delivery.sendPaymentLink && state.status !== 'paid',
+  };
+}
+
 /** Errores del formulario (vacío = se puede guardar). */
 export function getInvoiceFormErrors(state: InvoiceFormState, amounts: InvoiceFormAmounts, isEditing: boolean): InvoiceFormErrors {
   const formErrors: InvoiceFormErrors = {};
@@ -189,6 +219,9 @@ export function getInvoiceFormErrors(state: InvoiceFormState, amounts: InvoiceFo
   if (amounts.taxRateBps === null) formErrors.taxRate = 'Enter a tax rate between 0 and 100, with up to two decimals.';
   if (state.notes.some((note) => note.text.length > INVOICE_LIMITS.noteText)) {
     formErrors.notes = `Each note can have up to ${INVOICE_LIMITS.noteText} characters.`;
+  }
+  if (state.notes.filter((note) => note.text.trim() !== '').length > INVOICE_LIMITS.maxNotes) {
+    formErrors.notes = `An invoice can have up to ${INVOICE_LIMITS.maxNotes} notes.`;
   }
   const paymentErrors = !isEditing && state.status === 'paid' ? getManualPaymentErrors(state.payment, state.issueDate) : {};
   return { ...formErrors, ...paymentErrors };
@@ -210,6 +243,7 @@ export function useInvoiceForm(invoice: Invoice | null) {
     removeNote: (key: string) => dispatch({ type: 'removeNote', key }),
     setStatus: (status: 'awaiting_payment' | 'paid') => dispatch({ type: 'setStatus', status }),
     setPaymentField: (field: keyof InvoiceManualPaymentInput, value: string) => dispatch({ type: 'setPayment', field, value }),
+    setDelivery: (patch: Partial<InvoiceDeliveryChoice>) => dispatch({ type: 'setDelivery', patch }),
   }), []);
 
   return {

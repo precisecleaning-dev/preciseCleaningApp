@@ -1,7 +1,8 @@
 // src/features/invoices-new/invoicePdfFile.ts
 // ============================================================================
-// Genera y descarga el archivo PDF de un invoice. Las fotos se convierten a
-// data URL antes (fetchImageAsDataUrl) para que salgan en el archivo.
+// Genera el archivo PDF de un invoice (para descargarlo o para adjuntarlo al
+// correo). Las fotos se convierten a data URL antes (fetchImageAsDataUrl) para
+// que salgan en el archivo.
 // ============================================================================
 import type { Invoice, Property } from '../../types/index';
 import type { Branding } from '../../utils/companyBranding';
@@ -16,9 +17,12 @@ import {
 import { resolveInvoicePhotos } from './invoicePhotos';
 import { buildAllJobPhotoItems } from './invoiceSnapshot';
 
-/** Aviso cuando algunas fotos no entraron en el archivo. */
-export const getMissingPhotosWarning = (missingPhotoCount: number): string =>
-  `${missingPhotoCount} photo(s) could not be added to the PDF: their storage does not allow the app to read them (CORS).`;
+/** Un PDF generado y las fotos que no se pudieron incrustar. */
+export interface InvoicePdfFile {
+  blob: Blob;
+  fileName: string;
+  missingPhotoCount: number;
+}
 
 /** Resultado de una descarga: fotos que no se pudieron incrustar. */
 export interface InvoicePdfDownloadResult {
@@ -26,13 +30,13 @@ export interface InvoicePdfDownloadResult {
 }
 
 /**
- * Arma el PDF y lo descarga. Lanza un error si no se pudo generar.
+ * Arma el PDF. Lanza un error si no se pudo generar.
  * Una foto que no se puede leer desde la app (su servidor no lo permite: CORS)
  * NO se dibujaría en el archivo; va con el aviso "Photo could not be added" y
  * se cuenta en el resultado. La vista previa sí la muestra (un <img> no
- * necesita permiso), por eso se avisa al descargar.
+ * necesita permiso), por eso se avisa al descargar o enviar.
  */
-export const downloadInvoicePdf = async (data: InvoicePdfData, branding: Branding): Promise<InvoicePdfDownloadResult> => {
+export const createInvoicePdfFile = async (data: InvoicePdfData, branding: Branding): Promise<InvoicePdfFile> => {
   const embeddedPhotos = await Promise.all(data.photos.map(async (photo) => {
     const dataUrl = await fetchImageAsDataUrl(photo.url);
     return { ...photo, url: dataUrl.startsWith('data:') ? dataUrl : '' };
@@ -45,17 +49,30 @@ export const downloadInvoicePdf = async (data: InvoicePdfData, branding: Brandin
   const fileData = { ...data, photos: embeddedPhotos };
   const pages = buildInvoicePdfPages(fileData, branding);
   const fileName = getInvoicePdfFileName(data);
-  const pdfBlob = await generatePDFBlob(buildInvoicePdfDocument(fileData, pages), { filename: fileName, format: 'a4' });
-  downloadBlob(pdfBlob, fileName);
-  return { missingPhotoCount: missingPhotos.length };
+  const blob = await generatePDFBlob(buildInvoicePdfDocument(fileData, pages), { filename: fileName, format: 'a4' });
+  return { blob, fileName, missingPhotoCount: missingPhotos.length };
 };
 
-/** Download PDF de un invoice guardado (menú de la fila): lee sus fotos y la marca. */
-export const downloadSavedInvoicePdf = async (
-  invoice: Invoice, jobProperty: Property | null,
-): Promise<InvoicePdfDownloadResult> => {
+/** PDF de un invoice GUARDADO: lee sus fotos elegidas y la marca de la empresa. */
+export const createSavedInvoicePdfFile = async (invoice: Invoice, jobProperty: Property | null): Promise<InvoicePdfFile> => {
   const [selection, branding] = await Promise.all([invoicesService.getPhotoSelection(invoice.id), getBranding()]);
   const jobPhotos = jobProperty ? buildAllJobPhotoItems(jobProperty) : null;
   const { photos } = resolveInvoicePhotos(selection, jobPhotos, invoice.photos.include);
-  return downloadInvoicePdf(buildPdfDataFromInvoice(invoice, photos), branding);
+  return createInvoicePdfFile(buildPdfDataFromInvoice(invoice, photos), branding);
+};
+
+/** Arma el PDF y lo descarga. */
+export const downloadInvoicePdf = async (data: InvoicePdfData, branding: Branding): Promise<InvoicePdfDownloadResult> => {
+  const pdfFile = await createInvoicePdfFile(data, branding);
+  downloadBlob(pdfFile.blob, pdfFile.fileName);
+  return { missingPhotoCount: pdfFile.missingPhotoCount };
+};
+
+/** Download PDF de un invoice guardado (menú de la fila y detalle). */
+export const downloadSavedInvoicePdf = async (
+  invoice: Invoice, jobProperty: Property | null,
+): Promise<InvoicePdfDownloadResult> => {
+  const pdfFile = await createSavedInvoicePdfFile(invoice, jobProperty);
+  downloadBlob(pdfFile.blob, pdfFile.fileName);
+  return { missingPhotoCount: pdfFile.missingPhotoCount };
 };

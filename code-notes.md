@@ -3197,9 +3197,10 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   los jobs en status Invoice y "Show all jobs" abre la ventana de 12 meses. Monto y tasa se prellenan con
   `getInvoiceDefaults` (finanzas del job) EN EL RENDER mientras el usuario no los toca (`amountText`/`taxRateText`
   en null): no hay efecto que los copie al llegar los servicios. Un job con invoices o con `invoiceHold` solo
-  avisa. Pendiente por etapa: Preview PDF (PDF), "Selected photos" con galería (fotos; hoy va "All job
-  photos"), opciones de envío y enlace de Stripe (correo/Stripe; hoy se guarda el correo del cliente y
-  `paymentLinkUrl` vacío). Edit se abre desde el lápiz de cada fila de la lista.
+  avisa. Edit se abre desde el menú de la fila o el detalle. ⚠ Edit guarda con `expectedUpdatedAt` (el
+  `updatedAt` al abrir): si otra persona guardó el invoice mientras tanto, falla con InvoiceChangedError en vez
+  de pisar sus notas, montos o fechas con la copia del formulario. Las escrituras del servidor (envío) no
+  cambian `updatedAt` y no cuentan como conflicto.
 - Invoices New · lista (11/2026): `invoicesService.subscribeWindow` une DOS consultas de un solo campo
   (`issueDate >=` día 1 de hace 12 meses, `windowStartIso()` de propertiesWindow, y `status in` [awaiting,
   link_sent] para los pendientes de cualquier fecha): sin índices compuestos. "Ver todo el historial" (el mismo
@@ -3239,6 +3240,31 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Fotos en el ARCHIVO: se leen con fetch (CORS) y se incrustan como data URL; una foto cuyo servidor no
   permite leerla desde la app saldría en blanco, así que va con "Photo could not be added" y la descarga avisa
   cuántas faltaron (la vista previa sí la muestra: un <img> no necesita CORS). Si pasa con las fotos de
-  Firebase Storage, falta configurar CORS en el bucket (`gsutil cors set cors.json gs://<bucket>`): el
-  cors.json del repo tiene dominios de otro proyecto (precise-app-94dd6) y no el de Cloudflare.
+  Firebase Storage, falta configurar CORS en el bucket (`gsutil cors set cors.json
+  gs://bdprecise-2d4bc.firebasestorage.app`); `cors.json` lista el dominio de Cloudflare, los de Firebase
+  Hosting del proyecto y los puertos de localhost. Un dominio nuevo de la app va también ahí.
   `shared/utils/downloadFile.ts` es idéntico al de la rama del Excel (backup/fix-slot-1) para que no choquen.
+- Invoices New · reglas (11/2026, propuesta en `security/`, sin publicar): `security/firestore.rules` REPITE
+  las validaciones de `invoicesService.ts` (lista exacta de campos al crear, montos en centavos con
+  redondeo, estados que pone el navegador, bloqueos de pagado, número = contador del año en la misma
+  transacción, autor = usuario de la sesión). ⚠ Si se agrega o renombra un campo de `Invoice`, de
+  `InvoiceEvent` o de `photos/selection`, o cambia un límite (`INVOICE_LIMITS`), hay que cambiar también
+  `invoiceCreateOk` / `invoiceEventOk` / `invoicePhotosOk` y correr `npm run test:rules`: con las reglas
+  publicadas, crear un invoice fallaría para todos. Las escrituras del servidor (correo, Stripe) usan Admin
+  SDK y no pasan por estas reglas. "Invoices New" cuenta para `fin` (`functions/src/userAccess.ts`): el
+  formulario lee `billing_services` del job.
+- Invoices New · correo (Etapa 8, 11/2026): Send / Resend y "Send by email" del formulario usan la Cloud
+  Function `sendinvoiceemail` (functions/src/invoiceEmail.ts), NO la cola `mail`: la cola no adjunta archivos,
+  sus reglas solo dejan escribirle al correo de la empresa (para que nadie use el SMTP con terceros) y
+  `delivery` / "Payment Link Sent" los escribe solo el servidor. El navegador genera el PDF (igual que
+  Download), lo sube a Storage en `invoices/{id}/email/{uuid}.pdf` (uno por envío; la función lo borra al
+  terminar) y llama a la
+  función, que lee número, total y enlace del invoice en Firestore, manda con BCC y Reply-To al correo de la
+  empresa (`settings_company/main.email`) y registra `delivery` + eventos `delivery_*`. Si el correo falla,
+  el invoice queda guardado y el aviso lo dice; nunca queda como enviado.
+  ⚠ SMTP: usa los secretos `CREW_SMTP_*` (los de los correos del Task list de la app móvil, decisión de Omar),
+  no los `SMTP_*` de esta web: según app-jesus/code-notes.md esos están mal cargados. Cambiar un `CREW_SMTP_*`
+  afecta a los dos. PDF máximo 18 MB (Gmail: 25 MB por correo con la codificación).
+  Enlace de pago: solo `https://buy.stripe.com/...` (app, service y reglas), creado a mano en Stripe. El correo
+  y el PDF lo mandan con `client_reference_id=<invoiceId>` para que el webhook de Stripe (Etapa 9) sepa qué
+  invoice se pagó aunque el mismo enlace se use para varios.

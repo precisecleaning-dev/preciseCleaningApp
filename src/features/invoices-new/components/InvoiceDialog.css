@@ -5,6 +5,11 @@
   overflow: hidden;
 }
 
+/* El diálogo recibe el foco al abrir (InvoiceDialog.tsx); no lleva anillo. */
+.invd-dialog:focus {
+  outline: none;
+}
+
 .invd-narrow {
   background-color: #ffffff;
   border-radius: 12px;

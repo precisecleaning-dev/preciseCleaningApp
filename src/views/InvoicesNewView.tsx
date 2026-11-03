@@ -7,7 +7,7 @@
 //    features/invoices-new) y componentes.
 // ============================================================================
 import { useState } from 'react';
-import type { Invoice, Property, Role, SystemUser } from '../types/index';
+import type { Invoice, InvoiceDeliveryOutcome, Property, Role, SystemUser } from '../types/index';
 import { todayIso } from '../utils/dateFormat';
 import { getInvoicesNewRights } from '../features/invoices-new/invoicesNewPermissions';
 import { useInvoicesWindow } from '../features/invoices-new/hooks/useInvoicesWindow';
@@ -21,9 +21,11 @@ import InvoiceRegister from '../features/invoices-new/components/InvoiceRegister
 import InvoiceFormModal from '../features/invoices-new/components/InvoiceFormModal';
 import InvoiceSavedNotice, { type InvoiceNoticeTone } from '../features/invoices-new/components/InvoiceSavedNotice';
 import SavedInvoicePdfPreview from '../features/invoices-new/components/SavedInvoicePdfPreview';
-import { downloadSavedInvoicePdf, getMissingPhotosWarning } from '../features/invoices-new/invoicePdfFile';
+import { downloadSavedInvoicePdf } from '../features/invoices-new/invoicePdfFile';
+import { describeDeliveryOutcome, getMissingPhotosWarning } from '../features/invoices-new/invoiceDelivery';
 import InvoiceDetailModal from '../features/invoices-new/components/InvoiceDetailModal';
 import RecordPaymentDialog from '../features/invoices-new/components/RecordPaymentDialog';
+import SendInvoiceDialog from '../features/invoices-new/components/SendInvoiceDialog';
 import './InvoicesNewView.css';
 
 interface InvoicesNewViewProps {
@@ -49,6 +51,7 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
   const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
   const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+  const [sendInvoiceId, setSendInvoiceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ message: string; tone: InvoiceNoticeTone } | null>(null);
   const findInvoice = (invoiceId: string | null) =>
     invoicesWindow.invoices.find((windowInvoice) => windowInvoice.id === invoiceId) ?? null;
@@ -56,13 +59,28 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
   const detailInvoice = findInvoice(detailInvoiceId);
   const paymentInvoice = findInvoice(paymentInvoiceId);
   const previewInvoice = findInvoice(previewInvoiceId);
+  const sendInvoice = findInvoice(sendInvoiceId);
 
-  const handleInvoiceSaved = (result: { number: string; isNew: boolean }) => {
+  const handleInvoiceSaved = (result: { id: string; number: string; isNew: boolean; delivery: InvoiceDeliveryOutcome | null }) => {
     setFormTarget(null);
-    const message = result.isNew ? `Invoice ${result.number} created.` : `Invoice ${result.number} saved.`;
-    setNotice({ message, tone: 'success' });
-    // Al crear se limpian los filtros para que el invoice nuevo quede a la vista (alcance §9).
-    if (result.isNew) filterActions.clear();
+    const savedText = result.isNew ? `Invoice ${result.number} created.` : `Invoice ${result.number} saved.`;
+    const deliveryText = result.delivery ? describeDeliveryOutcome(result.delivery) : null;
+    setNotice({
+      message: deliveryText ? `${savedText} ${deliveryText.text}` : savedText,
+      tone: deliveryText?.isProblem ? 'error' : 'success',
+    });
+    // Al crear se limpian los filtros y se abre su detalle, para que el invoice
+    // nuevo quede a la vista (alcance §9). El detalle aparece cuando el listener lo trae.
+    if (result.isNew) {
+      filterActions.clear();
+      setDetailInvoiceId(result.id);
+    }
+  };
+
+  const handleInvoiceSent = (invoice: Invoice, outcome: InvoiceDeliveryOutcome) => {
+    setSendInvoiceId(null);
+    const { text, isProblem } = describeDeliveryOutcome(outcome);
+    setNotice({ message: `Invoice ${invoice.number}: ${text}`, tone: isProblem ? 'error' : 'success' });
   };
 
   const handlePaymentRecorded = (invoice: Invoice) => {
@@ -130,6 +148,7 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
         onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
         onPreviewPdf={(invoice) => setPreviewInvoiceId(invoice.id)}
         onDownloadPdf={handleDownloadPdf}
+        onSendInvoice={(invoice) => setSendInvoiceId(invoice.id)}
       />
       {detailInvoice && (
         <InvoiceDetailModal
@@ -143,6 +162,7 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
           onMarkAsPaid={(invoice) => setPaymentInvoiceId(invoice.id)}
           onPreviewPdf={(invoice) => setPreviewInvoiceId(invoice.id)}
           onDownloadPdf={handleDownloadPdf}
+          onSendInvoice={(invoice) => setSendInvoiceId(invoice.id)}
         />
       )}
       {formTarget && (
@@ -160,6 +180,15 @@ const InvoicesNewView = ({ onOpenMenu, properties, currentUser, activeRole, isSu
           currentUser={currentUser}
           onClose={() => setPaymentInvoiceId(null)}
           onRecorded={handlePaymentRecorded}
+        />
+      )}
+      {sendInvoice && (
+        <SendInvoiceDialog
+          invoice={sendInvoice}
+          jobProperty={findJobProperty(sendInvoice)}
+          currentUser={currentUser}
+          onClose={() => setSendInvoiceId(null)}
+          onSent={handleInvoiceSent}
         />
       )}
       {previewInvoice && (

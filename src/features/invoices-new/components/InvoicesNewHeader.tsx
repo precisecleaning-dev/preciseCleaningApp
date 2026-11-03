@@ -7,8 +7,7 @@ import './InvoicesNewHeader.css';
 interface InvoicesNewHeaderProps {
   onOpenMenu: () => void;
   canCreate: boolean;
-  /** Abre el formulario. Sin handler el botón se ve deshabilitado. */
-  onCreateInvoice?: () => void;
+  onCreateInvoice: () => void;
 }
 
 const InvoicesNewHeader = ({ onOpenMenu, canCreate, onCreateInvoice }: InvoicesNewHeaderProps) => (
@@ -21,7 +20,7 @@ const InvoicesNewHeader = ({ onOpenMenu, canCreate, onCreateInvoice }: InvoicesN
       </div>
     </div>
     {canCreate && (
-      <button type="button" className="btn-primary invn-create-btn" disabled={!onCreateInvoice} onClick={onCreateInvoice}>
+      <button type="button" className="btn-primary invn-create-btn" onClick={onCreateInvoice}>
         <Plus size={18} aria-hidden="true" /> Create Invoice
       </button>
     )}

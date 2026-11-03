@@ -2,12 +2,22 @@
 // pago): overlay global, encabezado con título y X, y Escape para cerrar.
 // Con un diálogo encima de otro, Escape cierra solo el de arriba. Un clic
 // afuera NO cierra (se perdería lo escrito).
-import { useEffect, useId, type ReactNode } from 'react';
+// Teclado: al abrir, el foco entra al diálogo; Tab y Shift+Tab dan la vuelta
+// dentro de él (no se va a la página de atrás); al cerrar, el foco vuelve a lo
+// que lo abrió.
+import { useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import './InvoiceDialog.css';
 
 /** Diálogos abiertos, el último es el de arriba. */
 const openDialogIds: string[] = [];
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]', 'button:not([disabled])', 'input:not([disabled])', 'select:not([disabled])',
+  'textarea:not([disabled])', 'iframe', '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+const isTopDialog = (dialogId: string): boolean => openDialogIds[openDialogIds.length - 1] === dialogId;
 
 interface InvoiceDialogProps {
   title: string;
@@ -27,6 +37,7 @@ const InvoiceDialog = ({
 }: InvoiceDialogProps) => {
   const dialogId = useId();
   const titleId = `${dialogId}-title`;
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Registra el diálogo en la pila mientras está abierto.
   useEffect(() => {
@@ -37,23 +48,51 @@ const InvoiceDialog = ({
     };
   }, [dialogId]);
 
+  // Foco: entra al diálogo al abrir y vuelve a lo que lo abrió al cerrar.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
+    };
+  }, []);
+
   // Escape cierra solo el diálogo de arriba.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isTopDialog = openDialogIds[openDialogIds.length - 1] === dialogId;
-      if (event.key === 'Escape' && isTopDialog && !isCloseDisabled) onClose();
+      if (event.key === 'Escape' && isTopDialog(dialogId) && !isCloseDisabled) onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dialogId, isCloseDisabled, onClose]);
 
+  // Tab y Shift+Tab dan la vuelta dentro del diálogo de arriba.
+  const handleTabKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab' || !isTopDialog(dialogId) || !dialogRef.current) return;
+    const focusableElements = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    if (focusableElements.length === 0) return;
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+    if (event.shiftKey && (activeElement === firstElement || activeElement === dialogRef.current)) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
   return (
     <div className="modal-overlay-centered">
       <div
+        ref={dialogRef}
         className={`invd-dialog${size === 'wide' ? ' modal-70' : ' invd-narrow'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={handleTabKey}
       >
         <header className="invd-header">
           <div className="invd-heading">

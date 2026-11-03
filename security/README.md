@@ -7,7 +7,7 @@ aquí. Es la propuesta para revisar, probar y publicar a mano cuando se decida.
 |---|---|
 | `firestore.rules` | Reglas de Firestore por módulo y rol. |
 | `storage.rules` | Reglas de Storage: solo usuarios activos de la lista. |
-| `tests/firestore.rules.test.mjs` | 28 pruebas contra el emulador (`npm run test:rules`). |
+| `tests/firestore.rules.test.mjs` | 44 pruebas contra el emulador (`npm run test:rules`). |
 | `firestore.indexes.json` | Índices compuestos que pide el código: la bitácora (`activity_logs` filtrada por usuario o acción y ordenada por `ts`) y la pestaña Done del Task list (`user_tasks` hechas, por persona asignada, por quien la asignó o todas, ordenadas por `doneAt`). Lo demás usa índices de un solo campo, que Firestore crea solo. |
 | `../functions/src/userAccess.ts` | Funciones que mantienen el espejo `user_access/{email}`. |
 
@@ -43,8 +43,9 @@ Los permisos heredados se calculan igual que en la app: Recycle Bin y Activity
 Log heredan de Settings, y Task List hereda de Manager/Owner.
 
 `fin` dice si el usuario puede ver dinero. Es verdadero para Administrator, para
-quien ve Payroll, Invoices, Clients Report, Owner o Manager, y para quien ve Houses sin el grupo
-`financial` oculto.
+quien ve Payroll, Invoices, Invoices New, Clients Report, Owner o Manager, y para quien ve Houses sin el grupo
+`financial` oculto. Invoices New lo necesita porque el formulario prellena el
+monto con los `billing_services` del job.
 
 ## Qué cambia respecto de hoy
 
@@ -67,6 +68,10 @@ todo. Con esta propuesta:
    - Payroll, Settings, Users, Roles, Customers, Task List y Recycle Bin solo los usa
      quien ve ese módulo.
    - Houses distingue agregar, editar y borrar, como ya lo hace la app.
+   - Invoices New (`invoices`, sus subcolecciones `events` y `photos`, e
+     `invoice_counters`) sigue su propio módulo de Roles: View lee, Add crea y
+     Edit edita, agrega notas, cambia fotos y registra el pago. Nadie borra.
+     Ver el punto 7.
    - El orden de las pestañas del Task list (`app_settings/task_list_tabs`) lo
      cambia quien tiene Edit en Task List; lo leen todos.
    - Los proyectos del Task list (`task_projects`) siguen el módulo "Projects" de
@@ -84,6 +89,20 @@ todo. Con esta propuesta:
    - El historial de notas de una casa no puede vaciarse.
    - La salida del reloj se marca una sola vez.
    - En Storage, solo Quality Check y Task List borran archivos.
+7. **Invoices New valida sus datos en el servidor** (repite lo que valida
+   `src/services/invoicesService.ts`):
+   - el número sale de `invoice_counters/{año}` en la misma transacción que crea
+     el invoice: el contador sube de 1 en 1 y solo junto con ese invoice nuevo;
+   - montos en centavos enteros: `taxCents` = subtotal × tasa redondeado al
+     centavo y `totalCents` = subtotal + impuesto; tasa entre 0 y 10000;
+   - el navegador solo pone Awaiting Payment y Paid (pago manual completo, una
+     sola vez). Payment Link Sent, Paid via Stripe y `delivery` son solo del
+     servidor (correo y Stripe, Admin SDK);
+   - pagado: subtotal, tasa y montos quedan fijos;
+   - el enlace de pago solo puede ser un Payment Link de Stripe (`https://buy.stripe.com/...`);
+   - número, cliente, job, empresa y quién lo creó no cambian nunca;
+   - Activity (`events`) solo se agrega, a nombre de quien hace el cambio;
+   - el autor de cada escritura es el usuario de la sesión (salvo Administrator, D-10).
 
 ## Decisiones antes de publicar (cambian lo que ve algún rol)
 
@@ -121,6 +140,12 @@ todo. Con esta propuesta:
 - **D-9 · "Agregar" en Houses.** El alta de una casa escribe en dos pasos (crear y
   luego completar), así que las reglas dejan que "agregar" también actualice casas.
   En la app, ese rol sigue sin ver el botón de editar.
+- **D-10 · Invoices New con "View As User".** La app firma cada cambio de un
+  invoice con el usuario que se está viendo (`effectiveUser`), no con quien de
+  verdad lo hace. Las reglas exigen que el autor sea el usuario de la sesión,
+  salvo para Administrator. Quien no es Administrator y tiene "View As User" no
+  podrá crear ni editar invoices mientras ve como otra persona. Si debe poder,
+  la app tendría que firmar con el usuario real (cambio de cliente).
 
 ## Orden para activarlo
 
@@ -167,11 +192,10 @@ index…" con el link para crearlo.
 npm run test:rules
 ```
 
-Necesita el Firebase CLI (`npm i -g firebase-tools`) y Java 11 o superior. Usa
-un proyecto `demo-precise-rules`, que no toca producción.
-
-En el entorno donde se escribieron no se pudieron correr: el emulador no se
-descarga ahí. Deben correrse una vez antes del paso 5.
+Necesita el Firebase CLI (`npm i -g firebase-tools`), Java 21 o superior (las
+versiones actuales del CLI ya no aceptan Java 11 ni 17) y `npm install` en la
+raíz (`@firebase/rules-unit-testing`). Usa un proyecto `demo-precise-rules`,
+que no toca producción. Las 44 pasan en el emulador.
 
 ## No cubierto
 
@@ -189,6 +213,11 @@ descarga ahí. Deben correrse una vez antes del paso 5.
   fotos sin conexión).
 
 - Validar la forma de cada documento (tipos y campos permitidos por colección).
-  Es el siguiente paso después de que esto esté en producción.
+  Es el siguiente paso después de que esto esté en producción. Invoices New ya
+  la valida, salvo dentro de las listas (notas, fotos elegidas, cambios de
+  Activity): las reglas no recorren listas, solo limitan su tamaño.
+- Invoices New: las reglas no pueden exigir que cada cambio lleve su evento de
+  Activity en el mismo batch (no conocen el id del evento), ni que la fecha de
+  un pago no sea futura (depende de la zona horaria). Lo hace el service.
 - Custom claims: el espejo cuesta ~1 lectura por petición. Los claims la quitarían,
   pero piden volver a iniciar sesión para que un cambio de rol se aplique.

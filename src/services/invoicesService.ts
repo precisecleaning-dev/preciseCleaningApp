@@ -18,23 +18,24 @@
 //    servidor (correo y webhook de Stripe, etapas posteriores).
 // ============================================================================
 import {
-  arrayUnion, collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, where, writeBatch,
+  collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, where, writeBatch,
   type CollectionReference, type DocumentReference, type Transaction, type Unsubscribe, type WriteBatch,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import { typedConverter } from '../lib/firebase/typedConverter';
 import { logActivity } from './activityLogService';
-import { todayIso } from '../utils/dateFormat';
+import { formatDate, todayIso } from '../utils/dateFormat';
 import type {
   Invoice, InvoiceCounter, InvoiceCreateInput, InvoiceEvent, InvoiceEventType, InvoiceFieldChange,
   InvoiceManualPaymentInput, InvoiceNote, InvoicePatch, InvoicePayment, InvoicePhotoSelection,
   InvoicePhotoSelectionInput, InvoicePhotoSummary,
 } from '../types/index';
 import {
-  buildSearchText, computeTotals, formatCents, formatInvoiceNumber, getNumberKey,
+  INVOICE_PAYMENT_TERM_LABELS, buildSearchText, computeTotals, formatCents, formatInvoiceNumber, getNumberKey,
 } from '../features/invoices-new/invoiceMath';
 import { AWAITING_STATUSES, INVOICE_STATUS_LABELS, isPaidStatus } from '../features/invoices-new/invoiceStatus';
+import { INVOICE_EMAIL_PATTERN, STRIPE_PAYMENT_LINK_PATTERN } from '../features/invoices-new/invoiceDelivery';
 import { windowStartIso } from '../shared/data/propertiesWindow';
 import { INVOICES_NEW_MODULE as MODULE_NAME } from '../features/invoices-new/invoicesNewPermissions';
 
@@ -51,8 +52,6 @@ export const INVOICE_LIMITS = {
   maxTaxRateBps: 10000,
 } as const;
 
-const PAYMENT_LINK_PATTERN = /^https:\/\/\S+$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Campos que no cambian en un invoice pagado (Paid o Paid via Stripe). */
 const PAID_LOCKED_FIELDS: readonly (keyof InvoicePatch)[] = ['subtotalCents', 'taxRateBps'];
@@ -82,6 +81,14 @@ export interface InvoiceActor {
   name: string;
 }
 
+/** Otra persona guardó el invoice mientras se editaba: no se pisa su cambio. */
+export class InvoiceChangedError extends Error {
+  constructor(invoiceNumber: string) {
+    super(`Someone else changed invoice ${invoiceNumber} while you were editing it. Close the form and open it again to see the latest version.`);
+    this.name = 'InvoiceChangedError';
+  }
+}
+
 /** Ya hay un pago completo registrado: no se registra otro. */
 export class InvoiceAlreadyPaidError extends Error {
   constructor(invoiceNumber: string) {
@@ -109,9 +116,9 @@ const assertValidInvoice = (fields: ValidatedFields): void => {
   }
   if (!fields.issueDate || !fields.dueDate) throw new Error('Issue date and due date are required.');
   if (fields.dueDate < fields.issueDate) throw new Error('The due date cannot be before the issue date.');
-  if (fields.recipientEmail && !EMAIL_PATTERN.test(fields.recipientEmail)) throw new Error('The client email is not valid.');
-  if (fields.paymentLinkUrl && !PAYMENT_LINK_PATTERN.test(fields.paymentLinkUrl)) {
-    throw new Error('The payment link must be a valid https:// URL.');
+  if (fields.recipientEmail && !INVOICE_EMAIL_PATTERN.test(fields.recipientEmail)) throw new Error('The client email is not valid.');
+  if (fields.paymentLinkUrl && !STRIPE_PAYMENT_LINK_PATTERN.test(fields.paymentLinkUrl)) {
+    throw new Error('The payment link must be a Stripe payment link (https://buy.stripe.com/...).');
   }
   if (fields.notes.length > INVOICE_LIMITS.maxNotes) throw new Error(`An invoice can have up to ${INVOICE_LIMITS.maxNotes} notes.`);
   if (fields.notes.some((note) => note.text.length > INVOICE_LIMITS.noteText)) {
@@ -190,13 +197,35 @@ const writeEvent = (writer: Transaction | WriteBatch, invoiceId: string, actor: 
   (writer as WriteBatch).set(eventRef, invoiceEvent);
 };
 
-/** Texto corto de un valor para la lista de cambios de Activity. */
+/** Nombre de cada campo en Activity. */
+const FIELD_LABELS: Record<keyof InvoicePatch, string> = {
+  issueDate: 'Issue date',
+  paymentTerms: 'Payment terms',
+  dueDate: 'Due date',
+  subtotalCents: 'Amount',
+  taxRateBps: 'Tax rate',
+  recipientEmail: 'Client email',
+  paymentLinkUrl: 'Stripe payment link',
+  notes: 'Notes',
+};
+
+/** Texto corto de un valor para la lista de cambios de Activity (fechas MM/DD/YYYY). */
 const describeValue = (field: keyof InvoicePatch, value: unknown): string => {
   if (field === 'subtotalCents' && typeof value === 'number') return formatCents(value);
   if (field === 'taxRateBps' && typeof value === 'number') return `${value / 100}%`;
   if (field === 'notes' && Array.isArray(value)) return `${value.length} note(s)`;
+  if ((field === 'issueDate' || field === 'dueDate') && typeof value === 'string') return formatDate(value);
+  if (field === 'paymentTerms' && typeof value === 'string') {
+    return INVOICE_PAYMENT_TERM_LABELS[value as keyof typeof INVOICE_PAYMENT_TERM_LABELS] ?? value;
+  }
   return String(value ?? '');
 };
+
+/** Resumen del pago para Activity: método, fecha y referencia. */
+const describePayment = (payment: InvoicePayment): string =>
+  [`Payment recorded · ${payment.method} · ${formatDate(payment.paidDate)}`, payment.reference ? `Ref. ${payment.reference}` : '']
+    .filter(Boolean)
+    .join(' · ');
 
 /** Campos del patch que de verdad cambian, con su antes y después. */
 const getPatchChanges = (invoice: Invoice, patch: InvoicePatch): { changedPatch: InvoicePatch; changes: InvoiceFieldChange[] } => {
@@ -207,7 +236,11 @@ const getPatchChanges = (invoice: Invoice, patch: InvoicePatch): { changedPatch:
     const fieldName = field as keyof InvoicePatch;
     if (JSON.stringify(invoice[fieldName]) === JSON.stringify(value)) return;
     changedPatch[field] = value;
-    changes.push({ field, before: describeValue(fieldName, invoice[fieldName]), after: describeValue(fieldName, value) });
+    changes.push({
+      field: FIELD_LABELS[fieldName] ?? field,
+      before: describeValue(fieldName, invoice[fieldName]),
+      after: describeValue(fieldName, value),
+    });
   });
   return { changedPatch: changedPatch as InvoicePatch, changes };
 };
@@ -300,7 +333,7 @@ export const invoicesService = {
       if (payment) {
         writeEvent(transaction, newInvoiceRef.id, actor, {
           type: 'payment_recorded',
-          summary: `Payment recorded · ${payment.method} · ${payment.paidDate}`,
+          summary: describePayment(payment),
         });
       }
       return invoiceNumber;
@@ -316,12 +349,16 @@ export const invoicesService = {
    * Guarda solo los campos que cambiaron, con su evento "updated". Relee el
    * invoice en la transacción: si ya está pagado (Paid o Paid via Stripe), no
    * se pueden cambiar subtotal ni tasa. Si cambian, se recalculan impuesto y total.
+   * `expectedUpdatedAt` (Edit Invoice): el `updatedAt` del invoice al abrir el
+   * formulario. Si otra persona lo guardó después, falla con InvoiceChangedError
+   * en vez de pisar sus notas, montos o fechas con la copia del formulario.
    */
-  async update(invoiceId: string, patch: InvoicePatch, actor: InvoiceActor): Promise<void> {
+  async update(invoiceId: string, patch: InvoicePatch, actor: InvoiceActor, expectedUpdatedAt?: string): Promise<void> {
     await runTransaction(db, async (transaction) => {
       const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
       if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
       const invoice = invoiceSnap.data();
+      if (expectedUpdatedAt && invoice.updatedAt !== expectedUpdatedAt) throw new InvoiceChangedError(invoice.number);
       const { changedPatch, changes } = getPatchChanges(invoice, patch);
       if (changes.length === 0) return;
 
@@ -333,6 +370,9 @@ export const invoicesService = {
       assertValidInvoice({
         ...merged, recipientEmail: merged.recipientEmail.trim(), paymentLinkUrl: merged.paymentLinkUrl.trim(),
       });
+      if (merged.payment && merged.payment.paidDate < merged.issueDate) {
+        throw new Error(`The issue date cannot be after the payment date (${formatDate(merged.payment.paidDate)}).`);
+      }
 
       const amountsChanged = 'subtotalCents' in changedPatch || 'taxRateBps' in changedPatch;
       transaction.update(invoiceRef(invoiceId), {
@@ -348,22 +388,31 @@ export const invoicesService = {
     void logActivity({ action: 'update', module: MODULE_NAME, user: actor, targetId: invoiceId, detail: 'Invoice updated' });
   },
 
-  /** Agrega una nota (sale en el PDF) con su evento, en un batch. */
+  /**
+   * Agrega una nota (sale en el PDF) con su evento. Transacción: relee las
+   * notas para no pasar del máximo aunque dos personas agreguen a la vez.
+   */
   async addNote(invoiceId: string, text: string, actor: InvoiceActor): Promise<void> {
     const trimmedText = text.trim();
     if (!trimmedText) throw new Error('The note is empty.');
     if (trimmedText.length > INVOICE_LIMITS.noteText) {
       throw new Error(`Each note can have up to ${INVOICE_LIMITS.noteText} characters.`);
     }
-    const batch = writeBatch(db);
-    batch.update(invoiceRef(invoiceId), {
-      notes: arrayUnion(buildInvoiceNote(trimmedText, actor)),
-      updatedAt: nowIso(),
-      updatedByUserId: actor.id,
-      updatedByUserName: actor.name,
+    await runTransaction(db, async (transaction) => {
+      const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
+      if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
+      const { notes } = invoiceSnap.data();
+      if (notes.length >= INVOICE_LIMITS.maxNotes) {
+        throw new Error(`An invoice can have up to ${INVOICE_LIMITS.maxNotes} notes.`);
+      }
+      transaction.update(invoiceRef(invoiceId), {
+        notes: [...notes, buildInvoiceNote(trimmedText, actor)],
+        updatedAt: nowIso(),
+        updatedByUserId: actor.id,
+        updatedByUserName: actor.name,
+      });
+      writeEvent(transaction, invoiceId, actor, { type: 'note_added', summary: 'Note added' });
     });
-    writeEvent(batch, invoiceId, actor, { type: 'note_added', summary: 'Note added' });
-    await batch.commit();
   },
 
   /** Cambia las fotos del PDF: la selección completa y el resumen del encabezado. */
@@ -389,7 +438,8 @@ export const invoicesService = {
    * Mark as Paid: registra el pago COMPLETO recibido fuera de Stripe. Relee el
    * invoice en la transacción y falla con InvoiceAlreadyPaidError si ya está
    * pagado: dos clics o dos personas dejan un solo pago. Si el pago trae nota,
-   * también se agrega a las notas del invoice (alcance §13.5).
+   * también se agrega a las notas del invoice (alcance §13.5), salvo que ya
+   * tenga el máximo de notas (la nota queda igual en el pago).
    */
   async recordManualPayment(invoiceId: string, paymentInput: InvoiceManualPaymentInput, actor: InvoiceActor): Promise<void> {
     await runTransaction(db, async (transaction) => {
@@ -400,7 +450,8 @@ export const invoicesService = {
       assertValidPayment(paymentInput, invoice.issueDate);
 
       const payment = buildManualPayment(paymentInput, invoice.totalCents, actor);
-      const paymentNote = payment.note ? [buildInvoiceNote(payment.note, actor)] : [];
+      const hasRoomForNote = invoice.notes.length < INVOICE_LIMITS.maxNotes;
+      const paymentNote = payment.note && hasRoomForNote ? [buildInvoiceNote(payment.note, actor)] : [];
       transaction.update(invoiceRef(invoiceId), {
         status: 'paid',
         payment,
@@ -411,7 +462,7 @@ export const invoicesService = {
       });
       writeEvent(transaction, invoiceId, actor, {
         type: 'payment_recorded',
-        summary: `Payment recorded · ${payment.method} · ${payment.paidDate}`,
+        summary: describePayment(payment),
         changes: [{ field: 'status', before: INVOICE_STATUS_LABELS[invoice.status], after: INVOICE_STATUS_LABELS.paid }],
       });
     });
