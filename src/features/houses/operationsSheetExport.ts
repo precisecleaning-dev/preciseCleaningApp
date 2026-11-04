@@ -6,8 +6,10 @@
 // Taxes, Final Cost, Profit, Profit Margin y Week Numer van como FÓRMULAS
 // cuando los montos de la app (utils/jobFinancials.ts) caben en una: Taxes =
 // F×8.25%, Final Cost = F+G (impuesto sumado) o F−G (restado), Profit = H−G−I
-// o H−I (el impuesto sumado es del estado, no ganancia; la hoja usa H−I). Si
-// no caben (sin impuesto, otro %, o un trabajo que suma y resta), va el valor.
+// o H−I (el impuesto sumado es del estado, no ganancia; la hoja usa H−I) y
+// Profit Margin = J/(H−G) o J/H (Profit / Net Revenue, como la app; la hoja
+// usa J/H). Si no caben (sin impuesto, otro %, o un trabajo que suma y resta),
+// va el valor.
 // La fórmula de la hoja con XLOOKUP a la pestaña Customers no se copia: esa
 // pestaña no viene en el archivo y daría #REF!.
 // `exceljs` (~1 MB) se carga solo al exportar (import dinámico).
@@ -78,9 +80,9 @@ const getFinalCostKind = ({ servicePrice, taxes, finalCost }: OperationsSheetAmo
 };
 
 /**
- * Final Cost como en la hoja: F+G (Apply Tax = Yes) o F−G (No). Si el trabajo
- * mezcla servicios con y sin Apply Tax no hay una fórmula de la hoja que dé
- * ese monto: va el valor de la app.
+ * Final Cost como en la hoja: F+G (impuesto sumado) o F−G (impuesto restado).
+ * Si el trabajo suma y resta impuesto (servicios con distinto Apply Tax /
+ * Minus Tax) no hay una fórmula de la hoja que dé ese monto: va el valor de la app.
  */
 const buildFinalCostCell = (row: OperationsSheetExportRow, rowNumber: number, finalCostKind: OperationsSheetFinalCostKind) => {
   const { finalCost } = row.amounts;
@@ -90,9 +92,9 @@ const buildFinalCostCell = (row: OperationsSheetExportRow, rowNumber: number, fi
 };
 
 /**
- * Profit sin el impuesto que es del estado: H−G−I con Apply Tax = Yes (el
- * impuesto se sumó al Final Cost) y H−I con No (ya se restó). Trabajo mixto:
- * el valor de la app.
+ * Profit sin el impuesto que es del estado: H−G−I con impuesto sumado (se
+ * sumó al Final Cost) y H−I con impuesto restado (ya se restó). Trabajo
+ * mixto: el valor de la app.
  */
 const buildProfitCell = (row: OperationsSheetExportRow, rowNumber: number, finalCostKind: OperationsSheetFinalCostKind) => {
   if (finalCostKind === 'taxAdded') return { formula: `H${rowNumber}-G${rowNumber}-I${rowNumber}`, result: row.profit };
@@ -100,10 +102,33 @@ const buildProfitCell = (row: OperationsSheetExportRow, rowNumber: number, final
   return row.profit;
 };
 
+/** numerator / denominator; 0 si no hay denominador (lo que da IFERROR(…, 0) en Excel). */
+const getRatio = (numerator: number, denominator: number) => (denominator ? numerator / denominator : 0);
+
+/**
+ * Profit Margin como en la app: Profit / Net Revenue (el ingreso sin el
+ * impuesto sumado, decisión de Omar). J/(H−G) con impuesto sumado (H−G es el
+ * Service Price) y J/H con impuesto restado (H ya no lo trae). Trabajo mixto:
+ * el margen de la app. El resultado guardado sale de la misma cuenta que la
+ * fórmula, para que Excel muestre lo mismo antes y después de recalcular.
+ */
+const buildProfitMarginCell = (row: OperationsSheetExportRow, rowNumber: number, finalCostKind: OperationsSheetFinalCostKind) => {
+  const { finalCost, taxes } = row.amounts;
+  if (finalCostKind === 'taxAdded') {
+    return {
+      formula: `IFERROR(J${rowNumber}/(H${rowNumber}-G${rowNumber}),0)`,
+      result: getRatio(row.profit, finalCost - taxes),
+    };
+  }
+  if (finalCostKind === 'taxSubtracted') {
+    return { formula: `IFERROR(J${rowNumber}/H${rowNumber},0)`, result: getRatio(row.profit, finalCost) };
+  }
+  return (row.margin ?? 0) / 100;
+};
+
 /** Celdas A–T de una fila; las fórmulas llevan su resultado para verse sin recalcular. */
 const buildRowValues = (row: OperationsSheetExportRow, rowNumber: number) => {
-  const { servicePrice, finalCost, payroll } = row.amounts;
-  const { profit } = row;
+  const { servicePrice, payroll } = row.amounts;
   const finalCostKind = getFinalCostKind(row.amounts);
   const weekNumber = getExcelWeekNumber(row.date);
   return [
@@ -117,7 +142,7 @@ const buildRowValues = (row: OperationsSheetExportRow, rowNumber: number) => {
     buildFinalCostCell(row, rowNumber, finalCostKind),
     payroll,
     buildProfitCell(row, rowNumber, finalCostKind),
-    { formula: `IFERROR(J${rowNumber}/H${rowNumber},0)`, result: finalCost ? profit / finalCost : 0 },
+    buildProfitMarginCell(row, rowNumber, finalCostKind),
     row.invoice,
     row.notes || null,
     row.issues || null,
@@ -130,12 +155,33 @@ const buildRowValues = (row: OperationsSheetExportRow, rowNumber: number) => {
   ];
 };
 
+/**
+ * No se pudo descargar `exceljs`: sin conexión (no está en el precache del
+ * Service Worker) o la pestaña viene de antes de un deploy y pide un archivo
+ * que ya no existe. Reintentar no sirve: hace falta conexión y recargar.
+ */
+export class ExcelToolLoadError extends Error {
+  constructor(cause: unknown) {
+    super('Could not load exceljs', { cause });
+    this.name = 'ExcelToolLoadError';
+  }
+}
+
+/** Carga `exceljs` (~1 MB) solo al exportar. */
+const loadExcelJs = async (): Promise<typeof ExcelJS & { default?: typeof ExcelJS }> => {
+  try {
+    return await import('exceljs');
+  } catch (error) {
+    throw new ExcelToolLoadError(error);
+  }
+};
+
 /** Arma el .xlsx en memoria. `sheetName` es el nombre de la pestaña ("October", "Operations"…). */
 export const buildOperationsSheetFile = async (
   rows: readonly OperationsSheetExportRow[],
   sheetName: string,
 ): Promise<ArrayBuffer> => {
-  const excelModule: typeof ExcelJS & { default?: typeof ExcelJS } = await import('exceljs');
+  const excelModule = await loadExcelJs();
   // exceljs es CommonJS: según quien lo empaqueta llega con `default` o sin él.
   const { Workbook } = excelModule.default ?? excelModule;
   const workbook = new Workbook();
