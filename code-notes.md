@@ -3209,3 +3209,14 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   cierra con Escape y devuelve el foco al botón Excel. `isSameAmount` (menos de un centavo) vive en
   utils/jobFinancials.ts y lo usan la comparación y la exportación. Lectura: la coma es decimal solo con 1–2
   dígitos al final ("$1,234" = 1234) y la fecha con hora toma su día (Math.floor, no round).
+- Pipeline → Excel · CR 2 (11/2026): Profit Margin del Excel = el de la app (Profit / Net Revenue, decisión de
+  Omar): J/(H−G) con impuesto sumado, J/H con impuesto restado y el valor de `calc(job).margin` en un trabajo
+  que suma y resta; el `result` de la celda sale de la misma cuenta. La hoja de la oficina usaba J/H: no volver
+  a esa fórmula ($100 + $8.25, nómina $40 → 60%, no 55.4%). Ventana de 12 meses: sin todo el historial, el
+  export se bloquea si el periodo va más atrás (avisa) y la comparación saca de "Only in Excel" y del total
+  del Excel las filas sin pareja de antes de la ventana (`isOutsideLoadedHistory` con `isHiddenByWindow`) y
+  dice cuántas son. Foco: vuelve al botón Excel SOLO al cerrar con X, Escape o clic afuera (reemplaza "devuelve
+  el foco al botón Excel" de la nota anterior); con "Open" se queda en el detalle; Tab da la vuelta dentro
+  del diálogo. El filtro de la comparación vive en `uploadedOperationsSheet.comparisonTab` (HouseList) y
+  vuelve a la primera pestaña con resultados al cambiar de periodo o de archivo. Si `exceljs` no carga (sin
+  conexión o pestaña de antes de un deploy) el mensaje pide conexión y recargar (`ExcelToolLoadError`).

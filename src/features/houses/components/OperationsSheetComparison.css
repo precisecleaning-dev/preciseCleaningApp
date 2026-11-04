@@ -29,13 +29,45 @@
   color: #b91c1c;
 }
 
+/* Filas del Excel de antes de la ventana de 12 meses (no se comparan). */
+.osc-older-notice {
+  align-items: center;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  color: #92400e;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  gap: 8px 16px;
+  justify-content: space-between;
+  margin: 0;
+  padding: 10px 16px;
+}
+
+.osc-older-btn {
+  background: #ffffff;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  color: #92400e;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.osc-older-btn:hover {
+  background: #fef3c7;
+}
+
 .osc-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-/* min-height 0: quita el mínimo táctil global de 48 px (index.css). */
+/* min-height 0: quita el mínimo táctil global de 48 px (index.css); en el
+   teléfono vuelve un mínimo de 44 px (media query al final). */
 .osc-tab {
   align-items: center;
   background: #ffffff;
@@ -268,5 +300,16 @@
   }
   .osc-reasons {
     grid-column: 1 / -1;
+  }
+}
+
+/* Teléfono: mínimo táctil de 44 px para los filtros y "Open". */
+@media (max-width: 768px) {
+  .osc-tab {
+    min-height: 44px;
+  }
+  .osc-open-btn {
+    min-height: 44px;
+    padding: 4px 12px;
   }
 }

@@ -430,7 +430,11 @@ export interface OperationsSheetMatch {
 export interface OperationsSheetComparison {
   matches: OperationsSheetMatch[];
   counts: Record<OperationsSheetMatchStatus, number>;
-  /** Suma del Final Cost de las filas de la hoja y de los trabajos de la app del periodo. */
+  /** Filas sin pareja de antes de la ventana de 12 meses (su trabajo puede no
+   *  estar cargado): no van en `matches` ni en el total del Excel. */
+  olderSheetRowCount: number;
+  /** Suma del Final Cost de las filas de la hoja (sin las de `olderSheetRowCount`)
+   *  y de los trabajos de la app del periodo. */
   sheetFinalCostTotal: number;
   appFinalCostTotal: number;
 }
@@ -439,10 +443,14 @@ export interface OperationsSheetComparison {
 export type OperationsSheetHeaderField =
   | 'address' | 'client' | 'note' | 'date' | 'team' | 'servicePrice' | 'taxes' | 'finalCost' | 'payroll' | 'invoice';
 
-/** Excel subido en Pipeline → Excel: nombre del archivo y sus filas de trabajo. */
+/** Excel subido en Pipeline → Excel: nombre del archivo, sus filas de trabajo
+ *  y el filtro elegido en la comparación (lo guarda HouseList: sigue igual al
+ *  volver de abrir un trabajo con "Open"). */
 export interface UploadedOperationsSheet {
   fileName: string;
   rows: OperationsSheetRow[];
+  /** null = la primera pestaña con resultados. */
+  comparisonTab: OperationsSheetComparisonTab | null;
 }
 
 /** Trabajo de la app listo para emparejar (operationsSheetMatch.ts). */
@@ -466,6 +474,9 @@ export interface OperationsSheetCompareSources {
   /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
   getAppAmounts: (job: Property) => OperationsSheetAmounts;
   getClientName: (job: Property) => string;
+  /** La fila es de antes de la ventana de 12 meses y no se cargó todo el
+   *  historial (isHiddenByWindow): su trabajo puede no estar en la app. */
+  isOutsideLoadedHistory: (sheetRow: OperationsSheetRow) => boolean;
 }
 
 /** Lo que una fila del Excel exportado necesita de la app y no está en la casa misma. */

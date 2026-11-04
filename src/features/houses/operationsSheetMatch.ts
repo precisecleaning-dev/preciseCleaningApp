@@ -215,6 +215,8 @@ export const compareOperationsSheet = (
       candidates.forEach((candidate, candidateIndex) => {
         if (usedCandidateIndexes.has(candidateIndex) || candidate.streetKey !== sheetStreetKeys[sheetIndex]) return;
         const dayDifference = getDaysBetween(sheetRow.date, candidate.job.scheduleDate);
+        // Un trabajo sin fecha (Custom sin fechas) da NaN: no se empareja por fecha.
+        if (!Number.isFinite(dayDifference)) return;
         if (isSameDateOnly ? dayDifference !== 0 : dayDifference > MAX_DATE_SHIFT_DAYS) return;
         // Entre fechas movidas gana la más cercana.
         const matchScore = scorePair(sheetRow, candidate) - dayDifference;
@@ -243,8 +245,13 @@ export const compareOperationsSheet = (
     };
   };
 
-  const sheetOnlyMatches: OperationsSheetMatch[] = sheetRows
-    .filter((_sheetRow, sheetIndex) => !usedSheetIndexes.has(sheetIndex))
+  // Las filas sin pareja de antes de la ventana de 12 meses no son "Only in
+  // Excel": su trabajo puede existir sin estar cargado. Se cuentan aparte y
+  // no entran al total del Excel.
+  const unmatchedSheetRows = sheetRows.filter((_sheetRow, sheetIndex) => !usedSheetIndexes.has(sheetIndex));
+  const olderSheetRows = unmatchedSheetRows.filter(sources.isOutsideLoadedHistory);
+  const sheetOnlyMatches: OperationsSheetMatch[] = unmatchedSheetRows
+    .filter((sheetRow) => !sources.isOutsideLoadedHistory(sheetRow))
     .map((sheetRow) => ({
       key: `${sheetRow.sheetName}-${sheetRow.rowNumber}`,
       status: 'sheetOnly',
@@ -277,10 +284,14 @@ export const compareOperationsSheet = (
   const counts: Record<OperationsSheetMatchStatus, number> = { ok: 0, different: 0, sheetOnly: 0, appOnly: 0 };
   matches.forEach((match) => { counts[match.status] += 1; });
 
+  const getSheetFinalCostTotal = (rows: readonly OperationsSheetRow[]) =>
+    rows.reduce((total, sheetRow) => total + (sheetRow.finalCost ?? 0), 0);
+
   return {
     matches,
     counts,
-    sheetFinalCostTotal: roundToCents(sheetRows.reduce((total, sheetRow) => total + (sheetRow.finalCost ?? 0), 0)),
+    olderSheetRowCount: olderSheetRows.length,
+    sheetFinalCostTotal: roundToCents(getSheetFinalCostTotal(sheetRows) - getSheetFinalCostTotal(olderSheetRows)),
     appFinalCostTotal: roundToCents(jobs.reduce((total, job) => total + sources.getAppAmounts(job).finalCost, 0)),
   };
 };

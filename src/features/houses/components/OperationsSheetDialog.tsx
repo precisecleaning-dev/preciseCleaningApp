@@ -6,15 +6,19 @@
 //      Payroll (operationsSheetMatch.ts).
 //    Ambos usan el periodo de la barra (por defecto el mes) y los trabajos de
 //    la empresa elegida en el Pipeline (Normal / Cavalry).
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Download, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react';
-import type { OperationsSheetAmounts, Property, UploadedOperationsSheet } from '../../../types/index';
-import { inPeriod, MONTHS_LONG, periodRange } from '../../../utils/periods';
+import type {
+  OperationsSheetAmounts, OperationsSheetComparisonTab, OperationsSheetRow, Property, UploadedOperationsSheet,
+} from '../../../types/index';
+import { inPeriod, MONTHS_LONG, periodRange, type PeriodState } from '../../../utils/periods';
 import { formatCount, pluralize } from '../../../utils/countFormat';
 import { useJobFinancials } from '../../../utils/jobFinancials';
 import { getRelationName } from '../../../utils/relations';
-import { formatDateForFile, todayIso } from '../../../utils/dateFormat';
+import { dateSortValue, formatDateForFile, todayIso } from '../../../utils/dateFormat';
 import { useStoredPeriod } from '../../../shared/hooks/useStoredPeriod';
+import { useStableCallback } from '../../../shared/hooks/useStableCallback';
+import { isHiddenByWindow, useFullHistory, WINDOW_MONTHS } from '../../../shared/data/propertiesWindow';
 import { useLiveData } from '../../../shared/data/liveCollections';
 import { customerNameIndex, displayClientNameIn } from '../../../utils/customerDocs';
 import PeriodBar from '../../../components/PeriodBar';
@@ -37,6 +41,17 @@ const EXCEL_TOOL_LOAD_ERROR_MESSAGE =
 const getExportErrorMessage = (error: unknown) =>
   error instanceof ExcelToolLoadError ? EXCEL_TOOL_LOAD_ERROR_MESSAGE : EXPORT_ERROR_MESSAGE;
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]', 'button:not([disabled])', 'input:not([disabled]):not([type="hidden"])', 'select:not([disabled])',
+  'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+/** Elementos del diálogo que reciben foco con Tab (los visibles). */
+const getFocusableElements = (container: HTMLElement | null): HTMLElement[] =>
+  container
+    ? [...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter((element) => element.getClientRects().length > 0)
+    : [];
+
 interface OperationsSheetDialogProps {
   /** Trabajos de la empresa elegida, con el scope del rol ya aplicado. */
   jobs: Property[];
@@ -55,29 +70,62 @@ const OperationsSheetDialog = ({
 }: OperationsSheetDialogProps) => {
   const [period, setPeriod] = useStoredPeriod('pc.operationsSheet.period', 'month');
   const periodDateRange = useMemo(() => periodRange(period), [period]);
+  const hasFullHistory = useFullHistory();
   const { calc: calcJobFinancials, loading: isFinancialsLoading } = useJobFinancials();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+
+  // El foco vuelve al botón Excel solo al cerrar (X, Escape o clic afuera).
+  // Con "Open" se queda en el detalle de la casa que se abre encima.
+  const handleCloseDialog = useStableCallback(() => {
+    previouslyFocusedElementRef.current?.focus?.();
+    onClose();
+  });
 
   // Escape cierra (como DeleteHouseDialog).
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') handleCloseDialog();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [handleCloseDialog]);
 
-  // El foco entra al diálogo al abrirlo y vuelve a donde estaba (el botón
-  // Excel) al cerrarlo.
+  // El foco entra al diálogo al abrirlo; se recuerda dónde estaba.
   useEffect(() => {
-    const previouslyFocusedElement = document.activeElement as HTMLElement | null;
+    previouslyFocusedElementRef.current = document.activeElement as HTMLElement | null;
     dialogRef.current?.focus();
-    return () => previouslyFocusedElement?.focus?.();
   }, []);
+
+  // Tab y Shift+Tab dan la vuelta dentro del diálogo (aria-modal).
+  const handleTrapTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+    const focusableElements = getFocusableElements(dialogRef.current);
+    if (focusableElements.length === 0) return;
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const isOnFirstElement = document.activeElement === firstElement || document.activeElement === dialogRef.current;
+    if (event.shiftKey && isOnFirstElement) {
+      event.preventDefault();
+      lastElement.focus();
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
+  // Ventana de 12 meses: sin todo el historial, un trabajo de antes no está
+  // cargado. El export lo pide antes de armar el archivo; la comparación
+  // separa esas filas del Excel (operationsSheetMatch.ts).
+  const isPeriodOutsideLoadedHistory = isHiddenByWindow(hasFullHistory, false, periodDateRange.start ?? 0);
+  const isOutsideLoadedHistory = useCallback(
+    (sheetRow: OperationsSheetRow) => isHiddenByWindow(hasFullHistory, false, dateSortValue(sheetRow.date)),
+    [hasFullHistory],
+  );
 
   const periodJobs = useMemo(
     () => jobs.filter((job) => inPeriod(job.scheduleDate, periodDateRange)),
@@ -103,8 +151,10 @@ const OperationsSheetDialog = ({
 
   const comparison = useMemo(() => {
     if (!uploadedSheet || isFinancialsLoading) return null;
-    return compareOperationsSheet(periodSheetRows, periodJobs, { getAppAmounts, getClientName: getJobClientName });
-  }, [uploadedSheet, isFinancialsLoading, periodSheetRows, periodJobs, getAppAmounts, getJobClientName]);
+    return compareOperationsSheet(periodSheetRows, periodJobs, {
+      getAppAmounts, getClientName: getJobClientName, isOutsideLoadedHistory,
+    });
+  }, [uploadedSheet, isFinancialsLoading, periodSheetRows, periodJobs, getAppAmounts, getJobClientName, isOutsideLoadedHistory]);
 
   const isMonthPeriod = period.kind === 'month';
   const sheetName = isMonthPeriod ? MONTHS_LONG[Number(period.anchor.slice(5, 7)) - 1] : DEFAULT_SHEET_NAME;
@@ -112,7 +162,18 @@ const OperationsSheetDialog = ({
   const uploadSummary = uploadedSheet
     ? `${uploadedSheet.fileName} · ${pluralize(periodSheetRows.length, 'row', 'rows')} in this period (of ${formatCount(uploadedSheet.rows.length)}) · compared with ${businessName} jobs only`
     : 'Upload the Daily Operations Excel to check it against the app.';
-  const isExportDisabled = isExporting || isFinancialsLoading || periodJobs.length === 0;
+  const isExportDisabled = isExporting || isFinancialsLoading || periodJobs.length === 0 || isPeriodOutsideLoadedHistory;
+  const olderPeriodText = `This period goes back more than ${WINDOW_MONTHS} months: load the full history to export every job.`;
+
+  // Otro periodo: la comparación vuelve a la primera pestaña con resultados.
+  const handlePeriodChange = (nextPeriod: PeriodState) => {
+    setPeriod(nextPeriod);
+    if (uploadedSheet?.comparisonTab) onUploadedSheetChange({ ...uploadedSheet, comparisonTab: null });
+  };
+
+  const handleComparisonTabChange = (comparisonTab: OperationsSheetComparisonTab) => {
+    if (uploadedSheet) onUploadedSheetChange({ ...uploadedSheet, comparisonTab });
+  };
 
   const handleExport = async () => {
     setErrorMessage('');
@@ -148,7 +209,7 @@ const OperationsSheetDialog = ({
         setErrorMessage('No job rows found. The sheet needs the Address, Date and Service Price columns.');
         return;
       }
-      onUploadedSheetChange({ fileName: selectedFile.name, rows });
+      onUploadedSheetChange({ fileName: selectedFile.name, rows, comparisonTab: null });
     } catch (error) {
       console.error(error);
       setErrorMessage('Could not read that file. Upload the .xlsx exported from the Daily Operations sheet.');
@@ -158,7 +219,7 @@ const OperationsSheetDialog = ({
   };
 
   return (
-    <div className="modal-overlay-centered" onClick={onClose}>
+    <div className="modal-overlay-centered" onClick={handleCloseDialog}>
       <div
         ref={dialogRef}
         className="modal-90 osd-dialog"
@@ -167,6 +228,7 @@ const OperationsSheetDialog = ({
         aria-labelledby="osd-title"
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={handleTrapTabKey}
       >
         <header className="osd-header">
           <div className="osd-heading">
@@ -176,13 +238,13 @@ const OperationsSheetDialog = ({
               <p className="osd-subtitle">Export the Daily Operations sheet or check it against the app.</p>
             </div>
           </div>
-          <button type="button" className="osd-close-btn" aria-label="Close" onClick={onClose}>
+          <button type="button" className="osd-close-btn" aria-label="Close" onClick={handleCloseDialog}>
             <X size={20} />
           </button>
         </header>
 
         <div className="osd-body">
-          <PeriodBar period={period} onChange={setPeriod} />
+          <PeriodBar period={period} onChange={handlePeriodChange} />
           <HistoryWindowNotice />
 
           <div className="osd-actions">
@@ -190,6 +252,7 @@ const OperationsSheetDialog = ({
               <div>
                 <h3 className="osd-action-title">Export</h3>
                 <p className="osd-action-text">{exportSummary}</p>
+                {isPeriodOutsideLoadedHistory && <p className="osd-action-warning">{olderPeriodText}</p>}
               </div>
               <button type="button" className="osd-primary-btn" disabled={isExportDisabled} onClick={handleExport}>
                 {isExporting ? <Loader2 size={16} className="spin" /> : <Download size={16} />} Download Excel
@@ -233,6 +296,8 @@ const OperationsSheetDialog = ({
             <OperationsSheetComparison
               key={`${uploadedSheet?.fileName}-${periodDateRange.start}-${periodDateRange.end}`}
               comparison={comparison}
+              selectedTab={uploadedSheet?.comparisonTab ?? null}
+              onSelectedTabChange={handleComparisonTabChange}
               getClientName={getJobClientName}
               onOpenHouse={onOpenHouse}
             />

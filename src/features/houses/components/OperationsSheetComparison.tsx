@@ -3,7 +3,6 @@
 // All y una fila por trabajo con los 4 montos. Donde no coinciden se ven los
 // dos valores (Excel y App) y el motivo cuando se sabe. Los datos los arma
 // features/houses/operationsSheetMatch.ts.
-import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type {
   OperationsSheetAmountField, OperationsSheetComparison as OperationsSheetComparisonResult,
@@ -11,6 +10,8 @@ import type {
 } from '../../../types/index';
 import { money } from '../../../utils/jobFinancials';
 import { formatDate } from '../../../utils/dateFormat';
+import { pluralize } from '../../../utils/countFormat';
+import { showFullHistory, WINDOW_MONTHS } from '../../../shared/data/propertiesWindow';
 import VirtualItems from '../../../shared/components/VirtualItems';
 import './OperationsSheetComparison.css';
 
@@ -110,14 +111,34 @@ const ComparisonRow = ({ match, getClientName, onOpenHouse }: ComparisonRowProps
   );
 };
 
+interface OlderRowsNoticeProps {
+  rowCount: number;
+}
+
+/** Filas del Excel de antes de la ventana de 12 meses: su trabajo puede no estar cargado. */
+const OlderRowsNotice = ({ rowCount }: OlderRowsNoticeProps) => {
+  const rowsText = `${pluralize(rowCount, 'row', 'rows')} ${rowCount === 1 ? 'is' : 'are'}`;
+  return (
+    <p className="osc-older-notice" role="status">
+      <span>{rowsText} older than {WINDOW_MONTHS} months: load the full history to compare them.</span>
+      <button type="button" className="osc-older-btn" onClick={showFullHistory}>Load full history</button>
+    </p>
+  );
+};
+
 interface OperationsSheetComparisonProps {
   comparison: OperationsSheetComparisonResult;
+  /** Filtro elegido (lo guarda HouseList); null = la primera pestaña con resultados. */
+  selectedTab: OperationsSheetComparisonTab | null;
+  onSelectedTabChange: (tab: OperationsSheetComparisonTab) => void;
   getClientName: (job: Property) => string;
   onOpenHouse: (house: Property) => void;
 }
 
-const OperationsSheetComparison = ({ comparison, getClientName, onOpenHouse }: OperationsSheetComparisonProps) => {
-  const [selectedTab, setSelectedTab] = useState<OperationsSheetComparisonTab>(() => getFirstTab(comparison.counts));
+const OperationsSheetComparison = ({
+  comparison, selectedTab: savedTab, onSelectedTabChange, getClientName, onOpenHouse,
+}: OperationsSheetComparisonProps) => {
+  const selectedTab = savedTab ?? getFirstTab(comparison.counts);
   const visibleMatches = selectedTab === 'all'
     ? comparison.matches
     : comparison.matches.filter((match) => match.status === selectedTab);
@@ -139,6 +160,8 @@ const OperationsSheetComparison = ({ comparison, getClientName, onOpenHouse }: O
         </span>
       </div>
 
+      {comparison.olderSheetRowCount > 0 && <OlderRowsNotice rowCount={comparison.olderSheetRowCount} />}
+
       {/* Filtros de la lista (no pestañas con panel propio): botones con aria-pressed. */}
       <div className="osc-tabs" role="group" aria-label="Show results">
         {TABS.map((tab) => (
@@ -147,7 +170,7 @@ const OperationsSheetComparison = ({ comparison, getClientName, onOpenHouse }: O
             type="button"
             aria-pressed={selectedTab === tab.id}
             className={`osc-tab tab-${tab.id}${selectedTab === tab.id ? ' active' : ''}`}
-            onClick={() => setSelectedTab(tab.id)}
+            onClick={() => onSelectedTabChange(tab.id)}
           >
             {tab.label} <span className="osc-tab-count">{getTabCount(tab.id)}</span>
           </button>

@@ -168,8 +168,9 @@ const HouseList = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // ⭐ Pipeline → Excel: exportar la hoja Daily Operations y compararla con la app.
   const [isOperationsSheetOpen, setIsOperationsSheetOpen] = useState(false);
-  // El Excel subido vive aquí y no en el diálogo: al abrir un trabajo desde la
-  // comparación ("Open") el diálogo se cierra, y al volver sigue el mismo archivo.
+  // El Excel subido (y el filtro de la comparación) vive aquí y no en el
+  // diálogo: al abrir un trabajo desde la comparación ("Open") el diálogo se
+  // cierra, y al volver sigue el mismo archivo con el mismo filtro.
   const [uploadedOperationsSheet, setUploadedOperationsSheet] = useState<UploadedOperationsSheet | null>(null);
 
   // ⭐ PERF: este componente solo se monta en la página completa de Houses;

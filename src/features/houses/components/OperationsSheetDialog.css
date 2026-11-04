@@ -95,6 +95,14 @@
   overflow-wrap: anywhere;
 }
 
+/* El periodo va más atrás de la ventana de 12 meses: el export espera a que se cargue todo. */
+.osd-action-warning {
+  color: #92400e;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 6px 0 0;
+}
+
 .osd-primary-btn,
 .osd-secondary-btn {
   align-items: center;
@@ -174,5 +182,11 @@
   .osd-action-card {
     align-items: stretch;
     flex-direction: column;
+  }
+  /* Mínimo táctil de 44 px (fuera del teléfono la X va con min-height 0). */
+  .osd-close-btn {
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
   }
 }
