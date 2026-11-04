@@ -8,7 +8,7 @@
 import type { OperationsSheetHeaderField, OperationsSheetRow } from '../../types/index';
 
 /** Columnas que se leen, por el texto de su encabezado (sin mayúsculas ni espacios de más). */
-const HEADER_KEYS: Record<OperationsSheetHeaderField, string> = {
+const HEADER_TEXT_BY_FIELD: Record<OperationsSheetHeaderField, string> = {
   address: 'address',
   client: 'client',
   note: 'note',
@@ -32,7 +32,7 @@ const padToTwoDigits = (value: number) => String(value).padStart(2, '0');
 
 const normalizeHeader = (value: unknown) => String(value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-const getCellText = (value: unknown): string => (value === null || value === undefined ? '' : String(value).trim());
+const getCellText = (value: unknown): string => String(value ?? '').trim();
 
 /**
  * Número de la celda: número tal cual, o texto tipo "$1,234.50" / "200,00".
@@ -59,17 +59,19 @@ export const parseSheetDate = (value: unknown): string => {
     return `${date.getUTCFullYear()}-${padToTwoDigits(date.getUTCMonth() + 1)}-${padToTwoDigits(date.getUTCDate())}`;
   }
   const text = getCellText(value);
-  const usDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
-  if (usDate) return `${usDate[3]}-${padToTwoDigits(Number(usDate[1]))}-${padToTwoDigits(Number(usDate[2]))}`;
-  const isoDate = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
-  return isoDate ? `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}` : '';
+  const usDateMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  if (usDateMatch) {
+    return `${usDateMatch[3]}-${padToTwoDigits(Number(usDateMatch[1]))}-${padToTwoDigits(Number(usDateMatch[2]))}`;
+  }
+  const isoDateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  return isoDateMatch ? `${isoDateMatch[1]}-${isoDateMatch[2]}-${isoDateMatch[3]}` : '';
 };
 
 /** Posición de cada columna leída; null si la pestaña no es de trabajos. */
 const findColumnIndexes = (headerRow: readonly unknown[]): Record<OperationsSheetHeaderField, number> | null => {
   const normalizedHeaders = headerRow.map(normalizeHeader);
   const columnIndexes = {} as Record<OperationsSheetHeaderField, number>;
-  for (const [field, header] of Object.entries(HEADER_KEYS) as [OperationsSheetHeaderField, string][]) {
+  for (const [field, header] of Object.entries(HEADER_TEXT_BY_FIELD) as [OperationsSheetHeaderField, string][]) {
     columnIndexes[field] = normalizedHeaders.indexOf(header);
   }
   const hasRequiredColumns = REQUIRED_FIELDS.every((field) => columnIndexes[field] >= 0);

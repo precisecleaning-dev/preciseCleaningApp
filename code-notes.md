@@ -3182,8 +3182,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). Mientras cargan los
   datos no lleva color (un $0 aún no es ganancia). No es sticky: `.inv-page` tiene `overflow-x: hidden` y eso
   rompe `position: sticky`.
-  Payroll y Profit arriba de las tarjetas (en escritorio está la fila TOTAL de la tabla). No es sticky:
-  `.inv-page` tiene `overflow-x: hidden` y eso rompe `position: sticky`.
 - Pipeline → Excel (10/2026, pedido de Omar) — REEMPLAZADA en parte por "Finanzas por trabajo" (los montos de la
   app ya no son Final Cost = Price − 8.25%): botón "Excel" en el Pipeline (grupo Financial de Houses + elemento
   "btn_operationsSheet" de Configure Fields, visible por defecto) abre `OperationsSheetDialog`: exporta la hoja

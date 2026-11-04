@@ -95,7 +95,7 @@ const getNoteWords = (text: string): Set<string> =>
 
 const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-const daysBetween = (isoDateA: string, isoDateB: string) =>
+const getDaysBetween = (isoDateA: string, isoDateB: string) =>
   Math.round(Math.abs(Date.parse(isoDateA) - Date.parse(isoDateB)) / DAY_MS);
 
 /** Calle de la fila: de la dirección o, si la escribieron cambiada de lugar, de la nota. */
@@ -214,7 +214,7 @@ export const compareOperationsSheet = (
       if (usedSheetIndexes.has(sheetIndex) || !sheetStreetKeys[sheetIndex]) return;
       candidates.forEach((candidate, candidateIndex) => {
         if (usedCandidateIndexes.has(candidateIndex) || candidate.streetKey !== sheetStreetKeys[sheetIndex]) return;
-        const dayDifference = daysBetween(sheetRow.date, candidate.job.scheduleDate);
+        const dayDifference = getDaysBetween(sheetRow.date, candidate.job.scheduleDate);
         if (isSameDateOnly ? dayDifference !== 0 : dayDifference > MAX_DATE_SHIFT_DAYS) return;
         // Entre fechas movidas gana la más cercana.
         const matchScore = scorePair(sheetRow, candidate) - dayDifference;

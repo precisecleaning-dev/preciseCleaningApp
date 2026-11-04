@@ -22,12 +22,20 @@ import HistoryWindowNotice from '../../../components/HistoryWindowNotice';
 import { buildOperationsSheetExportRows } from '../operationsSheetColumns';
 import { readOperationsSheetFile } from '../operationsSheetRead';
 import { compareOperationsSheet } from '../operationsSheetMatch';
-import { downloadOperationsSheet } from '../operationsSheetExport';
+import { downloadOperationsSheet, ExcelToolLoadError } from '../operationsSheetExport';
 import OperationsSheetComparison from './OperationsSheetComparison';
 import './OperationsSheetDialog.css';
 
 /** Pestaña del archivo cuando el periodo no es un mes ("Operations", como la hoja). */
 const DEFAULT_SHEET_NAME = 'Operations';
+
+const EXPORT_ERROR_MESSAGE = 'Could not create the Excel file. Try again.';
+const EXCEL_TOOL_LOAD_ERROR_MESSAGE =
+  'Could not load the Excel tool. Check your internet connection and reload the page.';
+
+/** Sin conexión o con la pestaña de antes de un deploy, reintentar no sirve. */
+const getExportErrorMessage = (error: unknown) =>
+  error instanceof ExcelToolLoadError ? EXCEL_TOOL_LOAD_ERROR_MESSAGE : EXPORT_ERROR_MESSAGE;
 
 interface OperationsSheetDialogProps {
   /** Trabajos de la empresa elegida, con el scope del rol ya aplicado. */
@@ -115,19 +123,20 @@ const OperationsSheetDialog = ({
         getTeamName: (job) => getRelationName(teams, job.teamId, ''),
         getAmounts: getAppAmounts,
         getProfit: (job) => calcJobFinancials(job).profit,
+        getMargin: (job) => calcJobFinancials(job).margin,
         canSeeOfficeNotes,
       });
       const fileName = `Daily_Operations_${sheetName}_${formatDateForFile(todayIso())}.xlsx`;
       await downloadOperationsSheet(exportRows, sheetName, fileName);
     } catch (error) {
       console.error(error);
-      setErrorMessage('Could not create the Excel file. Try again.');
+      setErrorMessage(getExportErrorMessage(error));
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleUploadSheet = async (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     event.target.value = '';
     if (!selectedFile) return;
@@ -206,7 +215,7 @@ const OperationsSheetDialog = ({
                 type="file"
                 accept=".xlsx,.xls"
                 className="osd-file-input"
-                onChange={handleFileSelected}
+                onChange={handleUploadSheet}
               />
             </section>
           </div>

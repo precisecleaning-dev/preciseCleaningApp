@@ -397,8 +397,9 @@ export type OperationsSheetAmountField = 'servicePrice' | 'taxes' | 'finalCost' 
 
 export type OperationsSheetAmounts = Record<OperationsSheetAmountField, number>;
 
-/** Cómo arma la hoja el Final Cost de una fila: F+G (Apply Tax = Yes), F−G
- *  (No) o ninguna fórmula (el trabajo mezcla servicios con y sin Apply Tax). */
+/** Cómo arma la hoja el Final Cost de una fila: F+G (impuesto sumado), F−G
+ *  (impuesto restado) o ninguna fórmula (el trabajo suma y resta impuesto: la
+ *  regla depende de Apply Tax y Minus Tax de cada servicio). */
 export type OperationsSheetFinalCostKind = 'taxAdded' | 'taxSubtracted' | null;
 
 /** Un monto que no coincide, con el motivo cuando se sabe. */
@@ -475,6 +476,8 @@ export interface OperationsSheetRowSources {
   getAmounts: (job: Property) => OperationsSheetAmounts;
   /** Profit de la app (useJobFinancials().calc): sin el impuesto que se suma. */
   getProfit: (job: Property) => number;
+  /** Margin de la app en % (useJobFinancials().calc): Profit / Net Revenue; null sin ingreso. */
+  getMargin: (job: Property) => number | null;
   /** El rol puede ver las notas de oficina (columna Notes). */
   canSeeOfficeNotes: boolean;
 }
@@ -503,6 +506,8 @@ export interface OperationsSheetExportRow {
   amounts: OperationsSheetAmounts;
   /** Profit de la app: Final Cost sin el impuesto que se suma, menos Payroll. */
   profit: number;
+  /** Margin de la app en % (Profit / Net Revenue); null si el trabajo no tiene ingreso. */
+  margin: number | null;
   invoice: string;
   /** Notas de oficina; '' si el rol no puede verlas. */
   notes: string;
