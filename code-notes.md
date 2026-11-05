@@ -3220,3 +3220,10 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   del diálogo. El filtro de la comparación vive en `uploadedOperationsSheet.comparisonTab` (HouseList) y
   vuelve a la primera pestaña con resultados al cambiar de periodo o de archivo. Si `exceljs` no carga (sin
   conexión o pestaña de antes de un deploy) el mensaje pide conexión y recargar (`ExcelToolLoadError`).
+- App.tsx dividido (10/2026, CR del PR #25): App.tsx queda con sesión, listeners globales, pestaña activa, guardia
+  de permisos (`VALID_TABS` → `TabOptions`, `TAB_MODULE`, `FALLBACK_TAB_ORDER`) y "Ver como"; la pestaña activa,
+  los `lazy()` de cada vista y el host de los modales de casa (HousesView "modals-only") están en
+  `components/AppTabContent.tsx`; la pantalla de carga en `AppLoadingScreen` y el aviso de versión en
+  `AppUpdateBanner`. `utils/viewPrefetch.ts` debe usar los MISMOS imports que los `lazy()` de AppTabContent.
+  Pendiente (lo hace Omar, Claude no edita CLAUDE.md): CLAUDE.md aún dice App.tsx para el render, los lazy() y
+  el host de modales (estructura de carpetas, "Detalle o formulario de una casa…" y "Agregar una vista nueva").

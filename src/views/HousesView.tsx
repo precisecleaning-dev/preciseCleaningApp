@@ -12,7 +12,7 @@
 //        'modals-only'.
 // ============================================================================
 import { useEffect, useRef, useState } from "react";
-import type { Property, SystemUser, Role } from "../types/index";
+import type { HouseDetailTab, Property, SystemUser, Role } from "../types/index";
 import StatusChangeModal, { type StatusModalConfig } from "../components/StatusChangeModal";
 import { changeHouseStatus } from "../features/houses/services/houseStatus";
 import { useHouseRecords, useLiveHouse } from "../features/houses/hooks/useLiveHouse";
@@ -43,7 +43,7 @@ interface HousesViewProps {
   clearHouseToOpenDetail?: () => void;
   // ⭐ Tab inicial del detalle al abrir vía houseToOpenDetail (p. ej. Invoices
   //    abre directo en "media" para exportar los PDF de fotos).
-  detailInitialTab?: "overview" | "financials" | "media";
+  detailInitialTab?: HouseDetailTab;
   houseToOpenEdit?: Property | null; // abre el FORMULARIO de edición de esta casa
   clearHouseToOpenEdit?: () => void;
   // ⭐ 'modals-only': no dibuja la página (header/tabla/tablero), solo los modales.

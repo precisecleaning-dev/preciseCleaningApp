@@ -23,7 +23,7 @@ import App from './App.tsx'
 // pcRepairAssets solo repara si la copia guardada es HTML y lleva su propio
 // tope (2 intentos por minuto, en sessionStorage): si el fallo sigue no entra
 // en un bucle de recargas. El error sigue su curso: si hubo reparación, la
-// página se recarga sola; si no (mala señal), ViewErrorBoundary (App.tsx)
+// página se recarga sola; si no (mala señal), ViewErrorBoundary (AppTabContent.tsx)
 // muestra el aviso con "Reload" en vez de dejar la app en blanco.
 // ============================================================================
 
