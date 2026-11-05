@@ -3215,7 +3215,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   a esa fórmula ($100 + $8.25, nómina $40 → 60%, no 55.4%). Ventana de 12 meses: sin todo el historial, el
   export se bloquea si el periodo va más atrás (avisa) y la comparación saca de "Only in Excel" y del total
   del Excel las filas sin pareja de antes de la ventana (`isOutsideLoadedHistory` con `isHiddenByWindow`) y
-  dice cuántas son. Foco: vuelve al botón Excel SOLO al cerrar con X, Escape o clic afuera (reemplaza "devuelve
+  dice cuántas son. Un Custom sin fecha de inicio cuenta como "más atrás de la ventana" (start null). Foco: vuelve al botón Excel SOLO al cerrar con X, Escape o clic afuera (reemplaza "devuelve
   el foco al botón Excel" de la nota anterior); con "Open" se queda en el detalle; Tab da la vuelta dentro
   del diálogo. El filtro de la comparación vive en `uploadedOperationsSheet.comparisonTab` (HouseList) y
   vuelve a la primera pestaña con resultados al cambiar de periodo o de archivo. Si `exceljs` no carga (sin

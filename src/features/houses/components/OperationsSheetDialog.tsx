@@ -121,7 +121,10 @@ const OperationsSheetDialog = ({
   // Ventana de 12 meses: sin todo el historial, un trabajo de antes no está
   // cargado. El export lo pide antes de armar el archivo; la comparación
   // separa esas filas del Excel (operationsSheetMatch.ts).
-  const isPeriodOutsideLoadedHistory = isHiddenByWindow(hasFullHistory, false, periodDateRange.start ?? 0);
+  // Custom sin fecha de inicio llega hasta el primer trabajo: también va más
+  // atrás de la ventana (isHiddenByWindow con 0 diría que no).
+  const isPeriodOutsideLoadedHistory = !hasFullHistory
+    && (periodDateRange.start === null || isHiddenByWindow(false, false, periodDateRange.start));
   const isOutsideLoadedHistory = useCallback(
     (sheetRow: OperationsSheetRow) => isHiddenByWindow(hasFullHistory, false, dateSortValue(sheetRow.date)),
     [hasFullHistory],
@@ -163,7 +166,8 @@ const OperationsSheetDialog = ({
     ? `${uploadedSheet.fileName} · ${pluralize(periodSheetRows.length, 'row', 'rows')} in this period (of ${formatCount(uploadedSheet.rows.length)}) · compared with ${businessName} jobs only`
     : 'Upload the Daily Operations Excel to check it against the app.';
   const isExportDisabled = isExporting || isFinancialsLoading || periodJobs.length === 0 || isPeriodOutsideLoadedHistory;
-  const olderPeriodText = `This period goes back more than ${WINDOW_MONTHS} months: load the full history to export every job.`;
+  const olderPeriodText = `This period goes back more than ${WINDOW_MONTHS} months (or has no start date): `
+    + 'load the full history to export every job.';
 
   // Otro periodo: la comparación vuelve a la primera pestaña con resultados.
   const handlePeriodChange = (nextPeriod: PeriodState) => {
