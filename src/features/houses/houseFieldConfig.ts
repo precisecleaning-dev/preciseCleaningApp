@@ -82,6 +82,11 @@ export const CONFIGURABLE_BUTTONS: ConfigurableElement[] = [
     section: "Header",
   },
   {
+    id: "btn_operationsSheet",
+    label: "Excel (Daily Operations, en el Pipeline)",
+    section: "Header",
+  },
+  {
     id: "card_checklist",
     label: "Checklist (botón y visor en el detalle)",
     section: "Sections",

@@ -1,5 +1,6 @@
 // src/types/index.ts
 import type { LucideIcon } from 'lucide-react';
+import type { DataValidation as ExcelDataValidation } from 'exceljs';
 
 // ==========================================
 // 1. SYSTEM SECURITY & USERS (RBAC)
@@ -366,6 +367,162 @@ export type SortDirection = 'asc' | 'desc';
 export interface ClientsReportSort {
   column: ClientsReportSortColumn;
   direction: SortDirection;
+}
+
+// ---- Hoja "Daily Operations" (Excel) — Pipeline → Excel ----
+// Leer la hoja, compararla con la app y exportarla igual:
+// features/houses/operationsSheet*.ts.
+
+/** Una fila de trabajo leída de la hoja (pestañas Operations, September,
+ *  October…). Los montos son los que muestra la hoja (ya calculados). */
+export interface OperationsSheetRow {
+  sheetName: string;
+  /** Fila en la hoja (1 = encabezado), para ubicarla en el Excel. */
+  rowNumber: number;
+  address: string;
+  client: string;
+  note: string;
+  /** AAAA-MM-DD. */
+  date: string;
+  team: string;
+  servicePrice: number | null;
+  taxes: number | null;
+  finalCost: number | null;
+  payroll: number | null;
+  invoice: string;
+}
+
+/** Montos que se comparan entre la hoja y la app. */
+export type OperationsSheetAmountField = 'servicePrice' | 'taxes' | 'finalCost' | 'payroll';
+
+export type OperationsSheetAmounts = Record<OperationsSheetAmountField, number>;
+
+/** Cómo arma la hoja el Final Cost de una fila: F+G (impuesto sumado), F−G
+ *  (impuesto restado) o ninguna fórmula (el trabajo suma y resta impuesto: la
+ *  regla depende de Apply Tax y Minus Tax de cada servicio). */
+export type OperationsSheetFinalCostKind = 'taxAdded' | 'taxSubtracted' | null;
+
+/** Un monto que no coincide, con el motivo cuando se sabe. */
+export interface OperationsSheetAmountDifference {
+  field: OperationsSheetAmountField;
+  sheetValue: number | null;
+  appValue: number;
+  reason: string | null;
+}
+
+/** ok = mismos montos · different = hay diferencias (o la fecha no es la misma)
+ *  · sheetOnly = está en la hoja y no en la app · appOnly = al revés. */
+export type OperationsSheetMatchStatus = 'ok' | 'different' | 'sheetOnly' | 'appOnly';
+
+export interface OperationsSheetMatch {
+  /** Clave estable para la lista (fila de la hoja y/o id de la casa). */
+  key: string;
+  status: OperationsSheetMatchStatus;
+  sheetRow: OperationsSheetRow | null;
+  job: Property | null;
+  appAmounts: OperationsSheetAmounts | null;
+  differences: OperationsSheetAmountDifference[];
+  /** Se emparejó con un trabajo de otra fecha (pocos días de diferencia). */
+  isDateShifted: boolean;
+}
+
+/** Resultado de comparar la hoja con la app en un periodo. */
+export interface OperationsSheetComparison {
+  matches: OperationsSheetMatch[];
+  counts: Record<OperationsSheetMatchStatus, number>;
+  /** Filas sin pareja de antes de la ventana de 12 meses (su trabajo puede no
+   *  estar cargado): no van en `matches` ni en el total del Excel. */
+  olderSheetRowCount: number;
+  /** Suma del Final Cost de las filas de la hoja (sin las de `olderSheetRowCount`)
+   *  y de los trabajos de la app del periodo. */
+  sheetFinalCostTotal: number;
+  appFinalCostTotal: number;
+}
+
+/** Columnas de la hoja que se leen (operationsSheetRead.ts). */
+export type OperationsSheetHeaderField =
+  | 'address' | 'client' | 'note' | 'date' | 'team' | 'servicePrice' | 'taxes' | 'finalCost' | 'payroll' | 'invoice';
+
+/** Excel subido en Pipeline → Excel: nombre del archivo, sus filas de trabajo
+ *  y el filtro elegido en la comparación (lo guarda HouseList: sigue igual al
+ *  volver de abrir un trabajo con "Open"). */
+export interface UploadedOperationsSheet {
+  fileName: string;
+  rows: OperationsSheetRow[];
+  /** null = la primera pestaña con resultados. */
+  comparisonTab: OperationsSheetComparisonTab | null;
+}
+
+/** Trabajo de la app listo para emparejar (operationsSheetMatch.ts). */
+export interface OperationsSheetJobCandidate {
+  job: Property;
+  /** "401 twin": número + primera palabra de la calle. */
+  streetKey: string;
+  amounts: OperationsSheetAmounts;
+  clientName: string;
+}
+
+/** Posible pareja fila de la hoja ↔ trabajo, con sus puntos de parecido. */
+export interface OperationsSheetCandidatePair {
+  sheetIndex: number;
+  candidateIndex: number;
+  matchScore: number;
+}
+
+/** Lo que la comparación necesita de la app. */
+export interface OperationsSheetCompareSources {
+  /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
+  getAppAmounts: (job: Property) => OperationsSheetAmounts;
+  getClientName: (job: Property) => string;
+  /** La fila es de antes de la ventana de 12 meses y no se cargó todo el
+   *  historial (isHiddenByWindow): su trabajo puede no estar en la app. */
+  isOutsideLoadedHistory: (sheetRow: OperationsSheetRow) => boolean;
+}
+
+/** Lo que una fila del Excel exportado necesita de la app y no está en la casa misma. */
+export interface OperationsSheetRowSources {
+  getClientName: (job: Property) => string;
+  getTeamName: (job: Property) => string;
+  /** Service Price, Taxes, Final Cost y Payroll de la app (useJobFinancials().calc). */
+  getAmounts: (job: Property) => OperationsSheetAmounts;
+  /** Profit de la app (useJobFinancials().calc): sin el impuesto que se suma. */
+  getProfit: (job: Property) => number;
+  /** Margin de la app en % (useJobFinancials().calc): Profit / Net Revenue; null sin ingreso. */
+  getMargin: (job: Property) => number | null;
+  /** El rol puede ver las notas de oficina (columna Notes). */
+  canSeeOfficeNotes: boolean;
+}
+
+/**
+ * Hoja de exceljs con `dataValidations.add`, que exceljs usa pero no tipa. Con
+ * él la lista va como UN rango (L2:L199); puesta celda por celda, exceljs arma
+ * rangos encimados (L10:L199 y L2:L199) que Excel puede marcar como dañados.
+ */
+export interface ExcelWorksheetWithRangeValidations {
+  dataValidations: { add: (range: string, validation: ExcelDataValidation) => void };
+}
+
+/** Pestaña del resultado de la comparación: un estado o todas. */
+export type OperationsSheetComparisonTab = OperationsSheetMatchStatus | 'all';
+
+/** Una fila para exportar la hoja desde la app (operationsSheetExport.ts). */
+export interface OperationsSheetExportRow {
+  address: string;
+  client: string;
+  note: string;
+  /** AAAA-MM-DD ('' sin fecha). */
+  date: string;
+  team: string;
+  /** Montos de la app (useJobFinancials): Service Price sin impuesto, Taxes y Final Cost. */
+  amounts: OperationsSheetAmounts;
+  /** Profit de la app: Final Cost sin el impuesto que se suma, menos Payroll. */
+  profit: number;
+  /** Margin de la app en % (Profit / Net Revenue); null si el trabajo no tiene ingreso. */
+  margin: number | null;
+  invoice: string;
+  /** Notas de oficina; '' si el rol no puede verlas. */
+  notes: string;
+  issues: string;
 }
 
 /** Casas que se ven en Quality Check: todas, las pendientes de inspección o las de Recall. */

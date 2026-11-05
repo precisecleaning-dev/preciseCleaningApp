@@ -11,6 +11,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-precise-rules \"node --test security/tests/firestore.rules.test.mjs\""
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "firebase": "^12.11.0",
     "html2pdf.js": "^0.14.0",
     "lucide-react": "^0.577.0",

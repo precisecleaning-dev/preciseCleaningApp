@@ -5,8 +5,9 @@
 //    misma cifra para el mismo servicio (decisión de Omar, CR del PR #25).
 import type { BilledServiceAmounts } from '../../types/index';
 
-/** Impuesto de venta de Texas: lo usa un servicio que no guarda su taxPercentage. */
-const TAX_RATE = 0.0825;
+/** Impuesto de venta de Texas: lo usa un servicio que no guarda su taxPercentage
+ *  (y el Excel del Pipeline para reconocer el impuesto estándar). */
+export const TAX_RATE = 0.0825;
 
 /** Valores de un servicio que no guarda Apply Tax / Minus Tax (registros
  *  viejos o importados). Son los mismos con los que abre "Add Service". */

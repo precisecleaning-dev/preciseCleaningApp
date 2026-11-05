@@ -80,6 +80,11 @@ export default defineConfig({
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // ⭐ exceljs (~940 kB, ~270 kB gzip) NO va al precache: solo lo usa la
+        //    oficina al exportar el Excel del Pipeline, y en el precache lo
+        //    bajaba cada teléfono. Se descarga la primera vez que alguien exporta
+        //    (necesita internet en ese momento). CR del PR #25, decisión de Omar.
+        globIgnores: ['**/exceljs*.js'],
 
         // ⭐ "HAY QUE RECARGAR PARA VER LOS CAMBIOS" (10/2026).
         //    Antes la página (index.html) salía del precache del Service

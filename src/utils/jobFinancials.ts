@@ -26,6 +26,14 @@ import { getBilledServiceAmounts } from '../shared/utils/billedServiceAmounts';
 
 /** Redondea a centavos: 28.875 → 28.88. También lo usa el Clients Report. */
 export const roundToCents = (amount: number) => Math.round(amount * 100) / 100;
+
+/** Diferencia menor a un centavo: redondeos de la hoja o de la app. */
+const AMOUNT_TOLERANCE = 0.01;
+
+/** ¿Dos montos son el mismo (salvo redondeo)? false si falta alguno. Lo usan
+ *  la comparación y la exportación del Excel (features/houses/operationsSheet*). */
+export const isSameAmount = (amountA: number | null, amountB: number | null): boolean =>
+  amountA !== null && amountB !== null && Math.abs(amountA - amountB) < AMOUNT_TOLERANCE;
 // Un solo formateador: toLocaleString crea uno nuevo en cada llamada y el
 // Overview en Year formatea miles de montos.
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
