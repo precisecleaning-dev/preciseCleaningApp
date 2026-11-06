@@ -18,3 +18,6 @@ export const toggleServiceType = (
 /** "Carpet, Normal" para mostrar; '' si no tiene ninguno. */
 export const formatServiceTypes = (house: Pick<Property, 'serviceTypes'>): string =>
   (house.serviceTypes ?? []).join(', ');
+
+export const isCarpetJob = (house: Pick<Property, 'serviceTypes'>): boolean =>
+  house.serviceTypes?.includes('Carpet') ?? false;

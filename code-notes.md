@@ -3237,3 +3237,5 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   configurable en Configure Fields como "serviceTypes") y en Job Specifications del detalle. Es un dato del
   TRABAJO, independiente de la empresa Normal / Cavalry de la app (esa sale del Type del cliente,
   shared/utils/businesses.ts): no los unas sin preguntar. Reglas en shared/utils/houseServiceType.ts.
+- Service Type · Quality Check (10/2026, pedido de Omar): con Carpet la tarjeta de la casa dice "Pending
+  Carpet" en vez de "Pending" (`isCarpetJob`).
