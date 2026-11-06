@@ -158,6 +158,10 @@ export interface Property {
   invoiceHoldBy?: string;
 }
 
+/** Pestaña con la que otra vista pide abrir el detalle de una casa (HousesView
+ *  `detailInitialTab`; p. ej. "media" desde Invoices para los PDF de fotos). */
+export type HouseDetailTab = 'overview' | 'financials' | 'media';
+
 // ==========================================
 // 3. SETTINGS & CATALOGS
 // ==========================================

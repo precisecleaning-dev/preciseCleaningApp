@@ -30,8 +30,9 @@
 import type { TabOptions } from '../App';
 
 /** Importadores dinámicos por pestaña. Deben ser los MISMOS que usa lazy() en
- *  App.tsx: Vite deduplica por especificador, así que precargar aquí resuelve
- *  el import de allá sin descargar dos veces. */
+ *  components/AppTabContent.tsx (ahí se dibuja cada pestaña): Vite deduplica
+ *  por especificador, así que precargar aquí resuelve el import de allá sin
+ *  descargar dos veces. TabOptions sale de VALID_TABS en App.tsx. */
 const LOADERS: Partial<Record<TabOptions, () => Promise<unknown>>> = {
   houses: () => import('../views/HousesView'),
   pipeline: () => import('../views/HousesView'),
