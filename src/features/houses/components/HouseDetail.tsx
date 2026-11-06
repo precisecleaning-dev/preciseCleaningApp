@@ -53,7 +53,8 @@ import ChecklistModal from "./ChecklistModal";
 import BurstCamera from "./BurstCamera";
 import ServiceModal from "./ServiceModal";
 import PayrollModal from "./PayrollModal";
-import { formatServiceTypes } from "../../../shared/utils/houseServiceType";
+import CarpetServiceNotice from "./CarpetServiceNotice";
+import { formatServiceTypes, isCarpetServiceMissing } from "../../../shared/utils/houseServiceType";
 
 export type DetailTab = "overview" | "financials" | "media" | "history" | "quality";
 type NoteField = "note" | "officeNote" | "employeeNote";
@@ -868,6 +869,9 @@ export default function HouseDetail({
   //    Profit sin el impuesto sumado.
   const houseFinancials = getJobFinancials(selectedHouse, houseServices, detailPayrollRecords);
   const profitToneClass = houseFinancials.profit >= 0 ? "positive" : "negative";
+  // Carpet sin servicio cobrado de carpet: aviso en Job Specifications (cuando ya llegaron los servicios).
+  const isCarpetNoticeVisible = isElementVisible("serviceTypes") && records.loaded
+    && isCarpetServiceMissing(selectedHouse, houseServices, getServiceName);
 
   return (
     <>
@@ -1256,6 +1260,7 @@ export default function HouseDetail({
                             </span>
                           </div>
                         )}
+                        {isCarpetNoticeVisible && <CarpetServiceNotice />}
                       </div>
                     )}
 

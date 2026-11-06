@@ -1,0 +1,20 @@
+/* Aviso de Carpet sin servicio de carpet (formulario y detalle de la casa). */
+.csn-notice {
+  align-items: flex-start;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  color: #92400e;
+  display: flex;
+  font-size: 0.85rem;
+  gap: 8px;
+  line-height: 1.4;
+  margin-top: 14px;
+  padding: 10px 12px;
+}
+
+.csn-icon {
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 1px;
+}

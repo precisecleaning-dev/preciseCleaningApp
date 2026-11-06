@@ -21,3 +21,16 @@ export const formatServiceTypes = (house: Pick<Property, 'serviceTypes'>): strin
 
 export const isCarpetJob = (house: Pick<Property, 'serviceTypes'>): boolean =>
   house.serviceTypes?.includes('Carpet') ?? false;
+
+/** ¿Algún servicio cobrado es de carpet ("Carpet Cleaning", "Carpet & Tile"…)? */
+export const hasCarpetBilledService = (
+  billedServices: readonly { serviceId: string }[],
+  getServiceName: (serviceId: string) => string,
+): boolean => billedServices.some((billedService) => /carpet/i.test(getServiceName(billedService.serviceId)));
+
+/** Trabajo con Carpet sin ningún servicio cobrado de carpet: se avisa (no bloquea). */
+export const isCarpetServiceMissing = (
+  house: Pick<Property, 'serviceTypes'>,
+  billedServices: readonly { serviceId: string }[],
+  getServiceName: (serviceId: string) => string,
+): boolean => isCarpetJob(house) && !hasCarpetBilledService(billedServices, getServiceName);

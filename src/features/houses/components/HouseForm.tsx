@@ -24,6 +24,7 @@ import { formatDate, dateSortValue, todayIso } from "../../../utils/dateFormat";
 import { getRelationName } from "../../../utils/relations";
 import { stampInvoiceEntry } from "../../../utils/invoiceEntry";
 import { cavalryClientKeys, houseBusiness, statusesForBusiness } from "../../../shared/utils/businesses";
+import { isCarpetServiceMissing } from "../../../shared/utils/houseServiceType";
 import PhotoSection from "../../../components/PhotoSection";
 import DateInput from "../../../shared/components/DateInput";
 import { newServiceRecord, recordFingerprint, recordTotalMinusTax } from "../serviceRecords";
@@ -39,6 +40,7 @@ import type { HouseAccess } from "../hooks/useHouseAccess";
 import { usePendingForHouse, type PhotoQueue } from "../hooks/usePhotoQueue";
 import { useHousePhotos } from "../hooks/useHousePhotos";
 import SearchableSelect from "./SearchableSelect";
+import CarpetServiceNotice from "./CarpetServiceNotice";
 import ServiceTypePicker from "./ServiceTypePicker";
 import CustomerQuickModal from "./CustomerQuickModal";
 import FieldConfigModal from "./FieldConfigModal";
@@ -836,6 +838,10 @@ const HouseForm = ({
 
   const formTotalBilled = formServices.reduce((sum, r) => sum + r.total, 0);
 
+  // Carpet sin servicio cobrado de carpet: aviso bajo Service Type (no bloquea el guardado).
+  const isCarpetNoticeVisible = isElementVisible("serviceTypes") && formRecordsReady
+    && isCarpetServiceMissing(formData, formServices, getServiceName);
+
   return (
     <>
       {/* --- FORM MODAL TIPO WORK ORDER --- */}
@@ -875,6 +881,7 @@ const HouseForm = ({
                       isDisabled={isFieldRO("serviceTypes")}
                       onChange={(serviceTypes) => setFormData({ ...formData, serviceTypes })}
                     />
+                    {isCarpetNoticeVisible && <CarpetServiceNotice />}
                   </div>
                 )}
                 <div className="hv-form-grid cols-300">

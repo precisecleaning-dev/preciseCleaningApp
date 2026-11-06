@@ -3241,3 +3241,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Carpet" en vez de "Pending" (`isCarpetJob`).
 - Service Type · Pipeline (10/2026, pedido de Omar): con Carpet la tarjeta lleva la etiqueta "Carpet" arriba a
   la izquierda (`.pb-job-tag` en PipelineBoardView.css).
+- Service Type · aviso de Carpet (10/2026, pedido de Omar): si el trabajo tiene Carpet y ningún servicio cobrado
+  tiene "carpet" en el nombre, el formulario (bajo Service Type) y el detalle (Job Specifications) muestran
+  `CarpetServiceNotice`. Solo avisa: NO impide guardar.
