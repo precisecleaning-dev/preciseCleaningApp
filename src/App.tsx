@@ -131,9 +131,14 @@ const App = () => {
 
   // La sesión de Firebase sobrevive a la recarga.
   useEffect(() => {
-    setPersistence(auth, browserLocalPersistence).catch((error) => {
-      console.error('No se pudo fijar la persistencia de sesión:', error);
-    });
+    const keepSessionAfterReload = async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (error) {
+        console.error('No se pudo fijar la persistencia de sesión:', error);
+      }
+    };
+    void keepSessionAfterReload();
   }, []);
 
   // Si se cierra sesión en otra pestaña, esta se recarga (su Firestore quedó apagado).
@@ -212,11 +217,9 @@ const App = () => {
     canViewTaskList(activeRole, isSuperAdmin) ? effectiveUser?.id ?? null : null,
   );
 
-  const canUseViewAs = isRealSuperAdmin
-    || !!realRole?.permissions?.find((permission) => permission.module === 'View As User')?.canView;
+  const canUseViewAs = isRealSuperAdmin || canRoleViewModule(realRole, 'View As User');
   // Data Import: SuperAdmin o el permiso "Data Import" (el Sidebar usa la misma regla).
-  const canViewDataImport = isSuperAdmin
-    || !!activeRole?.permissions?.find((permission) => permission.module === 'Data Import')?.canView;
+  const canViewDataImport = isSuperAdmin || canRoleViewModule(activeRole, 'Data Import');
 
   // Guardia de permisos: el menú oculta lo que no se puede ver, pero la pestaña
   // puede llegar de la última usada. Sin permiso, se pasa a la primera permitida.

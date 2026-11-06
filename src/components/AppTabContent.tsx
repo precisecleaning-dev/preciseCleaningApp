@@ -200,8 +200,11 @@ const AppTabContent = ({
       case 'data_import':
         // SuperAdmin o rol con permiso "Data Import" (el Sidebar usa la misma regla).
         return canViewDataImport && <DataImportView onOpenMenu={onOpenMenu} />;
-      default:
-        return null;
+      default: {
+        // Una pestaña nueva sin su case no compila (en vez de salir en blanco).
+        const unhandledTab: never = activeTab;
+        return unhandledTab;
+      }
     }
   };
 

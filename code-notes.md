@@ -3221,9 +3221,14 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   vuelve a la primera pestaña con resultados al cambiar de periodo o de archivo. Si `exceljs` no carga (sin
   conexión o pestaña de antes de un deploy) el mensaje pide conexión y recargar (`ExcelToolLoadError`).
 - App.tsx dividido (10/2026, CR del PR #25): App.tsx queda con sesión, listeners globales, pestaña activa, guardia
-  de permisos (`VALID_TABS` → `TabOptions`, `TAB_MODULE`, `FALLBACK_TAB_ORDER`) y "Ver como"; la pestaña activa,
+  de permisos (`TabOptions`, `VALID_TABS`, `TAB_MODULE`, `FALLBACK_TAB_ORDER`) y "Ver como"; la pestaña activa,
   los `lazy()` de cada vista y el host de los modales de casa (HousesView "modals-only") están en
   `components/AppTabContent.tsx`; la pantalla de carga en `AppLoadingScreen` y el aviso de versión en
   `AppUpdateBanner`. `utils/viewPrefetch.ts` debe usar los MISMOS imports que los `lazy()` de AppTabContent.
   Pendiente (lo hace Omar, Claude no edita CLAUDE.md): CLAUDE.md aún dice App.tsx para el render, los lazy() y
   el host de modales (estructura de carpetas, "Detalle o formulario de una casa…" y "Agregar una vista nueva").
+- "Fotos" (photo_settings) (11/2026, CR del PR de App tabs): recargar ya conserva la pestaña (`TabOptions` sale de
+  `VALID_TABS`, una sola lista; antes 'photo_settings' faltaba en VALID_TABS y volvía a Houses) y la guardia de
+  App.tsx usa la misma regla que `canViewOrLegacy` del Sidebar: si el rol tiene el permiso "Photo Settings" manda
+  ese (aunque esté en false); si no, el de Settings. No volver a mirar solo Settings: el menú y la guardia se
+  contradecían (el menú ocultaba "Fotos" y la guardia la dejaba abrir, o al revés).
