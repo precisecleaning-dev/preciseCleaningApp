@@ -39,6 +39,7 @@ import type { HouseAccess } from "../hooks/useHouseAccess";
 import { usePendingForHouse, type PhotoQueue } from "../hooks/usePhotoQueue";
 import { useHousePhotos } from "../hooks/useHousePhotos";
 import SearchableSelect from "./SearchableSelect";
+import ServiceTypePicker from "./ServiceTypePicker";
 import CustomerQuickModal from "./CustomerQuickModal";
 import FieldConfigModal from "./FieldConfigModal";
 import BurstCamera from "./BurstCamera";
@@ -149,6 +150,7 @@ function initialForm(init: HouseFormInit, defaultStatus: string): InitialForm {
           address: "",
           employeeNote: "",
           serviceId: "",
+          serviceTypes: [],
           rooms: "1",
           bathrooms: "1",
           priorityId: "",
@@ -864,6 +866,17 @@ const HouseForm = ({
                 <h3 className="hv-form-card-title">
                   <User size={20} color="#3B82F6" /> General Information
                 </h3>
+                {/* ⭐ Service Type va PRIMERO (antes del cliente) y admite varios. */}
+                {isElementVisible("serviceTypes") && (
+                  <div className="stp-field">
+                    <span className="hv-label">Service Type</span>
+                    <ServiceTypePicker
+                      selectedTypes={formData.serviceTypes ?? []}
+                      isDisabled={isFieldRO("serviceTypes")}
+                      onChange={(serviceTypes) => setFormData({ ...formData, serviceTypes })}
+                    />
+                  </div>
+                )}
                 <div className="hv-form-grid cols-300">
                   {isElementVisible("client") && (
                     <div>

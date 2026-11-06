@@ -5,6 +5,7 @@
 type ConfigurableElement = { id: string; label: string; section: string };
 
 export const CONFIGURABLE_FIELDS: ConfigurableElement[] = [
+  { id: "serviceTypes", label: "Service Type (Carpet / Normal / Cavalry)", section: "General Info" },
   { id: "client", label: "Client", section: "General Info" },
   { id: "address", label: "Address", section: "General Info" },
   { id: "unit", label: "Unit / Apto", section: "General Info" },

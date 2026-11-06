@@ -62,6 +62,9 @@ export interface NoteHistoryEntry {
   editedBy?: string; //                 email de quien lo corrigió
 }
 
+/** Tipos de servicio de una casa: Carpet, Normal o Cavalry. */
+export type HouseServiceType = 'Carpet' | 'Normal' | 'Cavalry';
+
 export interface Property {
   id: string;
   statusId: string;
@@ -91,6 +94,9 @@ export interface Property {
    */
   officeNote?: string;
   serviceId: string;
+  /** Tipos de servicio del trabajo ("Service Type" en el formulario, varios a
+   *  la vez). Reglas en shared/utils/houseServiceType.ts. */
+  serviceTypes?: HouseServiceType[];
   rooms: string;
   bathrooms: string;
   priorityId: string;

@@ -3232,3 +3232,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   App.tsx usa la misma regla que `canViewOrLegacy` del Sidebar: si el rol tiene el permiso "Photo Settings" manda
   ese (aunque esté en false); si no, el de Settings. No volver a mirar solo Settings: el menú y la guardia se
   contradecían (el menú ocultaba "Fotos" y la guardia la dejaba abrir, o al revés).
+- Service Type de la casa (10/2026, pedido de Omar): campo `serviceTypes` (lista: Carpet, Normal, Cavalry; se
+  pueden marcar varios) PRIMERO en General Information del formulario, antes de Client (`ServiceTypePicker`,
+  configurable en Configure Fields como "serviceTypes") y en Job Specifications del detalle. Es un dato del
+  TRABAJO, independiente de la empresa Normal / Cavalry de la app (esa sale del Type del cliente,
+  shared/utils/businesses.ts): no los unas sin preguntar. Reglas en shared/utils/houseServiceType.ts.

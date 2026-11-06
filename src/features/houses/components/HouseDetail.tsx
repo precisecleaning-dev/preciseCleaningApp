@@ -53,6 +53,7 @@ import ChecklistModal from "./ChecklistModal";
 import BurstCamera from "./BurstCamera";
 import ServiceModal from "./ServiceModal";
 import PayrollModal from "./PayrollModal";
+import { formatServiceTypes } from "../../../shared/utils/houseServiceType";
 
 export type DetailTab = "overview" | "financials" | "media" | "history" | "quality";
 type NoteField = "note" | "officeNote" | "employeeNote";
@@ -1181,6 +1182,7 @@ export default function HouseDetail({
 
                   {anyVisible(
                     "serviceId",
+                    "serviceTypes",
                     "priorityId",
                     "rooms",
                     "bathrooms",
@@ -1198,6 +1200,14 @@ export default function HouseDetail({
                                 services,
                                 selectedHouse.serviceId,
                               )}
+                            </span>
+                          </div>
+                        )}
+                        {isElementVisible("serviceTypes") && (
+                          <div className="hv-info-row">
+                            <span className="hv-info-label">Service Type</span>
+                            <span className="hv-info-value">
+                              {formatServiceTypes(selectedHouse) || "-"}
                             </span>
                           </div>
                         )}
