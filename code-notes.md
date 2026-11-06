@@ -3239,3 +3239,5 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   shared/utils/businesses.ts): no los unas sin preguntar. Reglas en shared/utils/houseServiceType.ts.
 - Service Type · Quality Check (10/2026, pedido de Omar): con Carpet la tarjeta de la casa dice "Pending
   Carpet" en vez de "Pending" (`isCarpetJob`).
+- Service Type · Pipeline (10/2026, pedido de Omar): con Carpet la tarjeta lleva la etiqueta "Carpet" arriba a
+  la izquierda (`.pb-job-tag` en PipelineBoardView.css).

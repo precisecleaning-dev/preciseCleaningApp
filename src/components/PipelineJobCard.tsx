@@ -1,4 +1,5 @@
-// Tarjeta de un trabajo en el tablero (Pipeline): cliente, banderas (terminado
+// Tarjeta de un trabajo en el tablero (Pipeline): etiqueta "Carpet" arriba a la
+// izquierda si el trabajo la tiene (Service Type), cliente, banderas (terminado
 // por el equipo, prioridad alta), dirección, fecha, notas (la de oficina solo
 // con permiso), monto opcional, equipo y su status. Tocarla abre el detalle.
 // La misma tarjeta para Normal y Cavalry.
@@ -7,6 +8,7 @@ import { AlertTriangle, Briefcase, CalendarDays, CheckCircle, MapPin, StickyNote
 import type { Property, Status } from '../types/index';
 import { formatDate } from '../utils/dateFormat';
 import { money } from '../utils/jobFinancials';
+import { isCarpetJob } from '../shared/utils/houseServiceType';
 import PipelineStatusPill from './PipelineStatusPill';
 
 interface PipelineJobCardProps {
@@ -38,6 +40,7 @@ const PipelineJobCard = ({
 
   return (
     <div onClick={handleOpenPropertyDetail} className="pb-job-card">
+      {isCarpetJob(property) && <span className="pb-job-tag">Carpet</span>}
       <div className="pb-job-top-row">
         <span className="pb-job-name">{clientName}</span>
         <div className="pb-job-flags">
