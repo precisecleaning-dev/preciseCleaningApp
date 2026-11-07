@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { Property } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
+import { isCarpetJob } from '../../../shared/utils/houseServiceType';
 
 interface QcHouseCardProps {
   house: Property;
@@ -47,6 +48,8 @@ const QcHouseCard = ({
 }: QcHouseCardProps) => {
   const cardModifier = variant === 'pending' ? '' : ` ${variant}`;
   const scheduleText = house.scheduleDate ? formatDate(house.scheduleDate) : 'Sin fecha';
+  // Service Type = Carpet: la inspección incluye el carpet.
+  const pendingLabel = isCarpetJob(house) ? 'Pending Carpet' : 'Pending';
   const statusDotStyle = { '--dot-color': statusColor } as CSSProperties;
 
   const handleChangeStatus = (event: MouseEvent) => {
@@ -70,7 +73,7 @@ const QcHouseCard = ({
     <div onClick={() => onOpenDetail(house)} className={`qcv-house-card${cardModifier}`}>
       <div className="qcv-house-card-title-row">
         <div className="qcv-house-client-name">{clientName}</div>
-        {variant === 'pending' && <span className="pending-yellow qcv-house-badge">Pending</span>}
+        {variant === 'pending' && <span className="pending-yellow qcv-house-badge">{pendingLabel}</span>}
         {variant === 'failed' && <span className="failed qcv-house-badge"><AlertTriangle size={12} /> Did Not Pass</span>}
         {variant === 'recall' && <span className="qcv-house-badge recall"><Repeat size={12} /> Recall</span>}
       </div>

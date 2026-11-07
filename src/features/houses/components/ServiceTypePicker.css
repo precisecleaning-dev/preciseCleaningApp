@@ -1,0 +1,48 @@
+/* Selector de tipos de servicio del formulario de la casa (varios a la vez). */
+/* Bloque del campo en General Information, antes de Client. */
+.stp-field {
+  margin-bottom: 20px;
+}
+
+.stp-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stp-option {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 8px 18px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.stp-option:hover:not(:disabled) {
+  border-color: #93c5fd;
+}
+
+.stp-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.stp-option.is-selected {
+  background: #eff6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+}
+
+.stp-option.type-carpet.is-selected {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #92400e;
+}
