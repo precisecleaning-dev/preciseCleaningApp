@@ -3244,3 +3244,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Service Type · aviso de Carpet (10/2026, pedido de Omar): si el trabajo tiene Carpet y ningún servicio cobrado
   tiene "carpet" en el nombre, el formulario (bajo Service Type) y el detalle (Job Specifications) muestran
   `CarpetServiceNotice`. Solo avisa: NO impide guardar.
+- Payroll al estilo "tipos y service por colección" (11/2026, aprobado por Omar): `PayrollRecord` vive en
+  src/types/payroll.ts (index.ts lo reexporta) y `payrollService` tipa `payroll` UNA vez con typedConverter (el
+  `id` es el del documento; ningún escritor guarda un campo `id` en los pagos: HouseForm lo quita antes de crear).
+  Mismas funciones y mismo comportamiento; `create` y `batchCreate` usan setDoc sobre un id automático (igual que
+  addDoc).

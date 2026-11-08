@@ -243,19 +243,7 @@ export interface Business { id: string; name: string; }
 // 4. PAYROLL / PAYMENTS
 // ==========================================
 
-export interface PayrollRecord {
-  id?: string;
-  propertyId: string;
-  date: string;
-  employeeId: string;
-  baseAmount: number;
-  extraAmount: number;
-  extraNote: string;
-  discountAmount: number;
-  discountNote: string;
-  totalAmount: number;
-  status?: 'Pending' | 'Paid'; // <-- ESTO ES NUEVO
-}
+// PayrollRecord vive en ./payroll.ts (reexportado al final de este archivo).
 // ==========================================
 // 5. QUALITY CHECK (colección quality_checks)
 // ==========================================
@@ -610,3 +598,4 @@ export interface UserPriorities {
 export * from './userTasks';
 export * from './taskProjects';
 export * from './billingServices';
+export * from './payroll';

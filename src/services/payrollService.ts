@@ -1,16 +1,41 @@
-import { db } from '../config/firebase';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, updateDoc, type WriteBatch } from 'firebase/firestore';
-import type { PayrollRecord } from '../types/index';
-
+// src/services/payrollService.ts
+// ============================================================================
+// Lecturas y escrituras de la colección `payroll` (tipos en
+// src/types/payroll.ts). La colección se tipa UNA vez con typedConverter: el
+// `id` es el id del documento y no se guarda como campo.
 // Todos los pagos viven en 'payroll' ('payroll_records' es la colección vieja,
 // ya migrada; solo la menciona la papelera para entradas antiguas).
-const COLLECTION_NAME = 'payroll';
+// ============================================================================
+import { db } from '../config/firebase';
+import {
+  collection, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where,
+  type CollectionReference, type DocumentReference, type WriteBatch,
+} from 'firebase/firestore';
+import type { PayrollRecord } from '../types/index';
+import { COLLECTIONS } from '../lib/firebase/collections';
+import { typedConverter } from '../lib/firebase/typedConverter';
+
+/** Un pago tal como sale de Firestore: siempre con el id de su documento. */
+type PayrollDoc = PayrollRecord & { id: string };
+
+const payrollCol: CollectionReference<PayrollDoc> =
+  collection(db, COLLECTIONS.payroll).withConverter(typedConverter<PayrollDoc>());
+
+const payrollRef = (id: string): DocumentReference<PayrollDoc> =>
+  doc(db, COLLECTIONS.payroll, id).withConverter(typedConverter<PayrollDoc>());
+
+/** Referencia nueva con id automático y los datos listos para guardar. */
+const newPayrollDoc = (data: Omit<PayrollRecord, 'id'>) => {
+  const ref = doc(payrollCol);
+  return { ref, model: { ...withDefaults(data), id: ref.id } };
+};
 
 export const payrollService = {
   async create(data: Omit<PayrollRecord, 'id'>): Promise<string> {
     try {
-      const docRef = await addDoc(collection(db, COLLECTION_NAME), withDefaults(data));
-      return docRef.id;
+      const { ref, model } = newPayrollDoc(data);
+      await setDoc(ref, model);
+      return ref.id;
     } catch (error) {
       console.error('Error adding document: ', error);
       throw error;
@@ -19,9 +44,8 @@ export const payrollService = {
 
   async getByPropertyId(propertyId: string): Promise<PayrollRecord[]> {
     try {
-      const q = query(collection(db, COLLECTION_NAME), where("propertyId", "==", propertyId));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PayrollRecord[];
+      const querySnapshot = await getDocs(query(payrollCol, where('propertyId', '==', propertyId)));
+      return querySnapshot.docs.map((payrollSnap) => payrollSnap.data());
     } catch (error) {
       console.error('Error getting documents: ', error);
       throw error;
@@ -30,7 +54,7 @@ export const payrollService = {
 
   async update(id: string, data: Partial<PayrollRecord>): Promise<void> {
     try {
-      await updateDoc(doc(db, COLLECTION_NAME, id), data);
+      await updateDoc(payrollRef(id), data);
     } catch (error) {
       console.error('Error updating document: ', error);
       throw error;
@@ -39,7 +63,7 @@ export const payrollService = {
 
   async delete(id: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, COLLECTION_NAME, id));
+      await deleteDoc(payrollRef(id));
     } catch (error) {
       console.error('Error deleting document: ', error);
       throw error;
@@ -49,15 +73,16 @@ export const payrollService = {
   // ⭐ Variantes para escrituras en lote (src/shared/data/batchWrites.ts):
   //    agregan la operación al batch; quien lo armó lo confirma.
   batchCreate(batch: WriteBatch, data: Omit<PayrollRecord, 'id'>): void {
-    batch.set(doc(collection(db, COLLECTION_NAME)), withDefaults(data));
+    const { ref, model } = newPayrollDoc(data);
+    batch.set(ref, model);
   },
 
   batchUpdate(batch: WriteBatch, id: string, data: Partial<PayrollRecord> | Record<string, unknown>): void {
-    batch.update(doc(db, COLLECTION_NAME, id), data);
+    batch.update(doc(db, COLLECTIONS.payroll, id), data);
   },
 
   batchDelete(batch: WriteBatch, id: string): void {
-    batch.delete(doc(db, COLLECTION_NAME, id));
+    batch.delete(payrollRef(id));
   },
 };
 
