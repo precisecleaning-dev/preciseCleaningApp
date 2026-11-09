@@ -59,6 +59,7 @@ const InvoiceDialogsHost = ({
       {formTarget && (
         <InvoiceFormModal
           invoice={formTarget.invoice}
+          liveInvoice={dialogs.formLiveInvoice}
           properties={properties}
           currentUser={currentUser}
           onClose={dialogs.closeForm}

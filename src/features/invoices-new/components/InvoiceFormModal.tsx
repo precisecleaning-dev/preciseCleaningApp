@@ -6,8 +6,11 @@
 // "Send by email": al guardar, manda el PDF y/o el enlace de Stripe. Si el
 // correo falla, el invoice queda guardado y el aviso lo dice (se reintenta con
 // Send Invoice). Enviarlo pasa un Needs Invoice a Pending (lo hace el servidor).
-// Status: Needs Invoice / Pending / Paid. Elegir Paid al editar registra el
-// pago en la MISMA transacción que los demás cambios.
+// Status: Needs Invoice / Pending / Paid. Al editar, todo (cambios, pago si se
+// elige Paid y fotos) va en UNA transacción: si falla, no queda nada a medias.
+// `invoice` es la copia de cuando se abrió (estado inicial y control de cambios
+// ajenos); `liveInvoice`, la versión en vivo: si otra persona lo guarda, se
+// avisa antes de intentar guardar.
 import { useState, type FormEvent } from 'react';
 import { CreditCard, Eye, FileText, Image as ImageIcon, Percent, Plus, Send, StickyNote } from 'lucide-react';
 import type {
@@ -54,8 +57,10 @@ import InvoicePdfPreviewModal from './InvoicePdfPreviewModal';
 import './InvoiceFormModal.css';
 
 interface InvoiceFormModalProps {
-  /** null = crear; un invoice = editarlo. */
+  /** null = crear; un invoice = editarlo (la copia de cuando se abrió el formulario). */
   invoice: Invoice | null;
+  /** Al editar: el mismo invoice en vivo (null si ya no está en la lista). */
+  liveInvoice: Invoice | null;
   /** Casas de la ventana de App.tsx (las del selector de job). */
   properties: Property[];
   currentUser: SystemUser | null;
@@ -66,6 +71,15 @@ interface InvoiceFormModalProps {
 
 /** Paso del guardado: guardar el invoice y, si se pidió, mandarlo por correo. */
 type SaveStep = 'saving' | 'sending' | null;
+
+/** Por qué las fotos no se pueden cambiar en Edit (vacío = sí se pueden): sin la
+ *  selección guardada, el formulario partiría de "todas" y no podría guardarla. */
+const getSavedPhotosNotice = (isEditing: boolean, savedPhotos: { isLoading: boolean; hasError: boolean }): string => {
+  if (!isEditing) return '';
+  if (savedPhotos.hasError) return 'Could not load the saved photos, so they will not change. Close the form and open it again to edit them.';
+  if (savedPhotos.isLoading) return 'Loading the saved photos…';
+  return '';
+};
 
 /** Notas a guardar: las sin cambios quedan igual, las editadas conservan
  *  autor y fecha, las nuevas llevan a quien las escribió; las vacías se van. */
@@ -78,7 +92,7 @@ const buildSavedNotes = (formNotes: InvoiceFormNote[], actor: Actor): InvoiceNot
       return formNote.original.text === text ? formNote.original : { ...formNote.original, text };
     });
 
-const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }: InvoiceFormModalProps) => {
+const InvoiceFormModal = ({ invoice, liveInvoice, properties, currentUser, onClose, onSaved }: InvoiceFormModalProps) => {
   const customers = useLiveData('customers');
   const services = useLiveData('services');
   const products = useLiveData('products');
@@ -122,6 +136,15 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const delivery = getInvoiceFormDelivery(state, client?.email ?? '');
   const deliveryErrors = getDeliveryErrors(delivery, false);
   const isFormValid = Object.keys(errors).length === 0 && Object.keys(deliveryErrors).length === 0 && !photoChoice.error;
+  // Otra persona guardó el invoice después de abrir el formulario: guardar fallaría
+  // (InvoiceChangedError), así que se avisa antes. Mientras se guarda no cuenta: es el propio cambio.
+  const isChangedByOthers = !!invoice && !!liveInvoice && liveInvoice.updatedAt !== invoice.updatedAt && !isSaving;
+  const changedByOthersMessage = isChangedByOthers && invoice
+    ? `Someone else changed invoice ${invoice.number} after you opened it. Close the form and open it again to see the latest version.`
+    : '';
+  // El aviso de cambio ajeno va primero: mientras exista, guardar está desactivado.
+  const footerError = changedByOthersMessage || saveError;
+  const savedPhotosNotice = getSavedPhotosNotice(isEditing, savedPhotos);
   const serviceDate = invoice?.job.serviceDate ?? selectedProperty?.scheduleDate ?? '';
 
   const jobWarnings = [
@@ -180,6 +203,11 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
     // Needs Invoice ↔ Pending va en el patch; Paid, con su pago (misma transacción).
     const draftOrPendingStatus = state.status === 'needs_invoice' || state.status === 'pending' ? state.status : null;
     const changedStatus = draftOrPendingStatus !== savedInvoice.status ? draftOrPendingStatus : null;
+    // Fotos solo si el job está cargado y la selección guardada llegó bien: si
+    // no, se guardaría "todas las fotos" encima de la selección real (la sección
+    // de fotos está de solo lectura en ese caso: savedPhotosNotice).
+    const canSavePhotos = jobPhotos !== null && savedPhotosNotice === '';
+    const changedPhotos = canSavePhotos && photoChoice.isChanged ? photoChoice.toInput() : null;
     await invoicesService.update(savedInvoice.id, {
       issueDate: state.issueDate,
       paymentTerms: state.paymentTerms,
@@ -193,10 +221,11 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
       ...(isDeliveryRequested(delivery) ? { recipientEmail: savedRecipientEmail } : {}),
       ...(delivery.sendPaymentLink ? { paymentLinkUrl: savedPaymentLinkUrl } : {}),
       ...(changedStatus ? { status: changedStatus } : {}),
-    }, actor, savedInvoice.updatedAt, recordsPayment ? state.payment : null);
-    if (jobPhotos && !savedPhotos.isLoading && photoChoice.isChanged) {
-      await invoicesService.updatePhotoSelection(savedInvoice.id, photoChoice.toInput(), actor);
-    }
+    }, actor, {
+      expectedUpdatedAt: savedInvoice.updatedAt,
+      manualPayment: recordsPayment ? state.payment : null,
+      photos: changedPhotos,
+    });
     return { id: savedInvoice.id, number: savedInvoice.number };
   };
 
@@ -260,7 +289,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setHasTriedSubmit(true);
-    if (!isFormValid || isSaving) return;
+    if (!isFormValid || isSaving || isChangedByOthers) return;
     if (!currentUser) {
       setSaveError('Your user profile is not loaded. Reload the app and try again.');
       return;
@@ -390,6 +419,7 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
               photoChoice={photoChoice}
               jobPhotos={jobPhotos}
               error={hasTriedSubmit ? photoChoice.error : ''}
+              unavailableMessage={savedPhotosNotice}
             />
           </InvoiceFormSection>
 
@@ -416,9 +446,9 @@ const InvoiceFormModal = ({ invoice, properties, currentUser, onClose, onSaved }
         </div>
 
         <footer className="invd-footer">
-          {saveError && <p className="invd-footer-error" role="alert">{saveError}</p>}
+          {footerError && <p className="invd-footer-error" role="alert">{footerError}</p>}
           <button type="button" className="invd-secondary-btn" disabled={isSaving} onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary invd-primary-btn" disabled={isSaving}>
+          <button type="submit" className="btn-primary invd-primary-btn" disabled={isSaving || isChangedByOthers}>
             {isSaving ? savingLabel : submitLabel}
           </button>
         </footer>

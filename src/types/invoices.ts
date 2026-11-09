@@ -348,6 +348,16 @@ export interface ClientAccountPayment {
 /** El patch tal como se guarda: los fees ya llevan su monto (invoicesService.update). */
 export type InvoiceNormalizedPatch = Omit<InvoicePatch, 'fees'> & { fees?: InvoiceFee[] };
 
+/** Lo que Edit Invoice guarda junto con el patch, en la MISMA transacción (invoicesService.update). */
+export interface InvoiceUpdateOptions {
+  /** `updatedAt` del invoice al abrir el formulario: si otra persona lo guardó después, no se pisa. */
+  expectedUpdatedAt?: string;
+  /** Paid elegido en Edit: el pago completo, con el total ya actualizado. */
+  manualPayment?: InvoiceManualPaymentInput | null;
+  /** Fotos del PDF, si cambiaron. */
+  photos?: InvoicePhotoSelectionInput | null;
+}
+
 /** Un invoice que una acción en bloque no hizo (saltado o con error), y por qué. */
 export interface InvoiceBulkIssue {
   invoice: Invoice;

@@ -577,6 +577,21 @@ const updateInvoice = (db, invoiceId, patch, eventType = 'updated') => {
   return batch.commit();
 };
 
+/**
+ * invoicesService.update con fotos (Edit Invoice) y updatePhotoSelection
+ * (Manage photos): invoice, selección y sus eventos en UNA transacción.
+ */
+const updateInvoiceWithPhotos = (db, invoiceId, patch, eventTypes) => runTransaction(db, async (transaction) => {
+  const invoiceRef = doc(db, 'invoices', invoiceId);
+  await transaction.get(invoiceRef);
+  const photo = { url: 'https://x/1.jpg', category: 'before', order: 0 };
+  transaction.update(invoiceRef, {
+    ...patch, photos: { include: true, mode: 'selected', selectedCount: 1, beforeCount: 1, afterCount: 0 }, ...updatedBy,
+  });
+  transaction.set(doc(db, 'invoices', invoiceId, 'photos', 'selection'), selectionData({ mode: 'selected', items: [photo] }));
+  eventTypes.forEach((eventType) => transaction.set(doc(collection(db, 'invoices', invoiceId, 'events')), eventData(eventType)));
+});
+
 describe('Invoices New', () => {
   test('lee quien ve Invoices New (lista, Activity y fotos); los demás no', async () => {
     await seedInvoice('i1', 1);
@@ -794,6 +809,23 @@ describe('Invoices New', () => {
     await assertSucceeds(updateInvoice(as('billing@precise.test'), 'i1', { dueDate: `${YEAR}-03-01` }));
     // Borrar de verdad sigue sin poderse.
     await assertFails(deleteDoc(doc(manager, 'invoices', 'i1')));
+  });
+
+  test('Edit y Manage photos: cambios, pago y fotos en una sola transacción', async () => {
+    await seedInvoice('i1', 1);
+    await seedInvoice('i2', 2);
+    await seedInvoice('i3', 3, { deletion: { deletedAt: NOW_ISO, deletedByUserId: 'u-invmanager', deletedByUserName: 'Manager', reason: 'Duplicated' } });
+    const billing = as('billing@precise.test');
+    await assertSucceeds(updateInvoiceWithPhotos(billing, 'i1', { dueDate: `${YEAR}-02-14`, paymentTerms: 'custom' }, ['photos_updated', 'updated']));
+    // Manage photos: solo las fotos.
+    await assertSucceeds(updateInvoiceWithPhotos(billing, 'i1', {}, ['photos_updated']));
+    // Paid en Edit con fotos y total nuevo: lo más grande que escribe Edit (límite de 1000 expresiones).
+    await assertSucceeds(updateInvoiceWithPhotos(billing, 'i2', {
+      subtotalCents: 20000, taxCents: 1650, totalCents: 21650, dueDate: `${YEAR}-02-14`, paymentTerms: 'custom',
+      status: 'paid', payment: manualPayment(21650),
+    }, ['photos_updated', 'updated', 'payment_recorded']));
+    // En la papelera no cambian las fotos.
+    await assertFails(updateInvoiceWithPhotos(billing, 'i3', {}, ['photos_updated']));
   });
 
   test('fotos elegidas: un solo documento, con Edit', async () => {

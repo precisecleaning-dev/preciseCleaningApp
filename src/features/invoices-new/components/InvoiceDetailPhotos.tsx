@@ -30,6 +30,8 @@ const InvoiceDetailPhotos = ({ invoice, jobProperty, canEdit, currentUser }: Inv
     ? `${shownPhotos.length} photo(s) in the PDF · ${beforeCount} before / ${shownPhotos.length - beforeCount} after`
     : 'Photos are not included in the PDF.';
   const hiddenThumbnailCount = shownPhotos.length - THUMBNAIL_LIMIT;
+  // Sin la selección guardada (no cargó), Manage photos partiría de "todas" y la pisaría.
+  const canManagePhotos = canEdit && jobPhotos !== null && !hasError;
 
   if (isLoading) return <span className="skel-line skel-row-main" aria-hidden="true" />;
 
@@ -37,7 +39,7 @@ const InvoiceDetailPhotos = ({ invoice, jobProperty, canEdit, currentUser }: Inv
     <div className="invdt-photos">
       <div className="invdt-photos-head">
         <span>{summaryText}</span>
-        {canEdit && jobPhotos && (
+        {canManagePhotos && (
           <button type="button" className="invf-text-btn" onClick={() => setIsManageOpen(true)}>Manage photos</button>
         )}
       </div>

@@ -3277,7 +3277,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   quita. Un invoice nuevo empieza en Needs Invoice y ENVIARLO por correo lo pasa a Pending (con enlace, a
   Payment Link Sent): lo hace `sendinvoiceemail` (functions), así que cambiar esa regla pide desplegar la
   función. En Edit: Needs Invoice ↔ Pending va en el patch; Paid se registra con su pago en la MISMA
-  transacción que el resto del formulario (`invoicesService.update(..., manualPayment)`); con el enlace ya
+  transacción que el resto del formulario (`invoicesService.update(..., { manualPayment })`); con el enlace ya
   enviado solo se puede registrar el pago (`getSelectableStatuses`, y las reglas lo exigen). El PDF le muestra
   al cliente "Awaiting Payment" en cualquier estado sin pagar (no "Needs Invoice"). `awaiting_payment` era el
   nombre de Pending: solo lo tienen invoices de prueba y `invoiceConverter` (invoicesService.ts) lo lee como
@@ -3343,3 +3343,18 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   nuevo va en el host, no en la vista. Los avisos van por `useInvoiceNotice` (un resultado viejo no pisa uno nuevo).
   Las acciones en bloque y Delete congelan los invoices al abrir (`useBulkRun`): los marcados salen de la página
   al cambiar de estado y el diálogo no debe recalcularse a medio camino.
+- Invoices New · Edit y fotos en UNA transacción (11/2026, revisión): `invoicesService.update(id, patch, actor,
+  { expectedUpdatedAt, manualPayment, photos })` guarda los cambios, el pago (Paid en Edit) y la selección de fotos
+  con sus eventos juntos. Antes las fotos iban en otra escritura después: si fallaba, el invoice (y el pago) ya
+  estaban guardados, la pantalla decía que no, y al reintentar salía un falso "Someone else changed…". No volver a
+  separarlas. Manage photos (`updatePhotoSelection`) también es transacción: relee el invoice y no toca uno de la
+  papelera. Si la selección guardada no llegó (cargando o `hasError`), la sección de fotos de Edit queda de solo
+  lectura con aviso y no se guarda (partiría de "todas" y pisaría la real); Manage photos tampoco se ofrece. El
+  formulario recibe el invoice en vivo (`liveInvoice`) para avisar ANTES de guardar si otra persona lo cambió. Paid + fotos + total nuevo es lo más grande que escribe Edit: cabe en el límite de 1000
+  expresiones (prueba "Edit y Manage photos" de `npm run test:rules`).
+- Invoices New · un diálogo abierto no se cierra solo (11/2026, revisión): detalle, formulario, pago, envío y
+  vista previa reciben su invoice con `useLiveInvoice(id, deLaLista)`. Si el invoice sale de la ventana con el
+  diálogo abierto (uno sin pagar de hace más de 12 meses que se paga deja la consulta de "sin pagar" y no entra en
+  la de 12 meses), se escucha SU documento (`invoicesService.subscribeOne`) y mientras llega se muestra la última
+  versión de la lista. No volver a resolverlos solo con la lista: el detalle desaparecía al pagar. También hace que
+  el detalle de un invoice recién creado fuera de la ventana (Paid con fecha vieja) sí se abra.

@@ -42,7 +42,9 @@ const ManagePhotosDialog = ({ invoice, savedSelection, jobPhotos, currentUser, o
       onClose();
     } catch (error) {
       console.error('Could not save the photos:', error);
-      setSaveError('Could not save the photos. Check your connection and try again.');
+      // El service explica algunos casos (p. ej. un invoice que pasó a la papelera).
+      const detail = error instanceof Error ? error.message : '';
+      setSaveError(['Could not save the photos.', detail, 'Check your connection and try again.'].filter(Boolean).join(' '));
     } finally {
       setIsSaving(false);
     }

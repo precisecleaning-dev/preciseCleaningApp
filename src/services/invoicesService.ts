@@ -4,7 +4,7 @@
 //
 //   create · update · addNote · updatePhotoSelection · recordManualPayment
 //   moveToTrash · restore
-//   subscribeWindow · subscribeByClient · subscribePhotoSelection · getOne · getEvents
+//   subscribeWindow · subscribeByClient · subscribeOne · subscribePhotoSelection · getOne · getEvents
 //   getPhotoSelection · findByProperty
 //
 // ⭐ No hay `delete`: el número no debe dejar huecos y el historial se conserva
@@ -12,7 +12,7 @@
 //    PAPELERA (moveToTrash): `deletion` con motivo; se restaura con restore. Tampoco hay getAll: la lista
 //    escucha una ventana acotada (subscribeWindow, como propertiesWindow).
 // ⭐ Cada cambio escribe su evento de Activity (invoices/{id}/events) en la
-//    MISMA transacción o batch: si el cambio se guarda, su evento también.
+//    MISMA transacción: si el cambio se guarda, su evento también.
 // ⭐ El número sale de invoice_counters/{año} dentro de una transacción, así
 //    dos personas creando a la vez nunca reciben el mismo. Sin conexión no se
 //    puede crear (las transacciones necesitan al servidor).
@@ -23,9 +23,9 @@
 //    tienen invoices de prueba y se lee como 'pending' (invoiceConverter).
 // ============================================================================
 import {
-  collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, where, writeBatch,
+  collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, where,
   type CollectionReference, type DocumentReference, type FirestoreDataConverter, type Query, type Transaction,
-  type Unsubscribe, type WriteBatch,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { COLLECTIONS } from '../lib/firebase/collections';
@@ -35,7 +35,7 @@ import { formatDate, todayIso } from '../utils/dateFormat';
 import type {
   Actor, ClientAccountKey, Invoice, InvoiceCounter, InvoiceCreateInput, InvoiceEvent, InvoiceEventType, InvoiceFeeInput,
   InvoiceFieldChange, InvoiceLineItem, InvoiceManualPaymentInput, InvoiceNormalizedPatch, InvoiceNote, InvoicePatch,
-  InvoicePayment, InvoicePhotoSelection, InvoicePhotoSelectionInput, InvoicePhotoSummary,
+  InvoicePayment, InvoicePhotoSelection, InvoicePhotoSelectionInput, InvoicePhotoSummary, InvoiceUpdateOptions,
 } from '../types/index';
 import {
   INVOICE_PAYMENT_TERM_LABELS, bpsToPercent, buildSearchText, computeInvoiceTotals, formatCents, formatInvoiceNumber,
@@ -170,6 +170,16 @@ const assertValidPayment = (payment: InvoiceManualPaymentInput, issueDate: strin
   if (firstError) throw new Error(firstError);
 };
 
+/** Fotos del PDF: "Selected photos" con al menos una, y no más de las que aceptan las reglas. */
+const assertValidPhotoSelection = (photos: InvoicePhotoSelectionInput): void => {
+  if (photos.include && photos.mode === 'selected' && photos.items.length === 0) {
+    throw new Error('Select at least one photo, or turn off "Include before & after photos".');
+  }
+  if (photos.items.length > INVOICE_LIMITS.photoItems) {
+    throw new Error(`An invoice can include up to ${INVOICE_LIMITS.photoItems} photos.`);
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Piezas que se escriben junto con cada cambio
 // ---------------------------------------------------------------------------
@@ -189,6 +199,15 @@ const buildPhotoSummary = (photos: InvoicePhotoSelectionInput): InvoicePhotoSumm
   beforeCount: photos.items.filter((photo) => photo.category === 'before').length,
   afterCount: photos.items.filter((photo) => photo.category === 'after').length,
 });
+
+/** Escribe la selección completa de fotos (documento `selection`) en la transacción del cambio. */
+const setPhotoSelection = (
+  transaction: Transaction, invoiceId: string, photos: InvoicePhotoSelectionInput, actor: Actor, updatedAt: string,
+): void => {
+  transaction.set(photoSelectionRef(invoiceId), {
+    id: PHOTO_SELECTION_DOC_ID, ...photos, updatedAt, updatedByUserId: actor.id, updatedByUserName: actor.name,
+  });
+};
 
 const buildManualPayment = (
   payment: InvoiceManualPaymentInput, amountCents: number, actor: Actor,
@@ -212,8 +231,8 @@ interface EventInput {
   changes?: InvoiceFieldChange[];
 }
 
-/** Escribe un evento de Activity dentro de la transacción o el batch del cambio. */
-const writeEvent = (writer: Transaction | WriteBatch, invoiceId: string, actor: Actor, event: EventInput): void => {
+/** Escribe un evento de Activity dentro de la transacción del cambio. */
+const writeEvent = (transaction: Transaction, invoiceId: string, actor: Actor, event: EventInput): void => {
   const eventRef = doc(invoiceEventsCol(invoiceId));
   const invoiceEvent: InvoiceEvent = {
     id: eventRef.id,
@@ -225,9 +244,14 @@ const writeEvent = (writer: Transaction | WriteBatch, invoiceId: string, actor: 
     summary: event.summary,
     changes: event.changes ?? [],
   };
-  // Transaction y WriteBatch tienen el mismo set(ref, data).
-  (writer as WriteBatch).set(eventRef, invoiceEvent);
+  transaction.set(eventRef, invoiceEvent);
 };
+
+/** Evento de Activity de un cambio de fotos. */
+const buildPhotosEvent = (summary: InvoicePhotoSummary): EventInput => ({
+  type: 'photos_updated',
+  summary: summary.include ? `Photos updated · ${summary.selectedCount} selected` : 'Photos removed from the PDF',
+});
 
 /** Nombre de cada campo en Activity. */
 const FIELD_LABELS: Record<keyof InvoicePatch, string> = {
@@ -352,9 +376,7 @@ export const invoicesService = {
       if (!input.initialPayment) throw new Error('Record the payment details to create a paid invoice.');
       assertValidPayment(input.initialPayment, input.issueDate);
     }
-    if (input.photos.include && input.photos.mode === 'selected' && input.photos.items.length === 0) {
-      throw new Error('Select at least one photo, or turn off "Include before & after photos".');
-    }
+    assertValidPhotoSelection(input.photos);
 
     const year = Number(todayIso().slice(0, 4));
     const newInvoiceRef = doc(invoicesCol);
@@ -414,13 +436,7 @@ export const invoicesService = {
         id: String(year), lastSeq: sequence, lastInvoiceId: newInvoiceRef.id, updatedAt: createdAt,
       });
       transaction.set(newInvoiceRef, invoice);
-      transaction.set(photoSelectionRef(newInvoiceRef.id), {
-        id: PHOTO_SELECTION_DOC_ID,
-        ...input.photos,
-        updatedAt: createdAt,
-        updatedByUserId: actor.id,
-        updatedByUserName: actor.name,
-      });
+      setPhotoSelection(transaction, newInvoiceRef.id, input.photos, actor, createdAt);
       writeEvent(transaction, newInvoiceRef.id, actor, { type: 'created', summary: `Invoice ${invoiceNumber} created` });
       if (payment) {
         writeEvent(transaction, newInvoiceRef.id, actor, {
@@ -442,19 +458,18 @@ export const invoicesService = {
    * invoice en la transacción: si ya está pagado (Paid o Paid via Stripe), no
    * se pueden cambiar servicios ni fees. Si cambian, se recalculan todos los
    * montos (computeInvoiceTotals); los fees se guardan con su monto.
-   * `expectedUpdatedAt` (Edit Invoice): el `updatedAt` del invoice al abrir el
-   * formulario. Si otra persona lo guardó después, falla con InvoiceChangedError
-   * en vez de pisar sus notas, montos o fechas con la copia del formulario.
-   * `manualPayment` (Paid elegido en Edit): registra el pago completo en la
-   * MISMA transacción, con el total ya actualizado; falla si ya estaba pagado.
+   * Opciones de Edit Invoice (`options`), todo en la MISMA transacción: si algo
+   * falla no se guarda nada, así reintentar no choca con un guardado a medias.
+   * - `expectedUpdatedAt`: el `updatedAt` del invoice al abrir el formulario. Si
+   *   otra persona lo guardó después, falla con InvoiceChangedError en vez de
+   *   pisar sus notas, montos o fechas con la copia del formulario.
+   * - `manualPayment` (Paid elegido en Edit): registra el pago completo con el
+   *   total ya actualizado; falla si ya estaba pagado.
+   * - `photos`: la nueva selección de fotos del PDF, con su evento.
    */
-  async update(
-    invoiceId: string,
-    patch: InvoicePatch,
-    actor: Actor,
-    expectedUpdatedAt?: string,
-    manualPayment?: InvoiceManualPaymentInput | null,
-  ): Promise<void> {
+  async update(invoiceId: string, patch: InvoicePatch, actor: Actor, options: InvoiceUpdateOptions = {}): Promise<void> {
+    const { expectedUpdatedAt, manualPayment, photos } = options;
+    if (photos) assertValidPhotoSelection(photos);
     await runTransaction(db, async (transaction) => {
       const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
       if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
@@ -472,7 +487,7 @@ export const invoicesService = {
         ? { ...patchWithoutFees, fees: chargeTotals.fees }
         : patchWithoutFees;
       const { changedPatch, changes } = getPatchChanges(invoice, normalizedPatch);
-      if (changes.length === 0 && !manualPayment) return;
+      if (changes.length === 0 && !manualPayment && !photos) return;
 
       if (manualPayment && isPaidStatus(invoice.status)) throw new InvoiceAlreadyPaidError(invoice.number);
       if ('status' in changedPatch && !DRAFT_OR_PENDING_STATUSES.includes(invoice.status)) {
@@ -503,14 +518,21 @@ export const invoicesService = {
       }
 
       const paymentUpdate = manualPayment ? buildManualPaymentUpdate(merged, manualPayment, actor) : null;
+      const photoSummary = photos ? buildPhotoSummary(photos) : null;
+      const updatedAt = nowIso();
       transaction.update(invoiceRef(invoiceId), {
         ...changedPatch,
         ...totals,
         ...paymentUpdate?.fields,
-        updatedAt: nowIso(),
+        ...(photoSummary ? { photos: photoSummary } : {}),
+        updatedAt,
         updatedByUserId: actor.id,
         updatedByUserName: actor.name,
       });
+      if (photos && photoSummary) {
+        setPhotoSelection(transaction, invoiceId, photos, actor, updatedAt);
+        writeEvent(transaction, invoiceId, actor, buildPhotosEvent(photoSummary));
+      }
       if (changes.length > 0) {
         writeEvent(transaction, invoiceId, actor, { type: 'updated', summary: `Invoice ${invoice.number} updated`, changes });
       }
@@ -551,23 +573,29 @@ export const invoicesService = {
     });
   },
 
-  /** Cambia las fotos del PDF: la selección completa y el resumen del encabezado. */
+  /**
+   * Manage photos (detalle): la selección completa, el resumen del encabezado y
+   * su evento. Transacción: relee el invoice y no cambia uno de la papelera.
+   */
   async updatePhotoSelection(invoiceId: string, photos: InvoicePhotoSelectionInput, actor: Actor): Promise<void> {
-    if (photos.include && photos.mode === 'selected' && photos.items.length === 0) {
-      throw new Error('Select at least one photo, or turn off "Include before & after photos".');
-    }
-    const updatedAt = nowIso();
-    const summary = buildPhotoSummary(photos);
-    const batch = writeBatch(db);
-    batch.set(photoSelectionRef(invoiceId), {
-      id: PHOTO_SELECTION_DOC_ID, ...photos, updatedAt, updatedByUserId: actor.id, updatedByUserName: actor.name,
+    assertValidPhotoSelection(photos);
+    const number = await runTransaction(db, async (transaction) => {
+      const invoiceSnap = await transaction.get(invoiceRef(invoiceId));
+      if (!invoiceSnap.exists()) throw new Error('This invoice no longer exists.');
+      const invoice = invoiceSnap.data();
+      assertNotDeleted(invoice);
+      const updatedAt = nowIso();
+      const photoSummary = buildPhotoSummary(photos);
+      transaction.update(invoiceRef(invoiceId), {
+        photos: photoSummary, updatedAt, updatedByUserId: actor.id, updatedByUserName: actor.name,
+      });
+      setPhotoSelection(transaction, invoiceId, photos, actor, updatedAt);
+      writeEvent(transaction, invoiceId, actor, buildPhotosEvent(photoSummary));
+      return invoice.number;
     });
-    batch.update(invoiceRef(invoiceId), {
-      photos: summary, updatedAt, updatedByUserId: actor.id, updatedByUserName: actor.name,
+    void logActivity({
+      action: 'update', module: MODULE_NAME, user: actor, targetId: invoiceId, targetLabel: number, detail: 'Invoice photos updated',
     });
-    const eventSummary = photos.include ? `Photos updated · ${summary.selectedCount} selected` : 'Photos removed from the PDF';
-    writeEvent(batch, invoiceId, actor, { type: 'photos_updated', summary: eventSummary });
-    await batch.commit();
   },
 
   /**
@@ -718,6 +746,16 @@ export const invoicesService = {
       ? query(invoicesCol, where('customerId', '==', clientKey.customerId))
       : query(invoicesCol, where('client.clientRef', '==', clientKey.clientRef));
     return onSnapshot(clientQuery, (snap) => onData(snap.docs.map((invoiceDoc) => invoiceDoc.data())), onError);
+  },
+
+  /** Escucha UN invoice (su documento): un diálogo abierto sobre un invoice que
+   *  salió de la lista (useLiveInvoice). `null` = ya no existe. */
+  subscribeOne(
+    invoiceId: string,
+    onData: (invoice: Invoice | null) => void,
+    onError: (error: Error) => void,
+  ): Unsubscribe {
+    return onSnapshot(invoiceRef(invoiceId), (snap) => onData(snap.exists() ? snap.data() : null), onError);
   },
 
   /** Escucha las fotos elegidas de UN invoice (un documento), mientras el

@@ -1,6 +1,8 @@
 // "Include before & after photos" del PDF: todas las fotos del job o solo las
 // elegidas en la galería (Choose photos). Desactivar la inclusión esconde los
 // controles pero conserva la selección. Lo usan el formulario y Manage photos.
+// Con `unavailableMessage` (la selección guardada no cargó) todo queda de solo
+// lectura: un cambio aquí no se podría guardar.
 import { useId, useState } from 'react';
 import type { InvoicePhotoItem } from '../../../types/index';
 import type { PhotoChoice } from '../hooks/usePhotoChoice';
@@ -12,13 +14,16 @@ interface InvoicePhotosOptionProps {
   jobPhotos: InvoicePhotoItem[] | null;
   /** Error de validación a mostrar (después de intentar guardar). */
   error?: string;
+  /** Por qué las fotos no se pueden cambiar ahora (vacío = sí se pueden). */
+  unavailableMessage?: string;
 }
 
-const InvoicePhotosOption = ({ photoChoice, jobPhotos, error }: InvoicePhotosOptionProps) => {
+const InvoicePhotosOption = ({ photoChoice, jobPhotos, error, unavailableMessage = '' }: InvoicePhotosOptionProps) => {
   const fieldIdPrefix = useId();
   const includeId = `${fieldIdPrefix}-include`;
   const modeId = `${fieldIdPrefix}-mode`;
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const isLocked = unavailableMessage !== '';
   const availableCount = jobPhotos?.length ?? 0;
   const selectedCount = photoChoice.items.length;
   const summaryText = jobPhotos
@@ -37,6 +42,7 @@ const InvoicePhotosOption = ({ photoChoice, jobPhotos, error }: InvoicePhotosOpt
           id={includeId}
           type="checkbox"
           checked={photoChoice.include}
+          disabled={isLocked}
           onChange={(event) => photoChoice.setInclude(event.target.checked)}
         />
         <span className="invf-option-copy">
@@ -51,7 +57,7 @@ const InvoicePhotosOption = ({ photoChoice, jobPhotos, error }: InvoicePhotosOpt
             id={modeId}
             className="invf-input invf-photo-mode"
             value={photoChoice.mode}
-            disabled={!jobPhotos}
+            disabled={!jobPhotos || isLocked}
             onChange={(event) => photoChoice.setMode(event.target.value as 'all' | 'selected')}
           >
             <option value="all">All job photos</option>
@@ -62,7 +68,7 @@ const InvoicePhotosOption = ({ photoChoice, jobPhotos, error }: InvoicePhotosOpt
             <button
               type="button"
               className="invf-text-btn"
-              disabled={!jobPhotos || availableCount === 0}
+              disabled={!jobPhotos || availableCount === 0 || isLocked}
               onClick={() => setIsGalleryOpen(true)}
             >
               Choose photos
@@ -70,6 +76,7 @@ const InvoicePhotosOption = ({ photoChoice, jobPhotos, error }: InvoicePhotosOpt
           )}
         </div>
       )}
+      {isLocked && <p className="invf-warning">{unavailableMessage}</p>}
       {error && <p className="invf-error" role="alert">{error}</p>}
       {isGalleryOpen && jobPhotos && (
         <JobPhotoPickerModal

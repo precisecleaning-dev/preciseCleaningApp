@@ -3,13 +3,15 @@
 // Qué diálogo está abierto en Invoices New y sobre qué invoice. Se guarda el
 // ID (no una copia del invoice): el diálogo recibe el invoice EN VIVO de la
 // lista o, si es de fuera de la ventana de 12 meses y se abrió desde la cuenta
-// del cliente, del listener de esa cuenta (useClientInvoices).
+// del cliente, del listener de esa cuenta (useClientInvoices). Si sale de las
+// dos con el diálogo abierto, useLiveInvoice escucha su documento.
 // Las acciones en bloque y Delete guardan los ids que había al abrir.
 // ============================================================================
 import { useMemo, useState } from 'react';
 import type { ClientAccountKey, Invoice, Property } from '../../../types/index';
 import { getClientAccountKey } from '../clientAccount';
 import { useClientInvoices } from './useClientInvoices';
+import { useLiveInvoice } from './useLiveInvoice';
 
 /** Formulario abierto: crear (`invoice` null) o editar ese invoice. */
 type InvoiceFormTarget = { invoice: Invoice | null } | null;
@@ -36,16 +38,24 @@ export function useInvoiceDialogs(windowInvoices: readonly Invoice[], properties
   const propertiesById = useMemo(() => new Map(properties.map((property) => [property.id, property])), [properties]);
 
   const findInvoice = (invoiceId: string | null): Invoice | null => (invoiceId ? invoicesById.get(invoiceId) ?? null : null);
+  const formInvoiceId = formTarget?.invoice?.id ?? null;
+  const formLiveInvoice = useLiveInvoice(formInvoiceId, findInvoice(formInvoiceId));
+  const detailInvoice = useLiveInvoice(detailInvoiceId, findInvoice(detailInvoiceId));
+  const paymentInvoice = useLiveInvoice(paymentInvoiceId, findInvoice(paymentInvoiceId));
+  const previewInvoice = useLiveInvoice(previewInvoiceId, findInvoice(previewInvoiceId));
+  const sendInvoice = useLiveInvoice(sendInvoiceId, findInvoice(sendInvoiceId));
   const findInvoices = (invoiceIds: string[]): Invoice[] => invoiceIds.flatMap((invoiceId) => invoicesById.get(invoiceId) ?? []);
   const toIds = (invoices: Invoice[]) => invoices.map((invoice) => invoice.id);
 
   return {
     formTarget,
+    /** Al editar: el invoice del formulario en vivo (para avisar si otra persona lo cambia). */
+    formLiveInvoice,
     detailInvoiceId,
-    detailInvoice: findInvoice(detailInvoiceId),
-    paymentInvoice: findInvoice(paymentInvoiceId),
-    previewInvoice: findInvoice(previewInvoiceId),
-    sendInvoice: findInvoice(sendInvoiceId),
+    detailInvoice,
+    paymentInvoice,
+    previewInvoice,
+    sendInvoice,
     /** null = Delete cerrado. */
     invoicesToDelete: deleteInvoiceIds ? findInvoices(deleteInvoiceIds) : null,
     bulkDialog: bulkDialog ? { action: bulkDialog.action, invoices: findInvoices(bulkDialog.invoiceIds) } : null,
