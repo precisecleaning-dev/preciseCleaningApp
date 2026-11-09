@@ -67,6 +67,10 @@ const DEFAULT_MODULES = [
   //    declara, lo ve quien tiene Invoices (Sidebar: canViewOrLegacy).
   'Clients Report',
   'Customers',
+  // ⭐ Módulo nuevo de invoices (features/invoices-new). Sin herencia: nadie lo
+  //    ve hasta marcar View. Add = crear; Edit = editar, notas, fotos, enviar y
+  //    registrar pagos.
+  'Invoices New',
   // --- Sistema ---
   'Activity Log',
   // ⭐ Papelera de reciclaje: restaurar o eliminar definitivamente lo borrado.

@@ -1,0 +1,83 @@
+/* Barra de acciones en bloque (InvoiceBulkBar.tsx). */
+.invbb-bar {
+  align-items: center;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+}
+
+.invbb-count {
+  color: #1e1b4b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.invbb-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.invbb-btn,
+.invbb-clear-btn {
+  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 600;
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.invbb-btn {
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  color: #1d3fcf;
+}
+
+.invbb-btn:hover {
+  background: #e0e7ff;
+}
+
+.invbb-btn.is-danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.invbb-btn.is-danger:hover {
+  background: #fef2f2;
+}
+
+.invbb-clear-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: #475569;
+}
+
+.invbb-clear-btn:hover {
+  color: #0f172a;
+}
+
+.invbb-btn:focus-visible,
+.invbb-clear-btn:focus-visible {
+  outline: 2px solid #1d3fcf;
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .invbb-actions {
+    width: 100%;
+  }
+  .invbb-btn {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}

@@ -36,13 +36,10 @@ export function mapCustomerDoc(d: DocLike): Customer {
   } as Customer;
 }
 
-/** Resuelve el nombre de un cliente probando id real, id legacy y nombre. */
-export function resolveCustomerName(
-  list: Customer[],
-  idOrName?: string | null,
-  fallback = '-',
-): string {
-  if (!idOrName) return fallback;
+/** El cliente completo al que apunta `properties.client`, probando id real,
+ *  id legacy y nombre (sin distinguir mayúsculas). null si no existe. */
+export function findCustomer(list: Customer[], idOrName?: string | null): Customer | null {
+  if (!idOrName) return null;
   const key = String(idOrName).toLowerCase().trim();
   const found = list.find((c) => {
     const cid = String(c.id || '').toLowerCase().trim();
@@ -52,7 +49,16 @@ export function resolveCustomerName(
     const name = String(c.name || '').toLowerCase().trim();
     return cid === key || (legacy !== '' && legacy === key) || name === key;
   });
-  return found ? found.name : fallback;
+  return found ?? null;
+}
+
+/** Resuelve el nombre de un cliente probando id real, id legacy y nombre. */
+export function resolveCustomerName(
+  list: Customer[],
+  idOrName?: string | null,
+  fallback = '-',
+): string {
+  return findCustomer(list, idOrName)?.name ?? fallback;
 }
 
 /** ⭐ ¿El valor parece un ID y no un nombre humano? (para el respaldo visual

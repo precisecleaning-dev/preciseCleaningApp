@@ -1,0 +1,30 @@
+/* Record payment (RecordPaymentDialog.tsx). Los campos usan las clases del
+   formulario (InvoiceFormModal.css). */
+.rpd-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rpd-amount {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.rpd-amount-label {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.rpd-amount-value {
+  color: #0f172a;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}

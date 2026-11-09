@@ -1,0 +1,49 @@
+/* Send / Resend Invoice (SendInvoiceDialog.tsx). Las opciones y los campos usan
+   las clases del formulario (InvoiceFormModal.css). */
+.sid-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sid-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 12px 16px;
+}
+
+.sid-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sid-summary-item dt {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.sid-summary-item dd {
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .sid-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

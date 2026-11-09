@@ -1,0 +1,30 @@
+/* Estado vacío de Invoices New (InvoicesEmptyState.tsx). */
+.invn-empty {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.invn-empty-icon {
+  color: #94a3b8;
+}
+
+.invn-empty-title {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.invn-empty-text {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin: 0;
+  max-width: 420px;
+}
