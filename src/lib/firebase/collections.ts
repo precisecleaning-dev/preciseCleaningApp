@@ -19,6 +19,10 @@ export const COLLECTIONS = {
   trash: 'trash',
   customers: 'customers',
   timeClock: 'time_clock',
+  // Invoices New: el invoice y el consecutivo de cada año. Sus
+  // subcolecciones (photos, events) las nombra services/invoicesService.ts.
+  invoices: 'invoices',
+  invoiceCounters: 'invoice_counters',
   // Task list (antes ops_tasks, ops_projects y ops_priorities). Los
   // comentarios van dentro de cada tarea y de cada proyecto (comments[]).
   userTasks: 'user_tasks',

@@ -1,0 +1,76 @@
+/* Paginación numerada compartida (PaginationBar.tsx). min-height 0 quita el
+   mínimo táctil global de 48 px en los botones chicos. */
+.pgb-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  justify-content: space-between;
+  padding: 12px 4px;
+}
+
+.pgb-range {
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pgb-size {
+  align-items: center;
+  color: #64748b;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  gap: 8px;
+}
+
+.pgb-size-select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  min-height: 0;
+  padding: 4px 8px;
+}
+
+.pgb-pages {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.pgb-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  height: 34px;
+  justify-content: center;
+  min-height: 0;
+  min-width: 34px;
+  padding: 0 8px;
+}
+
+.pgb-btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.pgb-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pgb-btn.active {
+  background: #1d3fcf;
+  border-color: #1d3fcf;
+  color: #ffffff;
+}
+
+.pgb-ellipsis {
+  color: #94a3b8;
+  padding: 0 4px;
+}

@@ -16,6 +16,7 @@ import { prefetchView, startIdlePrefetch } from './utils/viewPrefetch';
 import { useScrollMemory } from './utils/useScrollMemory';
 import { canViewTaskList } from './features/ops/opsPermissions';
 import { getClientsReportPermissionModule } from './utils/clientsReport';
+import { INVOICES_NEW_MODULE } from './features/invoices-new/invoicesNewPermissions';
 import { useTaskListBadgeCount } from './features/ops/hooks/useTaskListBadgeCount';
 import { reloadOnLogoutInOtherTabs } from './services/sessionService';
 import AppLoadingScreen from './components/AppLoadingScreen';
@@ -32,7 +33,7 @@ import './App.css';
  *  que recargar en "Fotos" volvía a Houses). */
 const VALID_TABS = [
   'houses', 'pipeline', 'activity_log', 'trash', 'calendar', 'invoices', 'clients_report', 'qc_report', 'qc_dashboard',
-  'owner', 'manager', 'task_list', 'payroll', 'customers', 'settings', 'company', 'photo_settings',
+  'owner', 'manager', 'task_list', 'payroll', 'customers', 'invoices_new', 'settings', 'company', 'photo_settings',
   'roles', 'users', 'data_import',
 ] as const;
 export type TabOptions = (typeof VALID_TABS)[number];
@@ -43,7 +44,7 @@ const ACTIVE_TAB_KEY = 'pc_active_tab';
 /** Pestañas que reciben la lista de casas: esperan su primer snapshot. */
 const TABS_WITH_PROPERTIES: ReadonlySet<TabOptions> = new Set<TabOptions>([
   'houses', 'pipeline', 'invoices', 'calendar', 'payroll', 'qc_report',
-  'qc_dashboard', 'owner', 'manager', 'clients_report',
+  'qc_dashboard', 'owner', 'manager', 'clients_report', 'invoices_new',
 ]);
 /** Pestañas que abren el detalle o el formulario de una casa encima (HousesView modals-only). */
 const TABS_WITH_HOUSE_MODALS: ReadonlySet<TabOptions> = new Set<TabOptions>([
@@ -57,7 +58,8 @@ const TAB_MODULE: Partial<Record<TabOptions, string[]>> = {
   houses: ['Houses'], pipeline: ['Houses'], invoices: ['Invoices'], calendar: ['Calendar'],
   qc_report: ['Quality Check'], qc_dashboard: ['QC Dashboard', 'Quality Check'],
   owner: ['Owner'], manager: ['Manager'], task_list: ['Task List'], payroll: ['Payroll'],
-  customers: ['Customers'], roles: ['Roles & Permissions'], users: ['System Users'],
+  customers: ['Customers'], invoices_new: [INVOICES_NEW_MODULE],
+  roles: ['Roles & Permissions'], users: ['System Users'],
   data_import: ['Data Import'], company: ['Settings'], photo_settings: ['Settings'], settings: ['Settings'],
 };
 /** A dónde se manda a quien no puede ver la pestaña: la primera de estas que sí pueda. */

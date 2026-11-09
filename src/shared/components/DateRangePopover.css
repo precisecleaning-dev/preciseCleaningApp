@@ -1,0 +1,163 @@
+/* Filtro de rango de fechas compartido (DateRangePopover.tsx). */
+.drp-wrap {
+  position: relative;
+}
+
+.drp-trigger {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 500;
+  gap: 8px;
+  height: 40px;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0 12px;
+}
+
+.drp-trigger.active {
+  border-color: #1d3fcf;
+  color: #1d3fcf;
+}
+
+.drp-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drp-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  left: 0;
+  padding: 16px;
+  position: absolute;
+  top: calc(100% + 6px);
+  width: 320px;
+  z-index: 50;
+}
+
+.drp-panel-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.drp-title {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.drp-icon-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  min-height: 0;
+  width: 30px;
+}
+
+.drp-label {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.drp-input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 0.85rem;
+  min-height: 38px;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+.drp-dates {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drp-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drp-error {
+  color: #dc2626;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.drp-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drp-preset {
+  background: #f1f5f9;
+  border: 0;
+  border-radius: 999px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 6px 10px;
+}
+
+.drp-preset:hover {
+  background: #e2e8f0;
+}
+
+.drp-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.drp-secondary-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 600;
+  height: 38px;
+  min-height: 0;
+  padding: 0 14px;
+}
+
+.drp-apply-btn {
+  height: 38px;
+  min-height: 0;
+}
+
+.drp-apply-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+  .drp-panel {
+    width: min(320px, calc(100vw - 32px));
+  }
+}

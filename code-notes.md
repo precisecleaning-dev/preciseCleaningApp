@@ -3249,3 +3249,179 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `id` es el del documento; ningún escritor guarda un campo `id` en los pagos: HouseForm lo quita antes de crear).
   Mismas funciones y mismo comportamiento; `create` y `batchCreate` usan setDoc sobre un id automático (igual que
   addDoc).
+- Invoices New · modelo de datos (11/2026, decisiones de Omar):
+  colección `invoices` (tipos `types/invoices.ts`, service `services/invoicesService.ts`). Montos en CENTAVOS
+  enteros y tasa en puntos base (8.25% = 825): sumas exactas y reglas validables; la única conversión con los
+  dólares del resto de la app está en `features/invoices-new/invoiceMath.ts`. Cliente y job se COPIAN al crear
+  (`client`, `job`): editar después la casa o el cliente no cambia un invoice emitido. Número `INV-AAAA-0001`
+  desde `invoice_counters/{año}` en una transacción (sin repetidos; sin conexión no se crea). Activity en
+  `invoices/{id}/events` (solo se agrega) y fotos elegidas en `invoices/{id}/photos/selection` (las URLs no van
+  en el encabezado: la lista no las necesita). Sin `delete` (el número no deja huecos) ni `getAll`: la lista
+  escuchará una ventana acotada como propertiesWindow (no va en liveCollections). No escribe nada en
+  `properties`: el módulo Invoices viejo queda intacto.
+- Invoices New · formulario Create/Edit (11/2026): se elige el JOB (no hay selector de cliente, decisión de
+  Omar); el cliente sale de `properties.client` (`findCustomer`) y se copia al crear. El selector lista primero
+  los jobs en status Invoice y "Show all jobs" abre la ventana de 12 meses. Monto y tasa se prellenan con
+  `getInvoiceDefaults` (finanzas del job) EN EL RENDER mientras el usuario no los toca (`amountText`/`taxRateText`
+  en null): no hay efecto que los copie al llegar los servicios. Un job con invoices o con `invoiceHold` solo
+  avisa. Edit se abre desde el menú de la fila o el detalle. ⚠ Edit guarda con `expectedUpdatedAt` (el
+  `updatedAt` al abrir): si otra persona guardó el invoice mientras tanto, falla con InvoiceChangedError en vez
+  de pisar sus notas, montos o fechas con la copia del formulario. Las escrituras del servidor (envío) no
+  cambian `updatedAt` y no cuentan como conflicto.
+- Invoices New · lista (11/2026): `invoicesService.subscribeWindow` une DOS consultas de un solo campo
+  (`issueDate >=` día 1 de hace 12 meses, `windowStartIso()` de propertiesWindow, y `status in` los sin pagar
+  — `UNPAID_STATUSES` + el viejo `awaiting_payment` — de cualquier fecha): sin índices compuestos. "Ver todo el historial" (el mismo
+  interruptor de las casas) escucha la colección completa. Búsqueda, tarjetas, orden y paginación numerada se
+  hacen en el cliente sobre esa ventana, A PROPÓSITO (CLAUDE.md pide paginar en el servidor): la búsqueda es
+  por texto parcial y las tarjetas deben cubrir TODO el conjunto buscado, no la página (alcance §6). Vale hasta
+  unos miles de invoices en la ventana; si crece, `searchText` y `numberKey` ya están guardados para pasar a
+  consultas con cursor. Las tarjetas se calculan sobre búsqueda + fechas, nunca sobre la tarjeta o el estado
+  elegidos. Cualquier cambio de filtro vuelve a la página 1 en el reducer (`useInvoiceFilters`), sin efectos.
+  En el teléfono la tabla se desplaza de lado (alcance §17), no hay tarjetas.
+- Invoices New · detalle y pagos (11/2026): el detalle y Record payment guardan el ID y toman el invoice EN VIVO
+  de la lista (`useInvoicesWindow`): tras Mark as Paid o una nota se actualizan solos, sin parchar copias.
+  Mark as Paid relee el invoice en una transacción (`recordManualPayment`) y muestra "already paid" si otro lo
+  pagó antes. Activity se lee una vez al abrir la pestaña (`getEvents`, lectura única). Los diálogos usan
+  `InvoiceDialog`: Escape cierra solo el de ARRIBA (pila en el módulo; el formulario y Record payment se abren
+  encima del detalle) y un clic afuera no cierra. `shared/components/ActionMenu` se dibuja en un PORTAL con
+  posición fija porque la tabla tiene `overflow-x: auto` y lo recortaría; se cierra con scroll o resize.
+- Invoices New · fotos (11/2026): las fotos del job (`properties.beforePhotos` / `afterPhotos`) no tienen id: se
+  identifican por URL. "All job photos" = las fotos ACTUALES del job (el detalle y el PDF las toman del job);
+  "Selected photos" = las URLs elegidas que el job todavía tiene (una foto borrada del job se cae y el detalle
+  avisa). `usePhotoChoice` deriva lo elegido en el render (lo guardado, que llega en vivo con
+  `useInvoicePhotoSelection`, o lo que tocó el usuario), sin efecto que lo copie. Si el job no está en la
+  ventana de 12 meses, el formulario y el detalle NO guardan fotos (se guardaría una selección vacía).
+  Cambiar de job vuelve a "todas" las fotos del job nuevo. `shared/components/PhotoPickerGrid` carga por bloques
+  de 18 (jobs con 50+ fotos).
+- Invoices New · PDF (11/2026): `features/invoices-new/invoicePdf.ts` arma las PÁGINAS explícitamente (1:
+  datos, montos, enlace e inicio de notas; luego páginas de notas; luego fotos de 6 en 6) para que la vista
+  previa (un iframe `srcDoc` + `sandbox` por página) y el archivo sean el mismo HTML. Las notas se reparten
+  por renglones estimados (~88 caracteres) con margen amplio: mejor una página de más que una nota cortada.
+  El archivo lo genera `generatePDFBlob` (html2pdf, A4); NO se agregó jsPDF. Antes de descargar, las fotos se
+  pasan a data URL (`shared/utils/imageDataUrl.ts`, mismo criterio que qcReportPdf) para que salgan sin
+  depender de CORS. Sin número (al crear) el PDF dice DRAFT. Todo texto pasa por `escapeHtml`.
+  ⚠ El `<style>` del PDF va DENTRO del `<body>` y con todos los selectores bajo `.invpdf`: html2pdf 0.14
+  (`toContainer`) clona solo el `<body>` del iframe de generatePDFBlob a la página principal, así que un
+  `<style>` en el `<head>` se pierde (el archivo salía sin formato y con una foto gigante por página, aunque
+  la vista previa se veía bien) y uno sin prefijo cambiaría la app mientras se genera.
+  Fotos en el ARCHIVO: se leen con fetch (CORS) y se incrustan como data URL; una foto cuyo servidor no
+  permite leerla desde la app saldría en blanco, así que va con "Photo could not be added" y la descarga avisa
+  cuántas faltaron (la vista previa sí la muestra: un <img> no necesita CORS). Si pasa con las fotos de
+  Firebase Storage, falta configurar CORS en el bucket (`gsutil cors set cors.json
+  gs://bdprecise-2d4bc.firebasestorage.app`); `cors.json` lista el dominio de Cloudflare, los de Firebase
+  Hosting del proyecto y los puertos de localhost. Un dominio nuevo de la app va también ahí.
+  `shared/utils/downloadFile.ts` es idéntico al de la rama del Excel (backup/fix-slot-1) para que no choquen.
+- Invoices New · reglas (11/2026, propuesta en `security/`, sin publicar): `security/firestore.rules` REPITE
+  las validaciones de `invoicesService.ts` (lista exacta de campos al crear, montos en centavos con
+  redondeo, estados que pone el navegador, bloqueos de pagado, número = contador del año en la misma
+  transacción, autor = usuario de la sesión). ⚠ Si se agrega o renombra un campo de `Invoice`, de
+  `InvoiceEvent` o de `photos/selection`, o cambia un límite (`INVOICE_LIMITS`), hay que cambiar también
+  `invoiceCreateOk` / `invoiceEventOk` / `invoicePhotosOk` y correr `npm run test:rules`: con las reglas
+  publicadas, crear un invoice fallaría para todos. Las escrituras del servidor (correo, Stripe) usan Admin
+  SDK y no pasan por estas reglas. "Invoices New" cuenta para `fin` (`functions/src/userAccess.ts`): el
+  formulario lee `billing_services` del job.
+- Invoices New · correo (Etapa 8, 11/2026): Send / Resend y "Send by email" del formulario usan la Cloud
+  Function `sendinvoiceemail` (functions/src/invoiceEmail.ts), NO la cola `mail`: la cola no adjunta archivos,
+  sus reglas solo dejan escribirle al correo de la empresa (para que nadie use el SMTP con terceros) y
+  `delivery` / "Payment Link Sent" los escribe solo el servidor. El navegador genera el PDF (igual que
+  Download), lo sube a Storage en `invoices/{id}/email/{uuid}.pdf` (uno por envío; la función lo borra al
+  terminar) y llama a la
+  función, que lee número, total y enlace del invoice en Firestore, manda con BCC y Reply-To al correo de la
+  empresa (`settings_company/main.email`) y registra `delivery` + eventos `delivery_*`. Si el correo falla,
+  el invoice queda guardado y el aviso lo dice; nunca queda como enviado.
+  ⚠ SMTP: usa los secretos `CREW_SMTP_*` (los de los correos del Task list de la app móvil, decisión de Omar),
+  no los `SMTP_*` de esta web: según app-jesus/code-notes.md esos están mal cargados. Cambiar un `CREW_SMTP_*`
+  afecta a los dos. PDF máximo 18 MB (Gmail: 25 MB por correo con la codificación).
+  Enlace de pago: solo `https://buy.stripe.com/...` (app, service y reglas), creado a mano en Stripe. El correo
+  y el PDF lo mandan con `client_reference_id=<invoiceId>` para que el webhook de Stripe (Etapa 9) sepa qué
+  invoice se pagó aunque el mismo enlace se use para varios.
+- Invoices New · estados (11/2026, pedido de Omar): los MISMOS del módulo Invoices viejo (`needs_invoice` =
+  "Needs Invoice", borrador no enviado · `pending` · `paid`; sin Pre-Paid) más los automáticos de Stripe
+  (`payment_link_sent`, `paid_via_stripe`, solo el servidor). Overdue NO se guarda: Pending o Payment Link Sent
+  con el vencimiento pasado (`getDisplayStatus`, invoiceStatus.ts); un borrador no vence. Badge, filtro de la
+  tabla y tarjetas usan el estado que se VE (Pending no incluye los vencidos). Tarjetas: Overdue, Total
+  Outstanding (Pending + Payment Link Sent, con los vencidos) e In Draft (Needs Invoice); tocar la elegida la
+  quita. Un invoice nuevo empieza en Needs Invoice y ENVIARLO por correo lo pasa a Pending (con enlace, a
+  Payment Link Sent): lo hace `sendinvoiceemail` (functions), así que cambiar esa regla pide desplegar la
+  función. En Edit: Needs Invoice ↔ Pending va en el patch; Paid se registra con su pago en la MISMA
+  transacción que el resto del formulario (`invoicesService.update(..., { manualPayment })`); con el enlace ya
+  enviado solo se puede registrar el pago (`getSelectableStatuses`, y las reglas lo exigen). El PDF le muestra
+  al cliente "Awaiting Payment" en cualquier estado sin pagar (no "Needs Invoice"). `awaiting_payment` era el
+  nombre de Pending: solo lo tienen invoices de prueba y `invoiceConverter` (invoicesService.ts) lo lee como
+  'pending'; la función del correo también lo acepta. Se puede quitar cuando no quede ninguno.
+- Invoices New · selección y acciones en bloque (11/2026, decisiones de Omar): checkbox por fila y uno en el
+  encabezado que marca SOLO la página visible. La selección se guarda con la clave de la página (filtros +
+  página, `getSelectionScopeKey`): al cambiar de página, filtro, tarjeta o búsqueda vale vacía en el render, sin
+  efecto que la limpie; tampoco cuenta un invoice que ya no está en la página. Solo con permiso Edit (las dos
+  acciones lo piden). Con 1 o más marcados aparece `InvoiceBulkBar` arriba de la tabla (Mark as Paid / Send
+  invoice / Clear); el "..." de cada fila sigue actuando sobre ESA fila. Mark as Paid en bloque: un solo pago
+  (método, fecha, referencia, nota) que se registra en cada uno por su propio total; los pagados se saltan.
+  Send en bloque: PDF y/o enlace una vez, cada invoice a SU correo (el guardado o el del cliente; si no lo tenía
+  se guarda antes, como en Send Invoice), máximo `MAX_BULK_SEND` = 20 (cada uno arma su PDF en el navegador).
+  Se saltan los sin correo válido, sin enlace de Stripe (si se pidió) y los pagados sin PDF. Cada invoice va por
+  su camino de siempre (`recordManualPayment` / `sendInvoiceEmail`), UNO TRAS OTRO y NO todo-o-nada a propósito
+  (`services/invoiceBulkService.ts`): uno que otra persona pagó en ese momento no debe frenar los demás; el
+  diálogo termina con la lista de saltados y fallidos.
+- Invoices New · cuenta del cliente (11/2026, decisiones de Omar): tocar el cliente en la tabla (o en el detalle)
+  abre `ClientAccountModal` sobre la lista: tarjetas Outstanding / Overdue / Paid / In Draft y pestañas Invoices
+  (todos, con filtro de estado) y Payments, paginadas en el navegador. Trae TODO el historial del cliente en
+  Invoices New, de cualquier fecha (no la ventana de 12 meses): `invoicesService.subscribeByClient` escucha
+  `customerId ==` o, si el invoice no encontró al cliente al crearse, `client.clientRef ==`; son consultas de UN
+  campo (sin índice compuesto) y el orden se hace en el navegador. NO agregar `orderBy` ahí sin crear el índice.
+  El listener vive en la VISTA (`useClientInvoices`) solo mientras la cuenta está abierta, porque la vista también
+  busca ahí un invoice viejo para abrir su detalle, Mark as Paid, PDF… en vivo (`findInvoice`: ventana y luego la
+  cuenta). La cuenta va DEBAJO del detalle: abrirla desde el detalle cierra el detalle. "Download statement"
+  (`clientStatementPdf.ts`): saldo, vencido, invoices ENVIADOS sin pagar y pagos de los últimos 12 meses; los
+  borradores (Needs Invoice) NO van porque el cliente todavía no los recibió. No hay invoices del módulo viejo.
+- Invoices New · servicios y fees (11/2026, decisiones de Omar): el invoice ya NO lleva monto ni tasa escritos a
+  mano. Sus `lineItems` son COPIA de los `billing_services` del job (lo de "Services" en el formulario de la
+  casa) al crear, con las MISMAS reglas que las finanzas del job (`getBilledServiceAmounts`): Apply Tax Yes /
+  Minus Tax No suma el impuesto aparte, No / Yes lo resta del monto, lo demás o casa `taxExempt` sin impuesto.
+  Sin fees, el total = Final Cost del job. Editar el servicio en el job NO cambia el invoice: en Edit (sin pagar)
+  "Refresh from job" vuelve a copiarlos, y el formulario avisa si cambiaron (`areSameLineItems`). Un job sin
+  servicios no deja crear. Fees: nombre libre + %, del SUBTOTAL de servicios (sin impuesto; el fee no paga
+  impuesto): `computeInvoiceTotals` (invoiceMath.ts) es la ÚNICA fórmula, la usan formulario, service y PDF.
+  `taxRateBps` quedó como "tasa común" de los servicios con impuesto (0 si hay tasas distintas: el PDF dice Tax
+  sin %). Los invoices de prueba sin `lineItems` se leen con listas vacías (`invoiceConverter`) y el PDF muestra su
+  línea única. ⚠ Reglas (`security/`): ya no revisan el redondeo de UNA tasa (no pueden recorrer listas); exigen
+  total = subtotal + impuesto + fees, 1–50 servicios y hasta 10 fees. Crear como Paid quedó cerca del límite de
+  1000 expresiones por petición de Firestore: por eso la lista de campos al crear usa solo `hasOnly`, el update
+  evalúa UN camino (pago o edición) y el autor del pago se compara con `updatedByUserId` en vez de otro `byMe`.
+  Si se agrega una validación ahí, correr `npm run test:rules` (la prueba de crear como Paid avisa si se pasa).
+- Invoices New · Delete = PAPELERA (11/2026, decisiones de Omar): sigue sin existir `delete` de Firestore (el número
+  no deja huecos, Activity se conserva; `allow delete: if false`). "Delete" escribe `deletion` (quién, cuándo, motivo
+  obligatorio de 1–300) con `invoicesService.moveToTrash`; `restore` lo vuelve a null. NO es un estado: `status` no
+  cambia y al restaurar vuelve igual. Nunca un pagado (Paid / Paid via Stripe). Permiso: la columna Delete del
+  módulo "Invoices New" en Roles (`canDelete`, derecho `d` en las reglas). Payment Link Sent SÍ se puede borrar, con
+  aviso de desactivar el enlace en Stripe; en la Etapa 9 un pago de Stripe sobre un invoice borrado va "por revisar".
+  Los borrados se separan EN EL NAVEGADOR (`isDeletedInvoice`): no salen en la lista, las tarjetas, la selección,
+  la cuenta del cliente, el statement ni el aviso "este job ya tiene invoices"; se ven con el filtro "Deleted"
+  (getDisplayStatus → 'deleted'). En la papelera no se edita, ni se paga, ni se envía (service, reglas y la función
+  `sendinvoiceemail`). `deletion` NO se escribe al crear (ausente = activo): así la lista de campos al crear no
+  creció (límite de 1000 expresiones). La regla de Delete/Restore no pasa por invoiceFieldsOk a propósito: así se
+  pueden mandar a la papelera los invoices de prueba viejos (sin `lineItems`).
+- Invoices New · estructura de la vista (11/2026, refactor de la revisión): `InvoicesNewView` solo compone. Qué
+  diálogo está abierto y sobre qué invoice vive en `useInvoiceDialogs` (guarda IDS y los resuelve con un Map: la
+  lista y, para un invoice viejo abierto desde la cuenta del cliente, `useClientInvoices`); todos los diálogos se
+  dibujan en `InvoiceDialogsHost`, en el orden de apilado (la cuenta debajo del detalle). Lo que hace cada acción
+  y lo que pasa al cerrar un diálogo está en `useInvoicePageActions` (`invoiceActions` = UN objeto que usan la
+  fila, el detalle y la cuenta; `finish*`). Qué botón se ve para UN invoice sale de `getInvoiceActionRights`
+  (invoicesNewPermissions.ts): el menú de la fila y el pie del detalle no deben calcularlo por su cuenta. Un diálogo
+  nuevo va en el host, no en la vista. Los avisos van por `useInvoiceNotice` (un resultado viejo no pisa uno nuevo).
+  Las acciones en bloque y Delete congelan los invoices al abrir (`useBulkRun`): los marcados salen de la página
+  al cambiar de estado y el diálogo no debe recalcularse a medio camino.
+- Invoices New · Edit y fotos en UNA transacción (11/2026, revisión): `invoicesService.update(id, patch, actor,
+  { expectedUpdatedAt, manualPayment, photos })` guarda los cambios, el pago (Paid en Edit) y la selección de fotos
+  con sus eventos juntos. Antes las fotos iban en otra escritura después: si fallaba, el invoice (y el pago) ya
+  estaban guardados, la pantalla decía que no, y al reintentar salía un falso "Someone else changed…". No volver a
+  separarlas. Manage photos (`updatePhotoSelection`) también es transacción: relee el invoice y no toca uno de la
+  papelera. Si la selección guardada no llegó (cargando o `hasError`), la sección de fotos de Edit queda de solo
+  lectura con aviso y no se guarda (partiría de "todas" y pisaría la real); Manage photos tampoco se ofrece. El
+  formulario recibe el invoice en vivo (`liveInvoice`) para avisar ANTES de guardar si otra persona lo cambió. Paid + fotos + total nuevo es lo más grande que escribe Edit: cabe en el límite de 1000
+  expresiones (prueba "Edit y Manage photos" de `npm run test:rules`).
+- Invoices New · un diálogo abierto no se cierra solo (11/2026, revisión): detalle, formulario, pago, envío y
+  vista previa reciben su invoice con `useLiveInvoice(id, deLaLista)`. Si el invoice sale de la ventana con el
+  diálogo abierto (uno sin pagar de hace más de 12 meses que se paga deja la consulta de "sin pagar" y no entra en
+  la de 12 meses), se escucha SU documento (`invoicesService.subscribeOne`) y mientras llega se muestra la última
+  versión de la lista. No volver a resolverlos solo con la lista: el detalle desaparecía al pagar. También hace que
+  el detalle de un invoice recién creado fuera de la ventana (Paid con fecha vieja) sí se abra.

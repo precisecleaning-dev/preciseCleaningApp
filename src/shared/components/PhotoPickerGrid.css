@@ -1,0 +1,157 @@
+/* Galería para elegir fotos (PhotoPickerGrid.tsx). La barra de categorías es
+   sticky dentro del contenedor con scroll del diálogo. */
+.ppg-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ppg-toolbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ppg-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ppg-filter {
+  background: #f1f5f9;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 6px 12px;
+}
+
+.ppg-filter.active {
+  background: #e8edff;
+  border-color: #1d3fcf;
+  color: #1d3fcf;
+}
+
+.ppg-bulk {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.ppg-counter {
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.ppg-link-btn {
+  background: none;
+  border: 0;
+  color: #1d3fcf;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.ppg-empty {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.ppg-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ppg-photo {
+  background: #f1f5f9;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  width: 100%;
+}
+
+.ppg-photo.selected {
+  border-color: #1d3fcf;
+}
+
+.ppg-photo:focus-visible {
+  outline: 2px solid #1d3fcf;
+  outline-offset: 2px;
+}
+
+.ppg-image {
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.ppg-check {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  left: 8px;
+  position: absolute;
+  top: 8px;
+  width: 22px;
+}
+
+.ppg-photo.selected .ppg-check {
+  background: #1d3fcf;
+  border-color: #1d3fcf;
+}
+
+.ppg-label {
+  background: rgba(15, 23, 42, 0.7);
+  bottom: 0;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  left: 0;
+  padding: 4px 8px;
+  position: absolute;
+  right: 0;
+  text-align: left;
+}
+
+.ppg-more-btn {
+  align-self: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 16px;
+}

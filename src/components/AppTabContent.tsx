@@ -19,6 +19,8 @@ const PayrollView = lazy(() => import('../views/PayrollView'));
 const InvoicesView = lazy(() => import('../views/InvoicesView'));
 // ⭐ CLIENTS REPORT — trabajos y Final Cost por cliente en el periodo.
 const ClientsReportView = lazy(() => import('../views/ClientsReportView'));
+// INVOICES NEW — módulo nuevo de invoices (Invoices sigue sin cambios).
+const InvoicesNewView = lazy(() => import('../views/InvoicesNewView'));
 const ActivityLogView = lazy(() => import('../views/ActivityLogView'));
 const TrashView = lazy(() => import('../views/TrashView'));
 const RolesView = lazy(() => import('../views/admin/RolesView'));
@@ -181,6 +183,8 @@ const AppTabContent = ({
         );
       case 'customers':
         return <CustomersView onOpenMenu={onOpenMenu} />;
+      case 'invoices_new':
+        return <InvoicesNewView {...sessionProps} properties={properties} />;
       case 'settings':
         return (
           <SettingsView

@@ -1,0 +1,432 @@
+/* Formulario Create / Edit Invoice (InvoiceFormModal y sus secciones). El
+   diálogo (encabezado, cuerpo, pie) está en InvoiceDialog.css; la letra la
+   pone views/InvoicesNewView.css (.invn-page *). */
+.invf-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.invf-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.invf-section-top {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.invf-section-title {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 0.95rem;
+  font-weight: 700;
+  gap: 8px;
+  margin: 0;
+}
+
+.invf-section-icon {
+  color: #1d3fcf;
+}
+
+.invf-optional {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.invf-grid-2,
+.invf-grid-3 {
+  display: grid;
+  gap: 14px;
+}
+
+.invf-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.invf-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.invf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.invf-label {
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.invf-input {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #0f172a;
+  font-size: 0.9rem;
+  min-height: 42px;
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.invf-input:focus-visible {
+  border-color: #1d3fcf;
+  outline: 2px solid rgba(29, 63, 207, 0.2);
+}
+
+.invf-input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.invf-field.has-error .invf-input {
+  border-color: #dc2626;
+}
+
+.invf-textarea {
+  resize: vertical;
+}
+
+.invf-help {
+  color: #64748b;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.invf-error {
+  color: #dc2626;
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.invf-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  font-size: 0.8125rem;
+  margin: 0;
+  padding: 8px 12px;
+}
+
+.invf-affix-input {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.invf-affix {
+  color: #64748b;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.invf-amount-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  /* Subtotal, Tax, un recuadro por fee y el total: se acomodan solos. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  padding: 12px 16px;
+}
+
+.invf-summary-item {
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  gap: 2px;
+}
+
+.invf-summary-item strong {
+  color: #0f172a;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.invf-summary-item.is-total strong {
+  color: #1d3fcf;
+  font-size: 1.15rem;
+}
+
+.invf-job-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-inline-check {
+  align-items: center;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  gap: 8px;
+}
+
+.invf-client-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.invf-client-main,
+.invf-client-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.invf-client-label {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.invf-client-name {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.invf-client-line {
+  color: #475569;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.invf-client-warning {
+  color: #9a3412;
+  font-size: 0.78rem;
+}
+
+/* Servicios del job (InvoiceServicesList.tsx). */
+.invf-services {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-services-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invf-services-scroll {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+.invf-services-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 520px;
+  width: 100%;
+}
+
+.invf-services-table th,
+.invf-services-table td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.invf-services-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.invf-services-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.invf-services-table .invf-services-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.invf-services-name {
+  color: #0f172a;
+  display: block;
+  font-weight: 600;
+}
+
+.invf-services-notes {
+  color: #64748b;
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.invf-services-refresh {
+  align-self: flex-start;
+}
+
+/* Fees (InvoiceFeesEditor.tsx): nombre, %, monto y quitar. */
+.invf-fees {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-fee-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.invf-fee-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.invf-fee-rate {
+  flex: 0 0 110px;
+}
+
+.invf-fee-amount {
+  color: #0f172a;
+  flex: 0 0 90px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.invf-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.invf-note-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+}
+
+.invf-icon-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 36px;
+  justify-content: center;
+  min-height: 0;
+  width: 36px;
+}
+
+.invf-icon-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.invf-text-btn {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: #1d3fcf;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 4px;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.invf-option-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.invf-option-row {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+}
+
+.invf-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.invf-option-title {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.invf-option-help,
+.invf-option-summary {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.invf-photo-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-left: 28px;
+}
+
+.invf-photo-mode {
+  min-height: 36px;
+  padding: 4px 10px;
+  width: auto;
+}
+
+@media (max-width: 768px) {
+  .invf-amount-summary,
+  .invf-grid-2,
+  .invf-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invf-fee-row {
+    flex-wrap: wrap;
+  }
+  .invf-fee-name {
+    flex-basis: 100%;
+  }
+}

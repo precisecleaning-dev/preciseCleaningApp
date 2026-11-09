@@ -582,6 +582,7 @@ export interface QcRecordLite {
 //   user_tasks       → ./userTasks.ts        (services/userTasksService.ts)
 //   task_projects    → ./taskProjects.ts     (services/taskProjectsService.ts)
 //   billing_services → ./billingServices.ts  (features/houses/services/billingServices.ts)
+//   invoices         → ./invoices.ts         (services/invoicesService.ts)
 
 /** Día sin hora: "2026-10-13" (AAAA-MM-DD). */
 export type YmdDate = string;
@@ -599,3 +600,4 @@ export * from './userTasks';
 export * from './taskProjects';
 export * from './billingServices';
 export * from './payroll';
+export * from './invoices';

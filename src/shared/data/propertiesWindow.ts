@@ -85,8 +85,8 @@ export function showFullHistory(): void {
 }
 
 /** Primer día incluido en la ventana, como AAAA-MM-DD (hora local): el día 1
- *  del mes de hace 12 meses. */
-function windowStartIso(): string {
+ *  del mes de hace 12 meses. También lo usa la ventana de Invoices New. */
+export function windowStartIso(): string {
   const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth() - WINDOW_MONTHS, 1);
   const pad = (n: number) => String(n).padStart(2, '0');

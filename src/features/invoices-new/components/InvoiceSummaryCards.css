@@ -1,0 +1,91 @@
+/* Tarjetas del resumen de Invoices New (InvoiceSummaryCards.tsx). */
+.invs-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.invs-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  color: #0f172a;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+  padding: 16px 18px;
+  text-align: left;
+}
+
+.invs-card:hover {
+  border-color: #cbd5e1;
+}
+
+.invs-card:focus-visible {
+  outline: 2px solid #1d3fcf;
+  outline-offset: 2px;
+}
+
+.invs-card.selected {
+  border-color: #1d3fcf;
+  box-shadow: 0 0 0 1px #1d3fcf;
+}
+
+.invs-card-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.invs-label {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.invs-icon {
+  color: #94a3b8;
+}
+
+.invs-card.tone-overdue .invs-icon {
+  color: #dc2626;
+}
+
+.invs-card.tone-outstanding .invs-icon {
+  color: #d97706;
+}
+
+.invs-card.tone-draft .invs-icon {
+  color: #64748b;
+}
+
+.invs-value {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.invs-value-skeleton {
+  height: 1.6rem;
+  width: 60%;
+}
+
+.invs-detail {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .invs-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .invs-value {
+    font-size: 1.2rem;
+  }
+}
