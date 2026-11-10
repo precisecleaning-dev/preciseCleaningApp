@@ -28,7 +28,7 @@
   align-items: center;
   column-gap: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) 120px minmax(0, 1.2fr) 110px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) 120px minmax(0, 1.2fr) 110px minmax(0, 1fr) 80px;
   padding: 12px 20px;
 }
 
@@ -109,6 +109,41 @@
   opacity: 0.55;
 }
 
+.fsl-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+.fsl-icon-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 0;
+  padding: 6px;
+}
+
+.fsl-icon-btn:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.fsl-icon-btn.is-delete:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.fsl-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .fsl-empty {
   background: #ffffff;
   border: 1px dashed #cbd5e1;
@@ -125,8 +160,13 @@
     justify-content: center;
     width: 100%;
   }
-  .fsl-actions {
+  .fsl-actions,
+  .fsl-row-actions {
     grid-column: 1 / -1;
+  }
+  .fsl-icon-btn {
+    min-height: 44px;
+    min-width: 44px;
   }
   .fsl-head {
     display: none;

@@ -3473,3 +3473,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `SearchableSelect` y el modal se cierra al guardar. Los modales de Fixed pay usan `PayrollDialog` (caja, encabezado
   con X, cuerpo y botonera; Escape y el fondo cierran salvo mientras guarda) y sus clases `pdlg-*` para campos y
   detalles. Los de Hourly (HourlyPayForm / HourlyPayDetail) todavía tienen su caja propia.
+- Payroll · Fixed pay editar y borrar sueldos (11/2026, pedido de Omar): cada fila de "Fixed salaries" tiene Edit
+  (el mismo modal con el sueldo; el empleado no se cambia) y Delete (confirma y borra el doc de fixed_salaries: la
+  Cloud Function deja de crear pagos; los pagos ya creados se quedan). Stop / Resume siguen igual.

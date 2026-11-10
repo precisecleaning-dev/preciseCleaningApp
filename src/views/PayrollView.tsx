@@ -951,6 +951,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
             getEmployeeName={getEmployeeName}
             currentUser={currentUser}
             onNewSalary={() => setFixedSalaryForm({ salary: null })}
+            onEdit={(salary) => setFixedSalaryForm({ salary })}
           />
         )}
         {canSeeAllPayroll && fixedSalaryForm && (

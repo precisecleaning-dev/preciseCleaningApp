@@ -3,9 +3,11 @@
 // último día, desde cuándo y si sigue activo. "Stop" deja de crear pagos (los
 // ya creados se quedan); "Resume" los vuelve a crear desde hoy (startDate = hoy,
 // así la Cloud Function no crea los de las quincenas en que estuvo parado).
-// Arriba, el botón que abre el modal de un sueldo nuevo (onNewSalary).
+// Arriba, el botón que abre el modal de un sueldo nuevo (onNewSalary). Cada
+// fila tiene Edit (abre el mismo modal: onEdit) y Delete (borra el sueldo; los
+// pagos ya creados se quedan).
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
 import { fixedSalariesService } from '../../../services/fixedSalariesService';
 import { logActivity } from '../../../services/activityLogService';
@@ -20,9 +22,11 @@ interface FixedSalaryRowProps {
   employeeName: string;
   isUpdating: boolean;
   onToggleActive: (salary: FixedSalary) => void;
+  onEdit: (salary: FixedSalary) => void;
+  onDelete: (salary: FixedSalary) => void;
 }
 
-const FixedSalaryRow = ({ salary, employeeName, isUpdating, onToggleActive }: FixedSalaryRowProps) => {
+const FixedSalaryRow = ({ salary, employeeName, isUpdating, onToggleActive, onEdit, onDelete }: FixedSalaryRowProps) => {
   const { firstHalf, secondHalf } = getBiweeklyAmounts(salary.monthlyAmount);
   const toggleText = salary.active ? 'Stop' : 'Resume';
 
@@ -36,6 +40,21 @@ const FixedSalaryRow = ({ salary, employeeName, isUpdating, onToggleActive }: Fi
         <span className={`fsl-badge${salary.active ? ' is-active' : ''}`}>{salary.active ? 'Active' : 'Stopped'}</span>
         <button type="button" className="fsl-toggle-btn" disabled={isUpdating} onClick={() => onToggleActive(salary)}>
           {toggleText}
+        </button>
+      </span>
+      <span className="fsl-row-actions">
+        <button type="button" className="fsl-icon-btn" aria-label="Edit salary" title="Edit" onClick={() => onEdit(salary)}>
+          <Pencil size={16} />
+        </button>
+        <button
+          type="button"
+          className="fsl-icon-btn is-delete"
+          aria-label="Delete salary"
+          title="Delete"
+          disabled={isUpdating}
+          onClick={() => onDelete(salary)}
+        >
+          <Trash2 size={16} />
         </button>
       </span>
     </li>
@@ -60,9 +79,10 @@ interface FixedSalaryListProps {
   getEmployeeName: (employeeId: string) => string;
   currentUser?: SystemUser | null;
   onNewSalary: () => void;
+  onEdit: (salary: FixedSalary) => void;
 }
 
-const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary }: FixedSalaryListProps) => {
+const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary, onEdit }: FixedSalaryListProps) => {
   const [updatingEmployeeId, setUpdatingEmployeeId] = useState('');
   const sortedSalaries = [...salaries].sort((salaryA, salaryB) =>
     getEmployeeName(salaryA.employeeId).localeCompare(getEmployeeName(salaryB.employeeId)));
@@ -90,6 +110,31 @@ const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary }
     }
   };
 
+  // Borra el sueldo: la Cloud Function deja de crear pagos; los ya creados se quedan.
+  const handleDelete = async (salary: FixedSalary) => {
+    const employeeName = getEmployeeName(salary.employeeId);
+    const question = `Delete the fixed salary of ${employeeName} (${money(salary.monthlyAmount)} per month)? `
+      + 'Payments already created are kept.';
+    if (!window.confirm(question)) return;
+    setUpdatingEmployeeId(salary.employeeId);
+    try {
+      await fixedSalariesService.delete(salary.employeeId);
+      void logActivity({
+        action: 'delete',
+        module: 'Payroll',
+        user: currentUser,
+        targetId: salary.employeeId,
+        targetLabel: employeeName,
+        detail: `Fixed salary deleted (${money(salary.monthlyAmount)} per month).`,
+      });
+    } catch (error) {
+      console.error('Error deleting the fixed salary:', error);
+      alert('Could not delete the salary. Check your connection and try again.');
+    } finally {
+      setUpdatingEmployeeId('');
+    }
+  };
+
   if (sortedSalaries.length === 0) {
     return (
       <>
@@ -109,6 +154,7 @@ const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary }
           <span>15th / last day</span>
           <span>Starts on</span>
           <span>Status</span>
+          <span>Actions</span>
         </div>
         <ul className="fsl-list">
           {sortedSalaries.map((salary) => (
@@ -118,6 +164,8 @@ const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary }
               employeeName={getEmployeeName(salary.employeeId)}
               isUpdating={updatingEmployeeId === salary.employeeId}
               onToggleActive={handleToggleActive}
+              onEdit={onEdit}
+              onDelete={handleDelete}
             />
           ))}
         </ul>
