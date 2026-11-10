@@ -188,6 +188,14 @@ describe('dinero', () => {
     await assertFails(setDoc(doc(as('cleaner@precise.test'), 'payroll', 'p2'), { propertyId: 'h1', baseAmount: 50 }));
     await assertSucceeds(setDoc(doc(as('sandy@precise.test'), 'payroll', 'p2'), { propertyId: 'h1', baseAmount: 50 }));
   });
+
+  test('sueldos fijos: solo Payroll los ve y los edita', async () => {
+    await assertFails(getDocs(collection(as('cleaner@precise.test'), 'fixed_salaries')));
+    await assertFails(getDocs(collection(as('sandy@precise.test'), 'fixed_salaries')));
+    await assertSucceeds(getDocs(collection(as('owner@precise.test'), 'fixed_salaries')));
+    await assertFails(setDoc(doc(as('sandy@precise.test'), 'fixed_salaries', 'u-emp'), { employeeId: 'u-emp', monthlyAmount: 3000 }));
+    await assertSucceeds(setDoc(doc(as('admin@precise.test'), 'fixed_salaries', 'u-emp'), { employeeId: 'u-emp', monthlyAmount: 3000 }));
+  });
 });
 
 describe('casas', () => {

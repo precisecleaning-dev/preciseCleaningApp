@@ -6,8 +6,9 @@
 // (index.ts los reexporta).
 // ============================================================================
 
-/** Pago que no sale de una casa: por horas (pestaña Hourly de Payroll). */
-export type PayrollPayType = 'hourly';
+/** Pago que no sale de una casa: por horas (pestaña Hourly) o fijo quincenal
+ *  (pestaña Fixed pay, lo crea la Cloud Function `createfixedpayroll`). */
+export type PayrollPayType = 'hourly' | 'fixed';
 
 export interface PayrollRecord {
   id?: string;
@@ -33,4 +34,25 @@ export interface PayrollRecord {
   /** Recibo de pago subido a Storage (payroll_receipts/…) y su nombre original. */
   receiptUrl?: string;
   receiptFileName?: string;
+  /** Pago fijo: el sueldo (fixed_salaries/{employeeId}) del que sale. */
+  fixedSalaryId?: string;
+}
+
+/**
+ * Sueldo fijo de un empleado (colección `fixed_salaries`, id = id del
+ * empleado: uno por persona). Se paga en dos partes iguales, el 15 y el último
+ * día de cada mes; los pagos los crea la Cloud Function `createfixedpayroll`.
+ */
+export interface FixedSalary {
+  id: string;
+  employeeId: string;
+  /** Sueldo MENSUAL; cada pago quincenal es la mitad. */
+  monthlyAmount: number;
+  /** Primer día (AAAA-MM-DD) desde el que se crean sus pagos. */
+  startDate: string;
+  /** false = ya no se crean pagos (los creados se quedan). */
+  active: boolean;
+  /** Fecha y hora ISO de la última modificación y quién la hizo. */
+  updatedAt: string;
+  updatedByUserName: string;
 }

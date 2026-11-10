@@ -3435,3 +3435,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   payType 'hourly', hours, hourlyRate y el recibo (Storage `payroll_receipts/{empleado}/…`, receiptUrl). Las horas
   se escriben A MANO: leerlas del recibo quedó para después (decisión de Omar). Estos pagos no entran a "Asignar
   nómina" ni a "Nóminas" (esas filtran por casa o batchId) ni al Profit de un trabajo (no tienen propertyId).
+- Payroll · sueldos fijos (11/2026, pedido de Omar): colección `fixed_salaries`, UNO por empleado (id del documento
+  = id del empleado; guardar otra vez el mismo empleado actualiza su sueldo). Guarda el sueldo MENSUAL
+  (`monthlyAmount`), desde qué fecha aplica (`startDate`) y si está activo. Los pagos (mitad el 15 y mitad el
+  último día del mes) los crea la Cloud Function `createfixedpayroll`. Reglas: leer con Payroll, crear/editar con
+  Payroll "e", borrar con Payroll "d" (security/firestore.rules + prueba en security/tests). ⚠ Pendiente: publicar
+  la regla de `fixed_salaries` en la consola de Firebase (sin eso la pantalla no puede leer ni guardar).

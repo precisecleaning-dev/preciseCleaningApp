@@ -265,6 +265,15 @@ service cloud.firestore {
       allow delete: if has('Payroll') || canDo('Houses', 'e') || canDo('Houses', 'd');
     }
 
+    // Sueldos fijos quincenales (uno por empleado, id = id del empleado). Solo
+    // Payroll: es el sueldo de cada persona. Los pagos del 15 y del último día
+    // los crea la Cloud Function createfixedpayroll (Admin SDK, no pasa por aquí).
+    match /fixed_salaries/{employeeId} {
+      allow read: if has('Payroll');
+      allow create, update: if canDo('Payroll', 'e');
+      allow delete: if canDo('Payroll', 'd');
+    }
+
     // Historial de status: se agrega, nunca se edita ni se borra.
     match /status_history/{entryId} {
       allow read: if active();

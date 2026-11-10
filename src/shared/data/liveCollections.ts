@@ -24,7 +24,7 @@ import { collection, onSnapshot, type DocumentData, type QueryDocumentSnapshot }
 import { db } from '../../config/firebase';
 import { COLLECTIONS } from '../../lib/firebase/collections';
 import type {
-  Business, CategoryExpense, Customer, TaskProject, PaymentMethod, PayrollRecord, Priority, Product, Responsable, Role,
+  Business, CategoryExpense, Customer, FixedSalary, TaskProject, PaymentMethod, PayrollRecord, Priority, Product, Responsable, Role,
   Service, Status, SystemUser, Task, Tax, Team, Place,
 } from '../../types/index';
 import { mapCustomerDoc } from '../../utils/customerDocs';
@@ -66,6 +66,7 @@ const SOURCES = {
   qualityChecks: src<QcRecordLite>(COLLECTIONS.qualityChecks),
   billingServices: src<BillingServiceDoc>(COLLECTIONS.billingServices),
   payroll: src<PayrollRecord>(COLLECTIONS.payroll),
+  fixedSalaries: src<FixedSalary>(COLLECTIONS.fixedSalaries),
   // Proyectos del Task list (pocos; los usa toda la vista de tareas).
   taskProjects: src<TaskProject>(COLLECTIONS.taskProjects),
   // Catálogos que solo usa Settings (el listener se abre al entrar ahí).
