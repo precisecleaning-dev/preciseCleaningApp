@@ -1,0 +1,102 @@
+/* Formulario del sueldo fijo de un empleado (pestaña Fixed pay de Payroll). */
+.fsf-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  padding: 20px;
+}
+
+.fsf-title {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 700;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.fsf-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fsf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fsf-label {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fsf-input {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.fsf-footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+/* La botonera queda a la derecha aunque todavía no haya monto (sin .fsf-split). */
+.fsf-footer .btn-primary {
+  margin-left: auto;
+}
+
+/* .btn-primary (App.css) no tiene estilo deshabilitado: falta un dato o se está guardando. */
+.fsf-footer .btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fsf-split {
+  color: #334155;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.fsf-message {
+  color: #047857;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+
+.fsf-message.is-error {
+  color: #b91c1c;
+}
+
+@media (max-width: 1024px) {
+  .fsf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .fsf-footer .btn-primary {
+    justify-content: center;
+    margin-left: 0;
+    width: 100%;
+  }
+  .fsf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

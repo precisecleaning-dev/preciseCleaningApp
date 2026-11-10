@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import {
   User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
-  Search, Wallet, ClipboardList, ChevronDown, ChevronRight, Timer
+  Search, Wallet, ClipboardList, ChevronDown, ChevronRight, Timer, CalendarClock
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
@@ -29,6 +29,10 @@ import MenuButton from '../shared/components/MenuButton';
 import HourlyPayForm from '../features/payroll/components/HourlyPayForm';
 import HourlyPayList from '../features/payroll/components/HourlyPayList';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
+import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
+import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
+import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
+import { isFixedPayment } from '../features/payroll/fixedPay';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -192,6 +196,11 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   );
   const getEmployeeName = (employeeId: string) =>
     empName(employees.find(employee => employee.id === employeeId)) || 'Unknown';
+  // ⭐ Pestaña Fixed pay: los pagos quincenales que crea la Cloud Function.
+  const fixedPayments = useMemo(
+    () => records.filter(record => isFixedPayment(record) && (canSeeAllPayroll || record.employeeId === currentUser?.id)),
+    [records, canSeeAllPayroll, currentUser?.id],
+  );
 
   // Catálogos para el detalle de la casa
   const statusesLive = useLiveCollection('statuses');
@@ -247,7 +256,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
   // ⭐ Pestañas del módulo: 'asignar' = registros de Pay (tabla de siempre);
   //    'nominas' = tarjetas semanales por empleado.
-  const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly'>('asignar');
+  const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly' | 'fixed'>('asignar');
+  // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
+  const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -907,7 +918,26 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
         <button className={`pv-tab-btn${tab === 'hourly' ? ' active' : ''}`} onClick={() => setTab('hourly')}>
           <Timer size={16} /> Hourly
         </button>
+        <button className={`pv-tab-btn${tab === 'fixed' ? ' active' : ''}`} onClick={() => setTab('fixed')}>
+          <CalendarClock size={16} /> Fixed pay
+        </button>
       </div>
+
+      {/* ═══════════ PESTAÑA FIXED PAY: sueldos fijos quincenales (features/payroll) ═══════════ */}
+      {tab === 'fixed' && (<>
+        {canSeeAllPayroll && (
+          <FixedSalaryForm employees={employees} salaries={fixedSalariesLive.data} currentUser={currentUser} />
+        )}
+        {canSeeAllPayroll && (
+          <FixedSalaryList salaries={fixedSalariesLive.data} getEmployeeName={getEmployeeName} currentUser={currentUser} />
+        )}
+        <FixedPaymentList
+          payments={fixedPayments}
+          getEmployeeName={getEmployeeName}
+          canMarkPaid={canSeeAllPayroll}
+          onMarkPaid={handleMarkAsPaid}
+        />
+      </>)}
 
       {/* ═══════════ PESTAÑA HOURLY: pagos por horas (features/payroll) ═══════════ */}
       {tab === 'hourly' && (<>

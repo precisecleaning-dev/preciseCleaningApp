@@ -3441,3 +3441,10 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   último día del mes) los crea la Cloud Function `createfixedpayroll`. Reglas: leer con Payroll, crear/editar con
   Payroll "e", borrar con Payroll "d" (security/firestore.rules + prueba en security/tests). ⚠ Pendiente: publicar
   la regla de `fixed_salaries` en la consola de Firebase (sin eso la pantalla no puede leer ni guardar).
+- Payroll · pestaña "Fixed pay" (11/2026, pedido de Omar): con alcance 'All' se captura el sueldo fijo (empleado,
+  sueldo MENSUAL, desde qué fecha) y se ve la lista de sueldos con Stop / Resume; todos ven sus pagos fijos y
+  quien tiene 'All' los marca pagados. Cada pago es la mitad del sueldo (`getBiweeklyAmounts`: si no se divide
+  exacto, el centavo que sobra va en el del último día; la Cloud Function usa la MISMA división). "Resume" pone
+  `startDate` = hoy para que la función no cree los pagos de las quincenas en que estuvo parado. ⚠ La regla de
+  `fixed_salaries` deja leer a todo el que tiene Payroll (también alcance 'Own'): la pantalla solo muestra los
+  sueldos a quien tiene 'All'; afinar la regla con el alcance si hace falta.
