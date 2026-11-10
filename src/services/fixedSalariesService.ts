@@ -7,7 +7,7 @@
 // useLiveCollection('fixedSalaries').
 // ============================================================================
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc,
+  arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc,
   type CollectionReference, type DocumentReference,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -46,6 +46,11 @@ export const fixedSalariesService = {
     updatedByUserName: string,
   ): Promise<void> {
     await updateDoc(fixedSalaryRef(employeeId), { ...changes, updatedAt: new Date().toISOString(), updatedByUserName });
+  },
+
+  /** Marca una fecha de pago como borrada a mano: createfixedpayroll ya no crea ese pago. */
+  async skipPayDate(employeeId: string, payDate: string): Promise<void> {
+    await updateDoc(fixedSalaryRef(employeeId), { skippedPayDates: arrayUnion(payDate) });
   },
 
   async delete(employeeId: string): Promise<void> {

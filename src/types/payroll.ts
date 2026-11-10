@@ -55,4 +55,6 @@ export interface FixedSalary {
   /** Fecha y hora ISO de la última modificación y quién la hizo. */
   updatedAt: string;
   updatedByUserName: string;
+  /** Fechas de pago (AAAA-MM-DD) cuyo pago se borró a mano: la Cloud Function no lo vuelve a crear. */
+  skippedPayDates?: string[];
 }

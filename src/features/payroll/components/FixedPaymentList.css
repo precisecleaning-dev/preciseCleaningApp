@@ -115,6 +115,11 @@
   color: #1d4ed8;
 }
 
+.fpl-icon-btn.is-delete:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .fpl-empty {
   background: #ffffff;
   border: 1px dashed #cbd5e1;

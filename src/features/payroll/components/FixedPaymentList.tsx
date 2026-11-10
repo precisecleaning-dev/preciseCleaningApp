@@ -1,8 +1,9 @@
 // src/features/payroll/components/FixedPaymentList.tsx
 // Pagos fijos quincenales ya creados por la Cloud Function (más reciente
-// primero): fecha, empleado, quincena, monto y estado. "Mark paid" y editar los
-// resuelve la vista (onMarkPaid, onEdit); sin onEdit no hay columna de acciones.
-import { CheckCircle, Pencil } from 'lucide-react';
+// primero): fecha, empleado, quincena, monto y estado. "Mark paid", editar y
+// borrar los resuelve la vista (onMarkPaid, onEdit, onDelete); sin onEdit ni
+// onDelete no hay columna de acciones.
+import { CheckCircle, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
 import { formatDate } from '../../../utils/dateFormat';
@@ -16,9 +17,10 @@ interface FixedPaymentRowProps {
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
+  onDelete?: (payment: PayrollRecord) => void;
 }
 
-const FixedPaymentRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit }: FixedPaymentRowProps) => {
+const FixedPaymentRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete }: FixedPaymentRowProps) => {
   const isPaid = payment.status === 'Paid';
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
 
@@ -36,11 +38,24 @@ const FixedPaymentRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdi
           </button>
         )}
       </span>
-      {onEdit && (
+      {(onEdit || onDelete) && (
         <span className="fpl-actions">
-          <button type="button" className="fpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
-            <Pencil size={16} />
-          </button>
+          {onEdit && (
+            <button type="button" className="fpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
+              <Pencil size={16} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="fpl-icon-btn is-delete"
+              aria-label="Delete payment"
+              title="Delete"
+              onClick={() => onDelete(payment)}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </span>
       )}
     </div>
@@ -53,10 +68,13 @@ interface FixedPaymentListProps {
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
+  onDelete?: (payment: PayrollRecord) => void;
 }
 
-const FixedPaymentList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, onEdit }: FixedPaymentListProps) => {
-  const hasActions = !!onEdit;
+const FixedPaymentList = ({
+  payments, getEmployeeName, canMarkPaid, onMarkPaid, onEdit, onDelete,
+}: FixedPaymentListProps) => {
+  const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
 
   if (sortedPayments.length === 0) {
@@ -85,6 +103,7 @@ const FixedPaymentList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, 
             canMarkPaid={canMarkPaid}
             onMarkPaid={onMarkPaid}
             onEdit={onEdit}
+            onDelete={onDelete}
           />
         )}
       />

@@ -14,7 +14,8 @@
    DÍAS QUE FALLARON: además de los de este mes, revisa el último día del mes
    pasado. Si la función no corrió ese día, el pago se crea al día siguiente.
    No crea pagos de antes de `startDate` del sueldo (el día que se dio de alta
-   o se reanudó).
+   o se reanudó) ni los de `skippedPayDates` (pagos que se borraron a mano en
+   la pestaña Fixed pay: si no, se volverían a crear al día siguiente).
 
    La división en dos partes es la MISMA que getBiweeklyAmounts de
    src/features/payroll/fixedPay.ts (la pantalla): si cambia una, cambia la otra.
@@ -35,6 +36,7 @@ interface FixedSalaryDoc {
   monthlyAmount?: number;
   startDate?: string;
   active?: boolean;
+  skippedPayDates?: string[];
 }
 
 const padToTwoDigits = (value: number) => String(value).padStart(2, "0");
@@ -115,8 +117,9 @@ export const createfixedpayroll = onSchedule(
       const { firstHalf, secondHalf } = getBiweeklyAmounts(Number(salary.monthlyAmount) || 0);
       if (firstHalf <= 0) continue;
 
+      const skippedPayDates = salary.skippedPayDates ?? [];
       for (const payDate of dueDates) {
-        if (payDate < (salary.startDate || "")) continue;
+        if (payDate < (salary.startDate || "") || skippedPayDates.includes(payDate)) continue;
         const amount = payDate.endsWith("-15") ? firstHalf : secondHalf;
         try {
           if (await createFixedPayment(salaryDoc.id, employeeId, payDate, amount)) createdCount++;

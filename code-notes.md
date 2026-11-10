@@ -3482,3 +3482,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Payroll · Fixed pay editar un pago quincenal (11/2026, pedido de Omar): Edit en la tabla de pagos fijos abre
   `FixedPaymentForm`, que solo cambia el monto de ESE pago (`updateFixedPaymentAmount`, baseAmount y totalAmount);
   fecha, quincena, empleado y estado no se tocan. Para cambiar los pagos siguientes se edita el sueldo fijo.
+- Payroll · Fixed pay borrar un pago quincenal (11/2026, pedido de Omar): Delete en la tabla de pagos fijos
+  (`deleteFixedPayment`) primero anota la fecha en `skippedPayDates` del sueldo (arrayUnion) y luego borra el pago;
+  createfixedpayroll se salta esas fechas, así el pago borrado NO se vuelve a crear al día siguiente (antes sí).
+  Si el sueldo ya no existe no se anota nada (sin sueldo no se crean pagos). Pendiente (Omar): volver a desplegar
+  la función createfixedpayroll para que lea skippedPayDates.

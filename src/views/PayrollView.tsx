@@ -31,6 +31,7 @@ import HourlyPayList from '../features/payroll/components/HourlyPayList';
 import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
+import { deleteFixedPayment } from '../features/payroll/services/fixedPaymentService';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
@@ -735,6 +736,19 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
+  const handleDeleteFixedPayment = async (payment: PayrollRecord) => {
+    const employeeName = getEmployeeName(payment.employeeId);
+    const question = `Delete the fixed payment of ${employeeName} for ${fmtDate(payment.date)} (${money(payment.totalAmount)})? `
+      + 'It will not be created again.';
+    if (!window.confirm(question)) return;
+    try {
+      await deleteFixedPayment(payment, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error deleting the fixed payment:', error);
+      alert('Could not delete the payment. Check your connection and try again.');
+    }
+  };
+
   const handleMarkAsPending = async (record: PayrollRecordExt) => {
     if (!record.id) return;
     if (!window.confirm("Change status back to Pending?")) return;
@@ -987,6 +1001,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           canMarkPaid={canSeeAllPayroll}
           onMarkPaid={handleMarkAsPaid}
           onEdit={canSeeAllPayroll ? (payment) => setFixedPaymentEditId(payment.id ?? '') : undefined}
+          onDelete={canSeeAllPayroll ? handleDeleteFixedPayment : undefined}
         />
         {canSeeAllPayroll && fixedPaymentEdit && (
           <FixedPaymentForm
