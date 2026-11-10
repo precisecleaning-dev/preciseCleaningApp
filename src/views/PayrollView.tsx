@@ -9,7 +9,7 @@ import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
 import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore';
-import type { PayrollRecord, Property, SystemUser, Role } from '../types/index';
+import type { FixedSalary, PayrollRecord, Property, SystemUser, Role } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { commitOps, type BatchOp } from '../shared/data/batchWrites';
 import { getPayrollTotal, money } from '../utils/jobFinancials';
@@ -266,6 +266,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const hourlyDetailPayment = hourlyPayments.find(payment => payment.id === hourlyDetailId);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
+  // Modal del sueldo fijo: nuevo o editando uno (se monta de nuevo en cada apertura).
+  const [fixedSalaryForm, setFixedSalaryForm] = useState<{ salary: FixedSalary | null } | null>(null);
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -944,10 +946,22 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       {/* ═══════════ PESTAÑA FIXED PAY: sueldos fijos quincenales (features/payroll) ═══════════ */}
       {tab === 'fixed' && (<>
         {canSeeAllPayroll && (
-          <FixedSalaryForm employees={employees} salaries={fixedSalariesLive.data} currentUser={currentUser} />
+          <FixedSalaryList
+            salaries={fixedSalariesLive.data}
+            getEmployeeName={getEmployeeName}
+            currentUser={currentUser}
+            onNewSalary={() => setFixedSalaryForm({ salary: null })}
+          />
         )}
-        {canSeeAllPayroll && (
-          <FixedSalaryList salaries={fixedSalariesLive.data} getEmployeeName={getEmployeeName} currentUser={currentUser} />
+        {canSeeAllPayroll && fixedSalaryForm && (
+          <FixedSalaryForm
+            key={fixedSalaryForm.salary?.employeeId ?? 'new'}
+            employees={employees}
+            salaries={fixedSalariesLive.data}
+            currentUser={currentUser}
+            salary={fixedSalaryForm.salary}
+            onClose={() => setFixedSalaryForm(null)}
+          />
         )}
         <FixedPaymentList
           payments={fixedPayments}

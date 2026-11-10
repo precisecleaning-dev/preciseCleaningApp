@@ -1,0 +1,177 @@
+/* Caja de los modales de Fixed pay. Fondo y caja: .modal-overlay-centered y .modal-50 (index.css). */
+
+/* .modal-50 corta lo que sobresale: un formulario con buscador lo deja salir. */
+.modal-50.pdlg-box.allows-overflow {
+  overflow: visible;
+}
+
+.pdlg-header {
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.pdlg-title {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 700;
+  gap: 8px;
+  margin: 0;
+}
+
+.pdlg-close-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.pdlg-close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Sin overflow permitido, el cuerpo es lo único que se desplaza si el contenido es alto. */
+.pdlg-body {
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.modal-50.pdlg-box.allows-overflow .pdlg-body {
+  overflow-y: visible;
+}
+
+.pdlg-footer {
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 20px;
+}
+
+.pdlg-footer .btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Botón secundario de la botonera (Cancel, Close, Edit…). */
+.pdlg-secondary-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 6px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 18px;
+}
+
+.pdlg-secondary-btn:hover {
+  background: #f8fafc;
+}
+
+.pdlg-secondary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Datos de un detalle (etiqueta arriba, valor abajo) en dos columnas. */
+.pdlg-details {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.pdlg-detail-label {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pdlg-detail-value {
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* Campos de un formulario (etiqueta arriba, control abajo) en dos columnas. */
+.pdlg-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pdlg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pdlg-label {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pdlg-input {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.pdlg-input:disabled {
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.pdlg-note {
+  color: #334155;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 16px 0 0;
+}
+
+.pdlg-error {
+  color: #b91c1c;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+
+/* Teléfono: una columna y los botones a lo ancho. */
+@media (max-width: 768px) {
+  .pdlg-details,
+  .pdlg-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pdlg-footer .btn-primary,
+  .pdlg-secondary-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}

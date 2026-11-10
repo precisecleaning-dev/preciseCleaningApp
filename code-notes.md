@@ -3468,3 +3468,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   lectura: empleado, fecha, horas, rate, total, estado, pagado el/por y el recibo; una imagen se ve en el modal, un
   PDF se abre en otra pestaña). La vista guarda el id y muestra el pago EN VIVO: si lo borran, el detalle se cierra.
   Los botones y el enlace del recibo de la fila no abren el detalle (`stopRowClick`).
+- Payroll · Fixed pay en modal (11/2026, pedido de Omar): el sueldo fijo se captura en un modal (`FixedSalaryForm`)
+  que abre "New fixed salary" (arriba de la lista de sueldos, solo alcance 'All'); el empleado se busca con
+  `SearchableSelect` y el modal se cierra al guardar. Los modales de Fixed pay usan `PayrollDialog` (caja, encabezado
+  con X, cuerpo y botonera; Escape y el fondo cierran salvo mientras guarda) y sus clases `pdlg-*` para campos y
+  detalles. Los de Hourly (HourlyPayForm / HourlyPayDetail) todavía tienen su caja propia.

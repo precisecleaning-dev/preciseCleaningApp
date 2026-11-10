@@ -3,7 +3,9 @@
 // último día, desde cuándo y si sigue activo. "Stop" deja de crear pagos (los
 // ya creados se quedan); "Resume" los vuelve a crear desde hoy (startDate = hoy,
 // así la Cloud Function no crea los de las quincenas en que estuvo parado).
+// Arriba, el botón que abre el modal de un sueldo nuevo (onNewSalary).
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
 import { fixedSalariesService } from '../../../services/fixedSalariesService';
 import { logActivity } from '../../../services/activityLogService';
@@ -40,13 +42,27 @@ const FixedSalaryRow = ({ salary, employeeName, isUpdating, onToggleActive }: Fi
   );
 };
 
+interface FixedSalaryToolbarProps {
+  onNewSalary: () => void;
+}
+
+const FixedSalaryToolbar = ({ onNewSalary }: FixedSalaryToolbarProps) => (
+  <div className="fsl-toolbar">
+    <h3 className="fsl-title">Fixed salaries</h3>
+    <button type="button" className="btn-primary" onClick={onNewSalary}>
+      <Plus size={16} aria-hidden="true" /> New fixed salary
+    </button>
+  </div>
+);
+
 interface FixedSalaryListProps {
   salaries: readonly FixedSalary[];
   getEmployeeName: (employeeId: string) => string;
   currentUser?: SystemUser | null;
+  onNewSalary: () => void;
 }
 
-const FixedSalaryList = ({ salaries, getEmployeeName, currentUser }: FixedSalaryListProps) => {
+const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary }: FixedSalaryListProps) => {
   const [updatingEmployeeId, setUpdatingEmployeeId] = useState('');
   const sortedSalaries = [...salaries].sort((salaryA, salaryB) =>
     getEmployeeName(salaryA.employeeId).localeCompare(getEmployeeName(salaryB.employeeId)));
@@ -75,30 +91,38 @@ const FixedSalaryList = ({ salaries, getEmployeeName, currentUser }: FixedSalary
   };
 
   if (sortedSalaries.length === 0) {
-    return <p className="fsl-empty">No fixed salaries yet.</p>;
+    return (
+      <>
+        <FixedSalaryToolbar onNewSalary={onNewSalary} />
+        <p className="fsl-empty">No fixed salaries yet.</p>
+      </>
+    );
   }
 
   return (
-    <section className="fsl-card" aria-label="Fixed salaries">
-      <div className="fsl-head" aria-hidden="true">
-        <span>Employee</span>
-        <span>Monthly</span>
-        <span>15th / last day</span>
-        <span>Starts on</span>
-        <span>Status</span>
-      </div>
-      <ul className="fsl-list">
-        {sortedSalaries.map((salary) => (
-          <FixedSalaryRow
-            key={salary.employeeId}
-            salary={salary}
-            employeeName={getEmployeeName(salary.employeeId)}
-            isUpdating={updatingEmployeeId === salary.employeeId}
-            onToggleActive={handleToggleActive}
-          />
-        ))}
-      </ul>
-    </section>
+    <>
+      <FixedSalaryToolbar onNewSalary={onNewSalary} />
+      <section className="fsl-card" aria-label="Fixed salaries">
+        <div className="fsl-head" aria-hidden="true">
+          <span>Employee</span>
+          <span>Monthly</span>
+          <span>15th / last day</span>
+          <span>Starts on</span>
+          <span>Status</span>
+        </div>
+        <ul className="fsl-list">
+          {sortedSalaries.map((salary) => (
+            <FixedSalaryRow
+              key={salary.employeeId}
+              salary={salary}
+              employeeName={getEmployeeName(salary.employeeId)}
+              isUpdating={updatingEmployeeId === salary.employeeId}
+              onToggleActive={handleToggleActive}
+            />
+          ))}
+        </ul>
+      </section>
+    </>
   );
 };
 

@@ -1,11 +1,12 @@
 // src/features/payroll/components/FixedSalaryForm.tsx
-// Alta (o cambio) del sueldo fijo de un empleado: empleado, sueldo MENSUAL y
-// desde qué fecha aplica. Muestra cuánto se paga el 15 y el último día. Los
-// pagos los crea la Cloud Function createfixedpayroll.
+// Modal del sueldo fijo de un empleado: empleado (con búsqueda), sueldo MENSUAL
+// y desde qué fecha aplica; muestra cuánto se paga el 15 y el último día. Con
+// `salary` edita ese sueldo (el empleado no se cambia). Los pagos los crea la
+// Cloud Function createfixedpayroll. Se monta de nuevo en cada apertura.
 import { useMemo, useState } from 'react';
 import { CalendarDays, User } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
-import CustomSelect from '../../../components/CustomSelect';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 import DateInput from '../../../shared/components/DateInput';
 import { fixedSalariesService } from '../../../services/fixedSalariesService';
 import { logActivity } from '../../../services/activityLogService';
@@ -14,25 +15,25 @@ import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts } from '../fixedPay';
 import { parsePositiveNumber } from '../hourlyPay';
+import PayrollDialog from './PayrollDialog';
 import './FixedSalaryForm.css';
-
-interface FormMessage {
-  tone: 'error' | 'success';
-  text: string;
-}
 
 interface FixedSalaryFormProps {
   employees: readonly SystemUser[];
   salaries: readonly FixedSalary[];
   currentUser?: SystemUser | null;
+  /** Sueldo a editar; sin él, es un sueldo nuevo. */
+  salary?: FixedSalary | null;
+  onClose: () => void;
 }
 
-const FixedSalaryForm = ({ employees, salaries, currentUser }: FixedSalaryFormProps) => {
-  const [employeeId, setEmployeeId] = useState('');
-  const [monthlyText, setMonthlyText] = useState('');
-  const [startDate, setStartDate] = useState(todayIso);
+const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: FixedSalaryFormProps) => {
+  const isEditing = !!salary;
+  const [employeeId, setEmployeeId] = useState(salary?.employeeId ?? '');
+  const [monthlyText, setMonthlyText] = useState(salary ? String(salary.monthlyAmount) : '');
+  const [startDate, setStartDate] = useState(() => salary?.startDate || todayIso());
   const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState<FormMessage | null>(null);
+  const [errorText, setErrorText] = useState('');
 
   const employeeOptions = useMemo(
     () => employees
@@ -41,28 +42,34 @@ const FixedSalaryForm = ({ employees, salaries, currentUser }: FixedSalaryFormPr
       .sort((optionA, optionB) => optionA.name.localeCompare(optionB.name)),
     [employees],
   );
-  const employeeName = employeeOptions.find((option) => option.id === employeeId)?.name ?? '';
-  const existingSalary = salaries.find((salary) => salary.employeeId === employeeId);
+  const employeeName = fullName(employees.find((employee) => employee.id === employeeId)) || '';
+  // Un empleado ya tiene a lo más un sueldo (id = empleado): elegirlo de nuevo lo actualiza.
+  const existingSalary = salary ?? salaries.find((savedSalary) => savedSalary.employeeId === employeeId);
   const monthlyAmount = parsePositiveNumber(monthlyText);
   const biweeklyAmounts = monthlyAmount === null ? null : getBiweeklyAmounts(monthlyAmount);
   const canSave = !!employeeId && !!startDate && monthlyAmount !== null && !isSaving;
-  const saveButtonText = existingSalary ? 'Update salary' : 'Save salary';
+  const titleText = isEditing ? 'Edit fixed salary' : 'New fixed salary';
+  const saveButtonText = existingSalary ? 'Save changes' : 'Save salary';
 
-  // Si el empleado ya tiene sueldo fijo, se muestran sus datos para cambiarlos.
+  // En un sueldo nuevo, si el empleado ya tiene uno se cargan sus datos para cambiarlos.
   const handleEmployeeChange = (nextEmployeeId: string) => {
     setEmployeeId(nextEmployeeId);
-    const salary = salaries.find((savedSalary) => savedSalary.employeeId === nextEmployeeId);
-    setMonthlyText(salary ? String(salary.monthlyAmount) : '');
-    setStartDate(salary?.startDate ?? todayIso());
-    setMessage(null);
+    const savedSalary = salaries.find((candidate) => candidate.employeeId === nextEmployeeId);
+    setMonthlyText(savedSalary ? String(savedSalary.monthlyAmount) : '');
+    setStartDate(savedSalary?.startDate ?? todayIso());
+    setErrorText('');
   };
 
   const handleSaveSalary = async () => {
     if (!canSave || monthlyAmount === null) return;
     setIsSaving(true);
-    setMessage(null);
+    setErrorText('');
     try {
-      await fixedSalariesService.create({ employeeId, monthlyAmount, startDate }, fullName(currentUser));
+      if (existingSalary) {
+        await fixedSalariesService.update(employeeId, { monthlyAmount, startDate }, fullName(currentUser));
+      } else {
+        await fixedSalariesService.create({ employeeId, monthlyAmount, startDate }, fullName(currentUser));
+      }
       void logActivity({
         action: existingSalary ? 'update' : 'create',
         module: 'Payroll',
@@ -71,35 +78,46 @@ const FixedSalaryForm = ({ employees, salaries, currentUser }: FixedSalaryFormPr
         targetLabel: employeeName,
         detail: `Fixed salary: ${money(monthlyAmount)} per month from ${formatDate(startDate)}.`,
       });
-      setMessage({ tone: 'success', text: `Fixed salary saved for ${employeeName}.` });
+      onClose();
     } catch (error) {
       console.error('Error saving the fixed salary:', error);
-      setMessage({ tone: 'error', text: 'Could not save the salary. Check your connection and try again.' });
-    } finally {
+      setErrorText('Could not save the salary. Check your connection and try again.');
       setIsSaving(false);
     }
   };
 
+  const footer = (
+    <>
+      <button type="button" className="pdlg-secondary-btn" disabled={isSaving} onClick={onClose}>
+        Cancel
+      </button>
+      <button type="button" className="btn-primary" disabled={!canSave} onClick={handleSaveSalary}>
+        {isSaving ? 'Saving...' : saveButtonText}
+      </button>
+    </>
+  );
+
   return (
-    <section className="fsf-card" aria-label="Fixed salary">
-      <h3 className="fsf-title">
-        <CalendarDays size={18} aria-hidden="true" /> Fixed salary (paid on the 15th and the last day of the month)
-      </h3>
-      <div className="fsf-grid">
-        <div className="fsf-field">
-          <span className="fsf-label">Employee</span>
-          <CustomSelect
-            options={employeeOptions}
-            value={employeeId}
-            onChange={handleEmployeeChange}
-            placeholder="Select employee..."
-            icon={User}
-          />
+    <PayrollDialog title={titleText} icon={CalendarDays} onClose={onClose} footer={footer} isBusy={isSaving} allowOverflow>
+      <div className="pdlg-grid">
+        <div className="pdlg-field fsf-employee">
+          <span className="pdlg-label">Employee</span>
+          {isEditing ? (
+            <input className="pdlg-input" disabled value={employeeName} aria-label="Employee" />
+          ) : (
+            <SearchableSelect
+              options={employeeOptions}
+              value={employeeId}
+              onChange={handleEmployeeChange}
+              placeholder="Search employee..."
+              icon={User}
+            />
+          )}
         </div>
-        <label className="fsf-field">
-          <span className="fsf-label">Monthly salary</span>
+        <label className="pdlg-field">
+          <span className="pdlg-label">Monthly salary</span>
           <input
-            className="fsf-input"
+            className="pdlg-input"
             inputMode="decimal"
             min="0"
             step="0.01"
@@ -108,27 +126,18 @@ const FixedSalaryForm = ({ employees, salaries, currentUser }: FixedSalaryFormPr
             onChange={(event) => setMonthlyText(event.target.value)}
           />
         </label>
-        <label className="fsf-field">
-          <span className="fsf-label">Starts on</span>
-          <DateInput className="fsf-input" value={startDate} onChange={setStartDate} aria-label="Starts on" />
+        <label className="pdlg-field">
+          <span className="pdlg-label">Starts on</span>
+          <DateInput className="pdlg-input" value={startDate} onChange={setStartDate} aria-label="Starts on" />
         </label>
       </div>
-      <div className="fsf-footer">
-        {biweeklyAmounts && (
-          <p className="fsf-split">
-            {money(biweeklyAmounts.firstHalf)} on the 15th · {money(biweeklyAmounts.secondHalf)} on the last day
-          </p>
-        )}
-        <button type="button" className="btn-primary" disabled={!canSave} onClick={handleSaveSalary}>
-          {isSaving ? 'Saving...' : saveButtonText}
-        </button>
-      </div>
-      {message && (
-        <p className={`fsf-message${message.tone === 'error' ? ' is-error' : ''}`} role="status">
-          {message.text}
+      {biweeklyAmounts && (
+        <p className="pdlg-note">
+          {money(biweeklyAmounts.firstHalf)} on the 15th · {money(biweeklyAmounts.secondHalf)} on the last day
         </p>
       )}
-    </section>
+      {errorText && <p className="pdlg-error" role="alert">{errorText}</p>}
+    </PayrollDialog>
   );
 };
 
