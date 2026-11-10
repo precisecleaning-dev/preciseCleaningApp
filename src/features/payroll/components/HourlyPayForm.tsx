@@ -3,9 +3,11 @@
 // con búsqueda), fecha de pago, horas trabajadas y rate; el total (horas × rate)
 // se calcula solo. El recibo de pago se sube como comprobante (las horas se
 // escriben a mano). Se monta de nuevo en cada apertura y se cierra al guardar.
+// Solo salen los empleados con tipo de pago "Hourly" (System Users); su rate
+// guardado (hourly_rates) se propone al elegirlos.
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Clock, FileText, Paperclip, User, X } from 'lucide-react';
-import type { PayrollRecord, SystemUser } from '../../../types/index';
+import type { HourlyRate, PayrollRecord, SystemUser } from '../../../types/index';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import DateInput from '../../../shared/components/DateInput';
 import { todayIso } from '../../../utils/dateFormat';
@@ -13,19 +15,22 @@ import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
 import { calcHourlyTotal, getLastHourlyRate, parsePositiveNumber } from '../hourlyPay';
 import { createHourlyPayment, updateHourlyPayment } from '../services/hourlyPayService';
+import { hasPayType } from '../employeePay';
 import './HourlyPayForm.css';
 
 interface HourlyPayFormProps {
   employees: readonly SystemUser[];
   /** Pagos ya guardados: de ahí sale el último rate de cada empleado. */
   payrollRecords: readonly PayrollRecord[];
+  /** Rate guardado de cada empleado por hora (System Users); manda sobre el último pago. */
+  hourlyRates: readonly HourlyRate[];
   currentUser?: SystemUser | null;
   /** Pago a editar; sin él, es un pago nuevo. */
   payment?: PayrollRecord | null;
   onClose: () => void;
 }
 
-const HourlyPayForm = ({ employees, payrollRecords, currentUser, payment, onClose }: HourlyPayFormProps) => {
+const HourlyPayForm = ({ employees, payrollRecords, hourlyRates, currentUser, payment, onClose }: HourlyPayFormProps) => {
   const isEditing = !!payment;
   const [employeeId, setEmployeeId] = useState(payment?.employeeId ?? '');
   const [payDate, setPayDate] = useState(() => payment?.date || todayIso());
@@ -37,12 +42,14 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, payment, onClos
   const [errorText, setErrorText] = useState('');
   const receiptInputRef = useRef<HTMLInputElement>(null);
 
+  // Empleados por hora activos; al editar, también el del pago aunque ya no sea por hora.
   const employeeOptions = useMemo(
     () => employees
-      .filter((employee) => employee.status !== 'Inactive')
+      .filter((employee) => (employee.status !== 'Inactive' && hasPayType(employee, 'hourly'))
+        || employee.id === payment?.employeeId)
       .map((employee) => ({ id: employee.id, name: fullName(employee) }))
       .sort((optionA, optionB) => optionA.name.localeCompare(optionB.name)),
-    [employees],
+    [employees, payment?.employeeId],
   );
   const employeeName = employeeOptions.find((option) => option.id === employeeId)?.name ?? '';
   const hours = parsePositiveNumber(hoursText);
@@ -73,8 +80,9 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, payment, onClos
     setEmployeeId(nextEmployeeId);
     setErrorText('');
     if (isEditing) return;
-    const lastRate = getLastHourlyRate(payrollRecords, nextEmployeeId);
-    setRateText(lastRate === null ? '' : String(lastRate));
+    const savedRate = hourlyRates.find((rate) => rate.employeeId === nextEmployeeId)?.hourlyRate;
+    const proposedRate = savedRate ?? getLastHourlyRate(payrollRecords, nextEmployeeId);
+    setRateText(proposedRate === null ? '' : String(proposedRate));
   };
 
   const handleReceiptChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -134,6 +142,9 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, payment, onClos
                 placeholder="Search employee..."
                 icon={User}
               />
+              {employeeOptions.length === 0 && (
+                <span className="hpf-hint">No hourly employees: set the pay type in System Users.</span>
+              )}
             </div>
             <label className="hpf-field">
               <span className="hpf-label">Pay date</span>

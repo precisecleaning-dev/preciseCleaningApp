@@ -32,6 +32,7 @@ import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import { deleteFixedPayment } from '../features/payroll/services/fixedPaymentService';
+import { hasPayType } from '../features/payroll/employeePay';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
@@ -195,6 +196,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   }, [payrollLive.data, fullHistory, loadedHouseIds]);
   const usersLive = useLiveCollection('users');
   const employees = usersLive.data;
+  // Asignar nómina: solo empleados que cobran por casa (tipo de pago de System Users; sin tipo = por casa).
+  const perHouseEmployees = useMemo(() => employees.filter(employee => hasPayType(employee, 'perHouse')), [employees]);
   // ⭐ Pestaña Hourly: pagos por horas (sin casa). Con alcance 'Own', solo los propios.
   const hourlyPayments = useMemo(
     () => records.filter(record => isHourlyPayment(record) && (canSeeAllPayroll || record.employeeId === currentUser?.id)),
@@ -270,6 +273,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const hourlyDetailPayment = hourlyPayments.find(payment => payment.id === hourlyDetailId);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
+  // Rate guardado de cada empleado por hora (System Users): lo propone el modal de Hourly.
+  const hourlyRatesLive = useLiveCollection('hourlyRates', canSeeAllPayroll && tab === 'hourly');
   // Modal del sueldo fijo: nuevo o editando uno (se monta de nuevo en cada apertura).
   const [fixedSalaryForm, setFixedSalaryForm] = useState<{ salary: FixedSalary | null } | null>(null);
   // Detalle de un sueldo fijo: se guarda el empleado y se muestra la versión EN VIVO (si lo borran, se cierra).
@@ -1050,6 +1055,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
             key={hourlyForm.payment?.id ?? 'new'}
             employees={employees}
             payrollRecords={records}
+            hourlyRates={hourlyRatesLive.data}
             currentUser={currentUser}
             payment={hourlyForm.payment}
             onClose={() => setHourlyForm(null)}
@@ -1079,14 +1085,14 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
               onChange={e => {
                 const v = e.target.value;
                 setEmployeeQuery(v);
-                const match = employees.find(emp => empName(emp).toLowerCase() === v.toLowerCase().trim());
+                const match = perHouseEmployees.find(emp => empName(emp).toLowerCase() === v.toLowerCase().trim());
                 const next = match ? match.id : '';
                 if (next !== selectedEmployee) setSelectedRecordIds([]);
                 setSelectedEmployee(next);
               }}
             />
             <datalist id="pv-employee-list">
-              {employees.map(emp => <option key={emp.id} value={empName(emp)} />)}
+              {perHouseEmployees.map(emp => <option key={emp.id} value={empName(emp)} />)}
             </datalist>
           </div>
         </div>

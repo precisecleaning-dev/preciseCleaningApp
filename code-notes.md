@@ -3504,3 +3504,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   (Stop). Si el doc del usuario cambia de id (invitación ✈️ o cambio de correo de un pendiente), `moveEmployeePay`
   mueve su rate y su sueldo al id nuevo. OJO: los pagos (payroll) ya creados con el id viejo NO se mueven (pasa
   igual con la nómina por casa): conviene invitar al empleado antes de pagarle.
+- Payroll · empleados por tipo de pago (11/2026, pedido de Omar): cada pestaña muestra solo a los suyos según
+  `payType` de System Users (`hasPayType`): el filtro de empleado de "Asignar nómina" solo lista a los de 'perHouse'
+  (sin tipo = por casa), el modal de Hourly solo a los 'hourly' (al editar, también al del pago aunque haya
+  cambiado de tipo) y el de Fixed pay solo a los 'fixed'. El modal de Hourly propone el rate guardado
+  (hourly_rates) y, si no hay, el del último pago. Sin empleados del tipo, el modal avisa que se asigna en
+  System Users. El PayrollModal de Houses (nómina de cada casa) NO se filtró.

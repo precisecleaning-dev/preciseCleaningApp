@@ -65,6 +65,12 @@
   text-transform: uppercase;
 }
 
+.hpf-hint {
+  color: #b45309;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .hpf-input {
   border: 1px solid #d1d5db;
   border-radius: 10px;

@@ -3,6 +3,7 @@
 // y desde qué fecha aplica; muestra cuánto se paga el 15 y el último día. Con
 // `salary` edita ese sueldo (el empleado no se cambia). Los pagos los crea la
 // Cloud Function createfixedpayroll. Se monta de nuevo en cada apertura.
+// Solo salen los empleados con tipo de pago "Fixed salary" (System Users).
 import { useMemo, useState } from 'react';
 import { CalendarDays, User } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
@@ -15,6 +16,7 @@ import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts } from '../fixedPay';
 import { parsePositiveNumber } from '../hourlyPay';
+import { hasPayType } from '../employeePay';
 import PayrollDialog from './PayrollDialog';
 import './FixedSalaryForm.css';
 
@@ -37,7 +39,7 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
 
   const employeeOptions = useMemo(
     () => employees
-      .filter((employee) => employee.status !== 'Inactive')
+      .filter((employee) => employee.status !== 'Inactive' && hasPayType(employee, 'fixed'))
       .map((employee) => ({ id: employee.id, name: fullName(employee) }))
       .sort((optionA, optionB) => optionA.name.localeCompare(optionB.name)),
     [employees],
@@ -112,6 +114,9 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
               placeholder="Search employee..."
               icon={User}
             />
+          )}
+          {!isEditing && employeeOptions.length === 0 && (
+            <span className="fsf-hint">No fixed-salary employees: set the pay type in System Users.</span>
           )}
         </div>
         <label className="pdlg-field">
