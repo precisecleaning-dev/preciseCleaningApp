@@ -39,7 +39,7 @@ import type { HouseCatalogs } from "../hooks/useHouseCatalogs";
 import type { HouseAccess } from "../hooks/useHouseAccess";
 import { usePendingForHouse, type PhotoQueue } from "../hooks/usePhotoQueue";
 import { useHousePhotos } from "../hooks/useHousePhotos";
-import SearchableSelect from "./SearchableSelect";
+import SearchableSelect from "../../../shared/components/SearchableSelect";
 import CarpetServiceNotice from "./CarpetServiceNotice";
 import ServiceTypePicker from "./ServiceTypePicker";
 import CustomerQuickModal from "./CustomerQuickModal";

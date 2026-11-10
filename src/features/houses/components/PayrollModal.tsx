@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import { CalendarDays, DollarSign, Save, User, X } from "lucide-react";
 import type { PayrollRecord, SystemUser } from "../../../types/index";
 import DateInput from "../../../shared/components/DateInput";
-import SearchableSelect from "./SearchableSelect";
+import SearchableSelect from "../../../shared/components/SearchableSelect";
 
 interface PayrollModalProps {
   initial: PayrollRecord;

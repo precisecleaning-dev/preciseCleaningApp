@@ -4,7 +4,7 @@
 import { Briefcase } from 'lucide-react';
 import type { InvoiceClientSnapshot } from '../../../types/index';
 import type { InvoiceJobOption } from '../hooks/useInvoiceJobOptions';
-import SearchableSelect from '../../houses/components/SearchableSelect';
+import SearchableSelect from '../../../shared/components/SearchableSelect';
 import InvoiceFormField from './InvoiceFormField';
 import InvoiceClientCard from './InvoiceClientCard';
 
