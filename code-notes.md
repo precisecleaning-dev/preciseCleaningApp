@@ -3448,3 +3448,10 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   `startDate` = hoy para que la función no cree los pagos de las quincenas en que estuvo parado. ⚠ La regla de
   `fixed_salaries` deja leer a todo el que tiene Payroll (también alcance 'Own'): la pantalla solo muestra los
   sueldos a quien tiene 'All'; afinar la regla con el alcance si hace falta.
+- Payroll · Cloud Function `createfixedpayroll` (11/2026, decisión de Omar: función programada, no la app): corre
+  a diario a las 6:00 (America/Chicago) y, por cada sueldo de `fixed_salaries` activo, crea en `payroll` los pagos
+  que ya tocan: el 15 y el último día de este mes, y el último día del mes pasado (por si ese día falló). Id fijo
+  `fixed_{empleado}_{AAAA-MM-DD}` con create(): nunca duplica; no crea pagos de antes de `startDate`. Si se BORRA
+  un pago fijo del mes en curso (o del último día del mes pasado), la función lo vuelve a crear al día siguiente.
+  ⚠ Pendiente: desplegarla (`npm --prefix functions run build` y `firebase deploy --only functions:createfixedpayroll`;
+  Claude no despliega) — sin eso no se crean los pagos.
