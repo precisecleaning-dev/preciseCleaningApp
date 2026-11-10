@@ -58,3 +58,14 @@ export interface FixedSalary {
   /** Fechas de pago (AAAA-MM-DD) cuyo pago se borró a mano: la Cloud Function no lo vuelve a crear. */
   skippedPayDates?: string[];
 }
+
+/** Rate por hora de un empleado (colección hourly_rates; id = id del empleado). Solo lo ve Payroll. */
+export interface HourlyRate {
+  id: string;
+  employeeId: string;
+  /** Dólares por hora; es el rate que propone la pestaña Hourly. */
+  hourlyRate: number;
+  /** Fecha y hora ISO de la última modificación y quién la hizo. */
+  updatedAt: string;
+  updatedByUserName: string;
+}

@@ -3490,3 +3490,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Payroll · Fixed pay detalle del pago quincenal (11/2026, pedido de Omar): clic (o Enter) en una fila de pagos fijos
   abre `FixedPaymentDetail` (solo lectura: monto, quincena, fecha, estado, pagado el/por). La vista guarda el id y
   muestra el pago EN VIVO. Los botones de la fila no abren el detalle (`stopRowClick`).
+- Payroll · colección hourly_rates (11/2026, aprobado por Omar): rate por hora de cada empleado que cobra por hora,
+  un doc por empleado (id = id del empleado; tipo `HourlyRate`, `hourlyRatesService`, live 'hourlyRates'). Es
+  privada como fixed_salaries: el monto NO va en system_users porque cualquier usuario activo puede leer esa
+  colección. Reglas: leer has('Payroll'), crear/editar canDo('Payroll','e'), borrar canDo('Payroll','d'), con su
+  prueba. Pendiente (Omar): publicar la regla en Firebase. Mismo aviso que fixed_salaries: con alcance 'Own' la
+  regla deja leerla (la pantalla no la muestra).

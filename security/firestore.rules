@@ -274,6 +274,14 @@ service cloud.firestore {
       allow delete: if canDo('Payroll', 'd');
     }
 
+    // Rate por hora de cada empleado (uno por empleado, id = id del empleado).
+    // Igual que los sueldos fijos: solo Payroll (es lo que gana cada persona).
+    match /hourly_rates/{employeeId} {
+      allow read: if has('Payroll');
+      allow create, update: if canDo('Payroll', 'e');
+      allow delete: if canDo('Payroll', 'd');
+    }
+
     // Historial de status: se agrega, nunca se edita ni se borra.
     match /status_history/{entryId} {
       allow read: if active();

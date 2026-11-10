@@ -196,6 +196,14 @@ describe('dinero', () => {
     await assertFails(setDoc(doc(as('sandy@precise.test'), 'fixed_salaries', 'u-emp'), { employeeId: 'u-emp', monthlyAmount: 3000 }));
     await assertSucceeds(setDoc(doc(as('admin@precise.test'), 'fixed_salaries', 'u-emp'), { employeeId: 'u-emp', monthlyAmount: 3000 }));
   });
+
+  test('rates por hora: solo Payroll los ve y los edita', async () => {
+    await assertFails(getDocs(collection(as('cleaner@precise.test'), 'hourly_rates')));
+    await assertFails(getDocs(collection(as('sandy@precise.test'), 'hourly_rates')));
+    await assertSucceeds(getDocs(collection(as('owner@precise.test'), 'hourly_rates')));
+    await assertFails(setDoc(doc(as('sandy@precise.test'), 'hourly_rates', 'u-emp'), { employeeId: 'u-emp', hourlyRate: 15 }));
+    await assertSucceeds(setDoc(doc(as('admin@precise.test'), 'hourly_rates', 'u-emp'), { employeeId: 'u-emp', hourlyRate: 15 }));
+  });
 });
 
 describe('casas', () => {
