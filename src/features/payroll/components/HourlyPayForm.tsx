@@ -1,10 +1,10 @@
 // src/features/payroll/components/HourlyPayForm.tsx
-// Modal para capturar un pago por horas: empleado (de System Users, con
-// búsqueda), fecha de pago, horas trabajadas y rate; el total (horas × rate) se
-// calcula solo. El recibo de pago se sube como comprobante (las horas se
+// Modal para capturar o editar un pago por horas: empleado (de System Users,
+// con búsqueda), fecha de pago, horas trabajadas y rate; el total (horas × rate)
+// se calcula solo. El recibo de pago se sube como comprobante (las horas se
 // escriben a mano). Se monta de nuevo en cada apertura y se cierra al guardar.
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Clock, Paperclip, User, X } from 'lucide-react';
+import { Clock, FileText, Paperclip, User, X } from 'lucide-react';
 import type { PayrollRecord, SystemUser } from '../../../types/index';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
 import DateInput from '../../../shared/components/DateInput';
@@ -12,7 +12,7 @@ import { todayIso } from '../../../utils/dateFormat';
 import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
 import { calcHourlyTotal, getLastHourlyRate, parsePositiveNumber } from '../hourlyPay';
-import { createHourlyPayment } from '../services/hourlyPayService';
+import { createHourlyPayment, updateHourlyPayment } from '../services/hourlyPayService';
 import './HourlyPayForm.css';
 
 interface HourlyPayFormProps {
@@ -20,15 +20,19 @@ interface HourlyPayFormProps {
   /** Pagos ya guardados: de ahí sale el último rate de cada empleado. */
   payrollRecords: readonly PayrollRecord[];
   currentUser?: SystemUser | null;
+  /** Pago a editar; sin él, es un pago nuevo. */
+  payment?: PayrollRecord | null;
   onClose: () => void;
 }
 
-const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: HourlyPayFormProps) => {
-  const [employeeId, setEmployeeId] = useState('');
-  const [payDate, setPayDate] = useState(todayIso);
-  const [hoursText, setHoursText] = useState('');
-  const [rateText, setRateText] = useState('');
+const HourlyPayForm = ({ employees, payrollRecords, currentUser, payment, onClose }: HourlyPayFormProps) => {
+  const isEditing = !!payment;
+  const [employeeId, setEmployeeId] = useState(payment?.employeeId ?? '');
+  const [payDate, setPayDate] = useState(() => payment?.date || todayIso());
+  const [hoursText, setHoursText] = useState(payment?.hours ? String(payment.hours) : '');
+  const [rateText, setRateText] = useState(payment?.hourlyRate ? String(payment.hourlyRate) : '');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [keepCurrentReceipt, setKeepCurrentReceipt] = useState(!!payment?.receiptUrl);
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
   const receiptInputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +49,11 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
   const hourlyRate = parsePositiveNumber(rateText);
   const totalText = hours !== null && hourlyRate !== null ? money(calcHourlyTotal(hours, hourlyRate)) : '—';
   const canSave = !!employeeId && !!payDate && hours !== null && hourlyRate !== null && !isSaving;
-  const receiptButtonText = receiptFile ? receiptFile.name : 'Attach pay receipt';
+  const hasCurrentReceipt = keepCurrentReceipt && !receiptFile && !!payment?.receiptUrl;
+  const attachText = hasCurrentReceipt ? 'Replace pay receipt' : 'Attach pay receipt';
+  const receiptButtonText = receiptFile ? receiptFile.name : attachText;
+  const titleText = isEditing ? 'Edit hourly payment' : 'New hourly payment';
+  const saveButtonText = isEditing ? 'Save changes' : 'Save payment';
 
   // Mientras se guarda no se puede cerrar (la X, el fondo y Escape esperan).
   const handleClose = () => {
@@ -60,12 +68,13 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSaving, onClose]);
 
-  // Al elegir empleado se propone su último rate (se puede cambiar).
+  // En un pago nuevo, al elegir empleado se propone su último rate (se puede cambiar).
   const handleEmployeeChange = (nextEmployeeId: string) => {
     setEmployeeId(nextEmployeeId);
+    setErrorText('');
+    if (isEditing) return;
     const lastRate = getLastHourlyRate(payrollRecords, nextEmployeeId);
     setRateText(lastRate === null ? '' : String(lastRate));
-    setErrorText('');
   };
 
   const handleReceiptChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -81,8 +90,13 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
     if (!canSave || hours === null || hourlyRate === null) return;
     setIsSaving(true);
     setErrorText('');
+    const paymentInput = { employeeId, employeeName, date: payDate, hours, hourlyRate, receiptFile };
     try {
-      await createHourlyPayment({ employeeId, employeeName, date: payDate, hours, hourlyRate, receiptFile }, currentUser);
+      if (payment) {
+        await updateHourlyPayment(payment, { ...paymentInput, keepCurrentReceipt }, currentUser);
+      } else {
+        await createHourlyPayment(paymentInput, currentUser);
+      }
       onClose();
     } catch (error) {
       console.error('Error saving the hourly payment:', error);
@@ -102,7 +116,7 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
       >
         <header className="hpf-header">
           <h3 id="hpf-title" className="hpf-title">
-            <Clock size={18} aria-hidden="true" /> New hourly payment
+            <Clock size={18} aria-hidden="true" /> {titleText}
           </h3>
           <button type="button" className="hpf-close-btn" aria-label="Close" disabled={isSaving} onClick={handleClose}>
             <X size={20} />
@@ -168,6 +182,21 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
                 <X size={16} />
               </button>
             )}
+            {hasCurrentReceipt && (
+              <>
+                <a className="hpf-current-receipt" href={payment?.receiptUrl} rel="noopener noreferrer" target="_blank">
+                  <FileText size={14} aria-hidden="true" /> Current receipt
+                </a>
+                <button
+                  type="button"
+                  className="hpf-receipt-remove"
+                  aria-label="Remove current receipt"
+                  onClick={() => setKeepCurrentReceipt(false)}
+                >
+                  <X size={16} />
+                </button>
+              </>
+            )}
           </div>
 
           <p className="hpf-total">
@@ -181,7 +210,7 @@ const HourlyPayForm = ({ employees, payrollRecords, currentUser, onClose }: Hour
             Cancel
           </button>
           <button type="button" className="btn-primary" disabled={!canSave} onClick={handleSavePayment}>
-            {isSaving ? 'Saving...' : 'Save payment'}
+            {isSaving ? 'Saving...' : saveButtonText}
           </button>
         </footer>
       </section>

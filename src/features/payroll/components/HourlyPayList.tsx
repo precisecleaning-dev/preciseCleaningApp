@@ -1,8 +1,9 @@
 // src/features/payroll/components/HourlyPayList.tsx
 // Pagos por horas guardados (más reciente primero): fecha, empleado, horas ×
 // rate, total, recibo y estado. Arriba, el botón que abre el modal de un pago
-// nuevo (onNewPayment). "Mark paid" lo resuelve la vista (onMarkPaid).
-import { CheckCircle, FileText, Plus } from 'lucide-react';
+// nuevo (onNewPayment). "Mark paid", editar y borrar los resuelve la vista
+// (onMarkPaid, onEdit, onDelete); sin onEdit/onDelete no hay columna de acciones.
+import { CheckCircle, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
 import { formatDate } from '../../../utils/dateFormat';
@@ -14,9 +15,11 @@ interface HourlyPayRowProps {
   employeeName: string;
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
+  onEdit?: (payment: PayrollRecord) => void;
+  onDelete?: (payment: PayrollRecord) => void;
 }
 
-const HourlyPayRow = ({ payment, employeeName, canMarkPaid, onMarkPaid }: HourlyPayRowProps) => {
+const HourlyPayRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete }: HourlyPayRowProps) => {
   const isPaid = payment.status === 'Paid';
   const hoursText = `${payment.hours ?? 0} h × ${money(payment.hourlyRate ?? 0)}`;
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
@@ -42,6 +45,26 @@ const HourlyPayRow = ({ payment, employeeName, canMarkPaid, onMarkPaid }: Hourly
           </button>
         )}
       </span>
+      {(onEdit || onDelete) && (
+        <span className="hpl-actions">
+          {onEdit && (
+            <button type="button" className="hpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
+              <Pencil size={16} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="hpl-icon-btn is-delete"
+              aria-label="Delete payment"
+              title="Delete"
+              onClick={() => onDelete(payment)}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </span>
+      )}
     </div>
   );
 };
@@ -68,9 +91,14 @@ interface HourlyPayListProps {
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
   onNewPayment?: () => void;
+  onEdit?: (payment: PayrollRecord) => void;
+  onDelete?: (payment: PayrollRecord) => void;
 }
 
-const HourlyPayList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, onNewPayment }: HourlyPayListProps) => {
+const HourlyPayList = ({
+  payments, getEmployeeName, canMarkPaid, onMarkPaid, onNewPayment, onEdit, onDelete,
+}: HourlyPayListProps) => {
+  const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
 
   if (sortedPayments.length === 0) {
@@ -85,7 +113,7 @@ const HourlyPayList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, onN
   return (
     <>
       <HourlyPayToolbar onNewPayment={onNewPayment} />
-      <section className="hpl-card" aria-label="Hourly payments">
+      <section className={`hpl-card${hasActions ? ' has-actions' : ''}`} aria-label="Hourly payments">
         <div className="hpl-head" aria-hidden="true">
           <span>Pay date</span>
           <span>Employee</span>
@@ -93,6 +121,7 @@ const HourlyPayList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, onN
           <span>Total</span>
           <span>Receipt</span>
           <span>Status</span>
+          {hasActions && <span>Actions</span>}
         </div>
         <VirtualItems
           className="hpl-list"
@@ -105,6 +134,8 @@ const HourlyPayList = ({ payments, getEmployeeName, canMarkPaid, onMarkPaid, onN
               employeeName={getEmployeeName(payment.employeeId)}
               canMarkPaid={canMarkPaid}
               onMarkPaid={onMarkPaid}
+              onEdit={onEdit}
+              onDelete={onDelete}
             />
           )}
         />

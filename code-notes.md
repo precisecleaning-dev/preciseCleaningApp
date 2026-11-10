@@ -3459,3 +3459,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   .modal-overlay-centered + .modal-50) que abre el botón "New hourly payment" de la lista (solo alcance 'All'); se
   cierra al guardar. El empleado se elige con `SearchableSelect` (búsqueda). `.modal-50.hpf-modal` lleva
   overflow visible para que la lista del buscador no quede cortada por el modal.
+- Payroll · Hourly editar y borrar (11/2026, pedido de Omar): con alcance 'All' cada fila tiene Edit (abre el mismo
+  modal con el pago, `updateHourlyPayment`) y Delete (confirma, `deleteHourlyPayment`). Editar no cambia el estado
+  (Pending / Paid) ni propone el último rate. El recibo anterior (reemplazado o quitado) y el de un pago borrado se
+  borran de Storage DESPUÉS de guardar, sin bloquear si falla: la propuesta de security/storage.rules solo deja
+  borrar con Quality Check o Task List, así que sin esos permisos el archivo se queda en Storage (no es un error).

@@ -12,7 +12,7 @@ import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore
 import type { PayrollRecord, Property, SystemUser, Role } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { commitOps, type BatchOp } from '../shared/data/batchWrites';
-import { getPayrollTotal } from '../utils/jobFinancials';
+import { getPayrollTotal, money } from '../utils/jobFinancials';
 import { getRelationName, getRelationColor } from '../utils/relations';
 import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
@@ -29,6 +29,7 @@ import MenuButton from '../shared/components/MenuButton';
 import HourlyPayForm from '../features/payroll/components/HourlyPayForm';
 import HourlyPayList from '../features/payroll/components/HourlyPayList';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
+import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
@@ -257,7 +258,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // ⭐ Pestañas del módulo: 'asignar' = registros de Pay (tabla de siempre);
   //    'nominas' = tarjetas semanales por empleado.
   const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly' | 'fixed'>('asignar');
-  const [isHourlyFormOpen, setIsHourlyFormOpen] = useState(false);
+  // Modal del pago por horas: nuevo o editando uno (se monta de nuevo en cada apertura).
+  const [hourlyForm, setHourlyForm] = useState<{ payment: PayrollRecord | null } | null>(null);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
 
@@ -708,6 +710,17 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
+  const handleDeleteHourlyPayment = async (payment: PayrollRecord) => {
+    const employeeName = getEmployeeName(payment.employeeId);
+    if (!window.confirm(`Delete the hourly payment of ${employeeName} (${money(payment.totalAmount)})? This cannot be undone.`)) return;
+    try {
+      await deleteHourlyPayment(payment, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error deleting the hourly payment:', error);
+      alert('Could not delete the payment. Check your connection and try again.');
+    }
+  };
+
   const handleMarkAsPending = async (record: PayrollRecordExt) => {
     if (!record.id) return;
     if (!window.confirm("Change status back to Pending?")) return;
@@ -947,14 +960,18 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           getEmployeeName={getEmployeeName}
           canMarkPaid={canSeeAllPayroll}
           onMarkPaid={handleMarkAsPaid}
-          onNewPayment={canSeeAllPayroll ? () => setIsHourlyFormOpen(true) : undefined}
+          onNewPayment={canSeeAllPayroll ? () => setHourlyForm({ payment: null }) : undefined}
+          onEdit={canSeeAllPayroll ? (payment) => setHourlyForm({ payment }) : undefined}
+          onDelete={canSeeAllPayroll ? handleDeleteHourlyPayment : undefined}
         />
-        {canSeeAllPayroll && isHourlyFormOpen && (
+        {canSeeAllPayroll && hourlyForm && (
           <HourlyPayForm
+            key={hourlyForm.payment?.id ?? 'new'}
             employees={employees}
             payrollRecords={records}
             currentUser={currentUser}
-            onClose={() => setIsHourlyFormOpen(false)}
+            payment={hourlyForm.payment}
+            onClose={() => setHourlyForm(null)}
           />
         )}
       </>)}
