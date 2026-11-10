@@ -3476,3 +3476,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Payroll · Fixed pay editar y borrar sueldos (11/2026, pedido de Omar): cada fila de "Fixed salaries" tiene Edit
   (el mismo modal con el sueldo; el empleado no se cambia) y Delete (confirma y borra el doc de fixed_salaries: la
   Cloud Function deja de crear pagos; los pagos ya creados se quedan). Stop / Resume siguen igual.
+- Payroll · Fixed pay detalle del sueldo (11/2026, pedido de Omar): clic (o Enter) en una fila de "Fixed salaries"
+  abre `FixedSalaryDetail` (solo lectura: sueldo, lo del 15 y del último día, desde cuándo, estado, último cambio y
+  los pagos que ya creó la función). La vista guarda el empleado y muestra el sueldo EN VIVO (si lo borran, se cierra).

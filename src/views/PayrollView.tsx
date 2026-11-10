@@ -33,6 +33,7 @@ import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
+import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
 import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
 import { isFixedPayment } from '../features/payroll/fixedPay';
 
@@ -268,6 +269,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
   // Modal del sueldo fijo: nuevo o editando uno (se monta de nuevo en cada apertura).
   const [fixedSalaryForm, setFixedSalaryForm] = useState<{ salary: FixedSalary | null } | null>(null);
+  // Detalle de un sueldo fijo: se guarda el empleado y se muestra la versión EN VIVO (si lo borran, se cierra).
+  const [fixedSalaryDetailId, setFixedSalaryDetailId] = useState('');
+  const fixedSalaryDetail = fixedSalariesLive.data.find(salary => salary.employeeId === fixedSalaryDetailId);
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -952,6 +956,15 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
             currentUser={currentUser}
             onNewSalary={() => setFixedSalaryForm({ salary: null })}
             onEdit={(salary) => setFixedSalaryForm({ salary })}
+            onOpenDetail={(salary) => setFixedSalaryDetailId(salary.employeeId)}
+          />
+        )}
+        {canSeeAllPayroll && fixedSalaryDetail && (
+          <FixedSalaryDetail
+            salary={fixedSalaryDetail}
+            employeeName={getEmployeeName(fixedSalaryDetail.employeeId)}
+            payments={fixedPayments.filter(payment => payment.employeeId === fixedSalaryDetail.employeeId)}
+            onClose={() => setFixedSalaryDetailId('')}
           />
         )}
         {canSeeAllPayroll && fixedSalaryForm && (

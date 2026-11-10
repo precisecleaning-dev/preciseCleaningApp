@@ -5,8 +5,9 @@
 // así la Cloud Function no crea los de las quincenas en que estuvo parado).
 // Arriba, el botón que abre el modal de un sueldo nuevo (onNewSalary). Cada
 // fila tiene Edit (abre el mismo modal: onEdit) y Delete (borra el sueldo; los
-// pagos ya creados se quedan).
-import { useState } from 'react';
+// pagos ya creados se quedan). Clic (o Enter) en la fila abre su detalle
+// (onOpenDetail); los botones de la fila no lo abren.
+import { useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
 import { fixedSalariesService } from '../../../services/fixedSalariesService';
@@ -24,25 +25,45 @@ interface FixedSalaryRowProps {
   onToggleActive: (salary: FixedSalary) => void;
   onEdit: (salary: FixedSalary) => void;
   onDelete: (salary: FixedSalary) => void;
+  onOpenDetail: (salary: FixedSalary) => void;
 }
 
-const FixedSalaryRow = ({ salary, employeeName, isUpdating, onToggleActive, onEdit, onDelete }: FixedSalaryRowProps) => {
+/** Los botones de la fila no abren el detalle. */
+const stopRowClick = (event: MouseEvent) => event.stopPropagation();
+
+const FixedSalaryRow = ({
+  salary, employeeName, isUpdating, onToggleActive, onEdit, onDelete, onOpenDetail,
+}: FixedSalaryRowProps) => {
   const { firstHalf, secondHalf } = getBiweeklyAmounts(salary.monthlyAmount);
   const toggleText = salary.active ? 'Stop' : 'Resume';
 
+  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    onOpenDetail(salary);
+  };
+
   return (
-    <li className="fsl-row">
+    <li
+      className="fsl-row is-clickable"
+      role="button"
+      tabIndex={0}
+      aria-label={`View fixed salary of ${employeeName}`}
+      onClick={() => onOpenDetail(salary)}
+      onKeyDown={handleRowKeyDown}
+    >
       <span className="fsl-employee">{employeeName}</span>
       <strong className="fsl-amount">{money(salary.monthlyAmount)}</strong>
       <span className="fsl-split">{money(firstHalf)} / {money(secondHalf)}</span>
       <span className="fsl-start">{formatDate(salary.startDate)}</span>
-      <span className="fsl-actions">
+      <span className="fsl-actions" onClick={stopRowClick}>
         <span className={`fsl-badge${salary.active ? ' is-active' : ''}`}>{salary.active ? 'Active' : 'Stopped'}</span>
         <button type="button" className="fsl-toggle-btn" disabled={isUpdating} onClick={() => onToggleActive(salary)}>
           {toggleText}
         </button>
       </span>
-      <span className="fsl-row-actions">
+      <span className="fsl-row-actions" onClick={stopRowClick}>
         <button type="button" className="fsl-icon-btn" aria-label="Edit salary" title="Edit" onClick={() => onEdit(salary)}>
           <Pencil size={16} />
         </button>
@@ -80,9 +101,12 @@ interface FixedSalaryListProps {
   currentUser?: SystemUser | null;
   onNewSalary: () => void;
   onEdit: (salary: FixedSalary) => void;
+  onOpenDetail: (salary: FixedSalary) => void;
 }
 
-const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary, onEdit }: FixedSalaryListProps) => {
+const FixedSalaryList = ({
+  salaries, getEmployeeName, currentUser, onNewSalary, onEdit, onOpenDetail,
+}: FixedSalaryListProps) => {
   const [updatingEmployeeId, setUpdatingEmployeeId] = useState('');
   const sortedSalaries = [...salaries].sort((salaryA, salaryB) =>
     getEmployeeName(salaryA.employeeId).localeCompare(getEmployeeName(salaryB.employeeId)));
@@ -166,6 +190,7 @@ const FixedSalaryList = ({ salaries, getEmployeeName, currentUser, onNewSalary, 
               onToggleActive={handleToggleActive}
               onEdit={onEdit}
               onDelete={handleDelete}
+              onOpenDetail={onOpenDetail}
             />
           ))}
         </ul>

@@ -54,6 +54,19 @@
   font-size: 0.9rem;
 }
 
+.fsl-row.is-clickable {
+  cursor: pointer;
+}
+
+.fsl-row.is-clickable:hover {
+  background: #f8fafc;
+}
+
+.fsl-row.is-clickable:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
 .fsl-employee {
   color: #0f172a;
   font-weight: 600;
