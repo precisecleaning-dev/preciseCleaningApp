@@ -3479,3 +3479,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Payroll · Fixed pay detalle del sueldo (11/2026, pedido de Omar): clic (o Enter) en una fila de "Fixed salaries"
   abre `FixedSalaryDetail` (solo lectura: sueldo, lo del 15 y del último día, desde cuándo, estado, último cambio y
   los pagos que ya creó la función). La vista guarda el empleado y muestra el sueldo EN VIVO (si lo borran, se cierra).
+- Payroll · Fixed pay editar un pago quincenal (11/2026, pedido de Omar): Edit en la tabla de pagos fijos abre
+  `FixedPaymentForm`, que solo cambia el monto de ESE pago (`updateFixedPaymentAmount`, baseAmount y totalAmount);
+  fecha, quincena, empleado y estado no se tocan. Para cambiar los pagos siguientes se edita el sueldo fijo.

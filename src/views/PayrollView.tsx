@@ -34,6 +34,7 @@ import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayServi
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
+import FixedPaymentForm from '../features/payroll/components/FixedPaymentForm';
 import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
 import { isFixedPayment } from '../features/payroll/fixedPay';
 
@@ -272,6 +273,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // Detalle de un sueldo fijo: se guarda el empleado y se muestra la versión EN VIVO (si lo borran, se cierra).
   const [fixedSalaryDetailId, setFixedSalaryDetailId] = useState('');
   const fixedSalaryDetail = fixedSalariesLive.data.find(salary => salary.employeeId === fixedSalaryDetailId);
+  // Modal para corregir el monto de un pago fijo (se guarda el id; se usa la versión EN VIVO).
+  const [fixedPaymentEditId, setFixedPaymentEditId] = useState('');
+  const fixedPaymentEdit = fixedPayments.find(payment => payment.id === fixedPaymentEditId);
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -982,7 +986,17 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           getEmployeeName={getEmployeeName}
           canMarkPaid={canSeeAllPayroll}
           onMarkPaid={handleMarkAsPaid}
+          onEdit={canSeeAllPayroll ? (payment) => setFixedPaymentEditId(payment.id ?? '') : undefined}
         />
+        {canSeeAllPayroll && fixedPaymentEdit && (
+          <FixedPaymentForm
+            key={fixedPaymentEdit.id}
+            payment={fixedPaymentEdit}
+            employeeName={getEmployeeName(fixedPaymentEdit.employeeId)}
+            currentUser={currentUser}
+            onClose={() => setFixedPaymentEditId('')}
+          />
+        )}
       </>)}
 
       {/* ═══════════ PESTAÑA HOURLY: pagos por horas (features/payroll) ═══════════ */}
