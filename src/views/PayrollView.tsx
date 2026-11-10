@@ -257,6 +257,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // ⭐ Pestañas del módulo: 'asignar' = registros de Pay (tabla de siempre);
   //    'nominas' = tarjetas semanales por empleado.
   const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly' | 'fixed'>('asignar');
+  const [isHourlyFormOpen, setIsHourlyFormOpen] = useState(false);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
 
@@ -941,13 +942,21 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
       {/* ═══════════ PESTAÑA HOURLY: pagos por horas (features/payroll) ═══════════ */}
       {tab === 'hourly' && (<>
-        {canSeeAllPayroll && <HourlyPayForm employees={employees} payrollRecords={records} currentUser={currentUser} />}
         <HourlyPayList
           payments={hourlyPayments}
           getEmployeeName={getEmployeeName}
           canMarkPaid={canSeeAllPayroll}
           onMarkPaid={handleMarkAsPaid}
+          onNewPayment={canSeeAllPayroll ? () => setIsHourlyFormOpen(true) : undefined}
         />
+        {canSeeAllPayroll && isHourlyFormOpen && (
+          <HourlyPayForm
+            employees={employees}
+            payrollRecords={records}
+            currentUser={currentUser}
+            onClose={() => setIsHourlyFormOpen(false)}
+          />
+        )}
       </>)}
 
       {/* ═══════════ PESTAÑA 1: ASIGNAR NÓMINA (registros creados desde "Pay" en Houses) ═══════════ */}

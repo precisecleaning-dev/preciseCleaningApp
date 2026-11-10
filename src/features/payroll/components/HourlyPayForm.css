@@ -1,10 +1,17 @@
-/* Formulario de un pago por horas (pestaña Hourly de Payroll). */
-.hpf-card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  margin-bottom: 20px;
-  padding: 20px;
+/* Modal de un pago por horas (pestaña Hourly de Payroll). Fondo y caja: .modal-overlay-centered y .modal-50 (index.css). */
+
+/* .modal-50 corta lo que sobresale: aquí no, para que la lista del empleado no quede cortada. */
+.modal-50.hpf-modal {
+  overflow: visible;
+}
+
+.hpf-header {
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 16px 20px;
 }
 
 .hpf-title {
@@ -14,13 +21,33 @@
   font-size: 1rem;
   font-weight: 700;
   gap: 8px;
-  margin: 0 0 16px;
+  margin: 0;
+}
+
+.hpf-close-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.hpf-close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.hpf-body {
+  padding: 20px;
 }
 
 .hpf-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .hpf-field {
@@ -100,24 +127,46 @@
   color: #b91c1c;
 }
 
-.hpf-footer {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: space-between;
-  margin-top: 16px;
-}
-
 .hpf-total {
   color: #334155;
   font-size: 1rem;
-  margin: 0;
+  margin: 16px 0 0;
 }
 
 .hpf-total strong {
   color: #0f172a;
   font-size: 1.25rem;
+}
+
+.hpf-error {
+  color: #b91c1c;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+
+.hpf-footer {
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 20px;
+}
+
+.hpf-cancel-btn {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 600;
+  height: 42px;
+  padding: 0 18px;
+}
+
+.hpf-cancel-btn:hover {
+  background: #f8fafc;
 }
 
 /* .btn-primary (App.css) no tiene estilo deshabilitado: falta un dato o se está guardando. */
@@ -126,27 +175,12 @@
   opacity: 0.55;
 }
 
-.hpf-message {
-  color: #047857;
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: 12px 0 0;
-}
-
-.hpf-message.is-error {
-  color: #b91c1c;
-}
-
-@media (max-width: 1024px) {
-  .hpf-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
+/* Teléfono: un campo por fila y los botones a lo ancho. */
 @media (max-width: 768px) {
-  .hpf-footer .btn-primary {
+  .hpf-footer .btn-primary,
+  .hpf-cancel-btn {
+    flex: 1;
     justify-content: center;
-    width: 100%;
   }
   .hpf-grid {
     grid-template-columns: minmax(0, 1fr);

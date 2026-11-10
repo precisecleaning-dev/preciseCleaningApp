@@ -3455,3 +3455,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   un pago fijo del mes en curso (o del último día del mes pasado), la función lo vuelve a crear al día siguiente.
   ⚠ Pendiente: desplegarla (`npm --prefix functions run build` y `firebase deploy --only functions:createfixedpayroll`;
   Claude no despliega) — sin eso no se crean los pagos.
+- Payroll · Hourly en modal (11/2026, pedido de Omar): el pago por horas se captura en un modal (`HourlyPayForm`,
+  .modal-overlay-centered + .modal-50) que abre el botón "New hourly payment" de la lista (solo alcance 'All'); se
+  cierra al guardar. El empleado se elige con `SearchableSelect` (búsqueda). `.modal-50.hpf-modal` lleva
+  overflow visible para que la lista del buscador no quede cortada por el modal.
