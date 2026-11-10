@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import {
   User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
-  Search, Wallet, ClipboardList, ChevronDown, ChevronRight
+  Search, Wallet, ClipboardList, ChevronDown, ChevronRight, Timer
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
@@ -26,6 +26,9 @@ import { periodRange, type PeriodState } from '../utils/periods';
 import VirtualItems from '../shared/components/VirtualItems';
 import './PayrollView.css';
 import MenuButton from '../shared/components/MenuButton';
+import HourlyPayForm from '../features/payroll/components/HourlyPayForm';
+import HourlyPayList from '../features/payroll/components/HourlyPayList';
+import { isHourlyPayment } from '../features/payroll/hourlyPay';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -182,6 +185,13 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   }, [payrollLive.data, fullHistory, loadedHouseIds]);
   const usersLive = useLiveCollection('users');
   const employees = usersLive.data;
+  // ⭐ Pestaña Hourly: pagos por horas (sin casa). Con alcance 'Own', solo los propios.
+  const hourlyPayments = useMemo(
+    () => records.filter(record => isHourlyPayment(record) && (canSeeAllPayroll || record.employeeId === currentUser?.id)),
+    [records, canSeeAllPayroll, currentUser?.id],
+  );
+  const getEmployeeName = (employeeId: string) =>
+    empName(employees.find(employee => employee.id === employeeId)) || 'Unknown';
 
   // Catálogos para el detalle de la casa
   const statusesLive = useLiveCollection('statuses');
@@ -237,7 +247,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
   // ⭐ Pestañas del módulo: 'asignar' = registros de Pay (tabla de siempre);
   //    'nominas' = tarjetas semanales por empleado.
-  const [tab, setTab] = useState<'asignar' | 'nominas'>('asignar');
+  const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly'>('asignar');
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -894,7 +904,21 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
         <button className={`pv-tab-btn${tab === 'nominas' ? ' active' : ''}`} onClick={() => setTab('nominas')}>
           <Wallet size={16} /> Nóminas
         </button>
+        <button className={`pv-tab-btn${tab === 'hourly' ? ' active' : ''}`} onClick={() => setTab('hourly')}>
+          <Timer size={16} /> Hourly
+        </button>
       </div>
+
+      {/* ═══════════ PESTAÑA HOURLY: pagos por horas (features/payroll) ═══════════ */}
+      {tab === 'hourly' && (<>
+        {canSeeAllPayroll && <HourlyPayForm employees={employees} payrollRecords={records} currentUser={currentUser} />}
+        <HourlyPayList
+          payments={hourlyPayments}
+          getEmployeeName={getEmployeeName}
+          canMarkPaid={canSeeAllPayroll}
+          onMarkPaid={handleMarkAsPaid}
+        />
+      </>)}
 
       {/* ═══════════ PESTAÑA 1: ASIGNAR NÓMINA (registros creados desde "Pay" en Houses) ═══════════ */}
       {tab === 'asignar' && (<>

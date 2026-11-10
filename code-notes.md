@@ -3429,3 +3429,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   features/houses/components a src/shared/components porque ahora también lo usa Payroll. Sin cambios de
   comportamiento; sus clases conservan el prefijo `hv-searchsel-*`. Pendiente (lo hace Omar, Claude no edita
   CLAUDE.md): agregarlo a la lista de "Componentes compartidos".
+- Payroll · pago por horas (11/2026, pedido de Omar): pestaña "Hourly" en Payroll (features/payroll/). Se captura
+  empleado (System Users), fecha de pago, horas y rate; total = horas × rate (`calcHourlyTotal`, redondeo a
+  centavos). Al elegir empleado se propone su último rate. Se guarda en `payroll` sin casa (propertyId vacío) con
+  payType 'hourly', hours, hourlyRate y el recibo (Storage `payroll_receipts/{empleado}/…`, receiptUrl). Las horas
+  se escriben A MANO: leerlas del recibo quedó para después (decisión de Omar). Estos pagos no entran a "Asignar
+  nómina" ni a "Nóminas" (esas filtran por casa o batchId) ni al Profit de un trabajo (no tienen propertyId).

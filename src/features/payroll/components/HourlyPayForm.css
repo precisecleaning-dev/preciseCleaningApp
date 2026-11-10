@@ -1,0 +1,154 @@
+/* Formulario de un pago por horas (pestaña Hourly de Payroll). */
+.hpf-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  padding: 20px;
+}
+
+.hpf-title {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 1rem;
+  font-weight: 700;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.hpf-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.hpf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hpf-label {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hpf-input {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.hpf-receipt {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.hpf-receipt-btn {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 600;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.hpf-receipt-btn:hover {
+  background: #f1f5f9;
+}
+
+.hpf-receipt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* El input real va oculto: se abre al tocar la etiqueta. */
+.hpf-receipt-input {
+  display: none;
+}
+
+.hpf-receipt-remove {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.hpf-receipt-remove:hover {
+  background: #f1f5f9;
+  color: #b91c1c;
+}
+
+.hpf-footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.hpf-total {
+  color: #334155;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.hpf-total strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+}
+
+/* .btn-primary (App.css) no tiene estilo deshabilitado: falta un dato o se está guardando. */
+.hpf-footer .btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hpf-message {
+  color: #047857;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+
+.hpf-message.is-error {
+  color: #b91c1c;
+}
+
+@media (max-width: 1024px) {
+  .hpf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .hpf-footer .btn-primary {
+    justify-content: center;
+    width: 100%;
+  }
+  .hpf-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
