@@ -3496,3 +3496,11 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   colección. Reglas: leer has('Payroll'), crear/editar canDo('Payroll','e'), borrar canDo('Payroll','d'), con su
   prueba. Pendiente (Omar): publicar la regla en Firebase. Mismo aviso que fixed_salaries: con alcance 'Own' la
   regla deja leerla (la pantalla no la muestra).
+- System Users · tipo de pago (11/2026, decisión de Omar: "tipo en usuario, monto privado"): el modal de usuario tiene
+  "Pay type" (Per house / Hourly / Fixed salary → `payType` en system_users; sin campo = 'perHouse') y, según el tipo,
+  "Rate ($/hour)" (hourly_rates) o "Monthly salary" (fixed_salaries). Tipo y montos solo los cambia quien tiene
+  Payroll con alcance 'All' y editar, o el Super Admin (`canManageEmployeePay`); los demás ven el tipo deshabilitado.
+  `saveEmployeePay`: pasar a fijo crea el sueldo desde hoy (o lo reanuda desde hoy); dejar de ser fijo lo detiene
+  (Stop). Si el doc del usuario cambia de id (invitación ✈️ o cambio de correo de un pendiente), `moveEmployeePay`
+  mueve su rate y su sueldo al id nuevo. OJO: los pagos (payroll) ya creados con el id viejo NO se mueven (pasa
+  igual con la nómina por casa): conviene invitar al empleado antes de pagarle.

@@ -10,6 +10,11 @@
  *  (pestaña Fixed pay, lo crea la Cloud Function `createfixedpayroll`). */
 export type PayrollPayType = 'hourly' | 'fixed';
 
+/** Cómo cobra un empleado (campo payType de system_users): por casa (Asignar
+ *  nómina), por hora (Hourly) o sueldo fijo quincenal (Fixed pay). Sin el campo
+ *  se toma 'perHouse', que es como cobraban todos antes. */
+export type EmployeePayType = 'perHouse' | 'hourly' | 'fixed';
+
 export interface PayrollRecord {
   id?: string;
   propertyId: string;
