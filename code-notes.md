@@ -3487,3 +3487,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   createfixedpayroll se salta esas fechas, así el pago borrado NO se vuelve a crear al día siguiente (antes sí).
   Si el sueldo ya no existe no se anota nada (sin sueldo no se crean pagos). Pendiente (Omar): volver a desplegar
   la función createfixedpayroll para que lea skippedPayDates.
+- Payroll · Fixed pay detalle del pago quincenal (11/2026, pedido de Omar): clic (o Enter) en una fila de pagos fijos
+  abre `FixedPaymentDetail` (solo lectura: monto, quincena, fecha, estado, pagado el/por). La vista guarda el id y
+  muestra el pago EN VIVO. Los botones de la fila no abren el detalle (`stopRowClick`).

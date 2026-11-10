@@ -2,7 +2,9 @@
 // Pagos fijos quincenales ya creados por la Cloud Function (más reciente
 // primero): fecha, empleado, quincena, monto y estado. "Mark paid", editar y
 // borrar los resuelve la vista (onMarkPaid, onEdit, onDelete); sin onEdit ni
-// onDelete no hay columna de acciones.
+// onDelete no hay columna de acciones. Clic (o Enter) en la fila abre su detalle
+// (onOpenDetail); los botones de la fila no lo abren.
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { CheckCircle, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
@@ -18,19 +20,39 @@ interface FixedPaymentRowProps {
   onMarkPaid: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
+  onOpenDetail: (payment: PayrollRecord) => void;
 }
 
-const FixedPaymentRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete }: FixedPaymentRowProps) => {
+/** Los botones de la fila no abren el detalle. */
+const stopRowClick = (event: MouseEvent) => event.stopPropagation();
+
+const FixedPaymentRow = ({
+  payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
+}: FixedPaymentRowProps) => {
   const isPaid = payment.status === 'Paid';
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
 
+  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    onOpenDetail(payment);
+  };
+
   return (
-    <div className="fpl-row">
+    <div
+      className="fpl-row is-clickable"
+      role="button"
+      tabIndex={0}
+      aria-label={`View fixed payment of ${employeeName}`}
+      onClick={() => onOpenDetail(payment)}
+      onKeyDown={handleRowKeyDown}
+    >
       <span className="fpl-date">{formatDate(payment.date)}</span>
       <span className="fpl-employee">{employeeName}</span>
       <span className="fpl-period">{getFixedPayPeriodLabel(payment.date)}</span>
       <strong className="fpl-amount">{money(payment.totalAmount)}</strong>
-      <span className="fpl-status">
+      <span className="fpl-status" onClick={stopRowClick}>
         <span className={`fpl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
         {canMarkPaid && !isPaid && (
           <button type="button" className="fpl-paid-btn" onClick={() => onMarkPaid(payment)}>
@@ -39,7 +61,7 @@ const FixedPaymentRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdi
         )}
       </span>
       {(onEdit || onDelete) && (
-        <span className="fpl-actions">
+        <span className="fpl-actions" onClick={stopRowClick}>
           {onEdit && (
             <button type="button" className="fpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
               <Pencil size={16} />
@@ -69,10 +91,11 @@ interface FixedPaymentListProps {
   onMarkPaid: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
+  onOpenDetail: (payment: PayrollRecord) => void;
 }
 
 const FixedPaymentList = ({
-  payments, getEmployeeName, canMarkPaid, onMarkPaid, onEdit, onDelete,
+  payments, getEmployeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
 }: FixedPaymentListProps) => {
   const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
@@ -104,6 +127,7 @@ const FixedPaymentList = ({
             onMarkPaid={onMarkPaid}
             onEdit={onEdit}
             onDelete={onDelete}
+            onOpenDetail={onOpenDetail}
           />
         )}
       />

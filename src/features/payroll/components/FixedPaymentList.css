@@ -37,6 +37,19 @@
   font-size: 0.9rem;
 }
 
+.fpl-row.is-clickable {
+  cursor: pointer;
+}
+
+.fpl-row.is-clickable:hover {
+  background: #f8fafc;
+}
+
+.fpl-row.is-clickable:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
 .fpl-employee {
   color: #0f172a;
   font-weight: 600;

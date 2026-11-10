@@ -36,6 +36,7 @@ import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
 import FixedPaymentForm from '../features/payroll/components/FixedPaymentForm';
+import FixedPaymentDetail from '../features/payroll/components/FixedPaymentDetail';
 import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
 import { isFixedPayment } from '../features/payroll/fixedPay';
 
@@ -277,6 +278,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // Modal para corregir el monto de un pago fijo (se guarda el id; se usa la versión EN VIVO).
   const [fixedPaymentEditId, setFixedPaymentEditId] = useState('');
   const fixedPaymentEdit = fixedPayments.find(payment => payment.id === fixedPaymentEditId);
+  // Detalle de un pago fijo: se guarda el id y se muestra la versión EN VIVO (si lo borran, se cierra).
+  const [fixedPaymentDetailId, setFixedPaymentDetailId] = useState('');
+  const fixedPaymentDetail = fixedPayments.find(payment => payment.id === fixedPaymentDetailId);
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -1002,7 +1006,15 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           onMarkPaid={handleMarkAsPaid}
           onEdit={canSeeAllPayroll ? (payment) => setFixedPaymentEditId(payment.id ?? '') : undefined}
           onDelete={canSeeAllPayroll ? handleDeleteFixedPayment : undefined}
+          onOpenDetail={(payment) => setFixedPaymentDetailId(payment.id ?? '')}
         />
+        {fixedPaymentDetail && (
+          <FixedPaymentDetail
+            payment={fixedPaymentDetail}
+            employeeName={getEmployeeName(fixedPaymentDetail.employeeId)}
+            onClose={() => setFixedPaymentDetailId('')}
+          />
+        )}
         {canSeeAllPayroll && fixedPaymentEdit && (
           <FixedPaymentForm
             key={fixedPaymentEdit.id}
