@@ -3464,3 +3464,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   (Pending / Paid) ni propone el último rate. El recibo anterior (reemplazado o quitado) y el de un pago borrado se
   borran de Storage DESPUÉS de guardar, sin bloquear si falla: la propuesta de security/storage.rules solo deja
   borrar con Quality Check o Task List, así que sin esos permisos el archivo se queda en Storage (no es un error).
+- Payroll · Hourly detalle (11/2026, pedido de Omar): clic (o Enter) en una fila abre `HourlyPayDetail` (solo
+  lectura: empleado, fecha, horas, rate, total, estado, pagado el/por y el recibo; una imagen se ve en el modal, un
+  PDF se abre en otra pestaña). La vista guarda el id y muestra el pago EN VIVO: si lo borran, el detalle se cierra.
+  Los botones y el enlace del recibo de la fila no abren el detalle (`stopRowClick`).

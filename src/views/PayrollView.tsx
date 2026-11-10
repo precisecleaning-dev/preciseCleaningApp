@@ -28,6 +28,7 @@ import './PayrollView.css';
 import MenuButton from '../shared/components/MenuButton';
 import HourlyPayForm from '../features/payroll/components/HourlyPayForm';
 import HourlyPayList from '../features/payroll/components/HourlyPayList';
+import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
@@ -260,6 +261,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly' | 'fixed'>('asignar');
   // Modal del pago por horas: nuevo o editando uno (se monta de nuevo en cada apertura).
   const [hourlyForm, setHourlyForm] = useState<{ payment: PayrollRecord | null } | null>(null);
+  // Detalle de un pago por horas: se guarda el id y se muestra la versión EN VIVO (si lo borran, se cierra).
+  const [hourlyDetailId, setHourlyDetailId] = useState('');
+  const hourlyDetailPayment = hourlyPayments.find(payment => payment.id === hourlyDetailId);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
 
@@ -963,7 +967,15 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           onNewPayment={canSeeAllPayroll ? () => setHourlyForm({ payment: null }) : undefined}
           onEdit={canSeeAllPayroll ? (payment) => setHourlyForm({ payment }) : undefined}
           onDelete={canSeeAllPayroll ? handleDeleteHourlyPayment : undefined}
+          onOpenDetail={(payment) => setHourlyDetailId(payment.id ?? '')}
         />
+        {hourlyDetailPayment && (
+          <HourlyPayDetail
+            payment={hourlyDetailPayment}
+            employeeName={getEmployeeName(hourlyDetailPayment.employeeId)}
+            onClose={() => setHourlyDetailId('')}
+          />
+        )}
         {canSeeAllPayroll && hourlyForm && (
           <HourlyPayForm
             key={hourlyForm.payment?.id ?? 'new'}

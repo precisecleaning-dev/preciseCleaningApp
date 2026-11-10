@@ -3,6 +3,9 @@
 // rate, total, recibo y estado. Arriba, el botón que abre el modal de un pago
 // nuevo (onNewPayment). "Mark paid", editar y borrar los resuelve la vista
 // (onMarkPaid, onEdit, onDelete); sin onEdit/onDelete no hay columna de acciones.
+// Clic (o Enter) en la fila abre su detalle (onOpenDetail); los botones y el
+// enlace del recibo no lo abren.
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { CheckCircle, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
@@ -17,27 +20,47 @@ interface HourlyPayRowProps {
   onMarkPaid: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
+  onOpenDetail: (payment: PayrollRecord) => void;
 }
 
-const HourlyPayRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete }: HourlyPayRowProps) => {
+/** Los botones y enlaces dentro de la fila no abren el detalle. */
+const stopRowClick = (event: MouseEvent) => event.stopPropagation();
+
+const HourlyPayRow = ({
+  payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
+}: HourlyPayRowProps) => {
   const isPaid = payment.status === 'Paid';
   const hoursText = `${payment.hours ?? 0} h × ${money(payment.hourlyRate ?? 0)}`;
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
 
+  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    onOpenDetail(payment);
+  };
+
   return (
-    <div className="hpl-row">
+    <div
+      className="hpl-row is-clickable"
+      role="button"
+      tabIndex={0}
+      aria-label={`View hourly payment of ${employeeName}`}
+      onClick={() => onOpenDetail(payment)}
+      onKeyDown={handleRowKeyDown}
+    >
       <span className="hpl-date">{formatDate(payment.date)}</span>
       <span className="hpl-employee">{employeeName}</span>
       <span className="hpl-hours">{hoursText}</span>
       <strong className="hpl-total">{money(payment.totalAmount)}</strong>
-      <span className="hpl-receipt">
+      <span className="hpl-receipt" onClick={stopRowClick}>
         {payment.receiptUrl && (
           <a className="hpl-receipt-link" href={payment.receiptUrl} rel="noopener noreferrer" target="_blank">
             <FileText size={14} aria-hidden="true" /> Receipt
           </a>
         )}
       </span>
-      <span className="hpl-status">
+      <span className="hpl-status" onClick={stopRowClick}>
         <span className={`hpl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
         {canMarkPaid && !isPaid && (
           <button type="button" className="hpl-paid-btn" onClick={() => onMarkPaid(payment)}>
@@ -46,7 +69,7 @@ const HourlyPayRow = ({ payment, employeeName, canMarkPaid, onMarkPaid, onEdit, 
         )}
       </span>
       {(onEdit || onDelete) && (
-        <span className="hpl-actions">
+        <span className="hpl-actions" onClick={stopRowClick}>
           {onEdit && (
             <button type="button" className="hpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
               <Pencil size={16} />
@@ -93,10 +116,11 @@ interface HourlyPayListProps {
   onNewPayment?: () => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
+  onOpenDetail: (payment: PayrollRecord) => void;
 }
 
 const HourlyPayList = ({
-  payments, getEmployeeName, canMarkPaid, onMarkPaid, onNewPayment, onEdit, onDelete,
+  payments, getEmployeeName, canMarkPaid, onMarkPaid, onNewPayment, onEdit, onDelete, onOpenDetail,
 }: HourlyPayListProps) => {
   const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
@@ -136,6 +160,7 @@ const HourlyPayList = ({
               onMarkPaid={onMarkPaid}
               onEdit={onEdit}
               onDelete={onDelete}
+              onOpenDetail={onOpenDetail}
             />
           )}
         />
