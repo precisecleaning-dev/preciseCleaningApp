@@ -3426,6 +3426,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   versión de la lista. No volver a resolverlos solo con la lista: el detalle desaparecía al pagar. También hace que
   el detalle de un invoice recién creado fuera de la ventana (Paid con fecha vieja) sí se abra.
 - SearchableSelect a shared (11/2026, aprobado por Omar): `SearchableSelect` (selector con búsqueda) pasó de
-  features/houses/components a src/shared/components porque ahora también lo usa Payroll. Sin cambios de
+  features/houses/components a src/shared/components porque también lo usa Invoices New (InvoiceJobPicker);
+  el siguiente uso son los modales de Payroll (Hourly y Fixed pay, PR de features). Sin cambios de
   comportamiento; sus clases conservan el prefijo `hv-searchsel-*`. Pendiente (lo hace Omar, Claude no edita
   CLAUDE.md): agregarlo a la lista de "Componentes compartidos".
