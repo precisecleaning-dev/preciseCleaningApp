@@ -3,15 +3,9 @@
 import type { PayrollRecord } from '../../types/index';
 import { roundToCents } from '../../utils/jobFinancials';
 
-export const calcHourlyTotal = (hours: number, hourlyRate: number): number => roundToCents(hours * hourlyRate);
+export const computeHourlyTotal = (hours: number, hourlyRate: number): number => roundToCents(hours * hourlyRate);
 
 export const isHourlyPayment = (record: Pick<PayrollRecord, 'payType'>): boolean => record.payType === 'hourly';
-
-/** Número mayor que 0 escrito en un campo; null si está vacío o no es válido. */
-export const parsePositiveNumber = (text: string): number | null => {
-  const value = Number(text);
-  return text.trim() !== '' && Number.isFinite(value) && value > 0 ? value : null;
-};
 
 /** La tarifa del último pago por horas de ese empleado (para no escribirla cada vez); null si no hay. */
 export const getLastHourlyRate = (records: readonly PayrollRecord[], employeeId: string): number | null => {

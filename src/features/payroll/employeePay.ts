@@ -26,3 +26,17 @@ export const canManageEmployeePay = (activeRole?: Role | null, isSuperAdmin?: bo
   const payrollPermission = activeRole?.permissions?.find((permission) => permission.module === 'Payroll');
   return !!payrollPermission?.canEdit && payrollPermission.scope === 'All';
 };
+
+/**
+ * Borrar un sueldo fijo o un pago fijo, o mover el pago de un empleado a su id
+ * nuevo (invitación o cambio de correo, que borra el rate y el sueldo del id
+ * viejo): además de administrar pagos pide el permiso Delete de Payroll (las
+ * reglas de hourly_rates y fixed_salaries).
+ */
+export const canDeleteEmployeePay = (activeRole?: Role | null, isSuperAdmin?: boolean): boolean => {
+  if (isSuperAdmin) return true;
+  const payrollPermission = activeRole?.permissions?.find((permission) => permission.module === 'Payroll');
+  return canManageEmployeePay(activeRole, isSuperAdmin) && !!payrollPermission?.canDelete;
+};
+
+export const canMoveEmployeePay = canDeleteEmployeePay;

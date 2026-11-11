@@ -15,17 +15,18 @@ interface PayrollDialogProps {
   children: ReactNode;
   isBusy?: boolean;
   /** Formularios con buscador: la lista de opciones puede salir de la caja. */
-  allowOverflow?: boolean;
+  canOverflow?: boolean;
 }
 
-const PayrollDialog = ({ title, icon: Icon, onClose, footer, children, isBusy = false, allowOverflow = false }: PayrollDialogProps) => {
+const PayrollDialog = ({ title, icon: Icon, onClose, footer, children, isBusy = false, canOverflow = false }: PayrollDialogProps) => {
   const handleClose = () => {
     if (!isBusy) onClose();
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isBusy) onClose();
+      // Si un control de adentro ya usó el Escape (la lista del buscador abierta), el modal no se cierra.
+      if (event.key === 'Escape' && !isBusy && !event.defaultPrevented) onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -34,7 +35,7 @@ const PayrollDialog = ({ title, icon: Icon, onClose, footer, children, isBusy = 
   return (
     <div className="modal-overlay-centered" onClick={handleClose}>
       <section
-        className={`modal-50 pdlg-box${allowOverflow ? ' allows-overflow' : ''}`}
+        className={`modal-50 pdlg-box${canOverflow ? ' allows-overflow' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

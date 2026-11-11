@@ -1,102 +1,89 @@
 // src/features/payroll/components/FixedSalaryList.tsx
 // Sueldos fijos guardados: empleado, sueldo mensual, lo que se paga el 15 y el
 // último día, desde cuándo y si sigue activo. "Stop" deja de crear pagos (los
-// ya creados se quedan); "Resume" los vuelve a crear desde hoy (startDate = hoy,
-// así la Cloud Function no crea los de las quincenas en que estuvo parado).
-// Arriba, el botón que abre el modal de un sueldo nuevo (onNewSalary). Cada
-// fila tiene Edit (abre el mismo modal: onEdit) y Delete (borra el sueldo; los
-// pagos ya creados se quedan). Clic (o Enter) en la fila abre su detalle
-// (onOpenDetail); los botones de la fila no lo abren.
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+// ya creados se quedan); "Resume" los vuelve a crear desde el próximo inicio de
+// quincena (startDate = esa fecha, así la Cloud Function no crea los de las
+// quincenas en que estuvo parado). Arriba, el botón que abre el modal de un
+// sueldo nuevo (onNewSalary). Cada fila tiene Edit (abre el mismo modal: onEdit)
+// y Delete (borra el sueldo; los pagos ya creados se quedan). Clic (o Enter) en
+// la fila abre su detalle (onOpenDetail); los botones de la fila no lo abren.
+// Las escrituras están en services/fixedSalaryActions.ts.
+import { Pencil, Trash2 } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
-import { fixedSalariesService } from '../../../services/fixedSalariesService';
-import { logActivity } from '../../../services/activityLogService';
+import { usePendingById } from '../../../shared/hooks/usePendingById';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
-import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
-import { getBiweeklyAmounts } from '../fixedPay';
+import { getBiweeklyAmounts, getNextFixedPayDate, getNextPayPeriodStart } from '../fixedPay';
+import { hasPayType } from '../employeePay';
+import { deleteFixedSalary, resumeFixedSalary, stopFixedSalary } from '../services/fixedSalaryActions';
+import { PayrollTableRow, PayrollTableSkeleton, PayrollTableToolbar } from './PayrollTable';
 import './FixedSalaryList.css';
 
 interface FixedSalaryRowProps {
   salary: FixedSalary;
   employeeName: string;
   isUpdating: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   onToggleActive: (salary: FixedSalary) => void;
   onEdit: (salary: FixedSalary) => void;
   onDelete: (salary: FixedSalary) => void;
   onOpenDetail: (salary: FixedSalary) => void;
 }
 
-/** Los botones de la fila no abren el detalle. */
-const stopRowClick = (event: MouseEvent) => event.stopPropagation();
-
 const FixedSalaryRow = ({
-  salary, employeeName, isUpdating, onToggleActive, onEdit, onDelete, onOpenDetail,
+  salary, employeeName, isUpdating, canEdit, canDelete, onToggleActive, onEdit, onDelete, onOpenDetail,
 }: FixedSalaryRowProps) => {
   const { firstHalf, secondHalf } = getBiweeklyAmounts(salary.monthlyAmount);
   const toggleText = salary.active ? 'Stop' : 'Resume';
 
-  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
-  const handleRowKeyDown = (event: KeyboardEvent<HTMLLIElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    onOpenDetail(salary);
-  };
-
   return (
-    <li
-      className="fsl-row is-clickable"
-      role="button"
-      tabIndex={0}
-      aria-label={`View fixed salary of ${employeeName}`}
-      onClick={() => onOpenDetail(salary)}
-      onKeyDown={handleRowKeyDown}
-    >
-      <span className="fsl-employee">{employeeName}</span>
-      <strong className="fsl-amount">{money(salary.monthlyAmount)}</strong>
-      <span className="fsl-split">{money(firstHalf)} / {money(secondHalf)}</span>
-      <span className="fsl-start">{formatDate(salary.startDate)}</span>
-      <span className="fsl-actions" onClick={stopRowClick}>
-        <span className={`fsl-badge${salary.active ? ' is-active' : ''}`}>{salary.active ? 'Active' : 'Stopped'}</span>
-        <button type="button" className="fsl-toggle-btn" disabled={isUpdating} onClick={() => onToggleActive(salary)}>
-          {toggleText}
-        </button>
+    <PayrollTableRow as="li" label={`View fixed salary of ${employeeName}`} onOpen={() => onOpenDetail(salary)}>
+      <span className="ptbl-name">{employeeName}</span>
+      <strong className="ptbl-amount">{money(salary.monthlyAmount)}</strong>
+      <span>{money(firstHalf)} / {money(secondHalf)}</span>
+      <span>{formatDate(salary.startDate)}</span>
+      <span className="ptbl-status">
+        <span className={`ptbl-badge${salary.active ? ' is-active' : ' is-stopped'}`}>{salary.active ? 'Active' : 'Stopped'}</span>
+        {canEdit && (
+          <button type="button" className="fsl-toggle-btn" disabled={isUpdating} onClick={() => onToggleActive(salary)}>
+            {toggleText}
+          </button>
+        )}
       </span>
-      <span className="fsl-row-actions" onClick={stopRowClick}>
-        <button type="button" className="fsl-icon-btn" aria-label="Edit salary" title="Edit" onClick={() => onEdit(salary)}>
-          <Pencil size={16} />
-        </button>
-        <button
-          type="button"
-          className="fsl-icon-btn is-delete"
-          aria-label="Delete salary"
-          title="Delete"
-          disabled={isUpdating}
-          onClick={() => onDelete(salary)}
-        >
-          <Trash2 size={16} />
-        </button>
+      <span className="ptbl-actions">
+        {canEdit && (
+          <button type="button" className="ptbl-icon-btn" aria-label="Edit salary" title="Edit" onClick={() => onEdit(salary)}>
+            <Pencil size={16} />
+          </button>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            className="ptbl-icon-btn is-delete"
+            aria-label="Delete salary"
+            title="Delete"
+            disabled={isUpdating}
+            onClick={() => onDelete(salary)}
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
       </span>
-    </li>
+    </PayrollTableRow>
   );
 };
 
-interface FixedSalaryToolbarProps {
-  onNewSalary: () => void;
-}
-
-const FixedSalaryToolbar = ({ onNewSalary }: FixedSalaryToolbarProps) => (
-  <div className="fsl-toolbar">
-    <h3 className="fsl-title">Fixed salaries</h3>
-    <button type="button" className="btn-primary" onClick={onNewSalary}>
-      <Plus size={16} aria-hidden="true" /> New fixed salary
-    </button>
-  </div>
-);
-
 interface FixedSalaryListProps {
   salaries: readonly FixedSalary[];
+  /** Usuarios: Resume revisa que el empleado siga activo y con tipo de pago fijo. */
+  employees: readonly SystemUser[];
+  /** Mientras cargan los sueldos: esqueleto y "New fixed salary" espera (si no, podría pisar uno que no se ve aún). */
+  isLoading: boolean;
+  /** Crear, editar, Stop y Resume: Payroll con alcance All y Edit (canManageEmployeePay). */
+  canEdit: boolean;
+  /** Borrar: además, Payroll con Delete (canDeleteEmployeePay). */
+  canDelete: boolean;
   getEmployeeName: (employeeId: string) => string;
   currentUser?: SystemUser | null;
   onNewSalary: () => void;
@@ -105,74 +92,85 @@ interface FixedSalaryListProps {
 }
 
 const FixedSalaryList = ({
-  salaries, getEmployeeName, currentUser, onNewSalary, onEdit, onOpenDetail,
+  salaries, employees, isLoading, canEdit, canDelete, getEmployeeName, currentUser, onNewSalary, onEdit, onOpenDetail,
 }: FixedSalaryListProps) => {
-  const [updatingEmployeeId, setUpdatingEmployeeId] = useState('');
+  const { pending, run } = usePendingById();
   const sortedSalaries = [...salaries].sort((salaryA, salaryB) =>
     getEmployeeName(salaryA.employeeId).localeCompare(getEmployeeName(salaryB.employeeId)));
 
-  const handleToggleActive = async (salary: FixedSalary) => {
-    const isActive = !salary.active;
-    const resumeDate = todayIso();
-    const changes = isActive ? { active: true, startDate: resumeDate } : { active: false };
-    setUpdatingEmployeeId(salary.employeeId);
-    try {
-      await fixedSalariesService.update(salary.employeeId, changes, fullName(currentUser));
-      void logActivity({
-        action: 'update',
-        module: 'Payroll',
-        user: currentUser,
-        targetId: salary.employeeId,
-        targetLabel: getEmployeeName(salary.employeeId),
-        detail: isActive ? `Fixed salary resumed from ${formatDate(resumeDate)}.` : 'Fixed salary stopped.',
-      });
-    } catch (error) {
-      console.error('Error updating the fixed salary:', error);
-      alert('Could not update the salary. Check your connection and try again.');
-    } finally {
-      setUpdatingEmployeeId('');
+  const handleStop = (salary: FixedSalary) => {
+    const employeeName = getEmployeeName(salary.employeeId);
+    const confirmMessage = `Stop the fixed salary of ${employeeName}? Payments not created yet (next one: `
+      + `${formatDate(getNextFixedPayDate(todayIso()))}) will not be created. Payments already created are kept.`;
+    if (!window.confirm(confirmMessage)) return;
+    run(salary.employeeId, () => stopFixedSalary(salary, employeeName, currentUser),
+      'Could not stop the salary. Check your connection and try again.');
+  };
+
+  // Solo se reanuda a quien sigue activo y con tipo de pago "Fixed salary" en System Users.
+  const handleResume = (salary: FixedSalary) => {
+    const employeeName = getEmployeeName(salary.employeeId);
+    const employee = employees.find((candidate) => candidate.id === salary.employeeId);
+    if (!employee || employee.status === 'Inactive' || !hasPayType(employee, 'fixed')) {
+      alert(`${employeeName} is not an active fixed-salary employee. Set the pay type to "Fixed salary" in System Users first.`);
+      return;
+    }
+    const resumeDate = getNextPayPeriodStart(todayIso());
+    const confirmMessage = `Resume the fixed salary of ${employeeName}? Payments start again on ${formatDate(resumeDate)} `
+      + '(start of the next pay period) and "Starts on" changes to that date.';
+    if (!window.confirm(confirmMessage)) return;
+    run(salary.employeeId, () => resumeFixedSalary(salary, employeeName, resumeDate, currentUser),
+      'Could not resume the salary. Check your connection and try again.');
+  };
+
+  const handleToggleActive = (salary: FixedSalary) => {
+    if (salary.active) {
+      handleStop(salary);
+    } else {
+      handleResume(salary);
     }
   };
 
   // Borra el sueldo: la Cloud Function deja de crear pagos; los ya creados se quedan.
-  const handleDelete = async (salary: FixedSalary) => {
+  const handleDelete = (salary: FixedSalary) => {
     const employeeName = getEmployeeName(salary.employeeId);
-    const question = `Delete the fixed salary of ${employeeName} (${money(salary.monthlyAmount)} per month)? `
-      + 'Payments already created are kept.';
-    if (!window.confirm(question)) return;
-    setUpdatingEmployeeId(salary.employeeId);
-    try {
-      await fixedSalariesService.delete(salary.employeeId);
-      void logActivity({
-        action: 'delete',
-        module: 'Payroll',
-        user: currentUser,
-        targetId: salary.employeeId,
-        targetLabel: employeeName,
-        detail: `Fixed salary deleted (${money(salary.monthlyAmount)} per month).`,
-      });
-    } catch (error) {
-      console.error('Error deleting the fixed salary:', error);
-      alert('Could not delete the salary. Check your connection and try again.');
-    } finally {
-      setUpdatingEmployeeId('');
-    }
+    const confirmMessage = `Delete the fixed salary of ${employeeName} (${money(salary.monthlyAmount)} per month)? `
+      + 'Payments already created are kept. They stay as "Fixed salary" in System Users: change their pay type there '
+      + 'if they no longer have a fixed salary.';
+    if (!window.confirm(confirmMessage)) return;
+    run(salary.employeeId, () => deleteFixedSalary(salary, employeeName, currentUser),
+      'Could not delete the salary. Check your connection and try again.');
   };
+
+  const toolbar = (
+    <PayrollTableToolbar title="Fixed salaries" actionText="New fixed salary" onAction={canEdit ? onNewSalary : undefined} isActionDisabled={isLoading} />
+  );
+
+  if (isLoading) {
+    return (
+      <>
+        {toolbar}
+        <div className="fsl-loading">
+          <PayrollTableSkeleton />
+        </div>
+      </>
+    );
+  }
 
   if (sortedSalaries.length === 0) {
     return (
       <>
-        <FixedSalaryToolbar onNewSalary={onNewSalary} />
-        <p className="fsl-empty">No fixed salaries yet.</p>
+        {toolbar}
+        <p className="fsl-empty ptbl-empty">No fixed salaries yet.</p>
       </>
     );
   }
 
   return (
     <>
-      <FixedSalaryToolbar onNewSalary={onNewSalary} />
-      <section className="fsl-card" aria-label="Fixed salaries">
-        <div className="fsl-head" aria-hidden="true">
+      {toolbar}
+      <section className="fsl-card ptbl-card" aria-label="Fixed salaries">
+        <div className="ptbl-head" aria-hidden="true">
           <span>Employee</span>
           <span>Monthly</span>
           <span>15th / last day</span>
@@ -180,13 +178,15 @@ const FixedSalaryList = ({
           <span>Status</span>
           <span>Actions</span>
         </div>
-        <ul className="fsl-list">
+        <ul className="ptbl-list">
           {sortedSalaries.map((salary) => (
             <FixedSalaryRow
               key={salary.employeeId}
               salary={salary}
               employeeName={getEmployeeName(salary.employeeId)}
-              isUpdating={updatingEmployeeId === salary.employeeId}
+              isUpdating={pending.has(salary.employeeId)}
+              canEdit={canEdit}
+              canDelete={canDelete}
               onToggleActive={handleToggleActive}
               onEdit={onEdit}
               onDelete={handleDelete}

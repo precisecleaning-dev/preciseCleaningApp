@@ -3,11 +3,11 @@
 // fecha de pago, horas, rate, total, estado y el recibo (una imagen se ve
 // aquí mismo; un PDF se abre en otra pestaña). Solo lectura: editar, borrar y
 // "Mark paid" están en la tabla. La vista le pasa el pago EN VIVO.
-import { useEffect } from 'react';
-import { FileText, Timer, X } from 'lucide-react';
+import { FileText, Timer } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
+import PayrollDialog from './PayrollDialog';
 import './HourlyPayDetail.css';
 
 const isPdfReceipt = (payment: PayrollRecord): boolean =>
@@ -19,9 +19,9 @@ interface DetailItemProps {
 }
 
 const DetailItem = ({ label, value }: DetailItemProps) => (
-  <div className="hpd-item">
-    <dt className="hpd-label">{label}</dt>
-    <dd className="hpd-value">{value}</dd>
+  <div>
+    <dt className="pdlg-detail-label">{label}</dt>
+    <dd className="pdlg-detail-value">{value}</dd>
   </div>
 );
 
@@ -57,61 +57,34 @@ interface HourlyPayDetailProps {
 const HourlyPayDetail = ({ payment, employeeName, onClose }: HourlyPayDetailProps) => {
   const isPaid = payment.status === 'Paid';
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  const footer = (
+    <button type="button" className="pdlg-secondary-btn" onClick={onClose}>
+      Close
+    </button>
+  );
 
   return (
-    <div className="modal-overlay-centered" onClick={onClose}>
-      <section
-        className="modal-50"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="hpd-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="hpd-header">
-          <h3 id="hpd-title" className="hpd-title">
-            <Timer size={18} aria-hidden="true" /> Hourly payment
-          </h3>
-          <button type="button" className="hpd-close-btn" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </header>
-
-        <div className="hpd-body">
-          <div className="hpd-summary">
-            <div>
-              <p className="hpd-employee">{employeeName}</p>
-              <p className="hpd-total">{money(payment.totalAmount)}</p>
-            </div>
-            <span className={`hpd-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
-          </div>
-
-          <dl className="hpd-grid">
-            <DetailItem label="Pay date" value={formatDate(payment.date)} />
-            <DetailItem label="Hours worked" value={`${payment.hours ?? 0} h`} />
-            <DetailItem label="Rate" value={`${money(payment.hourlyRate ?? 0)} / hour`} />
-            <DetailItem label="Total" value={money(payment.totalAmount)} />
-            {isPaid && <DetailItem label="Paid on" value={formatDate(payment.paidAt)} />}
-            {isPaid && <DetailItem label="Paid by" value={payment.paidBy || '—'} />}
-          </dl>
-
-          <h4 className="hpd-section-title">Pay receipt</h4>
-          <ReceiptPreview payment={payment} />
+    <PayrollDialog title="Hourly payment" icon={Timer} onClose={onClose} footer={footer}>
+      <div className="hpd-summary">
+        <div>
+          <p className="hpd-employee">{employeeName}</p>
+          <p className="hpd-total">{money(payment.totalAmount)}</p>
         </div>
+        <span className={`hpd-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
+      </div>
 
-        <footer className="hpd-footer">
-          <button type="button" className="hpd-close-footer-btn" onClick={onClose}>
-            Close
-          </button>
-        </footer>
-      </section>
-    </div>
+      <dl className="pdlg-details">
+        <DetailItem label="Pay date" value={formatDate(payment.date)} />
+        <DetailItem label="Hours worked" value={`${payment.hours ?? 0} h`} />
+        <DetailItem label="Rate" value={`${money(payment.hourlyRate ?? 0)} / hour`} />
+        <DetailItem label="Total" value={money(payment.totalAmount)} />
+        {isPaid && <DetailItem label="Paid on" value={formatDate(payment.paidAt)} />}
+        {isPaid && <DetailItem label="Paid by" value={payment.paidBy || '—'} />}
+      </dl>
+
+      <h4 className="hpd-section-title">Pay receipt</h4>
+      <ReceiptPreview payment={payment} />
+    </PayrollDialog>
   );
 };
 

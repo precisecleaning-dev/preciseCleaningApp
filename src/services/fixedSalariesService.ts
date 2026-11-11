@@ -7,13 +7,14 @@
 // useLiveCollection('fixedSalaries').
 // ============================================================================
 import {
-  arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc,
+  arrayUnion, collection, deleteDoc, doc, getDoc, getDocs, runTransaction, updateDoc,
   type CollectionReference, type DocumentReference,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import type { FixedSalary } from '../types/index';
+import type { FixedSalary, FixedSalaryInput } from '../types/index';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import { typedConverter } from '../lib/firebase/typedConverter';
+import type { BatchOp } from '../shared/data/batchWrites';
 
 const fixedSalariesCol: CollectionReference<FixedSalary> =
   collection(db, COLLECTIONS.fixedSalaries).withConverter(typedConverter<FixedSalary>());
@@ -21,22 +22,27 @@ const fixedSalariesCol: CollectionReference<FixedSalary> =
 const fixedSalaryRef = (employeeId: string): DocumentReference<FixedSalary> =>
   doc(db, COLLECTIONS.fixedSalaries, employeeId).withConverter(typedConverter<FixedSalary>());
 
-/** Lo que captura la pantalla; el resto (id, fechas, quién) lo pone el service. */
-export interface FixedSalaryInput {
-  employeeId: string;
-  monthlyAmount: number;
-  startDate: string;
-}
+/** Mensaje del error de `create` cuando el empleado ya tiene sueldo fijo. */
+export const FIXED_SALARY_EXISTS = 'FIXED_SALARY_EXISTS';
 
 export const fixedSalariesService = {
-  /** Crea o reemplaza el sueldo fijo del empleado (queda activo). */
+  /**
+   * Crea el sueldo fijo del empleado (queda activo). En una transacción: si el
+   * empleado YA tiene uno (aunque la pantalla no lo haya cargado), falla con
+   * FIXED_SALARY_EXISTS en vez de reemplazarlo y borrar su skippedPayDates.
+   */
   async create(input: FixedSalaryInput, updatedByUserName: string): Promise<void> {
-    await setDoc(fixedSalaryRef(input.employeeId), {
-      ...input,
-      id: input.employeeId,
-      active: true,
-      updatedAt: new Date().toISOString(),
-      updatedByUserName,
+    const salaryRef = fixedSalaryRef(input.employeeId);
+    await runTransaction(db, async (transaction) => {
+      const existingSnap = await transaction.get(salaryRef);
+      if (existingSnap.exists()) throw new Error(FIXED_SALARY_EXISTS);
+      transaction.set(salaryRef, {
+        ...input,
+        id: input.employeeId,
+        active: true,
+        updatedAt: new Date().toISOString(),
+        updatedByUserName,
+      });
     });
   },
 
@@ -48,9 +54,18 @@ export const fixedSalariesService = {
     await updateDoc(fixedSalaryRef(employeeId), { ...changes, updatedAt: new Date().toISOString(), updatedByUserName });
   },
 
-  /** Marca una fecha de pago como borrada a mano: createfixedpayroll ya no crea ese pago. */
-  async skipPayDate(employeeId: string, payDate: string): Promise<void> {
-    await updateDoc(fixedSalaryRef(employeeId), { skippedPayDates: arrayUnion(payDate) });
+  /** Operación de batch que marca una fecha de pago como borrada a mano: createfixedpayroll ya no crea ese pago. */
+  skipPayDateOp(employeeId: string, payDate: string): BatchOp {
+    return (batch) => batch.update(fixedSalaryRef(employeeId), { skippedPayDates: arrayUnion(payDate) });
+  },
+
+  /** Operación de batch que guarda el sueldo completo en el id de su empleado (para moverlo de id). */
+  setOp(salary: FixedSalary): BatchOp {
+    return (batch) => batch.set(fixedSalaryRef(salary.employeeId), salary);
+  },
+
+  deleteOp(employeeId: string): BatchOp {
+    return (batch) => batch.delete(fixedSalaryRef(employeeId));
   },
 
   async delete(employeeId: string): Promise<void> {

@@ -163,8 +163,15 @@
   margin: 12px 0 0;
 }
 
-/* Teléfono: una columna y los botones a lo ancho. */
+/* Teléfono: una columna y los botones a lo ancho. Un formulario con buscador vuelve a desplazar
+   su cuerpo: en un teléfono bajo, la botonera (Save) no queda fuera de la pantalla. */
 @media (max-width: 768px) {
+  .modal-50.pdlg-box.allows-overflow {
+    overflow: hidden;
+  }
+  .modal-50.pdlg-box.allows-overflow .pdlg-body {
+    overflow-y: auto;
+  }
   .pdlg-details,
   .pdlg-grid {
     grid-template-columns: minmax(0, 1fr);

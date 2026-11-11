@@ -97,6 +97,15 @@ const PEOPLE = {
     active: true, admin: false, fin: true, roleId: 'r-invmanager', userId: 'u-invmanager',
     m: { 'Invoices New': R(true, true, true, true) },
   },
+  // Payroll que crea y edita pero no borra; y Payroll con Scope "Own" (solo lo suyo).
+  'payedit@precise.test': {
+    active: true, admin: false, fin: true, roleId: 'r-payedit', userId: 'u-payedit',
+    m: { Payroll: R(true, true, true, false) },
+  },
+  'payown@precise.test': {
+    active: true, admin: false, fin: true, roleId: 'r-payown', userId: 'u-payown',
+    m: { Payroll: { ...R(), o: true } },
+  },
   'inactive@precise.test': {
     active: false, admin: false, fin: true, roleId: 'r-owner', userId: 'u-inactive', m: { Houses: ALL },
   },
@@ -203,6 +212,42 @@ describe('dinero', () => {
     await assertSucceeds(getDocs(collection(as('owner@precise.test'), 'hourly_rates')));
     await assertFails(setDoc(doc(as('sandy@precise.test'), 'hourly_rates', 'u-emp'), { employeeId: 'u-emp', hourlyRate: 15 }));
     await assertSucceeds(setDoc(doc(as('admin@precise.test'), 'hourly_rates', 'u-emp'), { employeeId: 'u-emp', hourlyRate: 15 }));
+  });
+});
+
+describe('sueldos fijos y rates por hora', () => {
+  const PAY_COLLECTIONS = ['fixed_salaries', 'hourly_rates'];
+
+  test('Payroll con Edit sin Delete: crea y edita, pero no borra', async () => {
+    const db = as('payedit@precise.test');
+    for (const collectionName of PAY_COLLECTIONS) {
+      await assertSucceeds(setDoc(doc(db, collectionName, 'u-emp'), { employeeId: 'u-emp' }));
+      await assertSucceeds(updateDoc(doc(db, collectionName, 'u-emp'), { updatedByUserName: 'Pay Editor' }));
+      await assertFails(deleteDoc(doc(db, collectionName, 'u-emp')));
+    }
+  });
+
+  test('Payroll solo View: lee, pero no escribe', async () => {
+    const db = as('office@precise.test');
+    for (const collectionName of PAY_COLLECTIONS) {
+      await assertSucceeds(getDocs(collection(db, collectionName)));
+      await assertFails(setDoc(doc(db, collectionName, 'u-emp'), { employeeId: 'u-emp' }));
+    }
+  });
+
+  test('Payroll con Scope Own: solo lee el suyo', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      for (const collectionName of PAY_COLLECTIONS) {
+        await setDoc(doc(ctx.firestore(), collectionName, 'u-payown'), { employeeId: 'u-payown' });
+        await setDoc(doc(ctx.firestore(), collectionName, 'u-emp'), { employeeId: 'u-emp' });
+      }
+    });
+    const db = as('payown@precise.test');
+    for (const collectionName of PAY_COLLECTIONS) {
+      await assertSucceeds(getDoc(doc(db, collectionName, 'u-payown')));
+      await assertFails(getDoc(doc(db, collectionName, 'u-emp')));
+      await assertFails(getDocs(collection(db, collectionName)));
+    }
   });
 });
 

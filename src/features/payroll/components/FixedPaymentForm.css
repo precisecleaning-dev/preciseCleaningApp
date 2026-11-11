@@ -8,3 +8,10 @@
   font-size: 0.85rem;
   margin: 8px 0 0;
 }
+
+.fpf-paid-note {
+  color: #b45309;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}

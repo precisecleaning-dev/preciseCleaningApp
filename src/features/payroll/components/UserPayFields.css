@@ -1,57 +1,14 @@
-/* Campos de pago del modal de System Users (mismo aspecto que los campos uv-* de UsersView.css). */
-.upf-row {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr;
-}
-
+/* Campos de pago del modal de System Users. Etiquetas y campos: clases uv-* de UsersView.css. */
 .upf-field {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.upf-label {
-  color: #6b7280;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-}
-
-.upf-input-wrap {
-  position: relative;
-}
-
-.upf-icon {
-  color: #9ca3af;
-  left: 12px;
-  position: absolute;
-  top: 12px;
-}
-
-.upf-input {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  box-sizing: border-box;
-  color: #111827;
-  font-size: 0.95rem;
-  outline: none;
-  padding: 10px 14px;
-  width: 100%;
-}
-
-.upf-input.with-icon {
-  cursor: pointer;
-  padding-left: 36px;
-}
-
-.upf-input:disabled {
-  background-color: #f1f5f9;
-  color: #64748b;
-  cursor: not-allowed;
+/* .uv-input quita el contorno del foco: aquí se vuelve a ver al navegar con el teclado. */
+.upf-fields .uv-input:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
 }
 
 .upf-hint {
@@ -59,10 +16,4 @@
   font-size: 0.8rem;
   grid-column: 1 / -1;
   margin: -8px 0 0;
-}
-
-@media (max-width: 768px) {
-  .upf-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

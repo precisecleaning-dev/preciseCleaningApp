@@ -18,7 +18,7 @@ import HistoryWindowNotice from '../components/HistoryWindowNotice';
 import { isHiddenByWindow, useFullHistory } from '../shared/data/propertiesWindow';
 import PropertyDateFixTool from '../features/houses/components/PropertyDateFixTool';
 import { useLiveHouse } from '../features/houses/hooks/useLiveHouse';
-import { todayIso } from '../utils/dateFormat';
+import { formatDate, todayIso } from '../utils/dateFormat';
 import DateInput from '../shared/components/DateInput';
 import PeriodBar from '../components/PeriodBar';
 import { useStoredPeriod } from '../shared/hooks/useStoredPeriod';
@@ -26,13 +26,14 @@ import { periodRange, type PeriodState } from '../utils/periods';
 import VirtualItems from '../shared/components/VirtualItems';
 import './PayrollView.css';
 import MenuButton from '../shared/components/MenuButton';
-import HourlyPayForm from '../features/payroll/components/HourlyPayForm';
+import HourlyPaymentForm from '../features/payroll/components/HourlyPaymentForm';
 import HourlyPayList from '../features/payroll/components/HourlyPayList';
 import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import { deleteFixedPayment } from '../features/payroll/services/fixedPaymentService';
-import { hasPayType } from '../features/payroll/employeePay';
+import { markPayrollPaymentPaid, markPayrollPaymentPending } from '../features/payroll/services/payrollPaymentStatus';
+import { canDeleteEmployeePay, canManageEmployeePay, hasPayType } from '../features/payroll/employeePay';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
 import FixedSalaryDetail from '../features/payroll/components/FixedSalaryDetail';
@@ -54,11 +55,8 @@ interface PayrollViewProps {
 }
 
 
-// paidAt/paidBy no están en el PayrollRecord de types/index.ts, pero handleMarkAsPaid los
-// escribe en el documento y el resto del archivo los lee — de ahí salían los `as any`.
+// Campos del pago consolidado que solo usa esta vista (paidAt/paidBy ya están en PayrollRecord).
 type PayrollRecordExt = PayrollRecord & {
-  paidAt?: string | null;
-  paidBy?: string | null;
   // ⭐ Pago consolidado (pestaña Asignar nómina): las casas incluidas en un pago
   //    llevan batchId y salen de la lista de asignación; paymentDate = fecha del pago.
   batchId?: string | null;
@@ -182,11 +180,11 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //    ~3,600 casas con properties.find (millones de comparaciones por render).
   const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const records = useMemo(() => {
-    // paidAt/paidBy: campos locales de PayrollRecordExt (ver arriba).
     const newest = (r: PayrollRecordExt) =>
       Math.max(...[r.date, r.paymentDate, r.paidAt].map(toTime).filter(t => !isNaN(t)), 0);
+    // Los pagos por horas y fijos no tienen casa: la ventana de 12 meses (que es de casas) no los oculta.
     const data = (payrollLive.data as PayrollRecordExt[]).filter(r =>
-      !isHiddenByWindow(fullHistory, !!r.propertyId && loadedHouseIds.has(String(r.propertyId)), newest(r)));
+      !!r.payType || !isHiddenByWindow(fullHistory, !!r.propertyId && loadedHouseIds.has(String(r.propertyId)), newest(r)));
     // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
     data.sort((a, b) => {
       const ta = toTime(a.date), tb = toTime(b.date);
@@ -196,15 +194,25 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   }, [payrollLive.data, fullHistory, loadedHouseIds]);
   const usersLive = useLiveCollection('users');
   const employees = usersLive.data;
-  // Asignar nómina: solo empleados que cobran por casa (tipo de pago de System Users; sin tipo = por casa).
-  const perHouseEmployees = useMemo(() => employees.filter(employee => hasPayType(employee, 'perHouse')), [employees]);
+  // Asignar nómina: empleados que cobran por casa (tipo de pago de System Users; sin tipo = por casa) y también
+  // quien cambió de tipo pero todavía tiene casas pendientes de pago (si no, no se le podría pagar lo que debe).
+  const employeeIdsWithPendingHouses = useMemo(
+    () => new Set(records.filter(record => !!record.propertyId && record.status !== 'Paid').map(record => record.employeeId)),
+    [records],
+  );
+  const perHouseEmployees = useMemo(
+    () => employees.filter(employee => hasPayType(employee, 'perHouse') || employeeIdsWithPendingHouses.has(employee.id)),
+    [employees, employeeIdsWithPendingHouses],
+  );
   // ⭐ Pestaña Hourly: pagos por horas (sin casa). Con alcance 'Own', solo los propios.
   const hourlyPayments = useMemo(
     () => records.filter(record => isHourlyPayment(record) && (canSeeAllPayroll || record.employeeId === currentUser?.id)),
     [records, canSeeAllPayroll, currentUser?.id],
   );
+  // Nombre por id en O(1); mientras cargan los usuarios, "…" en vez de "Unknown".
+  const employeeNameById = useMemo(() => new Map(employees.map(employee => [employee.id, empName(employee)] as const)), [employees]);
   const getEmployeeName = (employeeId: string) =>
-    empName(employees.find(employee => employee.id === employeeId)) || 'Unknown';
+    usersLive.loaded ? employeeNameById.get(employeeId) || 'Unknown' : '…';
   // ⭐ Pestaña Fixed pay: los pagos quincenales que crea la Cloud Function.
   const fixedPayments = useMemo(
     () => records.filter(record => isFixedPayment(record) && (canSeeAllPayroll || record.employeeId === currentUser?.id)),
@@ -267,25 +275,36 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //    'nominas' = tarjetas semanales por empleado.
   const [tab, setTab] = useState<'asignar' | 'nominas' | 'hourly' | 'fixed'>('asignar');
   // Modal del pago por horas: nuevo o editando uno (se monta de nuevo en cada apertura).
-  const [hourlyForm, setHourlyForm] = useState<{ payment: PayrollRecord | null } | null>(null);
+  // Al editar se guarda el id y se usa el pago EN VIVO (si lo borran mientras está abierto, se cierra).
+  const [hourlyForm, setHourlyForm] = useState<{ paymentId: string | null } | null>(null);
+  const editingHourlyPayment = hourlyForm?.paymentId
+    ? hourlyPayments.find(payment => payment.id === hourlyForm.paymentId) ?? null
+    : null;
+  const isHourlyFormOpen = !!hourlyForm && (!hourlyForm.paymentId || !!editingHourlyPayment);
   // Detalle de un pago por horas: se guarda el id y se muestra la versión EN VIVO (si lo borran, se cierra).
   const [hourlyDetailId, setHourlyDetailId] = useState('');
   const hourlyDetailPayment = hourlyPayments.find(payment => payment.id === hourlyDetailId);
   // ⭐ Sueldos fijos (pestaña Fixed pay): solo alcance 'All'; el listener se abre al entrar a la pestaña.
   const fixedSalariesLive = useLiveCollection('fixedSalaries', canSeeAllPayroll && tab === 'fixed');
+  // Sueldos y pagos fijos: crear / editar con Payroll All + Edit; borrar además con Delete (las reglas lo piden).
+  const canEditFixedPay = canManageEmployeePay(activeRole, isSuperAdmin);
+  const canDeleteFixedPay = canDeleteEmployeePay(activeRole, isSuperAdmin);
   // Rate guardado de cada empleado por hora (System Users): lo propone el modal de Hourly.
   const hourlyRatesLive = useLiveCollection('hourlyRates', canSeeAllPayroll && tab === 'hourly');
   // Modal del sueldo fijo: nuevo o editando uno (se monta de nuevo en cada apertura).
   const [fixedSalaryForm, setFixedSalaryForm] = useState<{ salary: FixedSalary | null } | null>(null);
   // Detalle de un sueldo fijo: se guarda el empleado y se muestra la versión EN VIVO (si lo borran, se cierra).
-  const [fixedSalaryDetailId, setFixedSalaryDetailId] = useState('');
-  const fixedSalaryDetail = fixedSalariesLive.data.find(salary => salary.employeeId === fixedSalaryDetailId);
+  const [openedFixedSalaryEmployeeId, setOpenedFixedSalaryEmployeeId] = useState('');
+  const openedFixedSalary = fixedSalariesLive.data.find(salary => salary.employeeId === openedFixedSalaryEmployeeId);
+  const openedFixedSalaryPayments = openedFixedSalary
+    ? fixedPayments.filter(payment => payment.employeeId === openedFixedSalary.employeeId)
+    : [];
   // Modal para corregir el monto de un pago fijo (se guarda el id; se usa la versión EN VIVO).
-  const [fixedPaymentEditId, setFixedPaymentEditId] = useState('');
-  const fixedPaymentEdit = fixedPayments.find(payment => payment.id === fixedPaymentEditId);
+  const [editingFixedPaymentId, setEditingFixedPaymentId] = useState('');
+  const editingFixedPayment = fixedPayments.find(payment => payment.id === editingFixedPaymentId);
   // Detalle de un pago fijo: se guarda el id y se muestra la versión EN VIVO (si lo borran, se cierra).
-  const [fixedPaymentDetailId, setFixedPaymentDetailId] = useState('');
-  const fixedPaymentDetail = fixedPayments.find(payment => payment.id === fixedPaymentDetailId);
+  const [openedFixedPaymentId, setOpenedFixedPaymentId] = useState('');
+  const openedFixedPayment = fixedPayments.find(payment => payment.id === openedFixedPaymentId);
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
@@ -734,9 +753,35 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
+  // ⭐ Hourly y Fixed pay: marcar pagado / regresar a Pending (con Activity Log; ver payrollPaymentStatus.ts).
+  const handleMarkPaymentPaid = async (payment: PayrollRecord) => {
+    const employeeName = getEmployeeName(payment.employeeId);
+    if (!window.confirm(`Mark the payment of ${employeeName} (${money(payment.totalAmount)}) as paid?`)) return;
+    try {
+      await markPayrollPaymentPaid(payment, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error marking the payment as paid:', error);
+      alert('Could not mark the payment as paid. Check your connection and try again.');
+    }
+  };
+
+  const handleMarkPaymentPending = async (payment: PayrollRecord) => {
+    const employeeName = getEmployeeName(payment.employeeId);
+    if (!window.confirm(`Change the payment of ${employeeName} (${money(payment.totalAmount)}) back to Pending?`)) return;
+    try {
+      await markPayrollPaymentPending(payment, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error changing the payment to Pending:', error);
+      alert('Could not change the payment to Pending. Check your connection and try again.');
+    }
+  };
+
   const handleDeleteHourlyPayment = async (payment: PayrollRecord) => {
     const employeeName = getEmployeeName(payment.employeeId);
-    if (!window.confirm(`Delete the hourly payment of ${employeeName} (${money(payment.totalAmount)})? This cannot be undone.`)) return;
+    const paidWarning = payment.status === 'Paid' ? ` It is already marked as paid (${formatDate(payment.paidAt)}).` : '';
+    const confirmMessage = `Delete the hourly payment of ${employeeName} (${money(payment.totalAmount)})?${paidWarning} `
+      + 'This cannot be undone.';
+    if (!window.confirm(confirmMessage)) return;
     try {
       await deleteHourlyPayment(payment, employeeName, currentUser);
     } catch (error) {
@@ -747,9 +792,10 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
   const handleDeleteFixedPayment = async (payment: PayrollRecord) => {
     const employeeName = getEmployeeName(payment.employeeId);
-    const question = `Delete the fixed payment of ${employeeName} for ${fmtDate(payment.date)} (${money(payment.totalAmount)})? `
-      + 'It will not be created again.';
-    if (!window.confirm(question)) return;
+    const paidWarning = payment.status === 'Paid' ? ` It is already marked as paid (${formatDate(payment.paidAt)}).` : '';
+    const confirmMessage = `Delete the fixed payment of ${employeeName} for ${formatDate(payment.date)} (${money(payment.totalAmount)})?`
+      + `${paidWarning} It will not be created again.`;
+    if (!window.confirm(confirmMessage)) return;
     try {
       await deleteFixedPayment(payment, employeeName, currentUser);
     } catch (error) {
@@ -979,22 +1025,26 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
         {canSeeAllPayroll && (
           <FixedSalaryList
             salaries={fixedSalariesLive.data}
+            employees={employees}
+            isLoading={!fixedSalariesLive.loaded}
+            canEdit={canEditFixedPay}
+            canDelete={canDeleteFixedPay}
             getEmployeeName={getEmployeeName}
             currentUser={currentUser}
             onNewSalary={() => setFixedSalaryForm({ salary: null })}
             onEdit={(salary) => setFixedSalaryForm({ salary })}
-            onOpenDetail={(salary) => setFixedSalaryDetailId(salary.employeeId)}
+            onOpenDetail={(salary) => setOpenedFixedSalaryEmployeeId(salary.employeeId)}
           />
         )}
-        {canSeeAllPayroll && fixedSalaryDetail && (
+        {canSeeAllPayroll && openedFixedSalary && (
           <FixedSalaryDetail
-            salary={fixedSalaryDetail}
-            employeeName={getEmployeeName(fixedSalaryDetail.employeeId)}
-            payments={fixedPayments.filter(payment => payment.employeeId === fixedSalaryDetail.employeeId)}
-            onClose={() => setFixedSalaryDetailId('')}
+            salary={openedFixedSalary}
+            employeeName={getEmployeeName(openedFixedSalary.employeeId)}
+            payments={openedFixedSalaryPayments}
+            onClose={() => setOpenedFixedSalaryEmployeeId('')}
           />
         )}
-        {canSeeAllPayroll && fixedSalaryForm && (
+        {canEditFixedPay && fixedSalaryForm && (
           <FixedSalaryForm
             key={fixedSalaryForm.salary?.employeeId ?? 'new'}
             employees={employees}
@@ -1006,27 +1056,29 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
         )}
         <FixedPaymentList
           payments={fixedPayments}
+          isLoading={isLoading}
           getEmployeeName={getEmployeeName}
           canMarkPaid={canSeeAllPayroll}
-          onMarkPaid={handleMarkAsPaid}
-          onEdit={canSeeAllPayroll ? (payment) => setFixedPaymentEditId(payment.id ?? '') : undefined}
-          onDelete={canSeeAllPayroll ? handleDeleteFixedPayment : undefined}
-          onOpenDetail={(payment) => setFixedPaymentDetailId(payment.id ?? '')}
+          onMarkPaid={handleMarkPaymentPaid}
+          onMarkPending={handleMarkPaymentPending}
+          onEdit={canEditFixedPay ? (payment) => setEditingFixedPaymentId(payment.id ?? '') : undefined}
+          onDelete={canDeleteFixedPay ? handleDeleteFixedPayment : undefined}
+          onOpenDetail={(payment) => setOpenedFixedPaymentId(payment.id ?? '')}
         />
-        {fixedPaymentDetail && (
+        {openedFixedPayment && (
           <FixedPaymentDetail
-            payment={fixedPaymentDetail}
-            employeeName={getEmployeeName(fixedPaymentDetail.employeeId)}
-            onClose={() => setFixedPaymentDetailId('')}
+            payment={openedFixedPayment}
+            employeeName={getEmployeeName(openedFixedPayment.employeeId)}
+            onClose={() => setOpenedFixedPaymentId('')}
           />
         )}
-        {canSeeAllPayroll && fixedPaymentEdit && (
+        {canEditFixedPay && editingFixedPayment && (
           <FixedPaymentForm
-            key={fixedPaymentEdit.id}
-            payment={fixedPaymentEdit}
-            employeeName={getEmployeeName(fixedPaymentEdit.employeeId)}
+            key={editingFixedPayment.id}
+            payment={editingFixedPayment}
+            employeeName={getEmployeeName(editingFixedPayment.employeeId)}
             currentUser={currentUser}
-            onClose={() => setFixedPaymentEditId('')}
+            onClose={() => setEditingFixedPaymentId('')}
           />
         )}
       </>)}
@@ -1035,11 +1087,13 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       {tab === 'hourly' && (<>
         <HourlyPayList
           payments={hourlyPayments}
+          isLoading={isLoading}
           getEmployeeName={getEmployeeName}
           canMarkPaid={canSeeAllPayroll}
-          onMarkPaid={handleMarkAsPaid}
-          onNewPayment={canSeeAllPayroll ? () => setHourlyForm({ payment: null }) : undefined}
-          onEdit={canSeeAllPayroll ? (payment) => setHourlyForm({ payment }) : undefined}
+          onMarkPaid={handleMarkPaymentPaid}
+          onMarkPending={handleMarkPaymentPending}
+          onNewPayment={canSeeAllPayroll ? () => setHourlyForm({ paymentId: null }) : undefined}
+          onEdit={canSeeAllPayroll ? (payment) => setHourlyForm({ paymentId: payment.id ?? null }) : undefined}
           onDelete={canSeeAllPayroll ? handleDeleteHourlyPayment : undefined}
           onOpenDetail={(payment) => setHourlyDetailId(payment.id ?? '')}
         />
@@ -1050,14 +1104,14 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
             onClose={() => setHourlyDetailId('')}
           />
         )}
-        {canSeeAllPayroll && hourlyForm && (
-          <HourlyPayForm
-            key={hourlyForm.payment?.id ?? 'new'}
+        {canSeeAllPayroll && isHourlyFormOpen && (
+          <HourlyPaymentForm
+            key={hourlyForm?.paymentId ?? 'new'}
             employees={employees}
             payrollRecords={records}
             hourlyRates={hourlyRatesLive.data}
             currentUser={currentUser}
-            payment={hourlyForm.payment}
+            payment={editingHourlyPayment}
             onClose={() => setHourlyForm(null)}
           />
         )}

@@ -7,15 +7,20 @@
    todavía no existen, con status Pending (los marca pagados la pestaña Fixed
    pay de Payroll).
 
-   IDEMPOTENCIA: el id del pago es fijo (fixed_{empleado}_{AAAA-MM-DD}) y se
-   crea con create(), que falla si ya existe. Correr dos veces, o reintentar,
-   nunca duplica un pago.
+   IDEMPOTENCIA POR SUELDO: el id del pago es fijo (fixed_{idDelSueldo}_{AAAA-MM-DD};
+   el id del sueldo es el del empleado) y se crea con create(), que falla si ya
+   existe. Correr dos veces, o reintentar, nunca duplica un pago DE ESE SUELDO.
+   Si el sueldo cambia de id (el usuario se movió de id al invitarlo), la app
+   anota en skippedPayDates las fechas ya pagadas con el id viejo.
 
    DÍAS QUE FALLARON: además de los de este mes, revisa el último día del mes
    pasado. Si la función no corrió ese día, el pago se crea al día siguiente.
    No crea pagos de antes de `startDate` del sueldo (el día que se dio de alta
    o se reanudó) ni los de `skippedPayDates` (pagos que se borraron a mano en
    la pestaña Fixed pay: si no, se volverían a crear al día siguiente).
+
+   EMPLEADO: se salta el sueldo si su usuario (system_users/{employeeId}) ya no
+   existe o está Inactive, aunque el sueldo siga activo.
 
    La división en dos partes es la MISMA que getBiweeklyAmounts de
    src/features/payroll/fixedPay.ts (la pantalla): si cambia una, cambia la otra.
@@ -72,6 +77,16 @@ const getBiweeklyAmounts = (monthlyAmount: number) => {
   return { firstHalf: firstHalfCents / 100, secondHalf: (monthlyCents - firstHalfCents) / 100 };
 };
 
+/** Empleados a los que sí se les paga: su usuario existe y no está Inactive (una sola lectura en lote). */
+const getPayableEmployeeIds = async (employeeIds: string[]): Promise<Set<string>> => {
+  if (employeeIds.length === 0) return new Set();
+  const userRefs = employeeIds.map((employeeId) => db().collection("system_users").doc(employeeId));
+  const userSnaps = await db().getAll(...userRefs);
+  return new Set(userSnaps
+    .filter((userSnap) => userSnap.exists && userSnap.get("status") !== "Inactive")
+    .map((userSnap) => userSnap.id));
+};
+
 /** Crea UN pago fijo si no existe; devuelve true si lo creó. */
 const createFixedPayment = async (
   salaryId: string, employeeId: string, payDate: string, amount: number,
@@ -109,17 +124,26 @@ export const createfixedpayroll = onSchedule(
     const todayYmd = getTodayInTexas();
     const dueDates = getDuePayDates(todayYmd);
     const salariesSnap = await db().collection("fixed_salaries").where("active", "==", true).get();
+    const payableEmployeeIds = await getPayableEmployeeIds(
+      salariesSnap.docs.map((salaryDoc) => (salaryDoc.data() as FixedSalaryDoc).employeeId || salaryDoc.id),
+    );
     let createdCount = 0;
+    let skippedCount = 0;
 
     for (const salaryDoc of salariesSnap.docs) {
       const salary = salaryDoc.data() as FixedSalaryDoc;
+      // employeeId || id del doc: un sueldo sin el campo usa su id (que es el del empleado).
       const employeeId = salary.employeeId || salaryDoc.id;
+      if (!payableEmployeeIds.has(employeeId)) {
+        skippedCount++;
+        continue;
+      }
       const { firstHalf, secondHalf } = getBiweeklyAmounts(Number(salary.monthlyAmount) || 0);
       if (firstHalf <= 0) continue;
 
       const skippedPayDates = salary.skippedPayDates ?? [];
       for (const payDate of dueDates) {
-        if (payDate < (salary.startDate || "") || skippedPayDates.includes(payDate)) continue;
+        if (payDate < (salary.startDate ?? "") || skippedPayDates.includes(payDate)) continue;
         const amount = payDate.endsWith("-15") ? firstHalf : secondHalf;
         try {
           if (await createFixedPayment(salaryDoc.id, employeeId, payDate, amount)) createdCount++;
@@ -130,6 +154,9 @@ export const createfixedpayroll = onSchedule(
       }
     }
 
-    logger.info(`createfixedpayroll (${todayYmd}): ${createdCount} pago(s) creados de ${salariesSnap.size} sueldo(s).`);
+    logger.info(
+      `createfixedpayroll (${todayYmd}): ${createdCount} pago(s) creados de ${salariesSnap.size} sueldo(s); `
+      + `${skippedCount} saltado(s) por usuario borrado o Inactive.`,
+    );
   },
 );

@@ -4,18 +4,20 @@
 // `salary` edita ese sueldo (el empleado no se cambia). Los pagos los crea la
 // Cloud Function createfixedpayroll. Se monta de nuevo en cada apertura.
 // Solo salen los empleados con tipo de pago "Fixed salary" (System Users).
+// "Starts on" es siempre un inicio de quincena (el 1 o el 16): la de hoy o una
+// siguiente, nunca una pasada (así no se reviven quincenas en que estuvo parado).
+// Guardar el de un sueldo detenido lo reanuda desde esa fecha.
 import { useMemo, useState } from 'react';
 import { CalendarDays, User } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
 import SearchableSelect from '../../../shared/components/SearchableSelect';
-import DateInput from '../../../shared/components/DateInput';
-import { fixedSalariesService } from '../../../services/fixedSalariesService';
+import { FIXED_SALARY_EXISTS, fixedSalariesService } from '../../../services/fixedSalariesService';
 import { logActivity } from '../../../services/activityLogService';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
 import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
-import { getBiweeklyAmounts } from '../fixedPay';
-import { parsePositiveNumber } from '../hourlyPay';
+import { getBiweeklyAmounts, getNextPayPeriodStart, getPayPeriodStartOptions } from '../fixedPay';
+import { parsePositiveNumber } from '../../../shared/utils/parsePositiveNumber';
 import { hasPayType } from '../employeePay';
 import PayrollDialog from './PayrollDialog';
 import './FixedSalaryForm.css';
@@ -32,8 +34,8 @@ interface FixedSalaryFormProps {
 const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: FixedSalaryFormProps) => {
   const isEditing = !!salary;
   const [employeeId, setEmployeeId] = useState(salary?.employeeId ?? '');
-  const [monthlyText, setMonthlyText] = useState(salary ? String(salary.monthlyAmount) : '');
-  const [startDate, setStartDate] = useState(() => salary?.startDate || todayIso());
+  const [monthlyAmountText, setMonthlyAmountText] = useState(salary ? String(salary.monthlyAmount) : '');
+  const [startDate, setStartDate] = useState(() => salary?.startDate || getNextPayPeriodStart(todayIso()));
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
 
@@ -44,10 +46,16 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
       .sort((optionA, optionB) => optionA.name.localeCompare(optionB.name)),
     [employees],
   );
-  const employeeName = fullName(employees.find((employee) => employee.id === employeeId)) || '';
+  const employeeName = fullName(employees.find((employee) => employee.id === employeeId));
   // Un empleado ya tiene a lo más un sueldo (id = empleado): elegirlo de nuevo lo actualiza.
   const existingSalary = salary ?? salaries.find((savedSalary) => savedSalary.employeeId === employeeId);
-  const monthlyAmount = parsePositiveNumber(monthlyText);
+  const isResuming = !!existingSalary && !existingSalary.active;
+  // Inicios de quincena elegibles; si el sueldo guardado empezó antes, esa fecha también (sin cambio).
+  const periodStartOptions = getPayPeriodStartOptions(todayIso());
+  const startDateOptions = existingSalary && !periodStartOptions.includes(existingSalary.startDate)
+    ? [existingSalary.startDate, ...periodStartOptions]
+    : periodStartOptions;
+  const monthlyAmount = parsePositiveNumber(monthlyAmountText);
   const biweeklyAmounts = monthlyAmount === null ? null : getBiweeklyAmounts(monthlyAmount);
   const canSave = !!employeeId && !!startDate && monthlyAmount !== null && !isSaving;
   const titleText = isEditing ? 'Edit fixed salary' : 'New fixed salary';
@@ -57,8 +65,8 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
   const handleEmployeeChange = (nextEmployeeId: string) => {
     setEmployeeId(nextEmployeeId);
     const savedSalary = salaries.find((candidate) => candidate.employeeId === nextEmployeeId);
-    setMonthlyText(savedSalary ? String(savedSalary.monthlyAmount) : '');
-    setStartDate(savedSalary?.startDate ?? todayIso());
+    setMonthlyAmountText(savedSalary ? String(savedSalary.monthlyAmount) : '');
+    setStartDate(savedSalary?.active ? savedSalary.startDate : getNextPayPeriodStart(todayIso()));
     setErrorText('');
   };
 
@@ -68,7 +76,8 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
     setErrorText('');
     try {
       if (existingSalary) {
-        await fixedSalariesService.update(employeeId, { monthlyAmount, startDate }, fullName(currentUser));
+        // Un sueldo detenido vuelve a quedar activo desde "Starts on".
+        await fixedSalariesService.update(employeeId, { monthlyAmount, startDate, active: true }, fullName(currentUser));
       } else {
         await fixedSalariesService.create({ employeeId, monthlyAmount, startDate }, fullName(currentUser));
       }
@@ -78,12 +87,15 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
         user: currentUser,
         targetId: employeeId,
         targetLabel: employeeName,
-        detail: `Fixed salary: ${money(monthlyAmount)} per month from ${formatDate(startDate)}.`,
+        detail: `Fixed salary${isResuming ? ' resumed' : ''}: ${money(monthlyAmount)} per month from ${formatDate(startDate)}.`,
       });
       onClose();
     } catch (error) {
       console.error('Error saving the fixed salary:', error);
-      setErrorText('Could not save the salary. Check your connection and try again.');
+      const alreadyExists = error instanceof Error && error.message === FIXED_SALARY_EXISTS;
+      setErrorText(alreadyExists
+        ? 'This employee already has a fixed salary. Close this window and open it from the list to change it.'
+        : 'Could not save the salary. Check your connection and try again.');
       setIsSaving(false);
     }
   };
@@ -100,9 +112,9 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
   );
 
   return (
-    <PayrollDialog title={titleText} icon={CalendarDays} onClose={onClose} footer={footer} isBusy={isSaving} allowOverflow>
+    <PayrollDialog title={titleText} icon={CalendarDays} onClose={onClose} footer={footer} isBusy={isSaving} canOverflow>
       <div className="pdlg-grid">
-        <div className="pdlg-field fsf-employee">
+        <div className="fsf-employee pdlg-field">
           <span className="pdlg-label">Employee</span>
           {isEditing ? (
             <input className="pdlg-input" disabled value={employeeName} aria-label="Employee" />
@@ -113,6 +125,7 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
               onChange={handleEmployeeChange}
               placeholder="Search employee..."
               icon={User}
+              ariaLabel="Employee"
             />
           )}
           {!isEditing && employeeOptions.length === 0 && (
@@ -127,15 +140,22 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
             min="0"
             step="0.01"
             type="number"
-            value={monthlyText}
-            onChange={(event) => setMonthlyText(event.target.value)}
+            value={monthlyAmountText}
+            onChange={(event) => setMonthlyAmountText(event.target.value)}
           />
         </label>
         <label className="pdlg-field">
           <span className="pdlg-label">Starts on</span>
-          <DateInput className="pdlg-input" value={startDate} onChange={setStartDate} aria-label="Starts on" />
+          <select className="pdlg-input" value={startDate} onChange={(event) => setStartDate(event.target.value)}>
+            {startDateOptions.map((periodStart) => (
+              <option key={periodStart} value={periodStart}>{formatDate(periodStart)}</option>
+            ))}
+          </select>
         </label>
       </div>
+      {isResuming && (
+        <p className="fsf-resume-note">This salary is stopped: saving resumes it from {formatDate(startDate)}.</p>
+      )}
       {biweeklyAmounts && (
         <p className="pdlg-note">
           {money(biweeklyAmounts.firstHalf)} on the 15th · {money(biweeklyAmounts.secondHalf)} on the last day

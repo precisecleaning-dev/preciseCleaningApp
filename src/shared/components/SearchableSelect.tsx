@@ -2,7 +2,7 @@
 // Selector con búsqueda por texto. Nació en el formulario de casas (extraído de
 // HousesView.tsx); está en shared porque también lo usa Invoices New
 // (InvoiceJobPicker). Siguiente uso: los modales de Payroll (Hourly y Fixed pay).
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, X } from 'lucide-react';
 import './SearchableSelect.css';
@@ -23,6 +23,7 @@ export default function SearchableSelect<T extends SelectOption>({
   disabled = false,
   allowClear = false,
   clearLabel = "— None —",
+  ariaLabel,
 }: {
   options: T[];
   value?: string;
@@ -36,6 +37,8 @@ export default function SearchableSelect<T extends SelectOption>({
   //    el Team se heredaba de la casa original y no se podia quitar.
   allowClear?: boolean;
   clearLabel?: string;
+  /** Nombre del campo para lectores de pantalla (cuando no hay <label> asociado). */
+  ariaLabel?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -46,6 +49,15 @@ export default function SearchableSelect<T extends SelectOption>({
   const filteredOptions = options.filter((o) =>
     o.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  // Escape con la lista abierta solo la cierra: preventDefault avisa a un modal
+  // que lo contenga que no se cierre (ver PayrollDialog).
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Escape" || !isOpen) return;
+    event.preventDefault();
+    setIsOpen(false);
+    setSearch("");
+  };
 
   return (
     <div
@@ -58,6 +70,7 @@ export default function SearchableSelect<T extends SelectOption>({
         <input
           className="hv-searchsel-input"
           placeholder={placeholder}
+          aria-label={ariaLabel}
           value={displayValue}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -68,6 +81,7 @@ export default function SearchableSelect<T extends SelectOption>({
             setIsOpen(true);
             setSearch("");
           }}
+          onKeyDown={handleInputKeyDown}
           disabled={disabled}
         />
         {allowClear && !disabled && String(value || "") !== "" && (

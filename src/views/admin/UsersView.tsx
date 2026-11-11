@@ -6,14 +6,16 @@ import { db } from '../../config/firebase';
 import { setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import type { EmployeePayType, SystemUser, Role } from '../../types/index';
 import { createUserWithResetEmail, resendPasswordReset } from '../../services/userAuthService';
-import { commitInChunks, commitOps } from '../../shared/data/batchWrites';
+import { commitInChunks, commitOps, type BatchOp } from '../../shared/data/batchWrites';
 import { useLiveCollection } from '../../shared/data/liveCollections';
 import './UsersView.css';
 import MenuButton from '../../shared/components/MenuButton';
 import UserPayFields from '../../features/payroll/components/UserPayFields';
-import { canManageEmployeePay, getEmployeePayType } from '../../features/payroll/employeePay';
-import { parsePositiveNumber } from '../../features/payroll/hourlyPay';
-import { moveEmployeePay, saveEmployeePay } from '../../features/payroll/services/employeePayService';
+import { canManageEmployeePay, canMoveEmployeePay, getEmployeePayType } from '../../features/payroll/employeePay';
+import { parsePositiveNumber } from '../../shared/utils/parsePositiveNumber';
+import {
+  buildEmployeePayMoveOps, logEmployeePayMove, saveEmployeePay, stopEmployeeFixedSalary,
+} from '../../features/payroll/services/employeePayService';
 import { fullName } from '../../utils/homeData';
 
 interface UsersViewProps {
@@ -43,12 +45,21 @@ const changedFields = <T extends object>(prev: object | undefined, next: T): Par
 };
 
 // Mueve el documento de un usuario a otro id (set + delete) en un solo batch:
-// si algo falla no quedan dos copias del usuario ni ninguna.
-const moveUserDoc = (fromId: string, toId: string, data: object) =>
+// si algo falla no quedan dos copias del usuario ni ninguna. `payMoveOps` (su
+// rate, su sueldo y sus pagos, ver buildEmployeePayMoveOps) van en el MISMO batch.
+const moveUserDoc = (fromId: string, toId: string, data: object, payMoveOps: BatchOp[] = []) =>
   commitOps([
     (b) => b.set(doc(db, 'system_users', toId), data),
     (b) => b.delete(doc(db, 'system_users', fromId)),
+    ...payMoveOps,
   ]);
+
+// Sin permiso para mover el pago, no se cambia el id de quien cobra por hora o
+// fijo: su sueldo seguiría a nombre del id viejo y la Cloud Function le pagaría
+// a un usuario que ya no existe.
+const PAY_MOVE_BLOCKED_TEXT = '⚠️ This employee is paid hourly or with a fixed salary. Their rate, salary and payments '
+  + 'must move with them to the new account, and only someone with Payroll permission to edit and delete can do that. '
+  + 'Ask them to send the invitation (or change the email).';
 
 export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, isSuperAdmin }: UsersViewProps) {
   // ⭐ Usuarios del store compartido (un listener para toda la app). Antes se
@@ -82,25 +93,37 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
   const formPayType = getEmployeePayType(formData);
   const currentRate = hourlyRatesLive.data.find(rate => rate.employeeId === formData.id);
   const currentSalary = fixedSalariesLive.data.find(salary => salary.employeeId === formData.id);
-  const storedAmount = formPayType === 'hourly' ? currentRate?.hourlyRate
-    : formPayType === 'fixed' ? currentSalary?.monthlyAmount : undefined;
+  const storedAmountByPayType: Record<EmployeePayType, number | undefined> = {
+    perHouse: undefined,
+    hourly: currentRate?.hourlyRate,
+    fixed: currentSalary?.monthlyAmount,
+  };
+  const storedAmount = storedAmountByPayType[formPayType];
   const payAmountShown = payAmountText ?? (storedAmount === undefined ? '' : String(storedAmount));
+  // Sin los montos guardados no se sabe qué hay: Save espera a que carguen.
+  const isPayLoading = canManagePay && isModalOpen && (!hourlyRatesLive.loaded || !fixedSalariesLive.loaded);
+
+  // Monto de pago inválido (o el sueldo fijo vacío): texto del aviso, o '' si está bien.
+  const getPayAmountError = (): string => {
+    if (!canManagePay || formPayType === 'perHouse') return '';
+    const amount = parsePositiveNumber(payAmountShown);
+    if (formPayType === 'fixed' && amount === null) return 'Enter the monthly salary (greater than 0) for a fixed-salary employee.';
+    if (payAmountShown.trim() !== '' && amount === null) return 'The hourly rate must be greater than 0.';
+    return '';
+  };
 
   // Guarda el rate o el sueldo del usuario ya guardado (con su id final). Si
   // falla, el usuario sí quedó guardado: se avisa sin cancelar lo demás.
-  const savePay = async (userId: string, previousUserId?: string) => {
+  const savePay = async (userId: string) => {
     if (!canManagePay) return;
-    const original = users.find(u => u.id === (previousUserId || formData.id));
     try {
-      if (previousUserId && previousUserId !== userId) await moveEmployeePay(previousUserId, userId, fullName(currentUser));
       await saveEmployeePay({
         employeeId: userId,
+        employeeName: fullName({ firstName: formData.firstName ?? '', lastName: formData.lastName ?? '', email: formData.email ?? '' }),
         payType: formPayType,
-        previousPayType: getEmployeePayType(original),
         amount: parsePositiveNumber(payAmountShown),
-        currentRate,
-        currentSalary,
-      }, fullName(currentUser));
+        isActiveUser: formData.status !== 'Inactive',
+      }, currentUser);
     } catch (error) {
       console.error('Error saving the employee pay:', error);
       alert('⚠️ The user was saved, but the pay rate / salary could not be saved. Open the user and try again.');
@@ -112,6 +135,13 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
     setFormData({ ...formData, payType });
     setPayAmountText(null);
   };
+
+  // ⭐ CAMBIO DE ID DEL USUARIO (invitación o correo de un pendiente): su pago
+  //    se mueve en el mismo batch que el usuario (buildEmployeePayMoveOps).
+  const canMovePay = canMoveEmployeePay(activeRole, isSuperAdmin);
+  const isPayMoveBlocked = (user?: Pick<SystemUser, 'payType'>) => getEmployeePayType(user) !== 'perHouse' && !canMovePay;
+  const getPayMove = async (fromId: string, toId: string) =>
+    canMovePay ? buildEmployeePayMoveOps(fromId, toId, currentUser) : { ops: [], movedCount: 0 };
 
   const handleOpenForm = (user?: SystemUser) => {
     setPayAmountText(null);
@@ -139,6 +169,8 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
     if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       return alert("Please enter a valid email address.");
     }
+    const payAmountError = getPayAmountError();
+    if (payAmountError) return alert(payAmountError);
 
     setIsSaving(true);
     try {
@@ -177,11 +209,18 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
 
           if (id.startsWith('pending_')) {
             // Aún sin cuenta de Auth: migrar el doc al nuevo ID determinístico
+            if (isPayMoveBlocked(original)) {
+              alert(PAY_MOVE_BLOCKED_TEXT);
+              setIsSaving(false);
+              return;
+            }
             const newId = emailToPendingId(cleanEmail);
             const newData = { ...(original as SystemUserExt), ...payload };
             delete (newData as Partial<SystemUserExt>).id;
-            await moveUserDoc(id, newId, newData);
-            await savePay(newId, id);
+            const payMove = await getPayMove(id, newId);
+            await moveUserDoc(id, newId, newData, payMove.ops);
+            logEmployeePayMove(newId, fullName(newData), payMove.movedCount, currentUser);
+            await savePay(newId);
             alert('✅ User updated.\n\n📧 El email fue cambiado. Cuando estés listo, usa el botón ✈️ para enviar la invitación al NUEVO correo.');
             handleCloseForm();
             setIsSaving(false);
@@ -246,6 +285,11 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
     if (!window.confirm("Are you sure you want to delete this user from the system?\n\nNOTE: This removes them from your app's user list, but does NOT delete their Firebase Auth account if they were already invited. To fully remove access, also delete them from Firebase Console → Authentication.")) return;
     setIsSaving(true);
     try {
+      // Su sueldo fijo deja de pagarse (los pagos ya creados se quedan).
+      if (canManagePay) {
+        const deletedUser = users.find(user => user.id === id);
+        await stopEmployeeFixedSalary(id, fullName(deletedUser), 'user deleted', currentUser);
+      }
       await deleteDoc(doc(db, 'system_users', id));
     } catch (error) {
       console.error("Error deleting user:", error);
@@ -266,6 +310,12 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
     const confirmMsg = wasInvited
       ? `Resend password setup email to ${user.email}?`
       : `Send password setup email to ${user.email}?\n\nThis will create their Firebase Auth account and send them an email with a link to set up their password.`;
+
+    // Primera invitación: el doc pasa al UID de Auth y el pago tiene que moverse con él.
+    if (!wasInvited && isPayMoveBlocked(user)) {
+      alert(PAY_MOVE_BLOCKED_TEXT);
+      return;
+    }
 
     if (!window.confirm(confirmMsg)) return;
 
@@ -301,14 +351,10 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
         // Crear nuevo doc con el Auth UID + borrar el viejo (con ID basado en email)
         const { id, ...userData } = user;
         const newData = { ...userData, ...updatedFields };
-        await moveUserDoc(currentId, authUid!, newData);
-        // El rate y el sueldo siguen al usuario a su id nuevo (si no, se pagaría al id viejo).
-        if (canManagePay) {
-          await moveEmployeePay(currentId, authUid!, fullName(currentUser)).catch((error) => {
-            console.error('Error moving the employee pay:', error);
-            alert('⚠️ Invitation sent, but the pay rate / salary could not be moved to the new account. Set it again in this user.');
-          });
-        }
+        // El rate, el sueldo y los pagos van en el mismo batch que el usuario.
+        const payMove = await getPayMove(currentId, authUid!);
+        await moveUserDoc(currentId, authUid!, newData, payMove.ops);
+        logEmployeePayMove(authUid!, fullName(newData), payMove.movedCount, currentUser);
       } else {
         // No hace falta migrar; solo actualizamos
         await updateDoc(doc(db, 'system_users', currentId), updatedFields);
@@ -620,7 +666,7 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
               <button onClick={handleCloseForm} disabled={isSaving} className="uv-btn-cancel">Cancel</button>
               <button
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || isPayLoading}
                 className="uv-btn-primary-modal save"
               >
                 {isSaving && <Loader2 size={14} className="spin-users" />}

@@ -5,12 +5,12 @@
 // (onMarkPaid, onEdit, onDelete); sin onEdit/onDelete no hay columna de acciones.
 // Clic (o Enter) en la fila abre su detalle (onOpenDetail); los botones y el
 // enlace del recibo no lo abren.
-import type { KeyboardEvent, MouseEvent } from 'react';
-import { CheckCircle, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle, RotateCcw, FileText, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
 import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
+import { PayrollTableRow, PayrollTableSkeleton, PayrollTableToolbar } from './PayrollTable';
 import './HourlyPayList.css';
 
 interface HourlyPayRowProps {
@@ -18,67 +18,56 @@ interface HourlyPayRowProps {
   employeeName: string;
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
+  onMarkPending: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
   onOpenDetail: (payment: PayrollRecord) => void;
 }
 
-/** Los botones y enlaces dentro de la fila no abren el detalle. */
-const stopRowClick = (event: MouseEvent) => event.stopPropagation();
-
 const HourlyPayRow = ({
-  payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
+  payment, employeeName, canMarkPaid, onMarkPaid, onMarkPending, onEdit, onDelete, onOpenDetail,
 }: HourlyPayRowProps) => {
   const isPaid = payment.status === 'Paid';
   const hoursText = `${payment.hours ?? 0} h × ${money(payment.hourlyRate ?? 0)}`;
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
 
-  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
-  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    onOpenDetail(payment);
-  };
-
   return (
-    <div
-      className="hpl-row is-clickable"
-      role="button"
-      tabIndex={0}
-      aria-label={`View hourly payment of ${employeeName}`}
-      onClick={() => onOpenDetail(payment)}
-      onKeyDown={handleRowKeyDown}
-    >
-      <span className="hpl-date">{formatDate(payment.date)}</span>
-      <span className="hpl-employee">{employeeName}</span>
-      <span className="hpl-hours">{hoursText}</span>
-      <strong className="hpl-total">{money(payment.totalAmount)}</strong>
-      <span className="hpl-receipt" onClick={stopRowClick}>
+    <PayrollTableRow label={`View hourly payment of ${employeeName}`} onOpen={() => onOpenDetail(payment)}>
+      <span>{formatDate(payment.date)}</span>
+      <span className="ptbl-name">{employeeName}</span>
+      <span>{hoursText}</span>
+      <strong className="ptbl-amount">{money(payment.totalAmount)}</strong>
+      <span>
         {payment.receiptUrl && (
           <a className="hpl-receipt-link" href={payment.receiptUrl} rel="noopener noreferrer" target="_blank">
             <FileText size={14} aria-hidden="true" /> Receipt
           </a>
         )}
       </span>
-      <span className="hpl-status" onClick={stopRowClick}>
-        <span className={`hpl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
+      <span className="ptbl-status">
+        <span className={`ptbl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
         {canMarkPaid && !isPaid && (
-          <button type="button" className="hpl-paid-btn" onClick={() => onMarkPaid(payment)}>
+          <button type="button" className="ptbl-paid-btn" onClick={() => onMarkPaid(payment)}>
             <CheckCircle size={14} aria-hidden="true" /> Mark paid
+          </button>
+        )}
+        {canMarkPaid && isPaid && (
+          <button type="button" className="ptbl-pending-btn" onClick={() => onMarkPending(payment)}>
+            <RotateCcw size={14} aria-hidden="true" /> Mark pending
           </button>
         )}
       </span>
       {(onEdit || onDelete) && (
-        <span className="hpl-actions" onClick={stopRowClick}>
+        <span className="ptbl-actions">
           {onEdit && (
-            <button type="button" className="hpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
+            <button type="button" className="ptbl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
               <Pencil size={16} />
             </button>
           )}
           {onDelete && (
             <button
               type="button"
-              className="hpl-icon-btn is-delete"
+              className="ptbl-icon-btn is-delete"
               aria-label="Delete payment"
               title="Delete"
               onClick={() => onDelete(payment)}
@@ -88,31 +77,19 @@ const HourlyPayRow = ({
           )}
         </span>
       )}
-    </div>
+    </PayrollTableRow>
   );
 };
 
-interface HourlyPayToolbarProps {
-  /** Sin esta función (alcance 'Own') no hay botón de pago nuevo. */
-  onNewPayment?: () => void;
-}
-
-const HourlyPayToolbar = ({ onNewPayment }: HourlyPayToolbarProps) => (
-  <div className="hpl-toolbar">
-    <h3 className="hpl-title">Hourly payments</h3>
-    {onNewPayment && (
-      <button type="button" className="btn-primary" onClick={onNewPayment}>
-        <Plus size={16} aria-hidden="true" /> New hourly payment
-      </button>
-    )}
-  </div>
-);
-
 interface HourlyPayListProps {
   payments: readonly PayrollRecord[];
+  /** Mientras carga la nómina se muestra un esqueleto, no "No hourly payments yet". */
+  isLoading: boolean;
   getEmployeeName: (employeeId: string) => string;
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
+  onMarkPending: (payment: PayrollRecord) => void;
+  /** Sin esta función (alcance 'Own') no hay botón de pago nuevo. */
   onNewPayment?: () => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
@@ -120,25 +97,35 @@ interface HourlyPayListProps {
 }
 
 const HourlyPayList = ({
-  payments, getEmployeeName, canMarkPaid, onMarkPaid, onNewPayment, onEdit, onDelete, onOpenDetail,
+  payments, isLoading, getEmployeeName, canMarkPaid, onMarkPaid, onMarkPending, onNewPayment, onEdit, onDelete, onOpenDetail,
 }: HourlyPayListProps) => {
   const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
+  const toolbar = <PayrollTableToolbar title="Hourly payments" actionText="New hourly payment" onAction={onNewPayment} />;
+
+  if (isLoading) {
+    return (
+      <>
+        {toolbar}
+        <PayrollTableSkeleton />
+      </>
+    );
+  }
 
   if (sortedPayments.length === 0) {
     return (
       <>
-        <HourlyPayToolbar onNewPayment={onNewPayment} />
-        <p className="hpl-empty">No hourly payments yet.</p>
+        {toolbar}
+        <p className="ptbl-empty">No hourly payments yet.</p>
       </>
     );
   }
 
   return (
     <>
-      <HourlyPayToolbar onNewPayment={onNewPayment} />
-      <section className={`hpl-card${hasActions ? ' has-actions' : ''}`} aria-label="Hourly payments">
-        <div className="hpl-head" aria-hidden="true">
+      {toolbar}
+      <section className={`hpl-card ptbl-card${hasActions ? ' has-actions' : ''}`} aria-label="Hourly payments">
+        <div className="ptbl-head" aria-hidden="true">
           <span>Pay date</span>
           <span>Employee</span>
           <span>Hours × rate</span>
@@ -148,7 +135,6 @@ const HourlyPayList = ({
           {hasActions && <span>Actions</span>}
         </div>
         <VirtualItems
-          className="hpl-list"
           estimate={56}
           items={sortedPayments}
           renderItem={(payment) => (
@@ -158,6 +144,7 @@ const HourlyPayList = ({
               employeeName={getEmployeeName(payment.employeeId)}
               canMarkPaid={canMarkPaid}
               onMarkPaid={onMarkPaid}
+              onMarkPending={onMarkPending}
               onEdit={onEdit}
               onDelete={onDelete}
               onOpenDetail={onOpenDetail}

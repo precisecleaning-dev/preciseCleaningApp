@@ -2,7 +2,7 @@
 // Guarda un pago por horas: sube el recibo (si hay) y crea el pago en `payroll`
 // sin casa (propertyId vacío), con payType 'hourly', horas, rate y total.
 // También lo edita y lo borra (con su recibo de Storage).
-import type { PayrollRecord, SystemUser } from '../../../types/index';
+import type { HourlyPaymentChanges, HourlyPaymentInput, PayrollRecord, SystemUser } from '../../../types/index';
 import { payrollService } from '../../../services/payrollService';
 import { storageService } from '../../../services/storageService';
 import { logActivity } from '../../../services/activityLogService';
@@ -10,20 +10,10 @@ import { compressImage } from '../../../utils/imageCompression';
 import { uploadBatchWithProgress } from '../../../utils/photoUploader';
 import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
-import { calcHourlyTotal } from '../hourlyPay';
+import { computeHourlyTotal } from '../hourlyPay';
 
 /** Carpeta de Storage de los recibos: payroll_receipts/{empleado}/{hora}_{archivo}. */
 const RECEIPTS_FOLDER = 'payroll_receipts';
-
-export interface HourlyPaymentInput {
-  employeeId: string;
-  employeeName: string;
-  /** Fecha de pago, AAAA-MM-DD. */
-  date: string;
-  hours: number;
-  hourlyRate: number;
-  receiptFile: File | null;
-}
 
 const toSafeFileName = (fileName: string) => fileName.replace(/[^\w.-]+/g, '_');
 
@@ -35,26 +25,42 @@ const uploadReceipt = async (employeeId: string, receiptFile: File): Promise<str
   return receiptUrl;
 };
 
+/** Si el pago no se pudo guardar, el recibo recién subido se borra (si no, queda huérfano en Storage). */
+const discardUploadedReceipt = async (receiptUrl: string) => {
+  if (!receiptUrl) return;
+  try {
+    await storageService.deletePhotoByUrl(receiptUrl);
+  } catch (error) {
+    console.error('Could not delete the unused receipt:', error);
+  }
+};
+
 export const createHourlyPayment = async (payment: HourlyPaymentInput, actor?: SystemUser | null): Promise<void> => {
   const receiptUrl = payment.receiptFile ? await uploadReceipt(payment.employeeId, payment.receiptFile) : '';
-  const totalAmount = calcHourlyTotal(payment.hours, payment.hourlyRate);
-  const paymentId = await payrollService.create({
-    propertyId: '',
-    employeeId: payment.employeeId,
-    date: payment.date,
-    baseAmount: totalAmount,
-    extraAmount: 0,
-    extraNote: '',
-    discountAmount: 0,
-    discountNote: '',
-    totalAmount,
-    status: 'Pending',
-    payType: 'hourly',
-    hours: payment.hours,
-    hourlyRate: payment.hourlyRate,
-    receiptUrl,
-    receiptFileName: payment.receiptFile?.name ?? '',
-  });
+  const totalAmount = computeHourlyTotal(payment.hours, payment.hourlyRate);
+  let paymentId: string;
+  try {
+    paymentId = await payrollService.create({
+      propertyId: '',
+      employeeId: payment.employeeId,
+      date: payment.date,
+      baseAmount: totalAmount,
+      extraAmount: 0,
+      extraNote: '',
+      discountAmount: 0,
+      discountNote: '',
+      totalAmount,
+      status: 'Pending',
+      payType: 'hourly',
+      hours: payment.hours,
+      hourlyRate: payment.hourlyRate,
+      receiptUrl,
+      receiptFileName: payment.receiptFile?.name ?? '',
+    });
+  } catch (error) {
+    await discardUploadedReceipt(receiptUrl);
+    throw error;
+  }
   void logActivity({
     action: 'create',
     module: 'Payroll',
@@ -65,11 +71,6 @@ export const createHourlyPayment = async (payment: HourlyPaymentInput, actor?: S
   });
 };
 
-export interface HourlyPaymentChanges extends HourlyPaymentInput {
-  /** false si se quitó el recibo que ya tenía (y no se subió otro). */
-  keepCurrentReceipt: boolean;
-}
-
 /** Recibo que queda en el pago: el nuevo (se sube), el actual o ninguno. */
 const resolveReceipt = async (payment: PayrollRecord, changes: HourlyPaymentChanges) => {
   if (changes.receiptFile) {
@@ -78,7 +79,7 @@ const resolveReceipt = async (payment: PayrollRecord, changes: HourlyPaymentChan
       receiptFileName: changes.receiptFile.name,
     };
   }
-  if (changes.keepCurrentReceipt) {
+  if (changes.shouldKeepCurrentReceipt) {
     return { receiptUrl: payment.receiptUrl ?? '', receiptFileName: payment.receiptFileName ?? '' };
   }
   return { receiptUrl: '', receiptFileName: '' };
@@ -89,17 +90,23 @@ export const updateHourlyPayment = async (
   payment: PayrollRecord, changes: HourlyPaymentChanges, actor?: SystemUser | null,
 ): Promise<void> => {
   if (!payment.id) return;
-  const totalAmount = calcHourlyTotal(changes.hours, changes.hourlyRate);
+  const totalAmount = computeHourlyTotal(changes.hours, changes.hourlyRate);
   const receipt = await resolveReceipt(payment, changes);
-  await payrollService.update(payment.id, {
-    employeeId: changes.employeeId,
-    date: changes.date,
-    hours: changes.hours,
-    hourlyRate: changes.hourlyRate,
-    baseAmount: totalAmount,
-    totalAmount,
-    ...receipt,
-  });
+  const uploadedReceiptUrl = changes.receiptFile ? receipt.receiptUrl : '';
+  try {
+    await payrollService.update(payment.id, {
+      employeeId: changes.employeeId,
+      date: changes.date,
+      hours: changes.hours,
+      hourlyRate: changes.hourlyRate,
+      baseAmount: totalAmount,
+      totalAmount,
+      ...receipt,
+    });
+  } catch (error) {
+    await discardUploadedReceipt(uploadedReceiptUrl);
+    throw error;
+  }
   // El recibo anterior se borra de Storage solo después de guardar (si falla, se queda).
   if (payment.receiptUrl && payment.receiptUrl !== receipt.receiptUrl) {
     void storageService.deletePhotoByUrl(payment.receiptUrl);

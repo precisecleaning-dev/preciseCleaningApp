@@ -4,13 +4,13 @@
 // borrar los resuelve la vista (onMarkPaid, onEdit, onDelete); sin onEdit ni
 // onDelete no hay columna de acciones. Clic (o Enter) en la fila abre su detalle
 // (onOpenDetail); los botones de la fila no lo abren.
-import type { KeyboardEvent, MouseEvent } from 'react';
-import { CheckCircle, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
 import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getFixedPayPeriodLabel } from '../fixedPay';
+import { PayrollTableRow, PayrollTableSkeleton } from './PayrollTable';
 import './FixedPaymentList.css';
 
 interface FixedPaymentRowProps {
@@ -18,59 +18,48 @@ interface FixedPaymentRowProps {
   employeeName: string;
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
+  onMarkPending: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
   onOpenDetail: (payment: PayrollRecord) => void;
 }
 
-/** Los botones de la fila no abren el detalle. */
-const stopRowClick = (event: MouseEvent) => event.stopPropagation();
-
 const FixedPaymentRow = ({
-  payment, employeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
+  payment, employeeName, canMarkPaid, onMarkPaid, onMarkPending, onEdit, onDelete, onOpenDetail,
 }: FixedPaymentRowProps) => {
   const isPaid = payment.status === 'Paid';
   const statusText = isPaid ? `Paid ${formatDate(payment.paidAt)}` : 'Pending';
 
-  // Enter o espacio sobre la FILA (no sobre un botón de adentro) abre el detalle.
-  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    onOpenDetail(payment);
-  };
-
   return (
-    <div
-      className="fpl-row is-clickable"
-      role="button"
-      tabIndex={0}
-      aria-label={`View fixed payment of ${employeeName}`}
-      onClick={() => onOpenDetail(payment)}
-      onKeyDown={handleRowKeyDown}
-    >
-      <span className="fpl-date">{formatDate(payment.date)}</span>
-      <span className="fpl-employee">{employeeName}</span>
-      <span className="fpl-period">{getFixedPayPeriodLabel(payment.date)}</span>
-      <strong className="fpl-amount">{money(payment.totalAmount)}</strong>
-      <span className="fpl-status" onClick={stopRowClick}>
-        <span className={`fpl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
+    <PayrollTableRow label={`View fixed payment of ${employeeName}`} onOpen={() => onOpenDetail(payment)}>
+      <span>{formatDate(payment.date)}</span>
+      <span className="ptbl-name">{employeeName}</span>
+      <span>{getFixedPayPeriodLabel(payment.date)}</span>
+      <strong className="ptbl-amount">{money(payment.totalAmount)}</strong>
+      <span className="ptbl-status">
+        <span className={`ptbl-badge${isPaid ? ' is-paid' : ''}`}>{statusText}</span>
         {canMarkPaid && !isPaid && (
-          <button type="button" className="fpl-paid-btn" onClick={() => onMarkPaid(payment)}>
+          <button type="button" className="ptbl-paid-btn" onClick={() => onMarkPaid(payment)}>
             <CheckCircle size={14} aria-hidden="true" /> Mark paid
+          </button>
+        )}
+        {canMarkPaid && isPaid && (
+          <button type="button" className="ptbl-pending-btn" onClick={() => onMarkPending(payment)}>
+            <RotateCcw size={14} aria-hidden="true" /> Mark pending
           </button>
         )}
       </span>
       {(onEdit || onDelete) && (
-        <span className="fpl-actions" onClick={stopRowClick}>
+        <span className="ptbl-actions">
           {onEdit && (
-            <button type="button" className="fpl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
+            <button type="button" className="ptbl-icon-btn" aria-label="Edit payment" title="Edit" onClick={() => onEdit(payment)}>
               <Pencil size={16} />
             </button>
           )}
           {onDelete && (
             <button
               type="button"
-              className="fpl-icon-btn is-delete"
+              className="ptbl-icon-btn is-delete"
               aria-label="Delete payment"
               title="Delete"
               onClick={() => onDelete(payment)}
@@ -80,33 +69,38 @@ const FixedPaymentRow = ({
           )}
         </span>
       )}
-    </div>
+    </PayrollTableRow>
   );
 };
 
 interface FixedPaymentListProps {
   payments: readonly PayrollRecord[];
+  /** Mientras carga la nómina se muestra un esqueleto, no "No fixed payments yet". */
+  isLoading: boolean;
   getEmployeeName: (employeeId: string) => string;
   canMarkPaid: boolean;
   onMarkPaid: (payment: PayrollRecord) => void;
+  onMarkPending: (payment: PayrollRecord) => void;
   onEdit?: (payment: PayrollRecord) => void;
   onDelete?: (payment: PayrollRecord) => void;
   onOpenDetail: (payment: PayrollRecord) => void;
 }
 
 const FixedPaymentList = ({
-  payments, getEmployeeName, canMarkPaid, onMarkPaid, onEdit, onDelete, onOpenDetail,
+  payments, isLoading, getEmployeeName, canMarkPaid, onMarkPaid, onMarkPending, onEdit, onDelete, onOpenDetail,
 }: FixedPaymentListProps) => {
   const hasActions = !!(onEdit || onDelete);
   const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
 
+  if (isLoading) return <PayrollTableSkeleton />;
+
   if (sortedPayments.length === 0) {
-    return <p className="fpl-empty">No fixed payments yet: they are created on the 15th and the last day of each month.</p>;
+    return <p className="ptbl-empty">No fixed payments yet: they are created on the 15th and the last day of each month.</p>;
   }
 
   return (
-    <section className={`fpl-card${hasActions ? ' has-actions' : ''}`} aria-label="Fixed payments">
-      <div className="fpl-head" aria-hidden="true">
+    <section className={`fpl-card ptbl-card${hasActions ? ' has-actions' : ''}`} aria-label="Fixed payments">
+      <div className="ptbl-head" aria-hidden="true">
         <span>Pay date</span>
         <span>Employee</span>
         <span>Period</span>
@@ -115,7 +109,6 @@ const FixedPaymentList = ({
         {hasActions && <span>Actions</span>}
       </div>
       <VirtualItems
-        className="fpl-list"
         estimate={56}
         items={sortedPayments}
         renderItem={(payment) => (
@@ -125,6 +118,7 @@ const FixedPaymentList = ({
             employeeName={getEmployeeName(payment.employeeId)}
             canMarkPaid={canMarkPaid}
             onMarkPaid={onMarkPaid}
+            onMarkPending={onMarkPending}
             onEdit={onEdit}
             onDelete={onDelete}
             onOpenDetail={onOpenDetail}

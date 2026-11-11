@@ -6,14 +6,14 @@
 // (index.ts los reexporta).
 // ============================================================================
 
-/** Pago que no sale de una casa: por horas (pestaña Hourly) o fijo quincenal
- *  (pestaña Fixed pay, lo crea la Cloud Function `createfixedpayroll`). */
-export type PayrollPayType = 'hourly' | 'fixed';
-
 /** Cómo cobra un empleado (campo payType de system_users): por casa (Asignar
  *  nómina), por hora (Hourly) o sueldo fijo quincenal (Fixed pay). Sin el campo
  *  se toma 'perHouse', que es como cobraban todos antes. */
 export type EmployeePayType = 'perHouse' | 'hourly' | 'fixed';
+
+/** Pago que no sale de una casa: por horas (pestaña Hourly) o fijo quincenal
+ *  (pestaña Fixed pay, lo crea la Cloud Function `createfixedpayroll`). */
+export type PayrollRecordPayType = Exclude<EmployeePayType, 'perHouse'>;
 
 export interface PayrollRecord {
   id?: string;
@@ -31,8 +31,8 @@ export interface PayrollRecord {
   /** Fecha (AAAA-MM-DD) y quién lo marcó como pagado. */
   paidAt?: string | null;
   paidBy?: string | null;
-  /** Pago por horas (sin casa: propertyId vacío). Los pagos de una casa no lo llevan. */
-  payType?: PayrollPayType;
+  /** Pago por horas o fijo (sin casa: propertyId vacío). Los pagos de una casa no lo llevan. */
+  payType?: PayrollRecordPayType;
   /** Pago por horas: horas trabajadas y tarifa por hora (total = hours × hourlyRate). */
   hours?: number;
   hourlyRate?: number;
@@ -41,6 +41,25 @@ export interface PayrollRecord {
   receiptFileName?: string;
   /** Pago fijo: el sueldo (fixed_salaries/{employeeId}) del que sale. */
   fixedSalaryId?: string;
+  /** Fecha y hora ISO en que lo creó la Cloud Function createfixedpayroll (pagos fijos). */
+  createdAt?: string;
+}
+
+/** Lo que captura la pantalla de un pago por horas (el service calcula el total y sube el recibo). */
+export interface HourlyPaymentInput {
+  employeeId: string;
+  employeeName: string;
+  /** Fecha de pago, AAAA-MM-DD. */
+  date: string;
+  hours: number;
+  hourlyRate: number;
+  receiptFile: File | null;
+}
+
+/** Cambios a un pago por horas ya guardado. */
+export interface HourlyPaymentChanges extends HourlyPaymentInput {
+  /** false si se quitó el recibo que ya tenía (y no se subió otro). */
+  shouldKeepCurrentReceipt: boolean;
 }
 
 /**
@@ -64,6 +83,13 @@ export interface FixedSalary {
   skippedPayDates?: string[];
 }
 
+/** Lo que captura la pantalla de un sueldo fijo; el resto (id, fechas, quién) lo pone el service. */
+export interface FixedSalaryInput {
+  employeeId: string;
+  monthlyAmount: number;
+  startDate: string;
+}
+
 /** Rate por hora de un empleado (colección hourly_rates; id = id del empleado). Solo lo ve Payroll. */
 export interface HourlyRate {
   id: string;
@@ -73,4 +99,15 @@ export interface HourlyRate {
   /** Fecha y hora ISO de la última modificación y quién la hizo. */
   updatedAt: string;
   updatedByUserName: string;
+}
+
+/** Lo que se guarda del pago de un empleado desde System Users (rate por hora o sueldo fijo). */
+export interface EmployeePayChange {
+  employeeId: string;
+  employeeName: string;
+  payType: EmployeePayType;
+  /** Rate (por hora) o sueldo mensual (fijo); null = no se capturó. */
+  amount: number | null;
+  /** false si el usuario queda Inactive: su sueldo fijo se detiene. */
+  isActiveUser: boolean;
 }

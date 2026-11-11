@@ -5,9 +5,9 @@ import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import type { PayrollRecord, SystemUser } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
-import { money } from '../../../utils/jobFinancials';
+import { money, roundToCents } from '../../../utils/jobFinancials';
 import { getFixedPayPeriodLabel } from '../fixedPay';
-import { parsePositiveNumber } from '../hourlyPay';
+import { parsePositiveNumber } from '../../../shared/utils/parsePositiveNumber';
 import { updateFixedPaymentAmount } from '../services/fixedPaymentService';
 import PayrollDialog from './PayrollDialog';
 import './FixedPaymentForm.css';
@@ -23,7 +23,9 @@ const FixedPaymentForm = ({ payment, employeeName, currentUser, onClose }: Fixed
   const [amountText, setAmountText] = useState(String(payment.totalAmount));
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
-  const amount = parsePositiveNumber(amountText);
+  const typedAmount = parsePositiveNumber(amountText);
+  const amount = typedAmount === null ? null : roundToCents(typedAmount);
+  const isPaid = payment.status === 'Paid';
   const canSave = amount !== null && !isSaving;
 
   const handleSaveAmount = async () => {
@@ -63,7 +65,7 @@ const FixedPaymentForm = ({ payment, employeeName, currentUser, onClose }: Fixed
           <dd className="pdlg-detail-value">{formatDate(payment.date)} · {getFixedPayPeriodLabel(payment.date)}</dd>
         </div>
       </dl>
-      <label className="pdlg-field fpf-amount">
+      <label className="fpf-amount pdlg-field">
         <span className="pdlg-label">Amount</span>
         <input
           className="pdlg-input"
@@ -75,6 +77,11 @@ const FixedPaymentForm = ({ payment, employeeName, currentUser, onClose }: Fixed
           onChange={(event) => setAmountText(event.target.value)}
         />
       </label>
+      {isPaid && (
+        <p className="fpf-paid-note">
+          This payment is already marked as paid ({formatDate(payment.paidAt)}): changing it does not change what was paid.
+        </p>
+      )}
       <p className="fpf-hint">
         Only this payment changes ({money(payment.totalAmount)} today). To change the next payments, edit the fixed salary.
       </p>
