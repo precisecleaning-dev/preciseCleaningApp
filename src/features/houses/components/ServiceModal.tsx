@@ -7,7 +7,7 @@ import { DollarSign, Hash, Percent, Save, Wrench, X } from "lucide-react";
 import { computeServiceTotals } from "../serviceRecords";
 import type { ProductRecord } from "../hooks/useHouseCatalogs";
 import type { ServiceRecord, Tax } from "../../../types/index";
-import SearchableSelect from "./SearchableSelect";
+import SearchableSelect from "../../../shared/components/SearchableSelect";
 
 interface ServiceModalProps {
   initial: ServiceRecord;

@@ -1,5 +1,7 @@
-// src/features/houses/components/SearchableSelect.tsx
-// Selector con búsqueda por texto del formulario de casas. Extraído de HousesView.tsx.
+// src/shared/components/SearchableSelect.tsx
+// Selector con búsqueda por texto. Nació en el formulario de casas (extraído de
+// HousesView.tsx); está en shared porque también lo usa Invoices New
+// (InvoiceJobPicker). Siguiente uso: los modales de Payroll (Hourly y Fixed pay).
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, X } from 'lucide-react';

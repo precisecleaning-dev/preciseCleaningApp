@@ -1,4 +1,4 @@
-/* Extraído de HousesView.css */
+/* Extraído de HousesView.css (las clases conservan el prefijo hv-). */
 /* --- SearchableSelect (dropdown con búsqueda por texto) --- */
 .hv-searchsel-wrap {
   position: relative;

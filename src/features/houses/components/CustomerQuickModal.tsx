@@ -6,7 +6,7 @@ import { Briefcase, FileText, Hash, MapPin, Save, User, X } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../../config/firebase";
 import { COLLECTIONS } from "../../../lib/firebase/collections";
-import SearchableSelect from "./SearchableSelect";
+import SearchableSelect from "../../../shared/components/SearchableSelect";
 import { CUSTOMER_TYPE_OPTIONS } from "../../../shared/utils/businesses";
 
 interface CustomerQuickModalProps {
