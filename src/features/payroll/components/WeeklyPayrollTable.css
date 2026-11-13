@@ -1,0 +1,270 @@
+/* Nómina semanal por casa (pestaña Nóminas de Payroll) y sus modales. Tabla, filas y botones: PayrollTable.css;
+   caja y campos de los modales: PayrollDialog.css. */
+.wpt-card {
+  --ptbl-columns: minmax(220px, 2fr) minmax(120px, 1fr) 196px;
+}
+
+/* Montos alineados a la derecha y con dígitos del mismo ancho, como en una hoja de cálculo. */
+.wpt-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.wpt-zero {
+  color: #cbd5e1;
+}
+
+.wpt-employee {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wpt-avatar {
+  align-items: center;
+  background: #eff6ff;
+  border-radius: 999px;
+  color: #1d4ed8;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.wpt-avatar.is-paid {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.wpt-employee-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wpt-employee-meta {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.wpt-total {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+  gap: 2px;
+}
+
+.wpt-bonus,
+.wpt-discount {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wpt-bonus {
+  color: #047857;
+}
+
+.wpt-discount {
+  color: #b91c1c;
+}
+
+/* Payment: dos opciones pegadas; la elegida se rellena: "Not sent" en rojo (así empiezan todos) y "Sent" en verde. */
+.wpt-payment {
+  background: #f1f5f9;
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 2px;
+  justify-self: start;
+  padding: 3px;
+}
+
+.wpt-payment.is-saving {
+  opacity: 0.6;
+}
+
+.wpt-payment-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 4px;
+  min-height: 0;
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+/* Hover solo en la opción no elegida (la elegida conserva su texto blanco). */
+.wpt-payment-btn:not(.is-selected):hover:not(:disabled) {
+  color: #0f172a;
+}
+
+.wpt-payment-btn.is-selected {
+  background: #ef4444;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  color: #ffffff;
+}
+
+.wpt-payment-btn.is-sent.is-selected {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.wpt-payment-btn:disabled {
+  cursor: default;
+}
+
+.wpt-payment-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+/* Fila del total al pie de la tabla. */
+.wpt-totals.ptbl-head {
+  background: #f1f5f9;
+  border-bottom: none;
+  border-top: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.wpt-totals-sent {
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* Resumen de la semana: cuatro datos separados por líneas y los botones a la derecha. */
+.wpt-summary {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 16px 20px;
+}
+
+.wpt-kpis {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.wpt-kpi {
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  padding: 2px 24px;
+}
+
+.wpt-kpi:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.wpt-kpi-label {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.wpt-kpi-value {
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wpt-kpi.is-pending .wpt-kpi-value {
+  color: #b45309;
+}
+
+.wpt-kpi.is-paid .wpt-kpi-value {
+  color: #047857;
+}
+
+.wpt-kpi-hint {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.wpt-summary-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.wpt-summary-actions .btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wpt-summary-actions .ptbl-pending-btn {
+  font-size: 0.85rem;
+  height: 42px;
+  padding: 0 14px;
+}
+
+/* Modales Pay week y Bonus / discount: separación entre los datos y la lista o los campos. */
+.wpt-dialog-list {
+  margin-top: 20px;
+}
+
+/* Tablet: los datos del resumen en dos columnas. */
+@media (max-width: 1024px) {
+  .wpt-kpis {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 12px;
+    width: 100%;
+  }
+  .wpt-kpi:nth-child(odd) {
+    border-left: none;
+    padding-left: 0;
+  }
+}
+
+/* Teléfono: tarjeta por empleado (nombre y total arriba; Payment a lo ancho debajo),
+   el resumen en columna y los botones con el mínimo táctil. */
+@media (max-width: 768px) {
+  .wpt-payment {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+  .wpt-payment-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .wpt-summary {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .wpt-kpi {
+    min-width: 0;
+    padding: 2px 12px;
+  }
+  .wpt-summary-actions .btn-primary,
+  .wpt-summary-actions .ptbl-pending-btn {
+    justify-content: center;
+    width: 100%;
+  }
+}
