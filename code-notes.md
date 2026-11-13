@@ -3586,3 +3586,9 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   adelante, ni la fecha vieja ni la quincena en curso (con ellas la Cloud Function creaba los pagos de las quincenas
   en que estuvo parado), y Save se bloquea si el empleado no está activo con tipo "Fixed salary"
   (`isActiveFixedEmployee`, el mismo chequeo que FixedSalaryList).
+- System Users · buscador, pestañas por estado y filtro por rol (11/2026, pedido de Omar): pestañas Active,
+  Inactive, Pending (Pending Invite con inviteSent: se le mandó ✈️ y aún no crea su contraseña) y Not invited
+  (Pending Invite sin inviteSent), según `getUserTab`. El buscador (nombre, correo o teléfono, sin acentos ni
+  mayúsculas) filtra todas las pestañas y cada una cuenta cuántos coinciden, así se ve en cuál está el usuario.
+  Dentro, chips por rol (solo los roles con usuarios en esa pestaña) y "All roles"; cambiar de pestaña quita el
+  filtro de rol. Todo en UsersView (`USERS_TABS`, clases `uv-tabbar` / `uv-tab-btn` / `uv-search-box` / `uv-role-chip`).
