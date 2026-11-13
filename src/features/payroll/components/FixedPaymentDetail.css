@@ -21,20 +21,6 @@
   margin: 4px 0 0;
 }
 
-.fpd-badge {
-  background: #fef3c7;
-  border-radius: 999px;
-  color: #92400e;
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 3px 10px;
-}
-
-.fpd-badge.is-paid {
-  background: #d1fae5;
-  color: #047857;
-}
-
 .fpd-hint {
   color: #64748b;
   font-size: 0.85rem;

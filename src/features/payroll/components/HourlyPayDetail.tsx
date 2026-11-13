@@ -8,6 +8,7 @@ import type { PayrollRecord } from '../../../types/index';
 import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import PayrollDialog from './PayrollDialog';
+import './PayrollTable.css';
 import './HourlyPayDetail.css';
 
 const isPdfReceipt = (payment: PayrollRecord): boolean =>
@@ -70,7 +71,7 @@ const HourlyPayDetail = ({ payment, employeeName, onClose }: HourlyPayDetailProp
           <p className="hpd-employee">{employeeName}</p>
           <p className="hpd-total">{money(payment.totalAmount)}</p>
         </div>
-        <span className={`hpd-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
+        <span className={`ptbl-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
       </div>
 
       <dl className="pdlg-details">

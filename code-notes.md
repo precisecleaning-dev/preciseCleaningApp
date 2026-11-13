@@ -3581,3 +3581,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   hourly_rates solo se leen con Payroll Scope "All" (`payrollScopeAll()`, flag `o` del espejo user_access) o el
   documento propio (id = acc().userId). Pruebas nuevas: Edit sin Delete, solo View y Scope Own. Pendiente (Omar):
   correr `npm run test:rules` (emulador) y publicar las reglas en la consola de Firebase.
+- Payroll · editar un sueldo fijo detenido (11/2026, verificación del CR de tonnydev1801): Edit de un sueldo
+  Stopped lo reanuda igual que "Resume": "Starts on" propone `getNextPayPeriodStart(hoy)` y solo ofrece de ahí en
+  adelante, ni la fecha vieja ni la quincena en curso (con ellas la Cloud Function creaba los pagos de las quincenas
+  en que estuvo parado), y Save se bloquea si el empleado no está activo con tipo "Fixed salary"
+  (`isActiveFixedEmployee`, el mismo chequeo que FixedSalaryList).

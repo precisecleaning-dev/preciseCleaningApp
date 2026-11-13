@@ -9,6 +9,7 @@ import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts, getFixedPayPeriodLabel } from '../fixedPay';
 import PayrollDialog from './PayrollDialog';
+import './PayrollTable.css';
 import './FixedSalaryDetail.css';
 
 interface FixedSalaryDetailProps {
@@ -37,7 +38,7 @@ const FixedSalaryDetail = ({ salary, employeeName, payments, onClose }: FixedSal
           <p className="fsd-employee">{employeeName}</p>
           <p className="fsd-amount">{money(salary.monthlyAmount)} <span className="fsd-per">/ month</span></p>
         </div>
-        <span className={`fsd-badge${salary.active ? ' is-active' : ''}`}>{salary.active ? 'Active' : 'Stopped'}</span>
+        <span className={`ptbl-badge${salary.active ? ' is-active' : ' is-stopped'}`}>{salary.active ? 'Active' : 'Stopped'}</span>
       </div>
 
       <dl className="pdlg-details">
@@ -69,7 +70,7 @@ const FixedSalaryDetail = ({ salary, employeeName, payments, onClose }: FixedSal
               <span>{formatDate(payment.date)}</span>
               <span className="fsd-period">{getFixedPayPeriodLabel(payment.date)}</span>
               <strong>{money(payment.totalAmount)}</strong>
-              <span className={`fsd-payment-status${payment.status === 'Paid' ? ' is-paid' : ''}`}>
+              <span className={`ptbl-badge${payment.status === 'Paid' ? ' is-paid' : ''}`}>
                 {payment.status === 'Paid' ? 'Paid' : 'Pending'}
               </span>
             </li>

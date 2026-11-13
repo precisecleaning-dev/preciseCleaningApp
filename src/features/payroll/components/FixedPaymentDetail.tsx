@@ -9,6 +9,7 @@ import { formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getFixedPayPeriodLabel } from '../fixedPay';
 import PayrollDialog from './PayrollDialog';
+import './PayrollTable.css';
 import './FixedPaymentDetail.css';
 
 interface FixedPaymentDetailProps {
@@ -33,7 +34,7 @@ const FixedPaymentDetail = ({ payment, employeeName, onClose }: FixedPaymentDeta
           <p className="fpd-employee">{employeeName}</p>
           <p className="fpd-amount">{money(payment.totalAmount)}</p>
         </div>
-        <span className={`fpd-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
+        <span className={`ptbl-badge${isPaid ? ' is-paid' : ''}`}>{isPaid ? 'Paid' : 'Pending'}</span>
       </div>
 
       <dl className="pdlg-details">

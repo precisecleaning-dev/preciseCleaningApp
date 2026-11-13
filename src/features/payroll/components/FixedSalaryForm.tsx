@@ -6,7 +6,9 @@
 // Solo salen los empleados con tipo de pago "Fixed salary" (System Users).
 // "Starts on" es siempre un inicio de quincena (el 1 o el 16): la de hoy o una
 // siguiente, nunca una pasada (así no se reviven quincenas en que estuvo parado).
-// Guardar el de un sueldo detenido lo reanuda desde esa fecha.
+// Guardar un sueldo detenido lo reanuda igual que "Resume": propone el próximo
+// inicio de quincena (nunca su fecha vieja, que reviviría las quincenas en que
+// estuvo parado) y solo si el empleado sigue activo y con tipo "Fixed salary".
 import { useMemo, useState } from 'react';
 import { CalendarDays, User } from 'lucide-react';
 import type { FixedSalary, SystemUser } from '../../../types/index';
@@ -18,7 +20,7 @@ import { fullName } from '../../../utils/homeData';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts, getNextPayPeriodStart, getPayPeriodStartOptions } from '../fixedPay';
 import { parsePositiveNumber } from '../../../shared/utils/parsePositiveNumber';
-import { hasPayType } from '../employeePay';
+import { getNotFixedEmployeeMessage, isActiveFixedEmployee } from '../employeePay';
 import PayrollDialog from './PayrollDialog';
 import './FixedSalaryForm.css';
 
@@ -35,29 +37,35 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
   const isEditing = !!salary;
   const [employeeId, setEmployeeId] = useState(salary?.employeeId ?? '');
   const [monthlyAmountText, setMonthlyAmountText] = useState(salary ? String(salary.monthlyAmount) : '');
-  const [startDate, setStartDate] = useState(() => salary?.startDate || getNextPayPeriodStart(todayIso()));
+  const [startDate, setStartDate] = useState(() => (salary?.active ? salary.startDate : getNextPayPeriodStart(todayIso())));
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
 
   const employeeOptions = useMemo(
     () => employees
-      .filter((employee) => employee.status !== 'Inactive' && hasPayType(employee, 'fixed'))
+      .filter(isActiveFixedEmployee)
       .map((employee) => ({ id: employee.id, name: fullName(employee) }))
       .sort((optionA, optionB) => optionA.name.localeCompare(optionB.name)),
     [employees],
   );
-  const employeeName = fullName(employees.find((employee) => employee.id === employeeId));
+  const employee = employees.find((candidate) => candidate.id === employeeId);
+  const employeeName = fullName(employee);
   // Un empleado ya tiene a lo más un sueldo (id = empleado): elegirlo de nuevo lo actualiza.
   const existingSalary = salary ?? salaries.find((savedSalary) => savedSalary.employeeId === employeeId);
   const isResuming = !!existingSalary && !existingSalary.active;
-  // Inicios de quincena elegibles; si el sueldo guardado empezó antes, esa fecha también (sin cambio).
-  const periodStartOptions = getPayPeriodStartOptions(todayIso());
-  const startDateOptions = existingSalary && !periodStartOptions.includes(existingSalary.startDate)
+  // Reanudar pide lo mismo que "Resume" en la tabla (FixedSalaryList).
+  const resumeBlockedText = isResuming && !isActiveFixedEmployee(employee) ? getNotFixedEmployeeMessage(employeeName) : '';
+  // Inicios de quincena elegibles; si el sueldo ACTIVO empezó antes, esa fecha también (sin cambio).
+  // Al reanudar, desde el próximo inicio (como Resume): la quincena en curso estuvo parada.
+  const nextPeriodStart = getNextPayPeriodStart(todayIso());
+  const periodStartOptions = getPayPeriodStartOptions(todayIso())
+    .filter((periodStart) => !isResuming || periodStart >= nextPeriodStart);
+  const startDateOptions = existingSalary?.active && !periodStartOptions.includes(existingSalary.startDate)
     ? [existingSalary.startDate, ...periodStartOptions]
     : periodStartOptions;
   const monthlyAmount = parsePositiveNumber(monthlyAmountText);
   const biweeklyAmounts = monthlyAmount === null ? null : getBiweeklyAmounts(monthlyAmount);
-  const canSave = !!employeeId && !!startDate && monthlyAmount !== null && !isSaving;
+  const canSave = !!employeeId && !!startDate && monthlyAmount !== null && !resumeBlockedText && !isSaving;
   const titleText = isEditing ? 'Edit fixed salary' : 'New fixed salary';
   const saveButtonText = existingSalary ? 'Save changes' : 'Save salary';
 
@@ -154,7 +162,9 @@ const FixedSalaryForm = ({ employees, salaries, currentUser, salary, onClose }: 
         </label>
       </div>
       {isResuming && (
-        <p className="fsf-resume-note">This salary is stopped: saving resumes it from {formatDate(startDate)}.</p>
+        <p className="fsf-resume-note">
+          {resumeBlockedText || `This salary is stopped: saving resumes it from ${formatDate(startDate)}.`}
+        </p>
       )}
       {biweeklyAmounts && (
         <p className="pdlg-note">

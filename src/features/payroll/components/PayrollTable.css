@@ -107,7 +107,7 @@
   gap: 8px;
 }
 
-/* Pendiente (ámbar) por defecto; pagado o activo en verde, detenido en gris. */
+/* Estado de tablas y detalles: pendiente (ámbar) por defecto; pagado o activo en verde, detenido en gris. */
 .ptbl-badge {
   background: #fef3c7;
   border-radius: 999px;

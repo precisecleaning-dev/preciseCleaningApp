@@ -27,20 +27,6 @@
   font-weight: 600;
 }
 
-.fsd-badge {
-  background: #e2e8f0;
-  border-radius: 999px;
-  color: #475569;
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 3px 10px;
-}
-
-.fsd-badge.is-active {
-  background: #d1fae5;
-  color: #047857;
-}
-
 .fsd-section-title {
   color: #475569;
   font-size: 0.75rem;
@@ -81,20 +67,6 @@
 
 .fsd-period {
   color: #64748b;
-}
-
-.fsd-payment-status {
-  background: #fef3c7;
-  border-radius: 999px;
-  color: #92400e;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 2px 8px;
-}
-
-.fsd-payment-status.is-paid {
-  background: #d1fae5;
-  color: #047857;
 }
 
 /* Teléfono: la quincena baja a su propia fila. */

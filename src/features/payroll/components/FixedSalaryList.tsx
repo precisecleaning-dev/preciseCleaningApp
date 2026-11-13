@@ -14,7 +14,7 @@ import { usePendingById } from '../../../shared/hooks/usePendingById';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts, getNextFixedPayDate, getNextPayPeriodStart } from '../fixedPay';
-import { hasPayType } from '../employeePay';
+import { getNotFixedEmployeeMessage, isActiveFixedEmployee } from '../employeePay';
 import { deleteFixedSalary, resumeFixedSalary, stopFixedSalary } from '../services/fixedSalaryActions';
 import { PayrollTableRow, PayrollTableSkeleton, PayrollTableToolbar } from './PayrollTable';
 import './FixedSalaryList.css';
@@ -111,8 +111,8 @@ const FixedSalaryList = ({
   const handleResume = (salary: FixedSalary) => {
     const employeeName = getEmployeeName(salary.employeeId);
     const employee = employees.find((candidate) => candidate.id === salary.employeeId);
-    if (!employee || employee.status === 'Inactive' || !hasPayType(employee, 'fixed')) {
-      alert(`${employeeName} is not an active fixed-salary employee. Set the pay type to "Fixed salary" in System Users first.`);
+    if (!isActiveFixedEmployee(employee)) {
+      alert(getNotFixedEmployeeMessage(employeeName));
       return;
     }
     const resumeDate = getNextPayPeriodStart(todayIso());

@@ -16,6 +16,13 @@ export const getEmployeePayType = (user?: Pick<SystemUser, 'payType'> | null): E
 export const hasPayType = (user: Pick<SystemUser, 'payType'>, payType: EmployeePayType): boolean =>
   getEmployeePayType(user) === payType;
 
+/** Solo a un empleado activo con tipo "Fixed salary" se le crea, edita o reanuda un sueldo fijo. */
+export const isActiveFixedEmployee = (employee?: SystemUser | null): employee is SystemUser =>
+  !!employee && employee.status !== 'Inactive' && hasPayType(employee, 'fixed');
+
+export const getNotFixedEmployeeMessage = (employeeName: string): string =>
+  `${employeeName} is not an active fixed-salary employee. Set the pay type to "Fixed salary" in System Users first.`;
+
 /**
  * Quién puede ver y cambiar el tipo de pago y los montos (rate / sueldo):
  * Payroll con alcance 'All' y permiso de editar (las reglas de hourly_rates y
