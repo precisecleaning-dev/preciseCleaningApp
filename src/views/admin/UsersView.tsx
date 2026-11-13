@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { 
-  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle
+  Plus, X, Edit2, Trash2, User, Mail, ShieldCheck, Activity, Send, Loader2, Upload, AlertCircle, UserCheck, UserX, Clock, MailX, Search
 } from 'lucide-react';
 import { db } from '../../config/firebase';
 import { setDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -43,6 +43,24 @@ const changedFields = <T extends object>(prev: object | undefined, next: T): Par
     Object.entries(next).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k])),
   ) as Partial<T>;
 };
+
+// Pestañas de la tabla, una por estado: activos, inactivos, invitados que aún no
+// crean su contraseña (Pending Invite con inviteSent) y no invitados (sin ✈️ aún).
+type UsersTab = 'active' | 'inactive' | 'pending' | 'notInvited';
+const USERS_TABS: ReadonlyArray<{ value: UsersTab; label: string; icon: ComponentType<{ size?: number }>; emptyText: string }> = [
+  { value: 'active', label: 'Active', icon: UserCheck, emptyText: 'No active users.' },
+  { value: 'inactive', label: 'Inactive', icon: UserX, emptyText: 'No inactive users.' },
+  { value: 'pending', label: 'Pending', icon: Clock, emptyText: 'No invited users waiting to set their password.' },
+  { value: 'notInvited', label: 'Not invited', icon: MailX, emptyText: 'No users waiting for an invitation.' },
+];
+const getUserTab = (user: SystemUserExt): UsersTab => {
+  if (user.status === 'Inactive') return 'inactive';
+  if (user.status === 'Pending Invite') return user.inviteSent ? 'pending' : 'notInvited';
+  return 'active';
+};
+
+// Búsqueda sin mayúsculas ni acentos ("rodriguez" encuentra "Rodríguez").
+const toSearchText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 // Mueve el documento de un usuario a otro id (set + delete) en un solo batch:
 // si algo falla no quedan dos copias del usuario ni ninguna. `payMoveOps` (su
@@ -468,6 +486,41 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
     alert(resultMsg);
   };
 
+  // ⭐ BUSCADOR, PESTAÑAS POR ESTADO Y FILTRO POR ROL. La búsqueda (nombre, correo
+  //    o teléfono) aplica a todas las pestañas: cada una cuenta cuántos coinciden,
+  //    así se ve en cuál está el usuario buscado. Los chips de rol salen de los
+  //    roles que tienen usuarios en la pestaña elegida, con cuántos hay.
+  const [usersTab, setUsersTab] = useState<UsersTab>('active');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const getRoleName = (roleId: string) => roles.find(r => r.id === roleId)?.name || 'Unknown';
+  const searchKey = toSearchText(searchText);
+  const searchedUsers = searchKey
+    ? users.filter(u => toSearchText(`${u.firstName} ${u.lastName} ${u.email} ${u.phone ?? ''}`).includes(searchKey))
+    : users;
+  const tabCounts = searchedUsers.reduce<Record<UsersTab, number>>(
+    (counts, u) => ({ ...counts, [getUserTab(u)]: counts[getUserTab(u)] + 1 }),
+    { active: 0, inactive: 0, pending: 0, notInvited: 0 },
+  );
+  const tabUsers = searchedUsers.filter(u => getUserTab(u) === usersTab);
+  const roleChips = Object.entries(
+    tabUsers.reduce<Record<string, number>>((counts, u) => ({ ...counts, [u.roleId]: (counts[u.roleId] || 0) + 1 }), {}),
+  )
+    .map(([roleId, count]) => ({ roleId, name: getRoleName(roleId), count }))
+    .sort((chipA, chipB) => chipA.name.localeCompare(chipB.name));
+  const visibleUsers = roleFilter ? tabUsers.filter(u => u.roleId === roleFilter) : tabUsers;
+  const emptyTabText = searchKey
+    ? `No users in this tab match "${searchText.trim()}".`
+    : roleFilter
+      ? `No ${getRoleName(roleFilter)} users in this tab.`
+      : USERS_TABS.find(tab => tab.value === usersTab)?.emptyText;
+
+  // Al cambiar de pestaña se quita el filtro de rol (ese rol puede no tener usuarios ahí).
+  const handleUsersTabChange = (tab: UsersTab) => {
+    setUsersTab(tab);
+    setRoleFilter('');
+  };
+
   return (
     <div className="fade-in uv-page">
       {/* HEADER */}
@@ -491,6 +544,60 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
         </div>
       </header>
 
+      {/* BUSCADOR, PESTAÑAS Y FILTRO POR ROL */}
+      <div className="uv-filters">
+        <div className="uv-filters-row">
+          <div className="uv-tabbar" role="tablist" aria-label="User status">
+            {USERS_TABS.map(({ value, label, icon: TabIcon }) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={usersTab === value}
+                className={`uv-tab-btn${usersTab === value ? ' active' : ''}`}
+                onClick={() => handleUsersTabChange(value)}
+              >
+                <TabIcon size={16} /> {label} <span className="uv-tab-count">{tabCounts[value]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="search-box-container uv-search-box">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              className="uv-search-input"
+              placeholder="Search name, email or phone..."
+              aria-label="Search users"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+            />
+          </div>
+        </div>
+        {tabUsers.length > 0 && (
+          <div className="uv-role-chips" role="group" aria-label="Filter by role">
+            <button
+              type="button"
+              aria-pressed={roleFilter === ''}
+              className={`uv-role-chip${roleFilter === '' ? ' active' : ''}`}
+              onClick={() => setRoleFilter('')}
+            >
+              All roles <span className="uv-chip-count">{tabUsers.length}</span>
+            </button>
+            {roleChips.map(chip => (
+              <button
+                key={chip.roleId}
+                type="button"
+                aria-pressed={roleFilter === chip.roleId}
+                className={`uv-role-chip${roleFilter === chip.roleId ? ' active' : ''}`}
+                onClick={() => setRoleFilter(chip.roleId)}
+              >
+                {chip.name} <span className="uv-chip-count">{chip.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* TABLE */}
       <div className="uv-table-card">
         <table className="responsive-table uv-table">
@@ -508,9 +615,11 @@ export default function UsersView({ onOpenMenu, roles, currentUser, activeRole, 
               <tr><td colSpan={5} className="uv-empty-row">Loading users...</td></tr>
             ) : users.length === 0 ? (
               <tr><td colSpan={5} className="uv-empty-row">No users found. Click "Add User" or "Bulk Import" to start.</td></tr>
+            ) : visibleUsers.length === 0 ? (
+              <tr><td colSpan={5} className="uv-empty-row">{emptyTabText}</td></tr>
             ) : (
-              users.map(u => {
-                const roleName = roles.find(r => r.id === u.roleId)?.name || 'Unknown';
+              visibleUsers.map(u => {
+                const roleName = getRoleName(u.roleId);
                 const isPending = u.status === 'Pending Invite';
                 const isResending = resendingForUserId === u.id;
                 const wasInvited = !!u.inviteSent;
