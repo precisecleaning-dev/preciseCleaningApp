@@ -1,0 +1,39 @@
+/* Lista de sueldos fijos (pestaña Fixed pay de Payroll). Tabla, filas y botones: PayrollTable.css. */
+.fsl-card {
+  --ptbl-columns: minmax(0, 1.5fr) 120px minmax(0, 1.2fr) 110px minmax(0, 1fr) 80px;
+}
+
+/* La tarjeta (o el aviso de vacío, o el esqueleto) va arriba de la lista de pagos: deja aire abajo. */
+.fsl-card.ptbl-card,
+.fsl-empty.ptbl-empty,
+.fsl-loading {
+  margin-bottom: 20px;
+}
+
+/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+.fsl-toggle-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-height: 0;
+  padding: 4px 10px;
+}
+
+.fsl-toggle-btn:hover {
+  background: #f1f5f9;
+}
+
+.fsl-toggle-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 768px) {
+  .fsl-toggle-btn {
+    min-height: 44px;
+  }
+}

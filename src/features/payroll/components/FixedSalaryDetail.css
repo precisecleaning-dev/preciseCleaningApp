@@ -1,0 +1,82 @@
+/* Detalle de un sueldo fijo (pestaña Fixed pay de Payroll). Caja y datos: PayrollDialog.css. */
+.fsd-summary {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.fsd-employee {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.fsd-amount {
+  color: #0f172a;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 4px 0 0;
+}
+
+.fsd-per {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.fsd-section-title {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 24px 0 8px;
+  text-transform: uppercase;
+}
+
+.fsd-empty {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.fsd-payments {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fsd-payment {
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+  column-gap: 12px;
+  display: grid;
+  font-size: 0.875rem;
+  grid-template-columns: 100px minmax(0, 1fr) auto auto;
+  padding: 10px 12px;
+}
+
+.fsd-payment:last-child {
+  border-bottom: none;
+}
+
+.fsd-period {
+  color: #64748b;
+}
+
+/* Teléfono: la quincena baja a su propia fila. */
+@media (max-width: 768px) {
+  .fsd-payment {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    row-gap: 4px;
+  }
+  .fsd-period {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

@@ -1,0 +1,19 @@
+/* Campos de pago del modal de System Users. Etiquetas y campos: clases uv-* de UsersView.css. */
+.upf-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* .uv-input quita el contorno del foco: aquí se vuelve a ver al navegar con el teclado. */
+.upf-fields .uv-input:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.upf-hint {
+  color: #64748b;
+  font-size: 0.8rem;
+  grid-column: 1 / -1;
+  margin: -8px 0 0;
+}

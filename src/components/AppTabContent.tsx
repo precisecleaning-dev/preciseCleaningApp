@@ -200,7 +200,7 @@ const AppTabContent = ({
       case 'roles':
         return <RolesView onOpenMenu={onOpenMenu} roles={roles} />;
       case 'users':
-        return <UsersView onOpenMenu={onOpenMenu} roles={roles} />;
+        return <UsersView {...sessionProps} roles={roles} />;
       case 'data_import':
         // SuperAdmin o rol con permiso "Data Import" (el Sidebar usa la misma regla).
         return canViewDataImport && <DataImportView onOpenMenu={onOpenMenu} />;

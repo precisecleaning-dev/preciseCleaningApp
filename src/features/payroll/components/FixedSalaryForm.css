@@ -1,0 +1,19 @@
+/* Modal del sueldo fijo (pestaña Fixed pay de Payroll). Caja, campos y botones: PayrollDialog.css. */
+
+/* El empleado ocupa toda la fila; sueldo y fecha van abajo, lado a lado. */
+.fsf-employee {
+  grid-column: 1 / -1;
+}
+
+.fsf-hint {
+  color: #b45309;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.fsf-resume-note {
+  color: #b45309;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 16px 0 0;
+}

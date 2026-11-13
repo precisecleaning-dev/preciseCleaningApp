@@ -1,0 +1,108 @@
+/* Modal de un pago por horas (pestaña Hourly de Payroll). Caja, campos y botones: PayrollDialog.css. */
+.hpf-hint {
+  color: #b45309;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.hpf-receipt {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.hpf-receipt-btn {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 600;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.hpf-receipt-btn:hover {
+  background: #f1f5f9;
+}
+
+.hpf-receipt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* El input real queda oculto a la vista pero sigue recibiendo el foco con Tab
+   (display: none lo sacaba del teclado); el foco se ve en la etiqueta. */
+.hpf-receipt-input {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.hpf-receipt-btn:focus-within {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.hpf-current-receipt {
+  align-items: center;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 600;
+  gap: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hpf-current-receipt:hover {
+  text-decoration: underline;
+}
+
+.hpf-receipt-remove {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.hpf-receipt-remove:hover {
+  background: #f1f5f9;
+  color: #b91c1c;
+}
+
+.hpf-paid-note {
+  color: #b45309;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 16px 0 0;
+}
+
+.hpf-total {
+  color: #334155;
+  font-size: 1rem;
+  margin: 16px 0 0;
+}
+
+.hpf-total strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+}

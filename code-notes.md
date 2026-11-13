@@ -3430,3 +3430,159 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   el siguiente uso son los modales de Payroll (Hourly y Fixed pay, PR de features). Sin cambios de
   comportamiento; sus clases conservan el prefijo `hv-searchsel-*`. Pendiente (lo hace Omar, Claude no edita
   CLAUDE.md): agregarlo a la lista de "Componentes compartidos".
+- Payroll · pago por horas (11/2026, pedido de Omar): pestaña "Hourly" en Payroll (features/payroll/). Se captura
+  empleado (System Users), fecha de pago, horas y rate; total = horas × rate (`calcHourlyTotal`, redondeo a
+  centavos). Al elegir empleado se propone su último rate. Se guarda en `payroll` sin casa (propertyId vacío) con
+  payType 'hourly', hours, hourlyRate y el recibo (Storage `payroll_receipts/{empleado}/…`, receiptUrl). Las horas
+  se escriben A MANO: leerlas del recibo quedó para después (decisión de Omar). Estos pagos no entran a "Asignar
+  nómina" ni a "Nóminas" (esas filtran por casa o batchId) ni al Profit de un trabajo (no tienen propertyId).
+- Payroll · sueldos fijos (11/2026, pedido de Omar): colección `fixed_salaries`, UNO por empleado (id del documento
+  = id del empleado; guardar otra vez el mismo empleado actualiza su sueldo). Guarda el sueldo MENSUAL
+  (`monthlyAmount`), desde qué fecha aplica (`startDate`) y si está activo. Los pagos (mitad el 15 y mitad el
+  último día del mes) los crea la Cloud Function `createfixedpayroll`. Reglas: leer con Payroll, crear/editar con
+  Payroll "e", borrar con Payroll "d" (security/firestore.rules + prueba en security/tests). ⚠ Pendiente: publicar
+  la regla de `fixed_salaries` en la consola de Firebase (sin eso la pantalla no puede leer ni guardar).
+- Payroll · pestaña "Fixed pay" (11/2026, pedido de Omar): con alcance 'All' se captura el sueldo fijo (empleado,
+  sueldo MENSUAL, desde qué fecha) y se ve la lista de sueldos con Stop / Resume; todos ven sus pagos fijos y
+  quien tiene 'All' los marca pagados. Cada pago es la mitad del sueldo (`getBiweeklyAmounts`: si no se divide
+  exacto, el centavo que sobra va en el del último día; la Cloud Function usa la MISMA división). "Resume" pone
+  `startDate` = hoy para que la función no cree los pagos de las quincenas en que estuvo parado. ⚠ La regla de
+  `fixed_salaries` deja leer a todo el que tiene Payroll (también alcance 'Own'): la pantalla solo muestra los
+  sueldos a quien tiene 'All'; afinar la regla con el alcance si hace falta.
+- Payroll · Cloud Function `createfixedpayroll` (11/2026, decisión de Omar: función programada, no la app): corre
+  a diario a las 6:00 (America/Chicago) y, por cada sueldo de `fixed_salaries` activo, crea en `payroll` los pagos
+  que ya tocan: el 15 y el último día de este mes, y el último día del mes pasado (por si ese día falló). Id fijo
+  `fixed_{empleado}_{AAAA-MM-DD}` con create(): nunca duplica; no crea pagos de antes de `startDate`. Un pago fijo
+  borrado a mano NO se vuelve a crear: su fecha queda en skippedPayDates (ver "borrar un pago quincenal").
+  ⚠ Pendiente: desplegarla (`npm --prefix functions run build` y `firebase deploy --only functions:createfixedpayroll`;
+  Claude no despliega) — sin eso no se crean los pagos.
+- Payroll · Hourly en modal (11/2026, pedido de Omar): el pago por horas se captura en un modal (`HourlyPayForm`,
+  .modal-overlay-centered + .modal-50) que abre el botón "New hourly payment" de la lista (solo alcance 'All'); se
+  cierra al guardar. El empleado se elige con `SearchableSelect` (búsqueda). `.modal-50.hpf-modal` lleva
+  overflow visible para que la lista del buscador no quede cortada por el modal.
+- Payroll · Hourly editar y borrar (11/2026, pedido de Omar): con alcance 'All' cada fila tiene Edit (abre el mismo
+  modal con el pago, `updateHourlyPayment`) y Delete (confirma, `deleteHourlyPayment`). Editar no cambia el estado
+  (Pending / Paid) ni propone el último rate. El recibo anterior (reemplazado o quitado) y el de un pago borrado se
+  borran de Storage DESPUÉS de guardar, sin bloquear si falla: la propuesta de security/storage.rules solo deja
+  borrar con Quality Check o Task List, así que sin esos permisos el archivo se queda en Storage (no es un error).
+- Payroll · Hourly detalle (11/2026, pedido de Omar): clic (o Enter) en una fila abre `HourlyPayDetail` (solo
+  lectura: empleado, fecha, horas, rate, total, estado, pagado el/por y el recibo; una imagen se ve en el modal, un
+  PDF se abre en otra pestaña). La vista guarda el id y muestra el pago EN VIVO: si lo borran, el detalle se cierra.
+  Los botones y el enlace del recibo de la fila no abren el detalle (`stopRowClick`).
+- Payroll · Fixed pay en modal (11/2026, pedido de Omar): el sueldo fijo se captura en un modal (`FixedSalaryForm`)
+  que abre "New fixed salary" (arriba de la lista de sueldos, solo alcance 'All'); el empleado se busca con
+  `SearchableSelect` y el modal se cierra al guardar. Los modales de Fixed pay usan `PayrollDialog` (caja, encabezado
+  con X, cuerpo y botonera; Escape y el fondo cierran salvo mientras guarda) y sus clases `pdlg-*` para campos y
+  detalles. Los de Hourly (HourlyPayForm / HourlyPayDetail) todavía tienen su caja propia.
+- Payroll · Fixed pay editar y borrar sueldos (11/2026, pedido de Omar): cada fila de "Fixed salaries" tiene Edit
+  (el mismo modal con el sueldo; el empleado no se cambia) y Delete (confirma y borra el doc de fixed_salaries: la
+  Cloud Function deja de crear pagos; los pagos ya creados se quedan). Stop / Resume siguen igual.
+- Payroll · Fixed pay detalle del sueldo (11/2026, pedido de Omar): clic (o Enter) en una fila de "Fixed salaries"
+  abre `FixedSalaryDetail` (solo lectura: sueldo, lo del 15 y del último día, desde cuándo, estado, último cambio y
+  los pagos que ya creó la función). La vista guarda el empleado y muestra el sueldo EN VIVO (si lo borran, se cierra).
+- Payroll · Fixed pay editar un pago quincenal (11/2026, pedido de Omar): Edit en la tabla de pagos fijos abre
+  `FixedPaymentForm`, que solo cambia el monto de ESE pago (`updateFixedPaymentAmount`, baseAmount y totalAmount);
+  fecha, quincena, empleado y estado no se tocan. Para cambiar los pagos siguientes se edita el sueldo fijo.
+- Payroll · Fixed pay borrar un pago quincenal (11/2026, pedido de Omar): Delete en la tabla de pagos fijos
+  (`deleteFixedPayment`) primero anota la fecha en `skippedPayDates` del sueldo (arrayUnion) y luego borra el pago;
+  createfixedpayroll se salta esas fechas, así el pago borrado NO se vuelve a crear al día siguiente (antes sí).
+  Si el sueldo ya no existe no se anota nada (sin sueldo no se crean pagos). Pendiente (Omar): volver a desplegar
+  la función createfixedpayroll para que lea skippedPayDates.
+- Payroll · Fixed pay detalle del pago quincenal (11/2026, pedido de Omar): clic (o Enter) en una fila de pagos fijos
+  abre `FixedPaymentDetail` (solo lectura: monto, quincena, fecha, estado, pagado el/por). La vista guarda el id y
+  muestra el pago EN VIVO. Los botones de la fila no abren el detalle (`stopRowClick`).
+- Payroll · colección hourly_rates (11/2026, aprobado por Omar): rate por hora de cada empleado que cobra por hora,
+  un doc por empleado (id = id del empleado; tipo `HourlyRate`, `hourlyRatesService`, live 'hourlyRates'). Es
+  privada como fixed_salaries: el monto NO va en system_users porque cualquier usuario activo puede leer esa
+  colección. Reglas: leer has('Payroll'), crear/editar canDo('Payroll','e'), borrar canDo('Payroll','d'), con su
+  prueba. Pendiente (Omar): publicar la regla en Firebase. Mismo aviso que fixed_salaries: con alcance 'Own' la
+  regla deja leerla (la pantalla no la muestra).
+- System Users · tipo de pago (11/2026, decisión de Omar: "tipo en usuario, monto privado"): el modal de usuario tiene
+  "Pay type" (Per house / Hourly / Fixed salary → `payType` en system_users; sin campo = 'perHouse') y, según el tipo,
+  "Rate ($/hour)" (hourly_rates) o "Monthly salary" (fixed_salaries). Tipo y montos solo los cambia quien tiene
+  Payroll con alcance 'All' y editar, o el Super Admin (`canManageEmployeePay`); los demás ven el tipo deshabilitado.
+  `saveEmployeePay`: pasar a fijo crea el sueldo desde hoy (o lo reanuda desde hoy); dejar de ser fijo lo detiene
+  (Stop). Si el doc del usuario cambia de id (invitación ✈️ o cambio de correo de un pendiente), `moveEmployeePay`
+  mueve su rate y su sueldo al id nuevo. OJO: los pagos (payroll) ya creados con el id viejo NO se mueven (pasa
+  igual con la nómina por casa): conviene invitar al empleado antes de pagarle.
+- Payroll · empleados por tipo de pago (11/2026, pedido de Omar): cada pestaña muestra solo a los suyos según
+  `payType` de System Users (`hasPayType`): el filtro de empleado de "Asignar nómina" solo lista a los de 'perHouse'
+  (sin tipo = por casa), el modal de Hourly solo a los 'hourly' (al editar, también al del pago aunque haya
+  cambiado de tipo) y el de Fixed pay solo a los 'fixed'. El modal de Hourly propone el rate guardado
+  (hourly_rates) y, si no hay, el del último pago. Sin empleados del tipo, el modal avisa que se asigna en
+  System Users. El PayrollModal de Houses (nómina de cada casa) NO se filtró.
+- Payroll · Hourly usa PayrollDialog (11/2026, CR de tonnydev1801, aprobado por Omar): `HourlyPayForm` se renombró
+  `HourlyPaymentForm` y, con `HourlyPayDetail`, usa la caja común `PayrollDialog` (prop `canOverflow`, antes
+  `allowOverflow`), como los modales de Fixed pay. Ya no hay caja propia por modal (clases hpf-header/hpd-header…).
+- Payroll · tablas comunes (11/2026, CR de tonnydev1801, aprobado por Omar): las tablas de Hourly, sueldos fijos y
+  pagos quincenales usan `PayrollTable.tsx` (`PayrollTableToolbar`, `PayrollTableRow`) y `PayrollTable.css` (clases
+  `ptbl-*`, badge Pending/Paid/Active/Stopped incluido); `stopRowClick` vive en `payrollTable.ts`. Cada lista solo
+  define sus columnas con la variable `--ptbl-columns` en su clase de tarjeta (hpl-card, fpl-card, fsl-card).
+- Payroll · el pago se mueve con el usuario (11/2026, CR de tonnydev1801): cuando el doc de un usuario cambia de id
+  (✈️ invitación o cambio de correo de un pendiente), `buildEmployeePayMoveOps` arma las operaciones que pasan al id
+  nuevo su rate, su sueldo (con skippedPayDates) y sus pagos hourly/fixed ya creados, y van en el MISMO commitOps que
+  `moveUserDoc` (todo o nada). Las fechas de los pagos fijos ya creados se suman a skippedPayDates: su doc se llama
+  fixed_{idViejo}_{fecha} y si no, createfixedpayroll los duplicaría con el id nuevo. Mover borra del id viejo, así
+  que pide Payroll editar + borrar (`canMoveEmployeePay`); sin eso, a quien cobra por hora o fijo NO se le cambia el
+  id (aviso `PAY_MOVE_BLOCKED_TEXT`). Los pagos por casa (payroll con propertyId) no se mueven.
+- System Users · guardar el pago (11/2026, CR de tonnydev1801): `saveEmployeePay` decide con lo GUARDADO (getOne de
+  hourly_rates y fixed_salaries), no con el listener de la pantalla, y primero detiene el sueldo fijo si ya no va
+  (otro tipo o usuario Inactive): así un reintento lo detiene aunque el tipo ya se haya guardado. Cada escritura va
+  al Activity Log (actor = SystemUser). Save espera a que carguen los montos; Fixed sin sueldo > 0 no se guarda.
+  Borrar un usuario detiene su sueldo fijo (`stopEmployeeFixedSalary`). Si quien lo pone Inactive no administra
+  pagos, el sueldo sigue activo, pero createfixedpayroll se salta a los usuarios Inactive o borrados.
+- Payroll · acciones del sueldo fijo (11/2026, CR de tonnydev1801): `fixedSalariesService.create` va en transacción y
+  falla con FIXED_SALARY_EXISTS si el empleado ya tiene sueldo (antes un setDoc lo reemplazaba, reactivaba uno
+  detenido y borraba skippedPayDates). Stop / Resume / Delete de la tabla están en `services/fixedSalaryActions.ts`
+  (con Activity Log) y usan `usePendingById`. Stop confirma y dice cuál es el próximo pago que ya no se crea; Resume
+  solo para quien sigue activo y con tipo "Fixed salary", y arranca en el próximo inicio de quincena (1 o 16,
+  `getNextPayPeriodStart`), que pasa a ser "Starts on". Borrar avisa que en System Users sigue como "Fixed salary".
+- Payroll · inicio de quincena (11/2026, decisión de Omar ante la pregunta del CR): un sueldo fijo empieza o se
+  reanuda SIEMPRE el 1 o el 16, y cada quincena se paga completa. "Starts on" del modal es una lista de inicios de
+  quincena (la actual y las 6 siguientes, `getPayPeriodStartOptions`; nunca una pasada, que reviviría quincenas en
+  que estuvo parado). System Users y Resume usan el próximo inicio (`getNextPayPeriodStart`). Guardar en el modal el
+  sueldo de alguien detenido lo reanuda desde "Starts on" (con aviso). "New fixed salary" espera a que carguen los
+  sueldos. Si al detener un sueldo falta pagar la quincena en curso, se paga aparte (p. ej. en Hourly).
+- Payroll · pagos fijos y pagados (11/2026, CR de tonnydev1801): borrar un pago fijo (`deleteFixedPayment`) borra el
+  pago y anota su fecha en skippedPayDates en un solo commitOps. Los montos editados se redondean a centavos
+  (`roundToCents`). Editar o borrar un pago (Hourly o fijo) que ya está Paid avisa que eso no cambia lo pagado.
+- Payroll · Hourly (11/2026, CR de tonnydev1801): si guardar o editar un pago por horas falla después de subir el
+  recibo nuevo, ese archivo se borra de Storage y se relanza el error. Escape con la lista de `SearchableSelect`
+  abierta solo cierra la lista (preventDefault) y `PayrollDialog` ignora un Escape con defaultPrevented: antes
+  cerraba el modal y se perdía lo capturado. SearchableSelect tiene `ariaLabel`. Un pago de un empleado borrado
+  muestra "Deleted employee", no su id. El modal de edición guarda el id y usa el pago EN VIVO.
+- Payroll · Mark paid / Mark pending en Hourly y Fixed pay (11/2026, CR de tonnydev1801): las tablas usan
+  `markPayrollPaymentPaid` / `markPayrollPaymentPending` (services/payrollPaymentStatus.ts): paidBy es el usuario
+  de la app (fullName), no el displayName de Auth, y cada cambio va al Activity Log. Un pago Paid tiene "Mark
+  pending". La pestaña Nóminas sigue con su handleMarkAsPaid propio (no se tocó).
+- Payroll · permisos de Fixed pay (11/2026, CR de tonnydev1801): crear / editar / Stop / Resume sueldos y editar
+  pagos fijos pide `canManageEmployeePay` (Payroll All + Edit); borrar sueldos o pagos fijos pide además Delete
+  (`canDeleteEmployeePay`, el mismo que mover el pago al cambiar de id). Antes bastaba el alcance All y la regla
+  los rechazaba con un mensaje de "conexión".
+- Payroll · listas y filtros (11/2026, CR de tonnydev1801): los pagos con payType (hourly / fixed) no tienen casa y
+  la ventana de 12 meses ya no los oculta (antes desaparecían los de más de 12 meses). "Asignar nómina" lista a los
+  de tipo por casa y TAMBIÉN a quien cambió de tipo pero tiene casas pendientes de pago. Las tablas de Hourly y
+  Fixed pay muestran esqueleto mientras cargan (`PayrollTableSkeleton`), no "No … yet". `getEmployeeName` usa un
+  Map por id y muestra "…" mientras cargan los usuarios.
+- Payroll · fila que abre el detalle (11/2026, CR de tonnydev1801): `PayrollTableRow` ya no es role="button" con
+  botones adentro: lleva un <button class="ptbl-open-btn"> transparente que cubre la fila (Tab + Enter lo abren) y
+  los botones y enlaces de la fila van encima (z-index en PayrollTable.css), así que no hace falta cortar el clic:
+  se borró `payrollTable.ts` (stopRowClick).
+- Payroll · CSS (11/2026, CR de tonnydev1801): en teléfono, un modal con buscador (`canOverflow`) vuelve a
+  desplazar su cuerpo, así Save no queda fuera de la pantalla en teléfonos bajos (la lista del buscador se desplaza
+  con el cuerpo). `.ptbl-icon-btn` lleva también min-width: 0 en escritorio. `UserPayFields` usa las clases uv-* de
+  UsersView.css y devuelve el contorno de foco que .uv-input quita (outline: none).
+- Payroll · createfixedpayroll y empleados (11/2026, CR de tonnydev1801): la función lee en lote (getAll) los
+  system_users de los sueldos activos y se salta a los que ya no existen o están Inactive, aunque el sueldo siga
+  activo. La idempotencia es por id del sueldo (fixed_{idDelSueldo}_{fecha}). Pendiente (Omar): desplegarla.
+  Pendiente (decisión de Omar): getBiweeklyAmounts está copiado en la app y en la función, y el repo no tiene
+  pruebas unitarias para fijar los casos en los dos lados.
+- Reglas · sueldos y rates con Scope Own (11/2026, CR de tonnydev1801, aprobado por Omar): fixed_salaries y
+  hourly_rates solo se leen con Payroll Scope "All" (`payrollScopeAll()`, flag `o` del espejo user_access) o el
+  documento propio (id = acc().userId). Pruebas nuevas: Edit sin Delete, solo View y Scope Own. Pendiente (Omar):
+  correr `npm run test:rules` (emulador) y publicar las reglas en la consola de Firebase.
+- Payroll · editar un sueldo fijo detenido (11/2026, verificación del CR de tonnydev1801): Edit de un sueldo
+  Stopped lo reanuda igual que "Resume": "Starts on" propone `getNextPayPeriodStart(hoy)` y solo ofrece de ahí en
+  adelante, ni la fecha vieja ni la quincena en curso (con ellas la Cloud Function creaba los pagos de las quincenas
+  en que estuvo parado), y Save se bloquea si el empleado no está activo con tipo "Fixed salary"
+  (`isActiveFixedEmployee`, el mismo chequeo que FixedSalaryList).

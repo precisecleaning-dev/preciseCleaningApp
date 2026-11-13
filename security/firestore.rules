@@ -49,6 +49,10 @@ service cloud.firestore {
     function has(module) {
       return canDo(module, 'v');
     }
+    // Payroll con Scope "All" (o admin): ve los sueldos y rates de todos; con "Own", solo el suyo.
+    function payrollScopeAll() {
+      return acc().admin == true || acc().m.get('Payroll', {}).get('o', false) != true;
+    }
     // Task List con Scope "All" (o admin): ve las tareas de todos.
     function taskScopeAll() {
       return acc().admin == true || acc().m.get('Task List', {}).get('o', false) != true;
@@ -263,6 +267,24 @@ service cloud.firestore {
       allow create: if has('Payroll') || canDo('Houses', 'e') || canDo('Houses', 'a') || has('Recycle Bin') || importer();
       allow update: if has('Payroll') || canDo('Houses', 'e') || importer();
       allow delete: if has('Payroll') || canDo('Houses', 'e') || canDo('Houses', 'd');
+    }
+
+    // Sueldos fijos quincenales (uno por empleado, id = id del empleado). Solo
+    // Payroll: es el sueldo de cada persona (con Scope "Own", solo el suyo). Los
+    // pagos del 15 y del último día los crea la Cloud Function createfixedpayroll
+    // (Admin SDK, no pasa por aquí).
+    match /fixed_salaries/{employeeId} {
+      allow read: if has('Payroll') && (payrollScopeAll() || employeeId == acc().userId);
+      allow create, update: if canDo('Payroll', 'e');
+      allow delete: if canDo('Payroll', 'd');
+    }
+
+    // Rate por hora de cada empleado (uno por empleado, id = id del empleado).
+    // Igual que los sueldos fijos: solo Payroll (es lo que gana cada persona).
+    match /hourly_rates/{employeeId} {
+      allow read: if has('Payroll') && (payrollScopeAll() || employeeId == acc().userId);
+      allow create, update: if canDo('Payroll', 'e');
+      allow delete: if canDo('Payroll', 'd');
     }
 
     // Historial de status: se agrega, nunca se edita ni se borra.

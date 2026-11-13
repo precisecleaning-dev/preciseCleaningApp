@@ -11,6 +11,10 @@ export const COLLECTIONS = {
   statusHistory: 'status_history',
   billingServices: 'billing_services',
   payroll: 'payroll',
+  // Sueldos fijos quincenales (uno por empleado; id = id del empleado).
+  fixedSalaries: 'fixed_salaries',
+  // Rate por hora de cada empleado que cobra por hora (id = id del empleado).
+  hourlyRates: 'hourly_rates',
   damages: 'damages',
   checklists: 'checklists',
   qualityChecks: 'quality_checks',

@@ -1,0 +1,9 @@
+/* Lista de pagos fijos quincenales (pestaña Fixed pay de Payroll). Tabla, filas y botones: PayrollTable.css. */
+.fpl-card {
+  --ptbl-columns: 110px minmax(0, 1.4fr) minmax(0, 1.2fr) 110px minmax(0, 1.2fr);
+}
+
+/* Con acciones (alcance 'All') la tabla lleva una columna más. */
+.fpl-card.has-actions {
+  --ptbl-columns: 110px minmax(0, 1.4fr) minmax(0, 1.2fr) 110px minmax(0, 1.2fr) 80px;
+}

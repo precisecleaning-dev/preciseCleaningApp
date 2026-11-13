@@ -1,0 +1,22 @@
+/* Lista de pagos por horas (pestaña Hourly de Payroll). Tabla, filas y botones: PayrollTable.css. */
+.hpl-card {
+  --ptbl-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr) 110px 100px minmax(0, 1.2fr);
+}
+
+/* Con editar / borrar (alcance 'All') la tabla lleva una columna más. */
+.hpl-card.has-actions {
+  --ptbl-columns: 110px minmax(0, 1.4fr) minmax(0, 1fr) 110px 100px minmax(0, 1.2fr) 80px;
+}
+
+.hpl-receipt-link {
+  align-items: center;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.hpl-receipt-link:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,28 @@
+/* Detalle de un pago fijo quincenal (pestaña Fixed pay de Payroll). Caja y datos: PayrollDialog.css. */
+.fpd-summary {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.fpd-employee {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.fpd-amount {
+  color: #0f172a;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 4px 0 0;
+}
+
+.fpd-hint {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 20px 0 0;
+}

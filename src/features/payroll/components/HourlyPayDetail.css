@@ -1,0 +1,64 @@
+/* Detalle de un pago por horas (pestaña Hourly de Payroll). Caja y datos: PayrollDialog.css. */
+.hpd-summary {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.hpd-employee {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.hpd-total {
+  color: #0f172a;
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 4px 0 0;
+}
+
+.hpd-section-title {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 24px 0 8px;
+  text-transform: uppercase;
+}
+
+.hpd-no-receipt {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.hpd-receipt-link {
+  align-items: center;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 6px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.hpd-receipt-link:hover {
+  text-decoration: underline;
+}
+
+.hpd-receipt-image-link {
+  display: block;
+}
+
+.hpd-receipt-image {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: block;
+  max-height: 360px;
+  max-width: 100%;
+  object-fit: contain;
+}

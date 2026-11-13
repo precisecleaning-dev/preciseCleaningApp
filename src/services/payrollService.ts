@@ -14,6 +14,7 @@ import {
 import type { PayrollRecord } from '../types/index';
 import { COLLECTIONS } from '../lib/firebase/collections';
 import { typedConverter } from '../lib/firebase/typedConverter';
+import type { BatchOp } from '../shared/data/batchWrites';
 
 /** Un pago tal como sale de Firestore: siempre con el id de su documento. */
 type PayrollDoc = PayrollRecord & { id: string };
@@ -40,6 +41,22 @@ export const payrollService = {
       console.error('Error adding document: ', error);
       throw error;
     }
+  },
+
+  /** Pagos de un empleado (para moverlos cuando su usuario cambia de id). */
+  async getByEmployeeId(employeeId: string): Promise<PayrollDoc[]> {
+    const querySnapshot = await getDocs(query(payrollCol, where('employeeId', '==', employeeId)));
+    return querySnapshot.docs.map((payrollSnap) => payrollSnap.data());
+  },
+
+  /** Operación de batch que cambia campos de un pago (ver shared/data/batchWrites.ts). */
+  updateOp(id: string, data: Partial<PayrollRecord>): BatchOp {
+    return (batch) => batch.update(payrollRef(id), data);
+  },
+
+  /** Operación de batch que borra un pago. */
+  deleteOp(id: string): BatchOp {
+    return (batch) => batch.delete(payrollRef(id));
   },
 
   async getByPropertyId(propertyId: string): Promise<PayrollRecord[]> {

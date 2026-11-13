@@ -1,0 +1,17 @@
+/* Modal para corregir un pago fijo (pestaña Fixed pay de Payroll). Caja, campos y datos: PayrollDialog.css. */
+.fpf-amount {
+  margin-top: 20px;
+}
+
+.fpf-hint {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+}
+
+.fpf-paid-note {
+  color: #b45309;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 12px 0 0;
+}

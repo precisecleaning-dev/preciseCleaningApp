@@ -1,6 +1,7 @@
 // src/types/index.ts
 import type { LucideIcon } from 'lucide-react';
 import type { DataValidation as ExcelDataValidation } from 'exceljs';
+import type { EmployeePayType } from './payroll';
 
 // ==========================================
 // 1. SYSTEM SECURITY & USERS (RBAC)
@@ -35,6 +36,10 @@ export interface SystemUser {
   roleId: string;
   status: 'Active' | 'Pending Invite' | 'Inactive';
   teamId?: string; // Para el catálogo de equipos
+  /** Cómo cobra (System Users). Sin el campo: 'perHouse'. El rate por hora y el
+   *  sueldo fijo NO van aquí (esta colección la lee cualquier usuario activo):
+   *  viven en hourly_rates y fixed_salaries, que solo ve Payroll. */
+  payType?: EmployeePayType;
 }
 
 // ==========================================
