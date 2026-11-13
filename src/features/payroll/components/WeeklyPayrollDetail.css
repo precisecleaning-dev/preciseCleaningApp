@@ -1,0 +1,334 @@
+/* Detalle de la nómina semanal de un empleado. Caja y datos: PayrollDialog.css; badges: PayrollTable.css. */
+.modal-50.pdlg-box.wpd-box {
+  max-width: 880px;
+}
+
+.wpd-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.wpd-employee {
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.wpd-week {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 4px 0 0;
+}
+
+.wpd-stats {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wpd-stat {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.wpd-stat.is-highlighted {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.wpd-stat-label {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.wpd-stat-value {
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wpd-stat.is-highlighted .wpd-stat-value {
+  color: #047857;
+}
+
+.wpd-section-title {
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin: 24px 0 10px;
+  text-transform: uppercase;
+}
+
+/* Lunes a domingo: siete cajas; el día sin casas queda apagado y hoy se marca en azul. */
+.wpd-days {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wpd-day {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.wpd-day.has-work {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.wpd-day.is-today {
+  box-shadow: inset 0 0 0 2px #3b82f6;
+}
+
+.wpd-day-name {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wpd-day-date,
+.wpd-day-count {
+  font-size: 0.68rem;
+}
+
+.wpd-day-amount {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wpd-table-wrap {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.wpd-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 720px;
+  width: 100%;
+}
+
+.wpd-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 10px 12px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.wpd-table td {
+  border-top: 1px solid #f1f5f9;
+  color: #334155;
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.wpd-table .is-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.wpd-nowrap {
+  white-space: nowrap;
+}
+
+/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+.wpd-house-btn {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.wpd-house-btn:hover {
+  text-decoration: underline;
+}
+
+.wpd-house-client {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.wpd-house-address,
+.wpd-note {
+  color: #64748b;
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.wpd-plus {
+  color: #047857;
+  font-weight: 600;
+}
+
+.wpd-minus {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.wpd-empty {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.wpd-adjustments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wpd-adjustment {
+  align-items: flex-start;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.wpd-adjustment-line {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdlg-details.wpd-payment {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Pago de una casa en edición: la fila se resalta y los montos se escriben en la misma celda. */
+.wpd-table tr.is-editing td {
+  background: #f8fbff;
+}
+
+.wpd-edit-input.pdlg-input {
+  font-size: 0.85rem;
+  padding: 6px 8px;
+  text-align: right;
+  width: 84px;
+}
+
+.wpd-edit-note.pdlg-input {
+  display: block;
+  margin-left: auto;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.wpd-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+.wpd-icon-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  width: 32px;
+}
+
+.wpd-icon-btn:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.wpd-icon-btn.is-save {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.wpd-icon-btn.is-save:hover {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.wpd-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.wpd-row-error {
+  color: #b91c1c;
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+/* Encabezado de la columna de acciones: solo para el lector de pantalla. */
+.wpd-sr-only {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* Teléfono: resumen y pago en dos columnas; los días en una fila que se desplaza de lado. */
+@media (max-width: 768px) {
+  .wpd-stats,
+  .pdlg-details.wpd-payment {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wpd-icon-btn {
+    height: 40px;
+    width: 40px;
+  }
+  .wpd-days {
+    grid-auto-columns: minmax(84px, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+  }
+}
