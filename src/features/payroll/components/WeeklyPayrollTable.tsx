@@ -9,17 +9,16 @@
 import { useState } from 'react';
 import { Check, CheckCircle, RotateCcw } from 'lucide-react';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
+import type { WeeklyPayrollRow } from '../../../types/index';
 import { money, roundToCents } from '../../../utils/jobFinancials';
-import {
-  getUnpaidTotal, getWeekBatchId, getWeekPayDay, type WeeklyPayrollRow,
-} from '../weeklyPayroll';
+import { getUnpaidTotal, getWeekBatchId, getWeekPayDay, pluralize } from '../weeklyPayroll';
 import { PayrollTableRow, PayrollTableSkeleton } from './PayrollTable';
 import './WeeklyPayrollTable.css';
 
 const sumBy = (rows: readonly WeeklyPayrollRow[], pick: (row: WeeklyPayrollRow) => number) =>
   roundToCents(rows.reduce((sum, row) => sum + pick(row), 0));
 
-const countHouses = (row: WeeklyPayrollRow) => row.records.filter((record) => record.propertyId).length;
+const countProperties = (row: WeeklyPayrollRow) => row.records.filter((record) => record.propertyId).length;
 const countDaysWorked = (row: WeeklyPayrollRow) => row.dayTotals.filter((amount) => amount > 0).length;
 
 /** Iniciales para el círculo del empleado ("Julissa Carolina Quiroz" → "JQ"). */
@@ -29,14 +28,12 @@ const getInitials = (name: string) => {
   return `${words[0][0]}${words.length > 1 ? words[words.length - 1][0] : ''}`.toUpperCase();
 };
 
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
-
 const EmployeeCell = ({ row, employeeName }: { row: WeeklyPayrollRow; employeeName: string }) => (
   <span className="wpt-employee">
     <span className={`wpt-avatar${row.isPaid ? ' is-paid' : ''}`} aria-hidden="true">{getInitials(employeeName)}</span>
     <span className="wpt-employee-text">
       <span className="ptbl-name">{employeeName}</span>
-      <span className="wpt-employee-meta">{plural(countHouses(row), 'house')} · {plural(countDaysWorked(row), 'day')}</span>
+      <span className="wpt-employee-meta">{pluralize(countProperties(row), 'house')} · {pluralize(countDaysWorked(row), 'day')}</span>
     </span>
   </span>
 );
@@ -68,7 +65,7 @@ const PaymentCell = ({ row, employeeName, weekStart, onSetSent }: PaymentCellPro
     return <span className={`ptbl-badge${row.isPaid ? ' is-paid' : ''}`}>{row.isPaid ? 'Sent' : 'Not sent'}</span>;
   }
 
-  const handleChoose = async (isSent: boolean) => {
+  const handleSetSent = async (isSent: boolean) => {
     if (isSent === row.isPaid || isSaving) return;
     setIsSaving(true);
     try {
@@ -89,7 +86,7 @@ const PaymentCell = ({ row, employeeName, weekStart, onSetSent }: PaymentCellPro
         aria-pressed={!row.isPaid}
         disabled={isSaving || (row.isPaid && !canUndo)}
         title={row.isPaid && !canUndo ? 'Paid with "Pagar seleccionadas"' : 'Not sent'}
-        onClick={() => handleChoose(false)}
+        onClick={() => handleSetSent(false)}
       >
         Not sent
       </button>
@@ -99,7 +96,7 @@ const PaymentCell = ({ row, employeeName, weekStart, onSetSent }: PaymentCellPro
         aria-pressed={row.isPaid}
         disabled={isSaving}
         title={row.isPaid ? 'Sent' : `Mark ${money(getUnpaidTotal(row))} as sent today`}
-        onClick={() => handleChoose(true)}
+        onClick={() => handleSetSent(true)}
       >
         {row.isPaid && <Check size={14} aria-hidden="true" />} Sent
       </button>
@@ -146,7 +143,7 @@ const WeeklyPayrollTable = ({
   const weekTotal = sumBy(rows, (row) => row.total);
   const unpaidTotal = sumBy(pendingRows, getUnpaidTotal);
   const isWeekPaid = rows.length > 0 && pendingRows.length === 0;
-  const houseCount = rows.reduce((sum, row) => sum + countHouses(row), 0);
+  const propertyCount = rows.reduce((sum, row) => sum + countProperties(row), 0);
   const sentCount = rows.length - pendingRows.length;
 
   if (isLoading) return <PayrollTableSkeleton />;
@@ -162,7 +159,7 @@ const WeeklyPayrollTable = ({
       <section className="wpt-summary" aria-label="Week summary">
         <div className="wpt-kpis">
           <SummaryItem label="Pay day" value={`Wed ${formatDate(payDay)}`} hint={getPayDayHint()} />
-          <SummaryItem label="Week total" value={money(weekTotal)} hint={`${plural(rows.length, 'employee')} · ${plural(houseCount, 'house')}`} />
+          <SummaryItem label="Week total" value={money(weekTotal)} hint={`${pluralize(rows.length, 'employee')} · ${pluralize(propertyCount, 'house')}`} />
           <SummaryItem label="Pending" value={money(unpaidTotal)} hint={`${pendingRows.length} not sent`} tone="pending" />
           <SummaryItem label="Paid" value={money(roundToCents(weekTotal - unpaidTotal))} hint={`${sentCount} sent`} tone="paid" />
         </div>

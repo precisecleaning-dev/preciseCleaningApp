@@ -5,11 +5,11 @@
 // pago (miércoles siguiente) y muestra cuánto se le paga a cada uno.
 import { useState } from 'react';
 import { CheckCircle } from 'lucide-react';
-import type { SystemUser } from '../../../types/index';
+import type { SystemUser, WeeklyPayrollRow } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
 import { formatDateRange } from '../../../utils/dateFormat';
 import { money, roundToCents } from '../../../utils/jobFinancials';
-import { getUnpaidRecords, getUnpaidTotal, getWeekDays, getWeekPayDay, type WeeklyPayrollRow } from '../weeklyPayroll';
+import { getUnpaidRecords, getUnpaidTotal, getWeekDays, getWeekPayDay } from '../weeklyPayroll';
 import { payWeek } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './WeeklyPayrollTable.css';

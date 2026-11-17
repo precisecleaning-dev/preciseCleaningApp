@@ -4,10 +4,10 @@
 // ajuste (ver saveWeekAdjustment). Los ajustes ya pagados no cambian.
 import { useState } from 'react';
 import { BadgePercent } from 'lucide-react';
-import type { SystemUser } from '../../../types/index';
+import type { SystemUser, WeeklyPayrollRow } from '../../../types/index';
 import { formatDateRange } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
-import { getUnpaidRecords, getWeekDays, parseOptionalAmount, type WeeklyPayrollRow } from '../weeklyPayroll';
+import { getUnpaidRecords, getWeekDays, parseOptionalAmount } from '../weeklyPayroll';
 import { saveWeekAdjustment } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './WeeklyPayrollTable.css';
@@ -45,7 +45,7 @@ const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClo
   const discount = parseOptionalAmount(discountText);
   const weekDays = getWeekDays(weekStart);
   const newTotal = bonus !== null && discount !== null
-    ? roundToCents(row.housesTotal + paidAdjustmentsTotal + bonus - discount)
+    ? roundToCents(row.propertiesTotal + paidAdjustmentsTotal + bonus - discount)
     : null;
   const canSave = bonus !== null && discount !== null && !isSaving;
 
@@ -128,7 +128,7 @@ const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClo
       </div>
       {newTotal === null
         ? <p className="pdlg-error" role="alert">Bonus and discount must be 0 or more.</p>
-        : <p className="pdlg-note">Houses {money(row.housesTotal)} · Week total {money(newTotal)}</p>}
+        : <p className="pdlg-note">Houses {money(row.propertiesTotal)} · Week total {money(newTotal)}</p>}
       {errorText && <p className="pdlg-error" role="alert">{errorText}</p>}
     </PayrollDialog>
   );

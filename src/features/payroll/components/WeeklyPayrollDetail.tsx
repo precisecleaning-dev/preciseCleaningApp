@@ -9,30 +9,24 @@
 // para corregir rápido sin salir de la semana.
 import { useState, type KeyboardEvent } from 'react';
 import { Check, CheckCircle, Home, Pencil, Plus, Wallet, X } from 'lucide-react';
-import type { SystemUser } from '../../../types/index';
+import type {
+  PayrollRecord, SystemUser, WeeklyPayrollRow, WeeklyPropertyInfo,
+} from '../../../types/index';
 import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
 import {
-  WEEK_DAY_NAMES, getUnpaidTotal, getWeekDays, getWeekPayDay, parseOptionalAmount,
-  type WeeklyPayrollRecord, type WeeklyPayrollRow,
+  WEEK_DAY_NAMES, getUnpaidTotal, getWeekDays, getWeekPayDay, parseOptionalAmount, pluralize,
 } from '../weeklyPayroll';
-import { updateHousePayment } from '../services/weeklyPayrollService';
+import { updatePropertyPayment } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './PayrollTable.css';
 import './WeeklyPayrollDetail.css';
-
-export interface WeeklyHouseInfo {
-  client: string;
-  address: string;
-}
 
 const getStatusBadge = (row: WeeklyPayrollRow) => {
   if (row.isPaid) return { text: 'Paid', className: 'ptbl-badge is-paid' };
   const hasPaidRecords = row.records.some((record) => record.status === 'Paid');
   return { text: hasPaidRecords ? 'Partially paid' : 'Pending', className: 'ptbl-badge' };
 };
-
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 interface SummaryCardProps {
   label: string;
@@ -47,22 +41,22 @@ const SummaryCard = ({ label, value, isHighlighted = false }: SummaryCardProps) 
   </div>
 );
 
-const amountText = (amount: number | undefined) => (Number(amount || 0) ? String(Number(amount)) : '');
+const toAmountText = (amount: number | undefined) => (Number(amount || 0) ? String(Number(amount)) : '');
 
-interface HouseCellsProps {
-  record: WeeklyPayrollRecord;
+interface PropertyCellsProps {
+  record: PayrollRecord;
   day: string;
-  info: WeeklyHouseInfo | null;
-  onOpenHouse?: (propertyId: string) => void;
+  info: WeeklyPropertyInfo | null;
+  onOpenProperty?: (propertyId: string) => void;
 }
 
 /** Día y casa (cliente y dirección); clic en el cliente abre la casa. */
-const HouseCells = ({ record, day, info, onOpenHouse }: HouseCellsProps) => (
+const PropertyCells = ({ record, day, info, onOpenProperty }: PropertyCellsProps) => (
   <>
     <td className="wpd-nowrap">{formatDate(day)}</td>
     <td>
-      {info && onOpenHouse ? (
-        <button type="button" className="wpd-house-btn" onClick={() => onOpenHouse(record.propertyId)}>
+      {info && onOpenProperty ? (
+        <button type="button" className="wpd-house-btn" onClick={() => onOpenProperty(record.propertyId)}>
           <Home size={14} aria-hidden="true" /> {info.client}
         </button>
       ) : (
@@ -73,21 +67,21 @@ const HouseCells = ({ record, day, info, onOpenHouse }: HouseCellsProps) => (
   </>
 );
 
-const StatusBadge = ({ record }: { record: WeeklyPayrollRecord }) => (
+const StatusBadge = ({ record }: { record: PayrollRecord }) => (
   <span className={`ptbl-badge${record.status === 'Paid' ? ' is-paid' : ''}`}>{record.status === 'Paid' ? 'Paid' : 'Pending'}</span>
 );
 
-interface HouseEditRowProps extends HouseCellsProps {
+interface PropertyPaymentEditRowProps extends PropertyCellsProps {
   currentUser?: SystemUser | null;
   onDone: () => void;
 }
 
 /** Fila en edición: base, extra y descuento (con notas) en la misma tabla. */
-const HouseEditRow = ({ record, day, info, onOpenHouse, currentUser, onDone }: HouseEditRowProps) => {
-  const [baseText, setBaseText] = useState(() => amountText(record.baseAmount));
-  const [extraText, setExtraText] = useState(() => amountText(record.extraAmount));
+const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser, onDone }: PropertyPaymentEditRowProps) => {
+  const [baseText, setBaseText] = useState(() => toAmountText(record.baseAmount));
+  const [extraText, setExtraText] = useState(() => toAmountText(record.extraAmount));
   const [extraNote, setExtraNote] = useState(record.extraNote || '');
-  const [discountText, setDiscountText] = useState(() => amountText(record.discountAmount));
+  const [discountText, setDiscountText] = useState(() => toAmountText(record.discountAmount));
   const [discountNote, setDiscountNote] = useState(record.discountNote || '');
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -102,7 +96,7 @@ const HouseEditRow = ({ record, day, info, onOpenHouse, currentUser, onDone }: H
     setIsSaving(true);
     setErrorText('');
     try {
-      await updateHousePayment(record, {
+      await updatePropertyPayment(record, {
         baseAmount, extraAmount, extraNote: extraNote.trim(), discountAmount, discountNote: discountNote.trim(),
       }, info?.address || info?.client || 'House payment', currentUser);
       onDone();
@@ -154,7 +148,7 @@ const HouseEditRow = ({ record, day, info, onOpenHouse, currentUser, onDone }: H
 
   return (
     <tr className="is-editing">
-      <HouseCells record={record} day={day} info={info} onOpenHouse={onOpenHouse} />
+      <PropertyCells record={record} day={day} info={info} onOpenProperty={onOpenProperty} />
       <td className="is-number">{amountInput('Base', baseText, setBaseText, true)}</td>
       <td className="is-number">
         {amountInput('Extra', extraText, setExtraText)}
@@ -195,12 +189,12 @@ interface WeeklyPayrollDetailProps {
   /** Lunes de la semana, AAAA-MM-DD. */
   weekStart: string;
   /** Día trabajado (AAAA-MM-DD) de un pago por casa: Schedule Date de la casa. */
-  getWorkDay: (record: WeeklyPayrollRecord) => string;
-  getHouseInfo: (propertyId: string) => WeeklyHouseInfo | null;
-  onOpenHouse?: (propertyId: string) => void;
+  getWorkDay: (record: PayrollRecord) => string;
+  getPropertyInfo: (propertyId: string) => WeeklyPropertyInfo | null;
+  onOpenProperty?: (propertyId: string) => void;
   /** Sin permiso de editar no hay botón de bono / descuento ni edición de las casas. */
   onAdjust?: (row: WeeklyPayrollRow) => void;
-  canEditHouses?: boolean;
+  canEditPropertyPayments?: boolean;
   /** "Pay" del pie: paga solo a este empleado (abre el modal de pago). */
   onPay?: (row: WeeklyPayrollRow) => void;
   currentUser?: SystemUser | null;
@@ -208,21 +202,21 @@ interface WeeklyPayrollDetailProps {
 }
 
 const WeeklyPayrollDetail = ({
-  row, employeeName, weekStart, getWorkDay, getHouseInfo, onOpenHouse, onAdjust, canEditHouses = false, onPay, currentUser, onClose,
+  row, employeeName, weekStart, getWorkDay, getPropertyInfo, onOpenProperty, onAdjust, canEditPropertyPayments = false, onPay, currentUser, onClose,
 }: WeeklyPayrollDetailProps) => {
   const [editingRecordId, setEditingRecordId] = useState('');
   const weekDays = getWeekDays(weekStart);
   const today = todayIso();
   const status = getStatusBadge(row);
-  const houses = row.records
+  const propertyPayments = row.records
     .filter((record) => record.propertyId)
-    .map((record) => ({ record, day: getWorkDay(record), info: getHouseInfo(record.propertyId) }))
+    .map((record) => ({ record, day: getWorkDay(record), info: getPropertyInfo(record.propertyId) }))
     .sort((houseA, houseB) => houseA.day.localeCompare(houseB.day)
       || (houseA.info?.client ?? '').localeCompare(houseB.info?.client ?? ''));
   const adjustments = row.records.filter((record) => !record.propertyId);
-  const housesPerDay = weekDays.map((day) => houses.filter((house) => house.day === day).length);
+  const propertiesPerDay = weekDays.map((day) => propertyPayments.filter((payment) => payment.day === day).length);
   const daysWorked = row.dayTotals.filter((amount) => amount > 0).length;
-  const paidRecord = row.records.find((record) => record.status === 'Paid');
+  const firstPaidRecord = row.records.find((record) => record.status === 'Paid');
   const unpaidTotal = getUnpaidTotal(row);
   const canAdjust = !!onAdjust && !row.isPaid;
   const hasAdjustment = row.bonus > 0 || row.discount > 0;
@@ -257,9 +251,9 @@ const WeeklyPayrollDetail = ({
       </div>
 
       <div className="wpd-stats">
-        <SummaryCard label="Houses" value={String(houses.length)} />
+        <SummaryCard label="Houses" value={String(propertyPayments.length)} />
         <SummaryCard label="Days worked" value={`${daysWorked} / 7`} />
-        <SummaryCard label="Houses total" value={money(row.housesTotal)} />
+        <SummaryCard label="Houses total" value={money(row.propertiesTotal)} />
         <SummaryCard label="Total to pay" value={money(row.total)} isHighlighted />
       </div>
 
@@ -273,12 +267,12 @@ const WeeklyPayrollDetail = ({
             <span className="wpd-day-name">{dayName.slice(0, 3)}</span>
             <span className="wpd-day-date">{formatDate(weekDays[dayIndex])}</span>
             <strong className="wpd-day-amount">{row.dayTotals[dayIndex] ? money(row.dayTotals[dayIndex]) : '—'}</strong>
-            <span className="wpd-day-count">{housesPerDay[dayIndex] ? plural(housesPerDay[dayIndex], 'house') : 'Off'}</span>
+            <span className="wpd-day-count">{propertiesPerDay[dayIndex] ? pluralize(propertiesPerDay[dayIndex], 'house') : 'Off'}</span>
           </li>
         ))}
       </ol>
 
-      <h4 className="wpd-section-title">Houses ({houses.length})</h4>
+      <h4 className="wpd-section-title">Houses ({propertyPayments.length})</h4>
       <div className="wpd-table-wrap">
         <table className="wpd-table">
           <thead>
@@ -290,20 +284,20 @@ const WeeklyPayrollDetail = ({
               <th className="is-number">Discount</th>
               <th className="is-number">Total</th>
               <th>Status</th>
-              {canEditHouses && <th><span className="wpd-sr-only">Actions</span></th>}
+              {canEditPropertyPayments && <th><span className="u-sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>
-            {houses.map(({ record, day, info }) => {
+            {propertyPayments.map(({ record, day, info }) => {
               const rowKey = record.id ?? `${record.propertyId}-${day}`;
-              if (canEditHouses && record.id && record.id === editingRecordId) {
+              if (canEditPropertyPayments && record.id && record.id === editingRecordId) {
                 return (
-                  <HouseEditRow
+                  <PropertyPaymentEditRow
                     key={rowKey}
                     record={record}
                     day={day}
                     info={info}
-                    onOpenHouse={onOpenHouse}
+                    onOpenProperty={onOpenProperty}
                     currentUser={currentUser}
                     onDone={() => setEditingRecordId('')}
                   />
@@ -311,7 +305,7 @@ const WeeklyPayrollDetail = ({
               }
               return (
                 <tr key={rowKey}>
-                  <HouseCells record={record} day={day} info={info} onOpenHouse={onOpenHouse} />
+                  <PropertyCells record={record} day={day} info={info} onOpenProperty={onOpenProperty} />
                   <td className="is-number">{money(Number(record.baseAmount || 0))}</td>
                   <td className="is-number">
                     {Number(record.extraAmount || 0) ? <span className="wpd-plus">+{money(Number(record.extraAmount))}</span> : '—'}
@@ -323,7 +317,7 @@ const WeeklyPayrollDetail = ({
                   </td>
                   <td className="is-number"><strong>{money(getPayrollTotal(record))}</strong></td>
                   <td><StatusBadge record={record} /></td>
-                  {canEditHouses && (
+                  {canEditPropertyPayments && (
                     <td>
                       {record.status !== 'Paid' && record.id && (
                         <button
@@ -385,11 +379,11 @@ const WeeklyPayrollDetail = ({
         </div>
         <div>
           <dt className="pdlg-detail-label">Paid on</dt>
-          <dd className="pdlg-detail-value">{paidRecord ? formatDate(paidRecord.paymentDate || paidRecord.paidAt) : '—'}</dd>
+          <dd className="pdlg-detail-value">{firstPaidRecord ? formatDate(firstPaidRecord.paymentDate || firstPaidRecord.paidAt) : '—'}</dd>
         </div>
         <div>
           <dt className="pdlg-detail-label">Paid by</dt>
-          <dd className="pdlg-detail-value">{paidRecord?.paidBy || '—'}</dd>
+          <dd className="pdlg-detail-value">{firstPaidRecord?.paidBy || '—'}</dd>
         </div>
       </dl>
       {!row.isPaid && unpaidTotal !== roundToCents(row.total) && (

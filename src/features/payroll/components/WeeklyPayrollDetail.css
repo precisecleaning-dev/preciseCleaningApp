@@ -305,16 +305,6 @@
   margin-top: 4px;
 }
 
-/* Encabezado de la columna de acciones: solo para el lector de pantalla. */
-.wpd-sr-only {
-  clip: rect(0 0 0 0);
-  height: 1px;
-  overflow: hidden;
-  position: absolute;
-  white-space: nowrap;
-  width: 1px;
-}
-
 /* Teléfono: resumen y pago en dos columnas; los días en una fila que se desplaza de lado. */
 @media (max-width: 768px) {
   .wpd-stats,
