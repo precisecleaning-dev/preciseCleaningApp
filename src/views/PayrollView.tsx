@@ -360,12 +360,18 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const payRows = sortedWeeklyRows.filter(row => !row.isPaid && (payTarget === 'all' || row.employeeId === payTarget));
 
   // Columna Payment de la tabla: "Sent" / "Not sent" de un empleado con un toque.
-  // Sent = pagado HOY (para otra fecha: "Pay" en el detalle).
-  const handleSetSent = (row: WeeklyPayrollRow, isSent: boolean) => {
+  // Sent = pagado HOY (para otra fecha: "Pay" en el detalle). Mientras guarda, isSaving
+  // bloquea las demás filas y "Pay week" (la fila avisa si falla).
+  const handleSetSent = async (row: WeeklyPayrollRow, isSent: boolean) => {
     const employeeName = getEmployeeName(row.employeeId);
-    return isSent
-      ? payWeek(getUnpaidRecords(row), weekStartIso, todayIso(), currentUser, employeeName)
-      : markWeekPending(getRecordsPaidThisWeek([row], weekStartIso), weekStartIso, currentUser, employeeName);
+    setIsSaving(true);
+    try {
+      await (isSent
+        ? payWeek(getUnpaidRecords(row), weekStartIso, todayIso(), currentUser, employeeName)
+        : markWeekPending(getRecordsPaidThisWeek([row], weekStartIso), weekStartIso, currentUser, employeeName));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Regresa a Pending lo que se pagó desde esta pestaña en la semana elegida.

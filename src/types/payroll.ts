@@ -48,6 +48,10 @@ export interface PayrollRecord {
   batchId?: string | null;
   /** Fecha (AAAA-MM-DD) del pago consolidado o semanal. */
   paymentDate?: string | null;
+  /** Lo que tenía antes de pagarse en la nómina semanal (venía de una nómina asignada `batch_…`):
+   *  "Not sent" / "Mark week pending" lo restauran. */
+  previousBatchId?: string | null;
+  previousPaymentDate?: string | null;
 }
 
 /** Nómina semanal por casa (pestaña Nóminas): lo de un empleado en la semana. */

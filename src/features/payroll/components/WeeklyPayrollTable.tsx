@@ -51,22 +51,33 @@ interface PaymentCellProps {
   row: WeeklyPayrollRow;
   employeeName: string;
   weekStart: string;
+  /** Otra fila o "Pay week" está guardando: no se puede marcar nada. */
+  isBusy: boolean;
   /** Sin esta función (sin permiso de editar) solo se ve el estado. */
   onSetSent?: (row: WeeklyPayrollRow, isSent: boolean) => Promise<void>;
 }
 
-/** "Not sent" / "Sent": un toque marca el pago del empleado (Sent queda en verde) o lo regresa. */
-const PaymentCell = ({ row, employeeName, weekStart, onSetSent }: PaymentCellProps) => {
+/**
+ * "Not sent" / "Sent" (un radio de dos opciones): Sent paga al empleado HOY
+ * (pide confirmación; queda en verde) y Not sent lo regresa. Mientras guarda,
+ * la vista bloquea las demás filas y "Pay week" (isBusy).
+ */
+const PaymentCell = ({ row, employeeName, weekStart, isBusy, onSetSent }: PaymentCellProps) => {
   const [isSaving, setIsSaving] = useState(false);
-  // Solo se regresa lo pagado desde esta pestaña; lo de "Pagar seleccionadas" no.
+  // Solo se regresa lo pagado desde esta pestaña (Sent / Pay week); lo pagado con
+  // "Pagar seleccionadas" o una casa pagada sola, no.
   const canUndo = row.records.some((record) => record.status === 'Paid' && record.batchId === getWeekBatchId(weekStart));
+  const notSentTitle = row.isPaid && !canUndo
+    ? 'Paid outside the weekly payroll ("Pagar seleccionadas" or one house at a time)'
+    : 'Not sent';
 
   if (!onSetSent) {
     return <span className={`ptbl-badge${row.isPaid ? ' is-paid' : ''}`}>{row.isPaid ? 'Sent' : 'Not sent'}</span>;
   }
 
   const handleSetSent = async (isSent: boolean) => {
-    if (isSent === row.isPaid || isSaving) return;
+    if (isSent === row.isPaid || isSaving || isBusy) return;
+    if (isSent && !window.confirm(`Mark ${money(getUnpaidTotal(row))} for ${employeeName} as sent today?`)) return;
     setIsSaving(true);
     try {
       await onSetSent(row, isSent);
@@ -79,22 +90,24 @@ const PaymentCell = ({ row, employeeName, weekStart, onSetSent }: PaymentCellPro
   };
 
   return (
-    <span className={`wpt-payment${isSaving ? ' is-saving' : ''}`} role="group" aria-label={`Payment of ${employeeName}`}>
+    <span className={`wpt-payment${isSaving ? ' is-saving' : ''}`} role="radiogroup" aria-label={`Payment of ${employeeName}`}>
       <button
         type="button"
+        role="radio"
         className={`wpt-payment-btn${row.isPaid ? '' : ' is-selected'}`}
-        aria-pressed={!row.isPaid}
-        disabled={isSaving || (row.isPaid && !canUndo)}
-        title={row.isPaid && !canUndo ? 'Paid with "Pagar seleccionadas"' : 'Not sent'}
+        aria-checked={!row.isPaid}
+        disabled={isBusy || (row.isPaid && !canUndo)}
+        title={notSentTitle}
         onClick={() => handleSetSent(false)}
       >
         Not sent
       </button>
       <button
         type="button"
+        role="radio"
         className={`wpt-payment-btn is-sent${row.isPaid ? ' is-selected' : ''}`}
-        aria-pressed={row.isPaid}
-        disabled={isSaving}
+        aria-checked={row.isPaid}
+        disabled={isBusy}
         title={row.isPaid ? 'Sent' : `Mark ${money(getUnpaidTotal(row))} as sent today`}
         onClick={() => handleSetSent(true)}
       >
@@ -194,7 +207,7 @@ const WeeklyPayrollTable = ({
                 <PayrollTableRow key={row.employeeId} as="li" label={`View payroll of ${employeeName}`} onOpen={() => onOpenDetail(row)}>
                   <EmployeeCell row={row} employeeName={employeeName} />
                   <TotalCell row={row} />
-                  <PaymentCell row={row} employeeName={employeeName} weekStart={weekStart} onSetSent={onSetSent} />
+                  <PaymentCell row={row} employeeName={employeeName} weekStart={weekStart} isBusy={isBusy} onSetSent={onSetSent} />
                 </PayrollTableRow>
               );
             })}

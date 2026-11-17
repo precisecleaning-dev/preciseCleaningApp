@@ -1,13 +1,14 @@
 // src/features/payroll/components/WeeklyPayForm.tsx
 // Modal de pago de la nómina semanal por casa: "Pay week" paga de una vez lo
-// que falta de la semana a todos los empleados; el botón "Pay" de una fila (o
-// del detalle) abre este mismo modal con un solo empleado. Propone el día de
-// pago (miércoles siguiente) y muestra cuánto se le paga a cada uno.
+// que falta de la semana a todos los empleados; el "Pay" del detalle abre este
+// mismo modal con un solo empleado (en la tabla, "Sent" paga sin modal con la
+// fecha de hoy). Propone la fecha de pago más temprana entre el miércoles de pago
+// y hoy (nunca una fecha futura) y muestra cuánto se le paga a cada uno.
 import { useState } from 'react';
 import { CheckCircle } from 'lucide-react';
 import type { SystemUser, WeeklyPayrollRow } from '../../../types/index';
 import DateInput from '../../../shared/components/DateInput';
-import { formatDateRange } from '../../../utils/dateFormat';
+import { formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { money, roundToCents } from '../../../utils/jobFinancials';
 import { getUnpaidRecords, getUnpaidTotal, getWeekDays, getWeekPayDay } from '../weeklyPayroll';
 import { payWeek } from '../services/weeklyPayrollService';
@@ -19,7 +20,7 @@ interface WeeklyPayFormProps {
   weekStart: string;
   /** Filas con algo sin pagar: todas (Pay week) o la de un empleado. */
   pendingRows: readonly WeeklyPayrollRow[];
-  /** true = pago de un solo empleado (botón de su fila). */
+  /** true = pago de un solo empleado ("Pay" del detalle). */
   isSingleEmployee?: boolean;
   getEmployeeName: (employeeId: string) => string;
   currentUser?: SystemUser | null;
@@ -27,7 +28,11 @@ interface WeeklyPayFormProps {
 }
 
 const WeeklyPayForm = ({ weekStart, pendingRows, isSingleEmployee = false, getEmployeeName, currentUser, onClose }: WeeklyPayFormProps) => {
-  const [paymentDate, setPaymentDate] = useState(() => getWeekPayDay(weekStart));
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const payDay = getWeekPayDay(weekStart);
+    const today = todayIso();
+    return payDay < today ? payDay : today;
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
   const weekDays = getWeekDays(weekStart);

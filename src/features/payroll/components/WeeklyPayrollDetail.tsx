@@ -5,8 +5,8 @@
 // total y estado; clic en la casa abre su detalle), su bono / descuento con
 // las notas y los datos del pago. La vista le pasa la fila EN VIVO.
 // Con permiso, el pago de una casa sin pagar se edita AQUÍ MISMO (lápiz de la
-// fila: base, extra y descuento con sus notas; Enter guarda, Escape cancela),
-// para corregir rápido sin salir de la semana.
+// fila: base, extra y descuento con sus notas; Enter guarda, Escape cancela
+// desde cualquier control de la fila), para corregir rápido sin salir de la semana.
 import { useState, type KeyboardEvent } from 'react';
 import { Check, CheckCircle, Home, Pencil, Plus, Wallet, X } from 'lucide-react';
 import type {
@@ -15,9 +15,9 @@ import type {
 import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
 import {
-  WEEK_DAY_NAMES, getUnpaidTotal, getWeekDays, getWeekPayDay, parseOptionalAmount, pluralize,
+  WEEK_DAY_NAMES, getPaidWeekStart, getUnpaidTotal, getWeekDays, getWeekPayDay, parseOptionalAmount, pluralize,
 } from '../weeklyPayroll';
-import { updatePropertyPayment } from '../services/weeklyPayrollService';
+import { NEGATIVE_PAYMENT_ERROR, updatePropertyPayment } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './PayrollTable.css';
 import './WeeklyPayrollDetail.css';
@@ -43,17 +43,26 @@ const SummaryCard = ({ label, value, isHighlighted = false }: SummaryCardProps) 
 
 const toAmountText = (amount: number | undefined) => (Number(amount || 0) ? String(Number(amount)) : '');
 
+/** Valores distintos y no vacíos, en orden ("Paid on" / "Paid by" de una semana pagada en varias tandas). */
+const listDistinct = (values: Array<string | null | undefined>): string[] =>
+  [...new Set(values.filter((value): value is string => !!value))].sort();
+
 interface PropertyCellsProps {
   record: PayrollRecord;
   day: string;
   info: WeeklyPropertyInfo | null;
+  /** Se pagó en esta semana y después la reprogramaron a otra: sigue contando aquí. */
+  isRescheduled?: boolean;
   onOpenProperty?: (propertyId: string) => void;
 }
 
 /** Día y casa (cliente y dirección); clic en el cliente abre la casa. */
-const PropertyCells = ({ record, day, info, onOpenProperty }: PropertyCellsProps) => (
+const PropertyCells = ({ record, day, info, isRescheduled = false, onOpenProperty }: PropertyCellsProps) => (
   <>
-    <td className="wpd-nowrap">{formatDate(day)}</td>
+    <td className="wpd-nowrap">
+      {formatDate(day)}
+      {isRescheduled && <span className="wpd-note">Rescheduled after it was paid in this week</span>}
+    </td>
     <td>
       {info && onOpenProperty ? (
         <button type="button" className="wpd-house-btn" onClick={() => onOpenProperty(record.propertyId)}>
@@ -77,7 +86,9 @@ interface PropertyPaymentEditRowProps extends PropertyCellsProps {
 }
 
 /** Fila en edición: base, extra y descuento (con notas) en la misma tabla. */
-const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser, onDone }: PropertyPaymentEditRowProps) => {
+const PropertyPaymentEditRow = ({
+  record, day, info, isRescheduled, onOpenProperty, currentUser, onDone,
+}: PropertyPaymentEditRowProps) => {
   const [baseText, setBaseText] = useState(() => toAmountText(record.baseAmount));
   const [extraText, setExtraText] = useState(() => toAmountText(record.extraAmount));
   const [extraNote, setExtraNote] = useState(record.extraNote || '');
@@ -90,9 +101,11 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
   const discountAmount = parseOptionalAmount(discountText);
   const isValid = baseAmount !== null && extraAmount !== null && discountAmount !== null;
   const total = isValid ? roundToCents(baseAmount + extraAmount - discountAmount) : null;
+  const isNegative = total !== null && total < 0;
+  const canSave = isValid && !isNegative && !isSaving;
 
   const handleSave = async () => {
-    if (!isValid || isSaving) return;
+    if (!canSave) return;
     setIsSaving(true);
     setErrorText('');
     try {
@@ -102,20 +115,25 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
       onDone();
     } catch (error) {
       console.error('Error saving the house payment:', error);
-      setErrorText('Could not save. Try again.');
+      const isNegativeError = error instanceof Error && error.message === NEGATIVE_PAYMENT_ERROR;
+      setErrorText(isNegativeError ? 'The discount can\'t be more than base + extra.' : 'Could not save. Try again.');
       setIsSaving(false);
     }
   };
 
-  // Enter guarda; Escape cancela solo la edición (preventDefault: el modal no se cierra).
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void handleSave();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      if (!isSaving) onDone();
-    }
+  // Enter en un campo guarda.
+  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    void handleSave();
+  };
+
+  // Escape desde cualquier control de la fila (campos, ✓ o ✗) cancela solo la edición;
+  // preventDefault: el modal no se cierra y no se pierde lo escrito en otra fila.
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    if (!isSaving) onDone();
   };
 
   const amountInput = (label: string, value: string, onChange: (text: string) => void, autoFocus = false) => (
@@ -131,7 +149,7 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
       type="number"
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      onKeyDown={handleKeyDown}
+      onKeyDown={handleInputKeyDown}
     />
   );
   const noteInput = (label: string, value: string, onChange: (text: string) => void) => (
@@ -142,13 +160,13 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
       placeholder="Note"
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      onKeyDown={handleKeyDown}
+      onKeyDown={handleInputKeyDown}
     />
   );
 
   return (
-    <tr className="is-editing">
-      <PropertyCells record={record} day={day} info={info} onOpenProperty={onOpenProperty} />
+    <tr className="is-editing" onKeyDown={handleRowKeyDown}>
+      <PropertyCells record={record} day={day} info={info} isRescheduled={isRescheduled} onOpenProperty={onOpenProperty} />
       <td className="is-number">{amountInput('Base', baseText, setBaseText, true)}</td>
       <td className="is-number">
         {amountInput('Extra', extraText, setExtraText)}
@@ -167,7 +185,7 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
             className="wpd-icon-btn is-save"
             aria-label="Save house payment"
             title="Save (Enter)"
-            disabled={!isValid || isSaving}
+            disabled={!canSave}
             onClick={handleSave}
           >
             <Check size={16} />
@@ -177,6 +195,7 @@ const PropertyPaymentEditRow = ({ record, day, info, onOpenProperty, currentUser
           </button>
         </span>
         {!isValid && <span className="wpd-row-error" role="alert">Amounts must be 0 or more.</span>}
+        {isNegative && <span className="wpd-row-error" role="alert">The discount can't be more than base + extra.</span>}
         {errorText && <span className="wpd-row-error" role="alert">{errorText}</span>}
       </td>
     </tr>
@@ -210,13 +229,19 @@ const WeeklyPayrollDetail = ({
   const status = getStatusBadge(row);
   const propertyPayments = row.records
     .filter((record) => record.propertyId)
-    .map((record) => ({ record, day: getWorkDay(record), info: getPropertyInfo(record.propertyId) }))
-    .sort((houseA, houseB) => houseA.day.localeCompare(houseB.day)
-      || (houseA.info?.client ?? '').localeCompare(houseB.info?.client ?? ''));
+    .map((record) => {
+      const day = getWorkDay(record);
+      const isRescheduled = getPaidWeekStart(record) === weekStart && (day < weekDays[0] || day > weekDays[6]);
+      return { record, day, isRescheduled, info: getPropertyInfo(record.propertyId) };
+    })
+    .sort((paymentA, paymentB) => paymentA.day.localeCompare(paymentB.day)
+      || (paymentA.info?.client ?? '').localeCompare(paymentB.info?.client ?? ''));
   const adjustments = row.records.filter((record) => !record.propertyId);
   const propertiesPerDay = weekDays.map((day) => propertyPayments.filter((payment) => payment.day === day).length);
   const daysWorked = row.dayTotals.filter((amount) => amount > 0).length;
-  const firstPaidRecord = row.records.find((record) => record.status === 'Paid');
+  const paidRecords = row.records.filter((record) => record.status === 'Paid');
+  const paidOnDates = listDistinct(paidRecords.map((record) => record.paymentDate || record.paidAt)).map(formatDate);
+  const paidByNames = listDistinct(paidRecords.map((record) => record.paidBy));
   const unpaidTotal = getUnpaidTotal(row);
   const canAdjust = !!onAdjust && !row.isPaid;
   const hasAdjustment = row.bonus > 0 || row.discount > 0;
@@ -288,7 +313,7 @@ const WeeklyPayrollDetail = ({
             </tr>
           </thead>
           <tbody>
-            {propertyPayments.map(({ record, day, info }) => {
+            {propertyPayments.map(({ record, day, isRescheduled, info }) => {
               const rowKey = record.id ?? `${record.propertyId}-${day}`;
               if (canEditPropertyPayments && record.id && record.id === editingRecordId) {
                 return (
@@ -297,6 +322,7 @@ const WeeklyPayrollDetail = ({
                     record={record}
                     day={day}
                     info={info}
+                    isRescheduled={isRescheduled}
                     onOpenProperty={onOpenProperty}
                     currentUser={currentUser}
                     onDone={() => setEditingRecordId('')}
@@ -305,7 +331,7 @@ const WeeklyPayrollDetail = ({
               }
               return (
                 <tr key={rowKey}>
-                  <PropertyCells record={record} day={day} info={info} onOpenProperty={onOpenProperty} />
+                  <PropertyCells record={record} day={day} info={info} isRescheduled={isRescheduled} onOpenProperty={onOpenProperty} />
                   <td className="is-number">{money(Number(record.baseAmount || 0))}</td>
                   <td className="is-number">
                     {Number(record.extraAmount || 0) ? <span className="wpd-plus">+{money(Number(record.extraAmount))}</span> : '—'}
@@ -379,15 +405,15 @@ const WeeklyPayrollDetail = ({
         </div>
         <div>
           <dt className="pdlg-detail-label">Paid on</dt>
-          <dd className="pdlg-detail-value">{firstPaidRecord ? formatDate(firstPaidRecord.paymentDate || firstPaidRecord.paidAt) : '—'}</dd>
+          <dd className="pdlg-detail-value">{paidOnDates.join(', ') || '—'}</dd>
         </div>
         <div>
           <dt className="pdlg-detail-label">Paid by</dt>
-          <dd className="pdlg-detail-value">{firstPaidRecord?.paidBy || '—'}</dd>
+          <dd className="pdlg-detail-value">{paidByNames.join(', ') || '—'}</dd>
         </div>
       </dl>
       {!row.isPaid && unpaidTotal !== roundToCents(row.total) && (
-        <p className="pdlg-note">Part of this week was already paid with "Pagar seleccionadas".</p>
+        <p className="pdlg-note">Part of this week was already paid (see "Paid on").</p>
       )}
     </PayrollDialog>
   );

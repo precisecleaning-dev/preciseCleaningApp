@@ -42,6 +42,21 @@ export const getWeekPayDay = (weekStart: string): string => addDays(weekStart, 9
 /** batchId de lo que se paga o ajusta desde esta pestaña. */
 export const getWeekBatchId = (weekStart: string): string => `${WEEK_BATCH_PREFIX}${weekStart}`;
 
+/** Semana (lunes AAAA-MM-DD) de un batchId `week_…`; '' si no es de esta pestaña. */
+const getBatchWeekStart = (record: PayrollRecord): string =>
+  (record.batchId?.startsWith(WEEK_BATCH_PREFIX) ? record.batchId.slice(WEEK_BATCH_PREFIX.length) : '');
+
+/**
+ * Semana en que se PAGÓ una casa desde esta pestaña ('' si no). Una casa pagada
+ * se queda en esa semana aunque después la reprogramen: si no, la semana pagada
+ * cambiaría su total y "Mark week pending" de la nueva no la regresaría.
+ */
+export const getPaidWeekStart = (record: PayrollRecord): string =>
+  (record.propertyId && record.status === 'Paid' ? getBatchWeekStart(record) : '');
+
+/** Columna (0 = lunes … 6 = domingo) de un día AAAA-MM-DD. */
+const getWeekdayIndex = (isoDay: string): number => (parseIsoDay(isoDay).getDay() + 6) % 7;
+
 const createEmptyRow = (employeeId: string): WeeklyPayrollRow => ({
   employeeId, dayTotals: WEEK_DAY_NAMES.map(() => 0), propertiesTotal: 0, bonus: 0, discount: 0, total: 0, records: [], isPaid: false,
 });
@@ -50,7 +65,9 @@ const createEmptyRow = (employeeId: string): WeeklyPayrollRow => ({
  * Arma la nómina de la semana que empieza en `weekStart` (lunes AAAA-MM-DD), una
  * fila por empleado. Cuentan los pagos por casa y sus ajustes (bono / descuento,
  * sin casa); los de Hourly y Fixed pay (payType) no. Cada uno cae en la semana de:
- *  - una casa: su día trabajado (`getWorkDay`);
+ *  - una casa pagada aquí: la semana en que se pagó (`getPaidWeekStart`), en la
+ *    columna de su día de la semana aunque la hayan reprogramado;
+ *  - otra casa: su día trabajado (`getWorkDay`);
  *  - un ajuste de esta pestaña: la semana de su batchId (`week_AAAA-MM-DD`);
  *  - un ajuste de un pago consolidado viejo: la casa más reciente de su batch
  *    (si no, se iría a la semana en que se pagó, la siguiente);
@@ -68,23 +85,26 @@ export const buildWeeklyPayroll = (
     const workDay = getWorkDay(record);
     if (workDay > (latestDayByBatch.get(record.batchId) ?? '')) latestDayByBatch.set(record.batchId, workDay);
   });
-  const getAdjustmentDay = (record: PayrollRecord): string => {
-    if (record.batchId?.startsWith(WEEK_BATCH_PREFIX)) return record.batchId.slice(WEEK_BATCH_PREFIX.length);
-    return (record.batchId && latestDayByBatch.get(record.batchId)) || getWorkDay(record);
-  };
+  const getAdjustmentDay = (record: PayrollRecord): string =>
+    getBatchWeekStart(record) || (record.batchId && latestDayByBatch.get(record.batchId)) || getWorkDay(record);
 
   const weekEnd = addDays(weekStart, 6);
+  const isInWeek = (day: string) => !!day && day >= weekStart && day <= weekEnd;
   const weekStartTime = parseIsoDay(weekStart).getTime();
+  // Math.round: un día con cambio de horario mide 23 o 25 horas.
+  const getDayIndex = (day: string) => Math.round((parseIsoDay(day).getTime() - weekStartTime) / MILLISECONDS_PER_DAY);
   const rowsByEmployee = new Map<string, WeeklyPayrollRow>();
   perHouseRecords.forEach((record) => {
+    const paidWeekStart = getPaidWeekStart(record);
     const day = record.propertyId ? getWorkDay(record) : getAdjustmentDay(record);
-    if (!day || day < weekStart || day > weekEnd) return;
+    const belongsToWeek = paidWeekStart ? paidWeekStart === weekStart : isInWeek(day);
+    if (!belongsToWeek) return;
     const row = rowsByEmployee.get(record.employeeId) ?? createEmptyRow(record.employeeId);
     row.records.push(record);
     if (record.propertyId) {
       const amount = getPayrollTotal(record);
-      // Math.round: un día con cambio de horario mide 23 o 25 horas.
-      row.dayTotals[Math.round((parseIsoDay(day).getTime() - weekStartTime) / MILLISECONDS_PER_DAY)] += amount;
+      const dayIndex = isInWeek(day) ? getDayIndex(day) : getWeekdayIndex(day || weekStart);
+      row.dayTotals[dayIndex] += amount;
       row.propertiesTotal += amount;
     } else {
       row.bonus += Number(record.extraAmount || 0);
@@ -112,7 +132,7 @@ export const getUnpaidRecords = (row: WeeklyPayrollRow): PayrollRecord[] =>
 export const getUnpaidTotal = (row: WeeklyPayrollRow): number =>
   roundToCents(getUnpaidRecords(row).reduce((sum, record) => sum + getPayrollTotal(record), 0));
 
-/** Pagos de la semana que se pagaron desde esta pestaña (los que "Mark week pending" regresa). */
+/** Pagos de la semana que se pagaron desde esta pestaña (los que "Mark week pending" y "Not sent" regresan). */
 export const getRecordsPaidThisWeek = (rows: readonly WeeklyPayrollRow[], weekStart: string): PayrollRecord[] =>
   rows.flatMap((row) => row.records).filter((record) => record.status === 'Paid' && record.batchId === getWeekBatchId(weekStart));
 

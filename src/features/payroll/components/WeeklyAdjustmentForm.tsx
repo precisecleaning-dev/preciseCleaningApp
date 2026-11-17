@@ -1,13 +1,14 @@
 // src/features/payroll/components/WeeklyAdjustmentForm.tsx
 // Modal del bono y el descuento de un empleado en la nómina semanal por casa.
-// Propone lo que ya tiene sin pagar en la semana; al guardar queda UN solo
-// ajuste (ver saveWeekAdjustment). Los ajustes ya pagados no cambian.
+// Edita solo el ajuste sin pagar de esta pestaña (batchId `week_…`; ver
+// saveWeekAdjustment). Los ajustes ya pagados y los de una nómina asignada con
+// "Pagar seleccionadas" (`batch_…`) no cambian: se suman al total y se avisan.
 import { useState } from 'react';
 import { BadgePercent } from 'lucide-react';
 import type { SystemUser, WeeklyPayrollRow } from '../../../types/index';
 import { formatDateRange } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
-import { getUnpaidRecords, getWeekDays, parseOptionalAmount } from '../weeklyPayroll';
+import { getUnpaidRecords, getWeekBatchId, getWeekDays, parseOptionalAmount } from '../weeklyPayroll';
 import { saveWeekAdjustment } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './WeeklyPayrollTable.css';
@@ -25,19 +26,24 @@ interface WeeklyAdjustmentFormProps {
 
 const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClose }: WeeklyAdjustmentFormProps) => {
   const unpaidAdjustments = getUnpaidRecords(row).filter((record) => !record.propertyId);
-  const paidAdjustmentsTotal = row.records
-    .filter((record) => !record.propertyId && record.status === 'Paid')
-    .reduce((sum, record) => sum + getPayrollTotal(record), 0);
+  // Lo que se edita aquí: el ajuste sin pagar de la semana. Lo demás (pagado o de una nómina asignada) queda igual.
+  const unpaidWeekAdjustments = unpaidAdjustments.filter((record) => record.batchId === getWeekBatchId(weekStart));
+  const otherAdjustments = row.records.filter((record) => !record.propertyId && !unpaidWeekAdjustments.includes(record));
+  const otherAdjustmentsTotal = otherAdjustments.reduce((sum, record) => sum + getPayrollTotal(record), 0);
+  const assignedPayrollAdjustments = unpaidAdjustments.filter((record) => !unpaidWeekAdjustments.includes(record));
+  const assignedPayrollAdjustmentsTotal = roundToCents(
+    assignedPayrollAdjustments.reduce((sum, record) => sum + getPayrollTotal(record), 0),
+  );
   const [bonusText, setBonusText] = useState(() => {
-    const bonus = unpaidAdjustments.reduce((sum, record) => sum + Number(record.extraAmount || 0), 0);
+    const bonus = unpaidWeekAdjustments.reduce((sum, record) => sum + Number(record.extraAmount || 0), 0);
     return bonus ? String(roundToCents(bonus)) : '';
   });
-  const [bonusNote, setBonusNote] = useState(() => joinNotes(unpaidAdjustments.map((record) => record.extraNote)));
+  const [bonusNote, setBonusNote] = useState(() => joinNotes(unpaidWeekAdjustments.map((record) => record.extraNote)));
   const [discountText, setDiscountText] = useState(() => {
-    const discount = unpaidAdjustments.reduce((sum, record) => sum + Number(record.discountAmount || 0), 0);
+    const discount = unpaidWeekAdjustments.reduce((sum, record) => sum + Number(record.discountAmount || 0), 0);
     return discount ? String(roundToCents(discount)) : '';
   });
-  const [discountNote, setDiscountNote] = useState(() => joinNotes(unpaidAdjustments.map((record) => record.discountNote)));
+  const [discountNote, setDiscountNote] = useState(() => joinNotes(unpaidWeekAdjustments.map((record) => record.discountNote)));
   const [isSaving, setIsSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
 
@@ -45,7 +51,7 @@ const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClo
   const discount = parseOptionalAmount(discountText);
   const weekDays = getWeekDays(weekStart);
   const newTotal = bonus !== null && discount !== null
-    ? roundToCents(row.propertiesTotal + paidAdjustmentsTotal + bonus - discount)
+    ? roundToCents(row.propertiesTotal + otherAdjustmentsTotal + bonus - discount)
     : null;
   const canSave = bonus !== null && discount !== null && !isSaving;
 
@@ -56,7 +62,7 @@ const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClo
     try {
       await saveWeekAdjustment(
         { employeeId: row.employeeId, employeeName, weekStart, bonus, bonusNote: bonusNote.trim(), discount, discountNote: discountNote.trim() },
-        unpaidAdjustments,
+        unpaidWeekAdjustments,
         currentUser,
       );
       onClose();
@@ -129,6 +135,12 @@ const WeeklyAdjustmentForm = ({ row, employeeName, weekStart, currentUser, onClo
       {newTotal === null
         ? <p className="pdlg-error" role="alert">Bonus and discount must be 0 or more.</p>
         : <p className="pdlg-note">Houses {money(row.propertiesTotal)} · Week total {money(newTotal)}</p>}
+      {assignedPayrollAdjustments.length > 0 && (
+        <p className="pdlg-note">
+          This week also has {money(assignedPayrollAdjustmentsTotal)} of bonus / discount from an assigned payroll
+          ("Pagar seleccionadas"). It is included in the week total and isn't changed here.
+        </p>
+      )}
       {errorText && <p className="pdlg-error" role="alert">{errorText}</p>}
     </PayrollDialog>
   );
