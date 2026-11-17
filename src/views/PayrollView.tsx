@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import {
   User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
-  Wallet, ClipboardList, ChevronDown, ChevronRight, Timer, CalendarClock
+  Wallet, ClipboardList, ChevronDown, ChevronRight, Timer, CalendarClock, Undo2
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
@@ -32,7 +32,9 @@ import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import { deleteFixedPayment } from '../features/payroll/services/fixedPaymentService';
-import { markPayrollPaymentPaid, markPayrollPaymentPending } from '../features/payroll/services/payrollPaymentStatus';
+import {
+  getAdjustmentsLeftWithoutProperties, markPayrollPaymentPaid, markPayrollPaymentPending, unassignPropertyPayment,
+} from '../features/payroll/services/payrollPaymentStatus';
 import { canDeleteEmployeePay, canManageEmployeePay, hasPayType } from '../features/payroll/employeePay';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
@@ -622,6 +624,25 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
+  // ⭐ "Unassign" (Asignar nómina → En nómina): la casa sale de su nómina asignada sin pagar y vuelve a
+  //    pendiente; si era la última, también se borra el bono / descuento de esa nómina (pedido de Omar, 11/2026).
+  const handleUnassign = async (record: PayrollRecord) => {
+    const allPayroll = payrollLive.data as PayrollRecord[];
+    const removesAdjustment = getAdjustmentsLeftWithoutProperties(record, allPayroll).length > 0;
+    const confirmText = 'Remove this house from its assigned payroll? It goes back to Pending.'
+      + (removesAdjustment ? ' It is the last house of that payroll, so its bonus / discount is removed too.' : '');
+    if (!window.confirm(confirmText)) return;
+    setIsSaving(true);
+    try {
+      await unassignPropertyPayment(record, allPayroll, getEmployeeName(record.employeeId), currentUser);
+    } catch (error) {
+      console.error('Error removing the house from its payroll:', error);
+      alert('Could not remove the house from its payroll. Check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // ⭐ Hourly y Fixed pay: marcar pagado / regresar a Pending (con Activity Log; ver payrollPaymentStatus.ts).
   const handleMarkPaymentPaid = async (payment: PayrollRecord) => {
     const employeeName = getEmployeeName(payment.employeeId);
@@ -840,6 +861,18 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
                 title={record.batchId ? 'Marcar como pagada' : 'Pagar esta casa'}
               >
                 <Wallet size={14} /> Pagar
+              </button>
+            )}
+            {canSeeAllPayroll && record.batchId && record.status !== 'Paid' && (
+              <button
+                type="button"
+                onClick={() => handleUnassign(record)}
+                className="pv-icon-btn edit"
+                title="Unassign (back to Pending)"
+                aria-label="Unassign from its payroll"
+                disabled={isSaving}
+              >
+                <Undo2 size={16} />
               </button>
             )}
             {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (el de Houses) para rectificar información */}

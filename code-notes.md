@@ -3617,3 +3617,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
 - Payroll · Nóminas, fecha de corte (11/2026, decisión de Omar): las semanas antes de `WEEKLY_PAYROLL_START_WEEK`
   (weeklyPayroll.ts, hoy 2026-11-09) se pagaron por fuera de la app. Se ven, pero no cuentan como pendientes ni
   "Overdue" ("Not tracked") y no tienen Sent / Pay week / Pay. Si se mueve la fecha, solo cambia esa constante.
+- Payroll · Asignar nómina, "Unassign" (11/2026, pedido de Omar): al quitar el modal de las tarjetas viejas de
+  Nóminas, una casa "En nómina" (batch_… sin pagar) ya no podía volver a pendiente. El botón ↩ de su fila la saca
+  de la nómina (`unassignPropertyPayment`, un batch); si era la última casa de esa nómina, también borra su ajuste
+  (bono / descuento) sin pagar, que no tendría a qué sumarse. Una casa pagada no se saca.
