@@ -15,15 +15,18 @@ import type {
 import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
 import {
-  WEEK_DAY_NAMES, getPaidWeekStart, getUnpaidTotal, getWeekDays, getWeekPayDay, parseOptionalAmount, pluralize,
+  WEEK_DAY_NAMES, getPaidWeekStart, getUnpaidTotal, getWeekDays, getWeekPayDay, isBeforeWeeklyPayroll,
+  parseOptionalAmount, pluralize,
 } from '../weeklyPayroll';
 import { NEGATIVE_PAYMENT_ERROR, updatePropertyPayment } from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './PayrollTable.css';
 import './WeeklyPayrollDetail.css';
 
-const getStatusBadge = (row: WeeklyPayrollRow) => {
+const getStatusBadge = (row: WeeklyPayrollRow, weekStart: string) => {
   if (row.isPaid) return { text: 'Paid', className: 'ptbl-badge is-paid' };
+  // Antes de la nómina semanal se pagaba por fuera de la app: no cuenta como pendiente.
+  if (isBeforeWeeklyPayroll(weekStart)) return { text: 'Not tracked', className: 'ptbl-badge is-stopped' };
   const hasPaidRecords = row.records.some((record) => record.status === 'Paid');
   return { text: hasPaidRecords ? 'Partially paid' : 'Pending', className: 'ptbl-badge' };
 };
@@ -226,7 +229,8 @@ const WeeklyPayrollDetail = ({
   const [editingRecordId, setEditingRecordId] = useState('');
   const weekDays = getWeekDays(weekStart);
   const today = todayIso();
-  const status = getStatusBadge(row);
+  const status = getStatusBadge(row, weekStart);
+  const isBeforeTracking = isBeforeWeeklyPayroll(weekStart);
   const propertyPayments = row.records
     .filter((record) => record.propertyId)
     .map((record) => {
@@ -243,6 +247,12 @@ const WeeklyPayrollDetail = ({
   const paidOnDates = listDistinct(paidRecords.map((record) => record.paymentDate || record.paidAt)).map(formatDate);
   const paidByNames = listDistinct(paidRecords.map((record) => record.paidBy));
   const unpaidTotal = getUnpaidTotal(row);
+  const getAmountSummary = () => {
+    if (row.isPaid) return { amountLabel: 'Paid', amountValue: money(row.total) };
+    if (isBeforeTracking) return { amountLabel: 'Not tracked', amountValue: '—' };
+    return { amountLabel: 'Still to pay', amountValue: money(unpaidTotal) };
+  };
+  const { amountLabel, amountValue } = getAmountSummary();
   const canAdjust = !!onAdjust && !row.isPaid;
   const hasAdjustment = row.bonus > 0 || row.discount > 0;
 
@@ -400,8 +410,8 @@ const WeeklyPayrollDetail = ({
           <dd className="pdlg-detail-value">Wednesday {formatDate(getWeekPayDay(weekStart))}</dd>
         </div>
         <div>
-          <dt className="pdlg-detail-label">{row.isPaid ? 'Paid' : 'Still to pay'}</dt>
-          <dd className="pdlg-detail-value">{row.isPaid ? money(row.total) : money(unpaidTotal)}</dd>
+          <dt className="pdlg-detail-label">{amountLabel}</dt>
+          <dd className="pdlg-detail-value">{amountValue}</dd>
         </div>
         <div>
           <dt className="pdlg-detail-label">Paid on</dt>

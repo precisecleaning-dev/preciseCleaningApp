@@ -11,7 +11,9 @@ import { Check, CheckCircle, RotateCcw } from 'lucide-react';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
 import type { WeeklyPayrollRow } from '../../../types/index';
 import { money, roundToCents } from '../../../utils/jobFinancials';
-import { getUnpaidTotal, getWeekBatchId, getWeekPayDay, pluralize } from '../weeklyPayroll';
+import {
+  WEEKLY_PAYROLL_START_WEEK, getUnpaidTotal, getWeekBatchId, getWeekPayDay, isBeforeWeeklyPayroll, pluralize,
+} from '../weeklyPayroll';
 import { PayrollTableRow, PayrollTableSkeleton } from './PayrollTable';
 import './WeeklyPayrollTable.css';
 
@@ -53,9 +55,16 @@ interface PaymentCellProps {
   weekStart: string;
   /** Otra fila o "Pay week" está guardando: no se puede marcar nada. */
   isBusy: boolean;
-  /** Sin esta función (sin permiso de editar) solo se ve el estado. */
+  /** Sin esta función (sin permiso de editar, o semana antes de la nómina semanal) solo se ve el estado. */
   onSetSent?: (row: WeeklyPayrollRow, isSent: boolean) => Promise<void>;
 }
+
+/** Estado sin botones: Sent (verde), Not sent (ámbar) o "Not tracked" (gris) en una semana anterior a la nómina semanal. */
+const getReadOnlyPaymentBadge = (row: WeeklyPayrollRow, weekStart: string) => {
+  if (row.isPaid) return { text: 'Sent', className: 'ptbl-badge is-paid' };
+  if (isBeforeWeeklyPayroll(weekStart)) return { text: 'Not tracked', className: 'ptbl-badge is-stopped' };
+  return { text: 'Not sent', className: 'ptbl-badge' };
+};
 
 /**
  * "Not sent" / "Sent" (un radio de dos opciones): Sent paga al empleado HOY
@@ -72,7 +81,8 @@ const PaymentCell = ({ row, employeeName, weekStart, isBusy, onSetSent }: Paymen
     : 'Not sent';
 
   if (!onSetSent) {
-    return <span className={`ptbl-badge${row.isPaid ? ' is-paid' : ''}`}>{row.isPaid ? 'Sent' : 'Not sent'}</span>;
+    const badge = getReadOnlyPaymentBadge(row, weekStart);
+    return <span className={badge.className}>{badge.text}</span>;
   }
 
   const handleSetSent = async (isSent: boolean) => {
@@ -161,8 +171,10 @@ const WeeklyPayrollTable = ({
 
   if (isLoading) return <PayrollTableSkeleton />;
 
+  const isBeforeTracking = isBeforeWeeklyPayroll(weekStart);
   const getPayDayHint = () => {
     if (isWeekPaid) return 'Paid';
+    if (isBeforeTracking) return 'Before the weekly payroll';
     if (payDay === today) return 'Today';
     return payDay < today ? 'Overdue' : 'Upcoming';
   };
@@ -173,7 +185,9 @@ const WeeklyPayrollTable = ({
         <div className="wpt-kpis">
           <SummaryItem label="Pay day" value={`Wed ${formatDate(payDay)}`} hint={getPayDayHint()} />
           <SummaryItem label="Week total" value={money(weekTotal)} hint={`${pluralize(rows.length, 'employee')} · ${pluralize(propertyCount, 'house')}`} />
-          <SummaryItem label="Pending" value={money(unpaidTotal)} hint={`${pendingRows.length} not sent`} tone="pending" />
+          {isBeforeTracking
+            ? <SummaryItem label="Pending" value="—" hint="Not tracked" />
+            : <SummaryItem label="Pending" value={money(unpaidTotal)} hint={`${pendingRows.length} not sent`} tone="pending" />}
           <SummaryItem label="Paid" value={money(roundToCents(weekTotal - unpaidTotal))} hint={`${sentCount} sent`} tone="paid" />
         </div>
         <div className="wpt-summary-actions">
@@ -190,6 +204,12 @@ const WeeklyPayrollTable = ({
           {isWeekPaid && <span className="ptbl-badge is-paid">Week paid</span>}
         </div>
       </section>
+      {isBeforeTracking && (
+        <p className="wpt-tracking-note">
+          Weeks before {formatDate(WEEKLY_PAYROLL_START_WEEK)} were paid outside the app: they are shown for reference and
+          don't count as pending.
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <p className="ptbl-empty">No house payments in this week.</p>

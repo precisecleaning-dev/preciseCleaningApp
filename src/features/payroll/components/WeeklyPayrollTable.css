@@ -204,6 +204,21 @@
   font-size: 0.75rem;
 }
 
+/* Estado sin botones (sin permiso o semana sin seguimiento): del ancho de su texto, no de la columna. */
+.wpt-card .ptbl-badge {
+  justify-self: start;
+}
+
+.wpt-tracking-note {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #475569;
+  font-size: 0.85rem;
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+}
+
 .wpt-summary-actions {
   align-items: center;
   display: flex;

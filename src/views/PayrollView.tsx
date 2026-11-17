@@ -45,7 +45,9 @@ import WeeklyPayrollTable from '../features/payroll/components/WeeklyPayrollTabl
 import WeeklyPayForm from '../features/payroll/components/WeeklyPayForm';
 import WeeklyAdjustmentForm from '../features/payroll/components/WeeklyAdjustmentForm';
 import WeeklyPayrollDetail from '../features/payroll/components/WeeklyPayrollDetail';
-import { buildWeeklyPayroll, getRecordsPaidThisWeek, getUnpaidRecords, toIsoDay } from '../features/payroll/weeklyPayroll';
+import {
+  buildWeeklyPayroll, getRecordsPaidThisWeek, getUnpaidRecords, isBeforeWeeklyPayroll, toIsoDay,
+} from '../features/payroll/weeklyPayroll';
 import { markWeekPending, payWeek } from '../features/payroll/services/weeklyPayrollService';
 
 interface PayrollViewProps {
@@ -330,6 +332,8 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // Semana elegida en la PeriodBar: su inicio es el lunes 00:00 local.
   const selectedWeekStart = periodRange(payrollWeekPeriod).start;
   const weekStartIso = selectedWeekStart === null ? '' : toIsoDay(selectedWeekStart);
+  // Las semanas anteriores a la nómina semanal se pagaron por fuera de la app: solo se consultan.
+  const canPayWeek = canManagePayroll && !!weekStartIso && !isBeforeWeeklyPayroll(weekStartIso);
 
   // Día trabajado (AAAA-MM-DD) de un pago: Schedule Date de su casa (recScheduleTime).
   const getRecordWorkDay = (record: PayrollRecord) => {
@@ -1140,9 +1144,9 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
               isBusy={isSaving}
               getEmployeeName={getEmployeeName}
               onOpenDetail={row => setOpenedWeeklyEmployeeId(row.employeeId)}
-              onSetSent={canManagePayroll ? handleSetSent : undefined}
-              onPayWeek={canManagePayroll ? () => setPayTarget('all') : undefined}
-              onMarkWeekPending={canManagePayroll && recordsPaidThisWeek.length > 0 ? handleMarkWeekPending : undefined}
+              onSetSent={canPayWeek ? handleSetSent : undefined}
+              onPayWeek={canPayWeek ? () => setPayTarget('all') : undefined}
+              onMarkWeekPending={canPayWeek && recordsPaidThisWeek.length > 0 ? handleMarkWeekPending : undefined}
             />
           )}
           {openedWeeklyRow && weekStartIso && (
@@ -1158,7 +1162,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
               onOpenProperty={propertyId => setSelectedHouse(propById.get(propertyId) ?? null)}
               onAdjust={canManagePayroll ? row => setAdjustingEmployeeId(row.employeeId) : undefined}
               canEditPropertyPayments={canManagePayroll}
-              onPay={canManagePayroll ? row => setPayTarget(row.employeeId) : undefined}
+              onPay={canPayWeek ? row => setPayTarget(row.employeeId) : undefined}
               currentUser={currentUser}
               onClose={() => setOpenedWeeklyEmployeeId('')}
             />

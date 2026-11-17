@@ -3614,3 +3614,6 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   · Detalle (`WeeklyPayrollDetail`): resumen, día por día, casas y pagos. El pago de una casa sin pagar se edita en
     la misma fila (`updatePropertyPayment`: solo montos, notas y total, sin pisar el estado; un total negativo no
     se guarda). Escape desde cualquier control de la fila cancela la edición sin cerrar el modal.
+- Payroll · Nóminas, fecha de corte (11/2026, decisión de Omar): las semanas antes de `WEEKLY_PAYROLL_START_WEEK`
+  (weeklyPayroll.ts, hoy 2026-11-09) se pagaron por fuera de la app. Se ven, pero no cuentan como pendientes ni
+  "Overdue" ("Not tracked") y no tienen Sent / Pay week / Pay. Si se mueve la fecha, solo cambia esa constante.

@@ -36,6 +36,15 @@ const addDays = (isoDay: string, days: number): string => {
 /** Los siete días (AAAA-MM-DD) de la semana que empieza en `weekStart` (lunes). */
 export const getWeekDays = (weekStart: string): string[] => WEEK_DAY_NAMES.map((_, dayIndex) => addDays(weekStart, dayIndex));
 
+/**
+ * Primera semana (lunes) que se paga con la nómina semanal. Lo anterior se pagó
+ * por fuera de la app (decisión de Omar, 11/2026): esas semanas se ven, pero no
+ * cuentan como pendientes ni "Overdue" y no se pagan desde aquí.
+ */
+export const WEEKLY_PAYROLL_START_WEEK = '2026-11-09';
+
+export const isBeforeWeeklyPayroll = (weekStart: string): boolean => weekStart < WEEKLY_PAYROLL_START_WEEK;
+
 /** Día de pago: el miércoles siguiente a la semana (lunes + 9 días). */
 export const getWeekPayDay = (weekStart: string): string => addDays(weekStart, 9);
 
