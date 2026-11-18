@@ -2,20 +2,24 @@
 // Nómina de una semana (pestaña Nóminas de Payroll), pensada para marcar rápido.
 // Arriba, el resumen: día de pago, total, pendiente y pagado, más "Pay week" /
 // "Mark week pending". Abajo, una fila por empleado (A-Z, sin separar en
-// grupos: la fila no se mueve al marcarla) con las columnas que pidió Omar:
-// Employee | Total | Payment ("Not sent" / "Sent"; en verde cuando se envió).
-// Clic (o Enter) en la fila abre su detalle (día por día, casas, bono /
-// descuento); los botones de la fila no lo abren. Datos: weeklyPayroll.ts.
-import { useState } from 'react';
-import { Check, CheckCircle, RotateCcw } from 'lucide-react';
+// grupos: la fila no se mueve al marcarla) con cuatro columnas, como pidió
+// Omar: Employee | Total | Evidence (fotos del comprobante: miniaturas y "Add")
+// | Payment ("Not sent" / "Sent"; en verde cuando se envió). Clic (o Enter) en
+// la fila abre su detalle (día por día, casas, bono / descuento); los botones
+// y las fotos de la fila no lo abren. Datos: weeklyPayroll.ts.
+import { useRef, useState, type ChangeEvent } from 'react';
+import { Camera, Check, CheckCircle, RotateCcw } from 'lucide-react';
 import { formatDate, todayIso } from '../../../utils/dateFormat';
 import type { WeeklyPayrollRow } from '../../../types/index';
 import { money, roundToCents } from '../../../utils/jobFinancials';
 import {
-  WEEKLY_PAYROLL_START_WEEK, getUnpaidTotal, getWeekBatchId, getWeekPayDay, isBeforeWeeklyPayroll, pluralize,
+  WEEKLY_PAYROLL_START_WEEK, getReceiptPhotos, getUnpaidTotal, getWeekBatchId, getWeekPayDay, isBeforeWeeklyPayroll, pluralize,
 } from '../weeklyPayroll';
 import { PayrollTableRow, PayrollTableSkeleton } from './PayrollTable';
 import './WeeklyPayrollTable.css';
+
+/** Miniaturas visibles en la celda Evidence; el resto se ve como "+N" (y todas en el detalle). */
+const MAX_EVIDENCE_THUMBNAILS = 3;
 
 const sumBy = (rows: readonly WeeklyPayrollRow[], pick: (row: WeeklyPayrollRow) => number) =>
   roundToCents(rows.reduce((sum, row) => sum + pick(row), 0));
@@ -48,6 +52,74 @@ const TotalCell = ({ row }: { row: WeeklyPayrollRow }) => (
     {row.discount > 0 && <span className="wpt-discount">−{money(row.discount)} discount</span>}
   </span>
 );
+
+interface EvidenceCellProps {
+  row: WeeklyPayrollRow;
+  employeeName: string;
+  /** Sin esta función (sin permiso de editar) solo se ven las fotos. */
+  onAddEvidence?: (row: WeeklyPayrollRow, files: File[]) => Promise<void>;
+}
+
+/** Fotos del comprobante: miniaturas (clic = tamaño completo) y "Add" para subir más. */
+const EvidenceCell = ({ row, employeeName, onAddEvidence }: EvidenceCellProps) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const photos = getReceiptPhotos(row);
+  const hiddenCount = photos.length - MAX_EVIDENCE_THUMBNAILS;
+  const addButtonText = uploadingCount ? `Uploading ${uploadingCount}…` : 'Add';
+
+  const handleFilesChosen = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith('image/'));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!onAddEvidence || files.length === 0) return;
+    setUploadingCount(files.length);
+    try {
+      await onAddEvidence(row, files);
+    } catch (error) {
+      console.error('Error uploading evidence photos:', error);
+      alert('Could not upload the photos. Check your connection and try again.');
+    } finally {
+      setUploadingCount(0);
+    }
+  };
+
+  return (
+    <span className="wpt-evidence">
+      {photos.slice(0, MAX_EVIDENCE_THUMBNAILS).map((photo) => (
+        <a key={photo.url} className="wpt-evidence-link" href={photo.url} target="_blank" rel="noopener noreferrer" title={photo.name}>
+          <img className="wpt-evidence-img" src={photo.url} alt={photo.name} loading="lazy" />
+        </a>
+      ))}
+      {hiddenCount > 0 && <span className="wpt-evidence-more">+{hiddenCount}</span>}
+      {onAddEvidence && (
+        <>
+          {/* Botón (no <label>): queda encima del botón que abre el detalle (PayrollTable.css). */}
+          <button
+            type="button"
+            className="wpt-evidence-add"
+            aria-label={`Add evidence photos for ${employeeName}`}
+            title="Add photos"
+            disabled={uploadingCount > 0}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Camera size={14} aria-hidden="true" /> {addButtonText}
+          </button>
+          <input
+            ref={fileInputRef}
+            className="wpt-file-input"
+            type="file"
+            accept="image/*"
+            multiple
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={handleFilesChosen}
+          />
+        </>
+      )}
+      {!onAddEvidence && photos.length === 0 && <span className="wpt-zero">—</span>}
+    </span>
+  );
+};
 
 interface PaymentCellProps {
   row: WeeklyPayrollRow;
@@ -152,13 +224,14 @@ interface WeeklyPayrollTableProps {
   getEmployeeName: (employeeId: string) => string;
   onOpenDetail: (row: WeeklyPayrollRow) => void;
   /** Sin estas funciones (sin permiso de editar) no hay botones. */
+  onAddEvidence?: (row: WeeklyPayrollRow, files: File[]) => Promise<void>;
   onSetSent?: (row: WeeklyPayrollRow, isSent: boolean) => Promise<void>;
   onPayWeek?: () => void;
   onMarkWeekPending?: () => void;
 }
 
 const WeeklyPayrollTable = ({
-  rows, weekStart, isLoading, isBusy, getEmployeeName, onOpenDetail, onSetSent, onPayWeek, onMarkWeekPending,
+  rows, weekStart, isLoading, isBusy, getEmployeeName, onOpenDetail, onAddEvidence, onSetSent, onPayWeek, onMarkWeekPending,
 }: WeeklyPayrollTableProps) => {
   const today = todayIso();
   const payDay = getWeekPayDay(weekStart);
@@ -218,6 +291,7 @@ const WeeklyPayrollTable = ({
           <div className="ptbl-head" aria-hidden="true">
             <span>Employee</span>
             <span className="wpt-num">Total</span>
+            <span>Evidence</span>
             <span>Payment</span>
           </div>
           <ul className="ptbl-list">
@@ -227,6 +301,7 @@ const WeeklyPayrollTable = ({
                 <PayrollTableRow key={row.employeeId} as="li" label={`View payroll of ${employeeName}`} onOpen={() => onOpenDetail(row)}>
                   <EmployeeCell row={row} employeeName={employeeName} />
                   <TotalCell row={row} />
+                  <EvidenceCell row={row} employeeName={employeeName} onAddEvidence={onAddEvidence} />
                   <PaymentCell row={row} employeeName={employeeName} weekStart={weekStart} isBusy={isBusy} onSetSent={onSetSent} />
                 </PayrollTableRow>
               );
@@ -235,6 +310,7 @@ const WeeklyPayrollTable = ({
           <div className="ptbl-head wpt-totals" aria-label="Week total">
             <span>Total</span>
             <strong className="wpt-num">{money(weekTotal)}</strong>
+            <span />
             <span className="wpt-totals-sent">{sentCount} / {rows.length} sent</span>
           </div>
         </section>

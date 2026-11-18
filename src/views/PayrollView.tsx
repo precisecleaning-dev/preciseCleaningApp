@@ -50,7 +50,7 @@ import WeeklyPayrollDetail from '../features/payroll/components/WeeklyPayrollDet
 import {
   buildWeeklyPayroll, getRecordsPaidThisWeek, getUnpaidRecords, isBeforeWeeklyPayroll, toIsoDay,
 } from '../features/payroll/weeklyPayroll';
-import { markWeekPending, payWeek } from '../features/payroll/services/weeklyPayrollService';
+import { addWeekReceiptPhotos, markWeekPending, payWeek } from '../features/payroll/services/weeklyPayrollService';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -364,6 +364,10 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const openedWeeklyRow = weeklyRows.find(row => row.employeeId === openedWeeklyEmployeeId);
   // Lo que paga el modal de pago: toda la semana o solo el empleado de la fila (A-Z, como la tabla).
   const payRows = sortedWeeklyRows.filter(row => !row.isPaid && (payTarget === 'all' || row.employeeId === payTarget));
+
+  // Columna Evidence de la tabla: sube fotos del comprobante del pago (la fila avisa si falla).
+  const handleAddEvidence = (row: WeeklyPayrollRow, files: File[]) =>
+    addWeekReceiptPhotos(row, weekStartIso, files, getEmployeeName(row.employeeId), currentUser);
 
   // Columna Payment de la tabla: "Sent" / "Not sent" de un empleado con un toque.
   // Sent = pagado HOY (para otra fecha: "Pay" en el detalle). Mientras guarda, isSaving
@@ -1177,6 +1181,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
               isBusy={isSaving}
               getEmployeeName={getEmployeeName}
               onOpenDetail={row => setOpenedWeeklyEmployeeId(row.employeeId)}
+              onAddEvidence={canManagePayroll ? handleAddEvidence : undefined}
               onSetSent={canPayWeek ? handleSetSent : undefined}
               onPayWeek={canPayWeek ? () => setPayTarget('all') : undefined}
               onMarkWeekPending={canPayWeek && recordsPaidThisWeek.length > 0 ? handleMarkWeekPending : undefined}

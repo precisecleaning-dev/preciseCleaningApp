@@ -1,21 +1,24 @@
 // src/features/payroll/services/weeklyPayrollService.ts
 // Escrituras de la nómina semanal por casa (pestaña Nóminas de Payroll): pagar
 // la semana completa, regresarla a Pending, guardar el bono / descuento de un
-// empleado y editar el pago de una casa desde el detalle. Cada una es una sola
-// escritura o UN batch (todo o nada) y deja su registro en el Activity Log. Lo
+// empleado, editar el pago de una casa desde el detalle y subir o quitar las
+// fotos del comprobante del pago. Cada una es una sola escritura o UN batch
+// (todo o nada) y deja su registro en el Activity Log. Lo
 // pagado o ajustado aquí lleva batchId `week_AAAA-MM-DD` (ver weeklyPayroll.ts):
 // así Asignar nómina lo ve como pagado y "Mark week pending" sabe qué regresar.
-import { deleteField } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, deleteField } from 'firebase/firestore';
 import type {
-  PayrollRecord, PropertyPaymentChanges, SystemUser, WeekAdjustmentInput,
+  PayrollRecord, PropertyPaymentChanges, SystemUser, WeekAdjustmentInput, WeeklyPayrollRow, WeeklyReceiptPhoto,
 } from '../../../types/index';
 import { payrollService } from '../../../services/payrollService';
 import { logActivity } from '../../../services/activityLogService';
 import { commitOps, type BatchOp } from '../../../shared/data/batchWrites';
-import { formatDate, formatDateRange } from '../../../utils/dateFormat';
+import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { fullName } from '../../../utils/homeData';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
-import { getWeekBatchId, getWeekDays } from '../weeklyPayroll';
+import { compressImage } from '../../../utils/imageCompression';
+import { uploadBatchWithProgress } from '../../../utils/photoUploader';
+import { getWeekBatchId, getWeekDays, getWeekRecord } from '../weeklyPayroll';
 
 const describeWeek = (weekStart: string) => {
   const weekDays = getWeekDays(weekStart);
@@ -88,6 +91,8 @@ export const markWeekPending = async (
  * batchId de la semana. Solo se tocan los ajustes SIN pagar de esta pestaña
  * (`week_…`): se actualiza el primero, se borran los demás y, si no hay, se crea
  * uno. Los ajustes de una nómina asignada (`batch_…`) y los ya pagados no se tocan.
+ * El registro de la semana con fotos del comprobante no se borra aunque quede sin
+ * bono ni descuento: se queda con montos en 0 para conservar las fotos.
  */
 export const saveWeekAdjustment = async (
   input: WeekAdjustmentInput, unpaidWeekAdjustments: readonly PayrollRecord[], actor?: SystemUser | null,
@@ -105,6 +110,8 @@ export const saveWeekAdjustment = async (
   };
   const ops: BatchOp[] = duplicates.map((adjustment) => payrollService.deleteOp(adjustment.id as string));
   if (weekAdjustment && hasAdjustment) {
+    ops.push(payrollService.updateOp(weekAdjustment.id as string, amounts));
+  } else if (weekAdjustment?.receiptPhotos?.length) {
     ops.push(payrollService.updateOp(weekAdjustment.id as string, amounts));
   } else if (weekAdjustment) {
     ops.push(payrollService.deleteOp(weekAdjustment.id as string));
@@ -148,4 +155,69 @@ export const updatePropertyPayment = async (
     action: 'update', module: 'Payroll', user: actor, targetId: record.id, targetLabel: propertyLabel,
     detail: `House payment edited from the weekly payroll: ${money(getPayrollTotal(record))} → ${money(totalAmount)}.`,
   });
+};
+
+/** Carpeta de Storage de los comprobantes (la misma de los recibos de Hourly). */
+const RECEIPTS_FOLDER = 'payroll_receipts';
+
+const toSafeFileName = (fileName: string) => fileName.replace(/[^\w.-]+/g, '_');
+
+/**
+ * Sube fotos del comprobante del pago semanal de un empleado (se comprimen
+ * antes) y las agrega a su registro de la semana. Si no tiene, se crea uno con
+ * montos en 0: no cambia ningún total, y la semana pagada o no lo ignora
+ * (`isReceiptOnlyRecord`). Va Pending para que "Pay week" / "Mark week pending"
+ * lo muevan junto con la semana sin dejarlo pagado con otra nómina.
+ */
+export const addWeekReceiptPhotos = async (
+  row: WeeklyPayrollRow, weekStart: string, files: readonly File[], employeeName: string, actor?: SystemUser | null,
+): Promise<void> => {
+  if (files.length === 0) return;
+  const preparedFiles = await Promise.all(files.map((file) => compressImage(file).catch(() => file)));
+  const uploadStamp = Date.now();
+  const tasks = preparedFiles.map((file, index) => ({
+    file,
+    fullPath: `${RECEIPTS_FOLDER}/${row.employeeId}/week_${weekStart}_${uploadStamp}_${index}_${toSafeFileName(file.name)}`,
+  }));
+  const urls = await uploadBatchWithProgress(tasks);
+  const uploadedBy = fullName(actor);
+  const photos: WeeklyReceiptPhoto[] = urls.map((url, index) => ({
+    url, name: files[index].name, uploadedAt: todayIso(), uploadedBy,
+  }));
+
+  const weekRecord = getWeekRecord(row, weekStart);
+  if (weekRecord?.id) {
+    await commitOps([(batch) => payrollService.batchUpdate(batch, weekRecord.id as string, { receiptPhotos: arrayUnion(...photos) })]);
+  } else {
+    const weekHolder: PayrollRecord = {
+      propertyId: '',
+      employeeId: row.employeeId,
+      date: weekStart,
+      baseAmount: 0,
+      extraAmount: 0,
+      extraNote: '',
+      discountAmount: 0,
+      discountNote: '',
+      totalAmount: 0,
+      status: 'Pending',
+      paidAt: '',
+      paidBy: '',
+      batchId: getWeekBatchId(weekStart),
+      receiptPhotos: photos,
+    };
+    await commitOps([(batch) => payrollService.batchCreate(batch, weekHolder)]);
+  }
+  logWeekChange(weekStart, employeeName, `Payroll ${describeWeek(weekStart)}: ${photos.length} pay receipt photo(s) added.`, actor);
+};
+
+/**
+ * Quita una foto del comprobante. El archivo se queda en Storage: las reglas
+ * solo dejan borrar archivos a Quality Check y Task List.
+ */
+export const removeWeekReceiptPhoto = async (
+  record: PayrollRecord, photo: WeeklyReceiptPhoto, weekStart: string, employeeName: string, actor?: SystemUser | null,
+): Promise<void> => {
+  if (!record.id) return;
+  await commitOps([(batch) => payrollService.batchUpdate(batch, record.id as string, { receiptPhotos: arrayRemove(photo) })]);
+  logWeekChange(weekStart, employeeName, `Payroll ${describeWeek(weekStart)}: pay receipt photo "${photo.name}" removed.`, actor);
 };
