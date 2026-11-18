@@ -3621,3 +3621,13 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   Nóminas, una casa "En nómina" (batch_… sin pagar) ya no podía volver a pendiente. El botón ↩ de su fila la saca
   de la nómina (`unassignPropertyPayment`, un batch); si era la última casa de esa nómina, también borra su ajuste
   (bono / descuento) sin pagar, que no tendría a qué sumarse. Una casa pagada no se saca.
+- Payroll · Nóminas, evidencia del pago (11/2026, pedido de Omar): fotos del comprobante (Zelle, recibo…) del pago
+  de la semana de cada empleado. En la tabla, la columna Evidence (entre Total y Payment) muestra hasta 3
+  miniaturas y "Add" sube varias en la misma fila; en el detalle, "Pay receipt" las muestra todas y deja quitarlas
+  (con Payroll All + Edit; también después de pagar). Se guardan en `receiptPhotos` del registro de la semana del
+  empleado (`getWeekRecord`: su ajuste sin casa con batchId `week_…`); si no tiene, se crea uno con montos en 0 y
+  status Pending. Ese registro "solo fotos" (`isReceiptOnlyRecord`) no cuenta para saber si la semana está pagada:
+  así no deja una fila pagada con "Pagar seleccionadas" como pendiente ni se paga con otra nómina. Si se le quita el
+  bono / descuento, `saveWeekAdjustment` lo deja en 0 en vez de borrarlo, para no perder las fotos. Archivos en
+  Storage `payroll_receipts/{empleado}/week_…`, comprimidos; quitar una foto solo la saca de la lista (las reglas de
+  Storage no dejan borrar a Payroll). Sin cambios de reglas.

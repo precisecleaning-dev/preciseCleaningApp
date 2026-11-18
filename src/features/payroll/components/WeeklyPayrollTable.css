@@ -1,7 +1,7 @@
 /* Nómina semanal por casa (pestaña Nóminas de Payroll) y sus modales. Tabla, filas y botones: PayrollTable.css;
    caja y campos de los modales: PayrollDialog.css. */
 .wpt-card {
-  --ptbl-columns: minmax(220px, 2fr) minmax(120px, 1fr) 196px;
+  --ptbl-columns: minmax(220px, 1.6fr) minmax(120px, 0.6fr) minmax(200px, 1.6fr) 196px;
 }
 
 /* Montos alineados a la derecha y con dígitos del mismo ancho, como en una hoja de cálculo. */
@@ -71,6 +71,66 @@
 
 .wpt-discount {
   color: #b91c1c;
+}
+
+/* Evidence: miniaturas cuadradas, "+N" si hay más y el botón "Add". */
+.wpt-evidence {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wpt-evidence-link {
+  border-radius: 8px;
+  display: block;
+}
+
+.wpt-evidence-img {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: block;
+  height: 40px;
+  object-fit: cover;
+  width: 40px;
+}
+
+.wpt-evidence-more {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+.wpt-evidence-add {
+  align-items: center;
+  background: #ffffff;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 4px;
+  height: 40px;
+  min-height: 0;
+  padding: 0 10px;
+}
+
+.wpt-evidence-add:hover {
+  background: #eff6ff;
+  border-style: solid;
+}
+
+.wpt-evidence-add:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* El input de archivo no se ve: lo abre el botón "Add". */
+.wpt-file-input {
+  display: none;
 }
 
 /* Payment: dos opciones pegadas; la elegida se rellena: "Not sent" en rojo (así empiezan todos) y "Sent" en verde. */
@@ -256,17 +316,23 @@
   }
 }
 
-/* Teléfono: tarjeta por empleado (nombre y total arriba; Payment a lo ancho debajo),
+/* Teléfono: tarjeta por empleado (nombre y total arriba; Evidence y Payment a lo ancho debajo),
    el resumen en columna y los botones con el mínimo táctil. */
 @media (max-width: 768px) {
+  .wpt-evidence,
   .wpt-payment {
     grid-column: 1 / -1;
+  }
+  .wpt-payment {
     justify-self: stretch;
   }
   .wpt-payment-btn {
     flex: 1;
     justify-content: center;
     min-height: 44px;
+  }
+  .wpt-evidence-add {
+    height: 44px;
   }
   .wpt-summary {
     align-items: stretch;

@@ -7,18 +7,22 @@
 // Con permiso, el pago de una casa sin pagar se edita AQUÍ MISMO (lápiz de la
 // fila: base, extra y descuento con sus notas; Enter guarda, Escape cancela
 // desde cualquier control de la fila), para corregir rápido sin salir de la semana.
-import { useState, type KeyboardEvent } from 'react';
-import { Check, CheckCircle, Home, Pencil, Plus, Wallet, X } from 'lucide-react';
+// Al final, las fotos del comprobante del pago de la semana (Zelle, recibo…):
+// se ven aquí y, con permiso, se suben o se quitan aquí mismo.
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { Camera, Check, CheckCircle, Home, Pencil, Plus, Wallet, X } from 'lucide-react';
 import type {
-  PayrollRecord, SystemUser, WeeklyPayrollRow, WeeklyPropertyInfo,
+  PayrollRecord, SystemUser, WeeklyPayrollRow, WeeklyPropertyInfo, WeeklyReceiptPhoto,
 } from '../../../types/index';
 import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat';
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
 import {
   WEEK_DAY_NAMES, getPaidWeekStart, getUnpaidTotal, getWeekDays, getWeekPayDay, isBeforeWeeklyPayroll,
-  parseOptionalAmount, pluralize,
+  isReceiptOnlyRecord, parseOptionalAmount, pluralize,
 } from '../weeklyPayroll';
-import { NEGATIVE_PAYMENT_ERROR, updatePropertyPayment } from '../services/weeklyPayrollService';
+import {
+  NEGATIVE_PAYMENT_ERROR, addWeekReceiptPhotos, removeWeekReceiptPhoto, updatePropertyPayment,
+} from '../services/weeklyPayrollService';
 import PayrollDialog from './PayrollDialog';
 import './PayrollTable.css';
 import './WeeklyPayrollDetail.css';
@@ -205,6 +209,99 @@ const PropertyPaymentEditRow = ({
   );
 };
 
+interface ReceiptPhotosProps {
+  row: WeeklyPayrollRow;
+  weekStart: string;
+  employeeName: string;
+  canEdit: boolean;
+  currentUser?: SystemUser | null;
+}
+
+/** Fotos del comprobante del pago semanal: miniaturas (clic = tamaño completo), "Add photos" y quitar. */
+const ReceiptPhotos = ({ row, weekStart, employeeName, canEdit, currentUser }: ReceiptPhotosProps) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [removingUrl, setRemovingUrl] = useState('');
+  const [errorText, setErrorText] = useState('');
+  const photos = row.records.flatMap((record) => (record.receiptPhotos ?? []).map((photo) => ({ record, photo })));
+  const addText = uploadingCount ? `Uploading ${uploadingCount}…` : 'Add photos';
+
+  const handleFilesChosen = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).filter((file) => file.type.startsWith('image/'));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (files.length === 0) return;
+    setUploadingCount(files.length);
+    setErrorText('');
+    try {
+      await addWeekReceiptPhotos(row, weekStart, files, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error uploading pay receipt photos:', error);
+      setErrorText('Could not upload the photos. Check your connection and try again.');
+    } finally {
+      setUploadingCount(0);
+    }
+  };
+
+  const handleRemovePhoto = async (record: PayrollRecord, photo: WeeklyReceiptPhoto) => {
+    if (!window.confirm(`Remove the photo "${photo.name}"?`)) return;
+    setRemovingUrl(photo.url);
+    setErrorText('');
+    try {
+      await removeWeekReceiptPhoto(record, photo, weekStart, employeeName, currentUser);
+    } catch (error) {
+      console.error('Error removing the pay receipt photo:', error);
+      setErrorText('Could not remove the photo. Try again.');
+    } finally {
+      setRemovingUrl('');
+    }
+  };
+
+  if (photos.length === 0 && !canEdit) return <p className="wpd-empty">No pay receipt yet.</p>;
+
+  return (
+    <>
+      <ul className="wpd-receipts">
+        {photos.map(({ record, photo }) => (
+          <li key={photo.url} className="wpd-receipt">
+            <a href={photo.url} target="_blank" rel="noopener noreferrer" title={`${photo.name} · ${formatDate(photo.uploadedAt)}`}>
+              <img className="wpd-receipt-img" src={photo.url} alt={photo.name} loading="lazy" />
+            </a>
+            {canEdit && (
+              <button
+                type="button"
+                className="wpd-receipt-remove"
+                aria-label={`Remove photo ${photo.name}`}
+                disabled={removingUrl === photo.url}
+                onClick={() => handleRemovePhoto(record, photo)}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </li>
+        ))}
+        {canEdit && (
+          <li>
+            <label className={`wpd-receipt-add${uploadingCount ? ' is-uploading' : ''}`}>
+              <Camera size={20} aria-hidden="true" />
+              <span>{addText}</span>
+              <input
+                ref={fileInputRef}
+                className="u-sr-only"
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={uploadingCount > 0}
+                onChange={handleFilesChosen}
+              />
+            </label>
+          </li>
+        )}
+      </ul>
+      {errorText && <p className="pdlg-error" role="alert">{errorText}</p>}
+    </>
+  );
+};
+
 interface WeeklyPayrollDetailProps {
   row: WeeklyPayrollRow;
   employeeName: string;
@@ -240,7 +337,8 @@ const WeeklyPayrollDetail = ({
     })
     .sort((paymentA, paymentB) => paymentA.day.localeCompare(paymentB.day)
       || (paymentA.info?.client ?? '').localeCompare(paymentB.info?.client ?? ''));
-  const adjustments = row.records.filter((record) => !record.propertyId);
+  // Sin casa: bono / descuento. El registro de la semana con solo fotos (montos en 0) no se lista.
+  const adjustments = row.records.filter((record) => !record.propertyId && !isReceiptOnlyRecord(record));
   const propertiesPerDay = weekDays.map((day) => propertyPayments.filter((payment) => payment.day === day).length);
   const daysWorked = row.dayTotals.filter((amount) => amount > 0).length;
   const paidRecords = row.records.filter((record) => record.status === 'Paid');
@@ -425,6 +523,15 @@ const WeeklyPayrollDetail = ({
       {!row.isPaid && unpaidTotal !== roundToCents(row.total) && (
         <p className="pdlg-note">Part of this week was already paid (see "Paid on").</p>
       )}
+
+      <h4 className="wpd-section-title">Pay receipt</h4>
+      <ReceiptPhotos
+        row={row}
+        weekStart={weekStart}
+        employeeName={employeeName}
+        canEdit={canEditPropertyPayments}
+        currentUser={currentUser}
+      />
     </PayrollDialog>
   );
 };

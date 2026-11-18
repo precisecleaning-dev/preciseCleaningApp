@@ -6,7 +6,7 @@
 // de cada casa es su Schedule Date (lo resuelve quien llama, con getWorkDay).
 // No se guarda ningún documento de la semana: se calcula de la colección
 // payroll, así los pagos viejos también se ven por semana y día.
-import type { PayrollRecord, WeeklyPayrollRow } from '../../types/index';
+import type { PayrollRecord, WeeklyPayrollRow, WeeklyReceiptPhoto } from '../../types/index';
 import { getPayrollTotal, roundToCents } from '../../utils/jobFinancials';
 
 export const WEEK_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
@@ -65,6 +65,13 @@ export const getPaidWeekStart = (record: PayrollRecord): string =>
 
 /** Columna (0 = lunes … 6 = domingo) de un día AAAA-MM-DD. */
 const getWeekdayIndex = (isoDay: string): number => (parseIsoDay(isoDay).getDay() + 6) % 7;
+
+/**
+ * Registro de la semana que solo guarda fotos del comprobante (sin casa, bono ni
+ * descuento). No cuenta para saber si la semana está pagada: su estado no importa.
+ */
+export const isReceiptOnlyRecord = (record: PayrollRecord): boolean =>
+  !record.propertyId && !Number(record.extraAmount || 0) && !Number(record.discountAmount || 0);
 
 const createEmptyRow = (employeeId: string): WeeklyPayrollRow => ({
   employeeId, dayTotals: WEEK_DAY_NAMES.map(() => 0), propertiesTotal: 0, bonus: 0, discount: 0, total: 0, records: [], isPaid: false,
@@ -129,7 +136,7 @@ export const buildWeeklyPayroll = (
     bonus: roundToCents(row.bonus),
     discount: roundToCents(row.discount),
     total: roundToCents(row.propertiesTotal + row.bonus - row.discount),
-    isPaid: row.records.every((record) => record.status === 'Paid'),
+    isPaid: row.records.filter((record) => !isReceiptOnlyRecord(record)).every((record) => record.status === 'Paid'),
   }));
 };
 
@@ -154,3 +161,15 @@ export const parseOptionalAmount = (text: string): number | null => {
 
 /** "1 house", "3 houses". */
 export const pluralize = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+/**
+ * Registro de la semana del empleado: su ajuste con batchId `week_AAAA-MM-DD`
+ * (sin casa). Guarda su bono / descuento y las fotos del comprobante del pago;
+ * si solo tiene fotos, sus montos son 0 y no cambia ningún total.
+ */
+export const getWeekRecord = (row: WeeklyPayrollRow, weekStart: string): PayrollRecord | undefined =>
+  row.records.find((record) => !record.propertyId && record.batchId === getWeekBatchId(weekStart));
+
+/** Fotos del comprobante del pago semanal del empleado. */
+export const getReceiptPhotos = (row: WeeklyPayrollRow): WeeklyReceiptPhoto[] =>
+  row.records.flatMap((record) => record.receiptPhotos ?? []);

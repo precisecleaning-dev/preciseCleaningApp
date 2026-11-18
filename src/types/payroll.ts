@@ -52,6 +52,17 @@ export interface PayrollRecord {
    *  "Not sent" / "Mark week pending" lo restauran. */
   previousBatchId?: string | null;
   previousPaymentDate?: string | null;
+  /** Solo en el registro de la semana de un empleado (nómina semanal): fotos del comprobante del pago. */
+  receiptPhotos?: WeeklyReceiptPhoto[];
+}
+
+/** Foto del comprobante del pago semanal de un empleado (Storage: payroll_receipts/{empleado}/…). */
+export interface WeeklyReceiptPhoto {
+  url: string;
+  name: string;
+  /** AAAA-MM-DD */
+  uploadedAt: string;
+  uploadedBy: string;
 }
 
 /** Nómina semanal por casa (pestaña Nóminas): lo de un empleado en la semana. */

@@ -259,7 +259,7 @@
   gap: 4px;
 }
 
-/* min-height 0: en escritorio quita el mínimo táctil global de 48 px (index.css). */
+/* min-height y min-width 0: en escritorio quitan el mínimo táctil global de 48 px (index.css). */
 .wpd-icon-btn {
   align-items: center;
   background: #ffffff;
@@ -271,6 +271,7 @@
   height: 32px;
   justify-content: center;
   min-height: 0;
+  min-width: 0;
   padding: 0;
   width: 32px;
 }
@@ -305,6 +306,89 @@
   margin-top: 4px;
 }
 
+/* Comprobante del pago semanal: miniaturas cuadradas y el botón "Add photos" del mismo tamaño. */
+.wpd-receipts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wpd-receipt {
+  position: relative;
+}
+
+.wpd-receipt-img {
+  aspect-ratio: 1;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* min-height y min-width 0: en escritorio quitan el mínimo táctil global de 48 px (index.css). */
+.wpd-receipt-remove {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.75);
+  border: none;
+  border-radius: 999px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 26px;
+}
+
+.wpd-receipt-remove:hover {
+  background: #b91c1c;
+}
+
+.wpd-receipt-remove:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.wpd-receipt-add {
+  align-items: center;
+  aspect-ratio: 1;
+  background: #f8fafc;
+  border: 1px dashed #93c5fd;
+  border-radius: 10px;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  text-align: center;
+}
+
+.wpd-receipt-add:hover {
+  background: #eff6ff;
+}
+
+.wpd-receipt-add.is-uploading {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.wpd-receipt-add:focus-within {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
 /* Teléfono: resumen y pago en dos columnas; los días en una fila que se desplaza de lado. */
 @media (max-width: 768px) {
   .wpd-stats,
@@ -314,6 +398,10 @@
   .wpd-icon-btn {
     height: 40px;
     width: 40px;
+  }
+  .wpd-receipt-remove {
+    height: 36px;
+    width: 36px;
   }
   .wpd-days {
     grid-auto-columns: minmax(84px, 1fr);
