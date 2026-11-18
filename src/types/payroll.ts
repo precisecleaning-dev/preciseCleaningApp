@@ -43,6 +43,57 @@ export interface PayrollRecord {
   fixedSalaryId?: string;
   /** Fecha y hora ISO en que lo creó la Cloud Function createfixedpayroll (pagos fijos). */
   createdAt?: string;
+  /** Pago por casa o ajuste pagado en grupo: `batch_…` = pago consolidado de Asignar nómina;
+   *  `week_AAAA-MM-DD` = pagado o ajustado en la nómina semanal (pestaña Nóminas). */
+  batchId?: string | null;
+  /** Fecha (AAAA-MM-DD) del pago consolidado o semanal. */
+  paymentDate?: string | null;
+  /** Lo que tenía antes de pagarse en la nómina semanal (venía de una nómina asignada `batch_…`):
+   *  "Not sent" / "Mark week pending" lo restauran. */
+  previousBatchId?: string | null;
+  previousPaymentDate?: string | null;
+}
+
+/** Nómina semanal por casa (pestaña Nóminas): lo de un empleado en la semana. */
+export interface WeeklyPayrollRow {
+  employeeId: string;
+  /** Lunes a domingo: suma de los pagos de las casas de ese día. */
+  dayTotals: number[];
+  propertiesTotal: number;
+  bonus: number;
+  discount: number;
+  total: number;
+  /** Pagos por casa y ajustes de la semana. */
+  records: PayrollRecord[];
+  /** Todos sus pagos de la semana están en Paid. */
+  isPaid: boolean;
+}
+
+/** Bono y descuento de un empleado en una semana de la nómina semanal. */
+export interface WeekAdjustmentInput {
+  employeeId: string;
+  employeeName: string;
+  /** Lunes de la semana, AAAA-MM-DD. */
+  weekStart: string;
+  bonus: number;
+  bonusNote: string;
+  discount: number;
+  discountNote: string;
+}
+
+/** Cambios al pago de una casa desde el detalle de la nómina semanal. */
+export interface PropertyPaymentChanges {
+  baseAmount: number;
+  extraAmount: number;
+  extraNote: string;
+  discountAmount: number;
+  discountNote: string;
+}
+
+/** Lo que el detalle de la nómina semanal muestra de una casa. */
+export interface WeeklyPropertyInfo {
+  client: string;
+  address: string;
 }
 
 /** Lo que captura la pantalla de un pago por horas (el service calcula el total y sube el recibo). */

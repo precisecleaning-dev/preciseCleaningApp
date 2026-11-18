@@ -16,9 +16,13 @@ interface PayrollDialogProps {
   isBusy?: boolean;
   /** Formularios con buscador: la lista de opciones puede salir de la caja. */
   canOverflow?: boolean;
+  /** Clase extra de la caja (p. ej. un detalle más ancho). */
+  boxClassName?: string;
 }
 
-const PayrollDialog = ({ title, icon: Icon, onClose, footer, children, isBusy = false, canOverflow = false }: PayrollDialogProps) => {
+const PayrollDialog = ({
+  title, icon: Icon, onClose, footer, children, isBusy = false, canOverflow = false, boxClassName = '',
+}: PayrollDialogProps) => {
   const handleClose = () => {
     if (!isBusy) onClose();
   };
@@ -35,7 +39,7 @@ const PayrollDialog = ({ title, icon: Icon, onClose, footer, children, isBusy = 
   return (
     <div className="modal-overlay-centered" onClick={handleClose}>
       <section
-        className={`modal-50 pdlg-box${canOverflow ? ' allows-overflow' : ''}`}
+        className={`modal-50 pdlg-box${canOverflow ? ' allows-overflow' : ''}${boxClassName ? ` ${boxClassName}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

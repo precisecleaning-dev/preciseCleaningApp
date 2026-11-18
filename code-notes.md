@@ -3592,3 +3592,32 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   mayúsculas) filtra todas las pestañas y cada una cuenta cuántos coinciden, así se ve en cuál está el usuario.
   Dentro, chips por rol (solo los roles con usuarios en esa pestaña) y "All roles"; cambiar de pestaña quita el
   filtro de rol. Todo en UsersView (`USERS_TABS`, clases `uv-tabbar` / `uv-tab-btn` / `uv-search-box` / `uv-role-chip`).
+- Payroll · pestaña Nóminas = nómina semanal por casa (11/2026, pedidos de Omar; reemplaza a las notas anteriores
+  de esta pestaña). Se arma sola con TODOS los pagos por casa (Registered Payments), sin pasar por "Pagar
+  seleccionadas": semana lunes a domingo según el Schedule Date de la casa, pago el miércoles siguiente. No se
+  guarda un documento por semana: se calcula de `payroll` (`weeklyPayroll.ts`), así entran los pagos viejos.
+  · Tabla: Employee | Total | Payment, una fila por empleado siempre A-Z y sin grupos Pending / Paid (la fila no se
+    mueve al marcarla); sin buscador, orden ni columnas por día (los días están en el detalle).
+  · Payment = radio "Not sent" (rojo, valor inicial) / "Sent" (verde). Sent pide confirmación y paga al empleado
+    HOY (`payWeek`); mientras guarda, la vista bloquea las demás filas y "Pay week". Not sent lo regresa
+    (`markWeekPending`). "Pay week" paga a todos; el "Pay" del detalle abre `WeeklyPayForm` con un solo empleado
+    y propone la fecha más temprana entre el miércoles de pago y hoy (nunca una futura).
+  · Lo pagado o ajustado aquí lleva batchId `week_AAAA-MM-DD`: Asignar nómina lo ve como pagado y "Not sent" /
+    "Mark week pending" saben qué regresar. Si la casa venía de una nómina asignada (`batch_…`), payWeek guarda su
+    batchId y fecha en previousBatchId / previousPaymentDate y markWeekPending los restaura (vuelve a "En nómina").
+    Lo pagado con "Pagar seleccionadas" o una casa pagada sola no se regresa desde aquí.
+  · Una casa pagada aquí se queda en la semana en que se pagó aunque la reprogramen (`getPaidWeekStart`; el
+    detalle lo avisa); si no, la semana pagada cambiaría su total. Un ajuste viejo de "Pagar seleccionadas" cae en la
+    semana de la casa más reciente de su batch, no en la semana en que se pagó.
+  · Bono / descuento: solo en el detalle (`WeeklyAdjustmentForm`), uno por empleado y semana. Solo edita el ajuste
+    sin pagar `week_…`; los de una nómina asignada (`batch_…`) y los pagados no se tocan y el modal los avisa.
+  · Detalle (`WeeklyPayrollDetail`): resumen, día por día, casas y pagos. El pago de una casa sin pagar se edita en
+    la misma fila (`updatePropertyPayment`: solo montos, notas y total, sin pisar el estado; un total negativo no
+    se guarda). Escape desde cualquier control de la fila cancela la edición sin cerrar el modal.
+- Payroll · Nóminas, fecha de corte (11/2026, decisión de Omar): las semanas antes de `WEEKLY_PAYROLL_START_WEEK`
+  (weeklyPayroll.ts, hoy 2026-11-09) se pagaron por fuera de la app. Se ven, pero no cuentan como pendientes ni
+  "Overdue" ("Not tracked") y no tienen Sent / Pay week / Pay. Si se mueve la fecha, solo cambia esa constante.
+- Payroll · Asignar nómina, "Unassign" (11/2026, pedido de Omar): al quitar el modal de las tarjetas viejas de
+  Nóminas, una casa "En nómina" (batch_… sin pagar) ya no podía volver a pendiente. El botón ↩ de su fila la saca
+  de la nómina (`unassignPropertyPayment`, un batch); si era la última casa de esa nómina, también borra su ajuste
+  (bono / descuento) sin pagar, que no tendría a qué sumarse. Una casa pagada no se saca.

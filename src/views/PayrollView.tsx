@@ -3,13 +3,13 @@ import type { CSSProperties } from 'react';
 import {
   User, DollarSign, CheckCircle, Activity, MapPin,
   X, Home, FileText, CalendarDays, Clock, Wrench, Hash, Flag, Users, StickyNote, PenTool, Edit2, Trash2, Save, 
-  Search, Wallet, ClipboardList, ChevronDown, ChevronRight, Timer, CalendarClock
+  Wallet, ClipboardList, ChevronDown, ChevronRight, Timer, CalendarClock, Undo2
 } from 'lucide-react';
 import { payrollService } from '../services/payrollService';
 import { db, auth } from '../config/firebase';
 // ⭐ Mapeo correcto de clientes (el id legacy NO pisa al id real)
-import { doc, updateDoc, deleteField, type WriteBatch } from 'firebase/firestore';
-import type { FixedSalary, PayrollRecord, Property, SystemUser, Role } from '../types/index';
+import { doc, updateDoc } from 'firebase/firestore';
+import type { FixedSalary, PayrollRecord, Property, SystemUser, Role, WeeklyPayrollRow } from '../types/index';
 import { useLiveCollection, useLiveData } from '../shared/data/liveCollections';
 import { commitOps, type BatchOp } from '../shared/data/batchWrites';
 import { getPayrollTotal, money } from '../utils/jobFinancials';
@@ -32,7 +32,9 @@ import HourlyPayDetail from '../features/payroll/components/HourlyPayDetail';
 import { isHourlyPayment } from '../features/payroll/hourlyPay';
 import { deleteHourlyPayment } from '../features/payroll/services/hourlyPayService';
 import { deleteFixedPayment } from '../features/payroll/services/fixedPaymentService';
-import { markPayrollPaymentPaid, markPayrollPaymentPending } from '../features/payroll/services/payrollPaymentStatus';
+import {
+  getAdjustmentsLeftWithoutProperties, markPayrollPaymentPaid, markPayrollPaymentPending, unassignPropertyPayment,
+} from '../features/payroll/services/payrollPaymentStatus';
 import { canDeleteEmployeePay, canManageEmployeePay, hasPayType } from '../features/payroll/employeePay';
 import FixedSalaryForm from '../features/payroll/components/FixedSalaryForm';
 import FixedSalaryList from '../features/payroll/components/FixedSalaryList';
@@ -41,6 +43,14 @@ import FixedPaymentForm from '../features/payroll/components/FixedPaymentForm';
 import FixedPaymentDetail from '../features/payroll/components/FixedPaymentDetail';
 import FixedPaymentList from '../features/payroll/components/FixedPaymentList';
 import { isFixedPayment } from '../features/payroll/fixedPay';
+import WeeklyPayrollTable from '../features/payroll/components/WeeklyPayrollTable';
+import WeeklyPayForm from '../features/payroll/components/WeeklyPayForm';
+import WeeklyAdjustmentForm from '../features/payroll/components/WeeklyAdjustmentForm';
+import WeeklyPayrollDetail from '../features/payroll/components/WeeklyPayrollDetail';
+import {
+  buildWeeklyPayroll, getRecordsPaidThisWeek, getUnpaidRecords, isBeforeWeeklyPayroll, toIsoDay,
+} from '../features/payroll/weeklyPayroll';
+import { markWeekPending, payWeek } from '../features/payroll/services/weeklyPayrollService';
 
 interface PayrollViewProps {
   onOpenMenu: () => void;
@@ -55,13 +65,6 @@ interface PayrollViewProps {
 }
 
 
-// Campos del pago consolidado que solo usa esta vista (paidAt/paidBy ya están en PayrollRecord).
-type PayrollRecordExt = PayrollRecord & {
-  // ⭐ Pago consolidado (pestaña Asignar nómina): las casas incluidas en un pago
-  //    llevan batchId y salen de la lista de asignación; paymentDate = fecha del pago.
-  batchId?: string | null;
-  paymentDate?: string | null;
-};
 
 // Tiempo real robusto: soporta ISO 'YYYY-MM-DD', MM/DD/YYYY, DD/MM/YYYY, Timestamps de
 // Firestore y Date. Antes había una segunda versión más simple duplicada dentro del
@@ -125,29 +128,11 @@ const fmtDate = (val: unknown): string => {
   const d = new Date(str); return isNaN(d.getTime()) ? str : `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
 };
 
-// ⭐ Semanas de nómina (pestaña "Nóminas"): lunes-domingo sobre el Schedule Date
-//    de la casa vinculada. mondayOf normaliza cualquier timestamp al lunes de su semana.
-const mondayOf = (t: number): number => {
-  const d = new Date(t);
-  d.setHours(0, 0, 0, 0);
-  const diff = (d.getDay() + 6) % 7; // 0=lunes ... 6=domingo
-  d.setDate(d.getDate() - diff);
-  return d.getTime();
-};
-
 // La pestaña Nóminas abre (y "Limpiar filtros" vuelve) en la semana de hoy.
 const currentWeekPeriod = (): PeriodState => ({ kind: 'week', anchor: todayIso(), customStart: '', customEnd: '' });
 
-const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const weekLabel = (mondayT: number): string => {
-  const a = new Date(mondayT);
-  const b = new Date(mondayT + 6 * 86400000);
-  if (a.getMonth() === b.getMonth()) return `${MESES[a.getMonth()]} ${a.getDate()} - ${b.getDate()}`;
-  return `${MESES[a.getMonth()]} ${a.getDate()} - ${MESES[b.getMonth()]} ${b.getDate()}`;
-};
-
 // ⭐ Clasificación de cada casa respecto a la nómina (sub-pestañas):
-const classifyRecord = (r: PayrollRecordExt): 'pending' | 'ennomina' | 'paid' =>
+const classifyRecord = (r: PayrollRecord): 'pending' | 'ennomina' | 'paid' =>
   !r.batchId ? 'pending' : (r.status === 'Paid' ? 'paid' : 'ennomina');
 
 export default function PayrollView({ onOpenMenu, properties, currentUser, activeRole, isSuperAdmin, onOpenHouseEdit }: PayrollViewProps) {
@@ -180,10 +165,10 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //    ~3,600 casas con properties.find (millones de comparaciones por render).
   const propById = useMemo(() => new Map(properties.map(p => [p.id, p] as const)), [properties]);
   const records = useMemo(() => {
-    const newest = (r: PayrollRecordExt) =>
+    const newest = (r: PayrollRecord) =>
       Math.max(...[r.date, r.paymentDate, r.paidAt].map(toTime).filter(t => !isNaN(t)), 0);
     // Los pagos por horas y fijos no tienen casa: la ventana de 12 meses (que es de casas) no los oculta.
-    const data = (payrollLive.data as PayrollRecordExt[]).filter(r =>
+    const data = (payrollLive.data as PayrollRecord[]).filter(r =>
       !!r.payType || !isHiddenByWindow(fullHistory, !!r.propertyId && loadedHouseIds.has(String(r.propertyId)), newest(r)));
     // Orden de más reciente a más antigua. Sin fecha válida => tratada como 0 (al final).
     data.sort((a, b) => {
@@ -240,11 +225,11 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // Estados de Modales
   // Pago abierto en el modal: se muestra su versión EN VIVO (si otra persona
   // lo marca Paid mientras está abierto, el modal lo refleja).
-  const [openedPayroll, setSelectedPayroll] = useState<PayrollRecordExt | null>(null);
+  const [openedPayroll, setSelectedPayroll] = useState<PayrollRecord | null>(null);
   const selectedPayroll = useMemo(
     () =>
       openedPayroll
-        ? ((payrollLive.data as PayrollRecordExt[]).find(r => r.id === openedPayroll.id) ?? openedPayroll)
+        ? ((payrollLive.data as PayrollRecord[]).find(r => r.id === openedPayroll.id) ?? openedPayroll)
         : null,
     [openedPayroll, payrollLive.data],
   );
@@ -254,7 +239,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const selectedHouse = useLiveHouse(openedHouse, properties);
 
   // Formulario temporal de edición
-  const [editForm, setEditForm] = useState<PayrollRecordExt | null>(null);
+  const [editForm, setEditForm] = useState<PayrollRecord | null>(null);
 
   // ⭐ Filtros de "Asignar nómina": periodo (Schedule Date, se recuerda por
   //    navegador; Custom sin fechas = todo) y empleado
@@ -308,15 +293,16 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
 
   // ⭐ Pestaña Nóminas: semana (PeriodBar solo Week; key = timestamp del lunes), búsqueda y orden
   const [payrollWeekPeriod, setPayrollWeekPeriod] = useState<PeriodState>(currentWeekPeriod);
-  const [weekSearch, setWeekSearch] = useState('');
-  const [weekSort, setWeekSort] = useState<'name' | 'amount'>('name');
-  const [weekDetailPick, setWeekDetail] = useState<{ employee: SystemUser; records: PayrollRecordExt[] } | null>(null);
+  // Detalle de la nómina semanal: se guarda el empleado; la fila se usa EN VIVO.
+  const [openedWeeklyEmployeeId, setOpenedWeeklyEmployeeId] = useState('');
 
   // ⭐ Pago consolidado (pestaña Asignar nómina): casas seleccionadas + formulario
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [payForm, setPayForm] = useState<{ date: string; bonus: number; bonusNote: string; discount: number; discountNote: string; status: 'Pending' | 'Paid' } | null>(null);
-  // ⭐ Edición de una nómina ya asignada (tarjeta de la pestaña Nóminas)
-  const [batchEdit, setBatchEdit] = useState<{ employee: SystemUser; records: PayrollRecordExt[]; date: string; bonus: number; bonusNote: string; discount: number; discountNote: string; status: 'Pending' | 'Paid' } | null>(null);
+  // ⭐ Nómina semanal: modal de pago ('all' = Pay week; un id = "Pay" de ese empleado) y modal
+  //    de bono / descuento (se guarda el empleado; la fila se usa EN VIVO)
+  const [payTarget, setPayTarget] = useState<'all' | string | null>(null);
+  const [adjustingEmployeeId, setAdjustingEmployeeId] = useState('');
 
   // ⭐ Resolver el nombre del cliente desde la colección customers (retrocompatible)
   const getClientName = (clientIdOrName?: string | null) => {
@@ -330,7 +316,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   // ⭐ Fecha efectiva de un registro para filtros y semanas: el SCHEDULE DATE de la casa
   //    vinculada (pedido explícito del negocio: la nómina se agrupa por semana trabajada).
   //    Solo si el registro no tiene casa o la casa no tiene scheduleDate, cae a record.date.
-  const recScheduleTime = (r: PayrollRecordExt): number => {
+  const recScheduleTime = (r: PayrollRecord): number => {
     const prop = propById.get(r.propertyId);
     const t = toTime(prop?.scheduleDate);
     if (!isNaN(t)) return t;
@@ -339,91 +325,77 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     return isNaN(tp) ? toTime(r.date) : tp;
   };
 
-  // ⭐ Semanas disponibles (más reciente primero) con su sufijo de estado:
-  //    (Pagado MM/DD/YYYY) cuando toda la semana está pagada, (Pendiente) si no.
-  // ⭐ Fecha de agrupación de la pestaña Nóminas: la FECHA DEL PAGO del batch
-  //    (payForm.date), NO el Schedule Date de la casa. Así el pago que registras hoy
-  //    aparece en la semana actual aunque alguna casa tenga una fecha mal capturada,
-  //    y todo el batch (casas + ajuste) queda siempre en la misma semana.
-  const recPaymentTime = (r: PayrollRecordExt): number => {
-    const tp = toTime(r.paymentDate);
-    if (!isNaN(tp)) return tp;
-    const ta = toTime(r.paidAt);
-    return isNaN(ta) ? toTime(r.date) : ta;
+  // ⭐ Pestaña Nóminas = nómina semanal por casa (weeklyPayroll.ts): TODOS los pagos
+  //    por casa, por semana lunes-domingo y día según el Schedule Date de la casa
+  //    (recScheduleTime), sin pasar por "Pagar seleccionadas". Se paga el miércoles
+  //    siguiente. Alcance 'Own': solo la fila propia.
+  // Pagar la semana y el bono / descuento: Payroll All + Edit (como Hourly y Fixed pay).
+  const canManagePayroll = canManageEmployeePay(activeRole, isSuperAdmin);
+  // Semana elegida en la PeriodBar: su inicio es el lunes 00:00 local.
+  const selectedWeekStart = periodRange(payrollWeekPeriod).start;
+  const weekStartIso = selectedWeekStart === null ? '' : toIsoDay(selectedWeekStart);
+  // Las semanas anteriores a la nómina semanal se pagaron por fuera de la app: solo se consultan.
+  const canPayWeek = canManagePayroll && !!weekStartIso && !isBeforeWeeklyPayroll(weekStartIso);
+
+  // Día trabajado (AAAA-MM-DD) de un pago: Schedule Date de su casa (recScheduleTime).
+  const getRecordWorkDay = (record: PayrollRecord) => {
+    const workTime = recScheduleTime(record);
+    return isNaN(workTime) ? '' : toIsoDay(workTime);
   };
 
-  // ⭐ La pestaña Nóminas SOLO muestra nóminas ASIGNADAS: registros que ya pasaron
-  //    por el flujo de pago de "Asignar nómina" (tienen batchId). Lo pendiente de
-  //    asignar vive únicamente en la primera pestaña.
-  const weeks = useMemo(() => {
-    const map = new Map<number, PayrollRecordExt[]>();
-    records.filter(r => r.batchId).forEach(r => {
-      const t = recPaymentTime(r);
-      if (isNaN(t)) return;
-      const k = mondayOf(t);
-      map.set(k, [...(map.get(k) || []), r]);
-    });
-    return Array.from(map.entries())
-      .sort((a, b) => b[0] - a[0])
-      .map(([k, recs]) => {
-        const allPaid = recs.length > 0 && recs.every(r => r.status === 'Paid');
-        const lastPaidT = recs.map(r => toTime(r.paidAt)).filter(t => !isNaN(t)).sort((a, b) => b - a)[0];
-        const paymentStatusLabel = allPaid ? (lastPaidT ? `Pagado ${fmtDate(new Date(lastPaidT))}` : 'Pagado') : 'Pendiente';
-        return { key: String(k), label: weekLabel(k), paymentStatusLabel, isPaid: allPaid };
-      });
+  const weeklyRows = useMemo(() => {
+    if (!weekStartIso) return [];
+    const visibleRecords = canSeeAllPayroll ? records : records.filter(r => r.employeeId === currentUser?.id);
+    return buildWeeklyPayroll(visibleRecords, weekStartIso, getRecordWorkDay);
     // recScheduleTime depende de propById (closure); por eso está en las deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, propById]);
+  }, [records, propById, weekStartIso, canSeeAllPayroll, currentUser?.id]);
 
-  // Semana elegida en la PeriodBar: su inicio es el lunes 00:00 local, el mismo
-  // valor que mondayOf() da a cada pago, así que sirve directo como key.
-  const selectedWeekStart = periodRange(payrollWeekPeriod).start;
-  const selectedWeekKey = selectedWeekStart === null ? '' : String(selectedWeekStart);
-  const selectedWeekLabel = selectedWeekStart === null ? '' : weekLabel(selectedWeekStart);
-  // null = la semana no tiene nóminas asignadas (no lleva estado de pago).
-  const selectedWeek = weeks.find(w => w.key === selectedWeekKey) ?? null;
+  // Siempre A-Z, sin distinguir mayúsculas ni acentos; la tabla los separa en Pending y Paid sin cambiar este orden.
+  const sortedWeeklyRows = useMemo(() => {
+    const compareNames = (rowA: WeeklyPayrollRow, rowB: WeeklyPayrollRow) => getEmployeeName(rowA.employeeId)
+      .localeCompare(getEmployeeName(rowB.employeeId), 'en', { sensitivity: 'base' });
+    return [...weeklyRows].sort(compareNames);
+    // getEmployeeName depende de los nombres y de si ya cargaron los usuarios (closure).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weeklyRows, employeeNameById, usersLive.loaded]);
+  const recordsPaidThisWeek = weekStartIso ? getRecordsPaidThisWeek(weeklyRows, weekStartIso) : [];
+  const adjustingRow = weeklyRows.find(row => row.employeeId === adjustingEmployeeId);
+  const openedWeeklyRow = weeklyRows.find(row => row.employeeId === openedWeeklyEmployeeId);
+  // Lo que paga el modal de pago: toda la semana o solo el empleado de la fila (A-Z, como la tabla).
+  const payRows = sortedWeeklyRows.filter(row => !row.isPaid && (payTarget === 'all' || row.employeeId === payTarget));
 
-  const handleClearWeekFilters = () => {
-    setWeekSearch('');
-    setWeekSort('name');
-    setPayrollWeekPeriod(currentWeekPeriod());
+  // Columna Payment de la tabla: "Sent" / "Not sent" de un empleado con un toque.
+  // Sent = pagado HOY (para otra fecha: "Pay" en el detalle). Mientras guarda, isSaving
+  // bloquea las demás filas y "Pay week" (la fila avisa si falla).
+  const handleSetSent = async (row: WeeklyPayrollRow, isSent: boolean) => {
+    const employeeName = getEmployeeName(row.employeeId);
+    setIsSaving(true);
+    try {
+      await (isSent
+        ? payWeek(getUnpaidRecords(row), weekStartIso, todayIso(), currentUser, employeeName)
+        : markWeekPending(getRecordsPaidThisWeek([row], weekStartIso), weekStartIso, currentUser, employeeName));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // ⭐ Tarjetas de la semana: una por empleado, SOLO si tiene nómina asignada en ella.
-  const weekCards = useMemo(() => {
-    if (!selectedWeekKey) return [];
-    const weekT = Number(selectedWeekKey);
-    const assigned = records.filter(r => r.batchId);
-    const weekRecs = assigned.filter(r => {
-      const t = recPaymentTime(r);
-      return !isNaN(t) && mondayOf(t) === weekT;
-    });
-    // ⭐ Solo empleados CON nómina asignada en la semana seleccionada. Las tarjetas
-    //    "Missing Payroll" (todo el personal histórico) se eliminaron a pedido del
-    //    negocio: generaban tarjetas de empleados que no se podían quitar a mano.
-    const cards = employees
-      .filter(e => weekRecs.some(r => r.employeeId === e.id))
-      .map(emp => {
-        const recs = weekRecs.filter(r => r.employeeId === emp.id);
-        const total = recs.reduce((s, r) => s + getPayrollTotal(r), 0);
-        const allPaid = recs.length > 0 && recs.every(r => r.status === 'Paid');
-        return { emp, recs, total, allPaid };
-      });
-    const q = weekSearch.trim().toLowerCase();
-    let out = q ? cards.filter(c => empName(c.emp).toLowerCase().includes(q)) : cards;
-    if (weekSort === 'amount') out = [...out].sort((a, b) => b.total - a.total);
-    else out = [...out].sort((a, b) => empName(a.emp).localeCompare(empName(b.emp)));
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [records, employees, propById, selectedWeekKey, weekSearch, weekSort]);
+  // Regresa a Pending lo que se pagó desde esta pestaña en la semana elegida.
+  const handleMarkWeekPending = async () => {
+    if (!weekStartIso || recordsPaidThisWeek.length === 0) return;
+    if (!window.confirm(`Change ${recordsPaidThisWeek.length} payment(s) of this week back to Pending? `
+      + 'Houses paid with "Pagar seleccionadas" do not change.')) return;
+    setIsSaving(true);
+    try {
+      await markWeekPending(recordsPaidThisWeek, weekStartIso, currentUser);
+    } catch (error) {
+      console.error('Error changing the week back to Pending:', error);
+      alert('Could not change the week back to Pending. Check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-  // El modal de detalle semanal muestra siempre los registros en vivo: se
-  // guardan los elegidos y se vuelven a buscar en `records` en cada render.
-  const weekDetail = useMemo(() => {
-    if (!weekDetailPick) return null;
-    const ids = new Set(weekDetailPick.records.map(r => r.id));
-    return { ...weekDetailPick, records: records.filter(r => ids.has(r.id)) };
-  }, [weekDetailPick, records]);
 
   // ⭐ Los datos llegan del store compartido y de App.tsx (ver arriba); los
   //    cambios hechos desde otras vistas (Houses, Invoices) se ven en vivo.
@@ -498,7 +470,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //    registro. Las casas sin equipo caen en un grupo "Sin equipo" al final
   //    en vez de desaparecer.
   const groupedByTeam = useMemo(() => {
-    const groups = new Map<string, { teamId: string; teamName: string; teamColor: string; records: PayrollRecordExt[]; subtotal: number }>();
+    const groups = new Map<string, { teamId: string; teamName: string; teamColor: string; records: PayrollRecord[]; subtotal: number }>();
 
     filteredRecords.forEach(record => {
       const prop = propById.get(record.propertyId as string);
@@ -544,7 +516,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   //      y abre el mismo pago consolidado de "Pagar seleccionadas" (si cierra el
   //      modal puede marcar más casas del mismo empleado y pagarlas juntas).
   //    · Casa ya en una nómina sin pagar: la marca como pagada.
-  const startPayFor = (record: PayrollRecordExt) => {
+  const startPayFor = (record: PayrollRecord) => {
     if (!record.id || record.status === 'Paid') return;
     if (record.batchId) { void handleMarkAsPaid(record); return; }
     const emp = employees.find(e => e.id === record.employeeId);
@@ -556,7 +528,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   };
 
   // ⭐ Seleccionar/deseleccionar todas las casas pendientes de UN equipo.
-  const toggleTeamSelected = (records: PayrollRecordExt[]) => {
+  const toggleTeamSelected = (records: PayrollRecord[]) => {
     const ids = records.filter(r => r.id && r.status !== 'Paid').map(r => r.id as string);
     if (ids.length === 0) return;
     const allIn = ids.every(id => selectedRecordIds.includes(id));
@@ -568,7 +540,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
   const selectedSubtotal = selectedRecords.reduce((s, r) => s + getPayrollTotal(r), 0);
   const allPendingSelected = selectableRecords.length > 0 && selectableRecords.every(r => selectedRecordIds.includes(r.id as string));
 
-  const toggleRecordSelected = (r: PayrollRecordExt) => {
+  const toggleRecordSelected = (r: PayrollRecord) => {
     if (!r.id) return;
     const id = r.id as string;
     setSelectedRecordIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -605,7 +577,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
         batchId, paymentDate: payForm.date, status: payForm.status, paidAt, paidBy,
       }));
       if (bonus > 0 || discount > 0) {
-        const ajuste: PayrollRecordExt = {
+        const ajuste: PayrollRecord = {
           propertyId: '', employeeId: selectedEmployee, date: payForm.date,
           baseAmount: 0,
           extraAmount: bonus, extraNote: payForm.bonusNote || (bonus > 0 ? 'Bonus del pago consolidado' : ''),
@@ -637,7 +609,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     totalPending: baseFiltered.filter(r => classifyRecord(r) === 'pending').reduce((sum, r) => sum + getPayrollTotal(r), 0),
   }), [baseFiltered]);
 
-  const handleMarkAsPaid = async (record: PayrollRecordExt) => {
+  const handleMarkAsPaid = async (record: PayrollRecord) => {
     if (!record.id) return;
     if (!window.confirm("Mark this record as Paid?")) return;
     const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
@@ -652,102 +624,20 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
-  // ⭐ Marca como pagados TODOS los registros pendientes de un empleado en la semana
-  //    (botón de la tarjeta y del modal de detalle semanal).
-  const handleMarkWeekPaid = async (recs: PayrollRecordExt[], who: string) => {
-    const pending = recs.filter(r => r.id && r.status !== 'Paid');
-    if (pending.length === 0) return;
-    if (!window.confirm(`¿Marcar como pagada toda la nómina de ${who} (${pending.length} registro(s))?`)) return;
-    const paidBy = auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown';
-    const paidAt = todayIso();
+  // ⭐ "Unassign" (Asignar nómina → En nómina): la casa sale de su nómina asignada sin pagar y vuelve a
+  //    pendiente; si era la última, también se borra el bono / descuento de esa nómina (pedido de Omar, 11/2026).
+  const handleUnassign = async (record: PayrollRecord) => {
+    const allPayroll = payrollLive.data as PayrollRecord[];
+    const removesAdjustment = getAdjustmentsLeftWithoutProperties(record, allPayroll).length > 0;
+    const confirmText = 'Remove this house from its assigned payroll? It goes back to Pending.'
+      + (removesAdjustment ? ' It is the last house of that payroll, so its bonus / discount is removed too.' : '');
+    if (!window.confirm(confirmText)) return;
     setIsSaving(true);
     try {
-      await commitOps(pending.map(r => (b) => payrollService.batchUpdate(b, r.id as string, { status: 'Paid', paidAt, paidBy })));
+      await unassignPropertyPayment(record, allPayroll, getEmployeeName(record.employeeId), currentUser);
     } catch (error) {
-      console.error('Error marcando la semana como pagada:', error);
-      alert('No se pudieron marcar todos los registros como pagados.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // ⭐ Abre el editor de una nómina asignada, precargando bonus/descuento desde los
-  //    registros de ajuste existentes (los que no tienen casa).
-  const openBatchEdit = (emp: SystemUser, recs: PayrollRecordExt[]) => {
-    const adjustments = recs.filter(r => !r.propertyId);
-    setBatchEdit({
-      employee: emp,
-      records: recs,
-      date: (recs.find(r => r.paymentDate)?.paymentDate as string) || todayIso(),
-      bonus: adjustments.reduce((s, r) => s + Number(r.extraAmount || 0), 0),
-      bonusNote: adjustments.map(r => r.extraNote).filter(Boolean).join(' · '),
-      discount: adjustments.reduce((s, r) => s + Number(r.discountAmount || 0), 0),
-      discountNote: adjustments.map(r => r.discountNote).filter(Boolean).join(' · '),
-      status: recs.length > 0 && recs.every(r => r.status === 'Paid') ? 'Paid' : 'Pending',
-    });
-  };
-
-  // ⭐ Guarda la edición: actualiza fecha/status de las casas y consolida el ajuste en
-  //    UN solo registro (elimina los previos; crea el nuevo solo si hay bonus/descuento).
-  const handleSaveBatchEdit = async () => {
-    if (!batchEdit) return;
-    const houses = batchEdit.records.filter(r => r.propertyId && r.id);
-    const adjustments = batchEdit.records.filter(r => !r.propertyId && r.id);
-    const bonus = Number(batchEdit.bonus || 0);
-    const discount = Number(batchEdit.discount || 0);
-    const isPaid = batchEdit.status === 'Paid';
-    const paidBy = isPaid ? (auth.currentUser?.displayName || auth.currentUser?.email || 'Unknown') : '';
-    const paidAt = isPaid ? todayIso() : '';
-    const batchId = (batchEdit.records.find(r => r.batchId)?.batchId as string) || `batch_${Date.now()}`;
-    setIsSaving(true);
-    try {
-      // ⭐ Todo en UN batch: casas, borrado de los ajustes viejos y el nuevo.
-      const ops: BatchOp[] = [
-        ...houses.map(r => (b: WriteBatch) => payrollService.batchUpdate(b, r.id as string, {
-          paymentDate: batchEdit.date, status: batchEdit.status, paidAt, paidBy,
-        })),
-        ...adjustments.map(r => (b: WriteBatch) => payrollService.batchDelete(b, r.id as string)),
-      ];
-      if (bonus > 0 || discount > 0) {
-        const ajuste: PayrollRecordExt = {
-          propertyId: '', employeeId: (batchEdit.employee.id as string), date: batchEdit.date,
-          baseAmount: 0,
-          extraAmount: bonus, extraNote: batchEdit.bonusNote || (bonus > 0 ? 'Bonus del pago consolidado' : ''),
-          discountAmount: discount, discountNote: batchEdit.discountNote || (discount > 0 ? 'Descuento del pago consolidado' : ''),
-          totalAmount: bonus - discount, status: batchEdit.status,
-          paidAt, paidBy, batchId, paymentDate: batchEdit.date,
-        };
-        ops.push((b) => payrollService.batchCreate(b, ajuste));
-      }
-      await commitOps(ops);
-      setBatchEdit(null);
-      setWeekDetail(null);
-    } catch (error) {
-      console.error('Error editando la nómina:', error);
-      alert('No se pudo guardar la edición de la nómina.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // ⭐ Elimina la nómina asignada: las casas vuelven a "Asignar nómina" como pendientes
-  //    (se les quita el batch) y los registros de ajuste se borran.
-  const handleDeleteBatch = async (emp: SystemUser, recs: PayrollRecordExt[]) => {
-    if (!window.confirm(`¿Eliminar la nómina de ${empName(emp)} de esta semana? Las casas volverán a "Asignar nómina" como pendientes.`)) return;
-    const houses = recs.filter(r => r.propertyId && r.id);
-    const adjustments = recs.filter(r => !r.propertyId && r.id);
-    setIsSaving(true);
-    try {
-      await commitOps([
-        ...houses.map(r => (b: WriteBatch) => payrollService.batchUpdate(b, r.id as string, {
-          batchId: deleteField(), paymentDate: deleteField(), status: 'Pending', paidAt: '', paidBy: '',
-        })),
-        ...adjustments.map(r => (b: WriteBatch) => payrollService.batchDelete(b, r.id as string)),
-      ]);
-      setWeekDetail(null);
-    } catch (error) {
-      console.error('Error eliminando la nómina:', error);
-      alert('No se pudo eliminar la nómina.');
+      console.error('Error removing the house from its payroll:', error);
+      alert('Could not remove the house from its payroll. Check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -804,7 +694,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     }
   };
 
-  const handleMarkAsPending = async (record: PayrollRecordExt) => {
+  const handleMarkAsPending = async (record: PayrollRecord) => {
     if (!record.id) return;
     if (!window.confirm("Change status back to Pending?")) return;
     try {
@@ -919,7 +809,7 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
     );
   };
 
-  const renderRecordRow = (record: PayrollRecordExt) => {
+  const renderRecordRow = (record: PayrollRecord) => {
     const emp = employees.find(e => e.id === record.employeeId);
     const prop = propById.get(record.propertyId);
     const isSelected = record.id ? selectedRecordIds.includes(record.id as string) : false;
@@ -971,6 +861,18 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
                 title={record.batchId ? 'Marcar como pagada' : 'Pagar esta casa'}
               >
                 <Wallet size={14} /> Pagar
+              </button>
+            )}
+            {canSeeAllPayroll && record.batchId && record.status !== 'Paid' && (
+              <button
+                type="button"
+                onClick={() => handleUnassign(record)}
+                className="pv-icon-btn edit"
+                title="Unassign (back to Pending)"
+                aria-label="Unassign from its payroll"
+                disabled={isSaving}
+              >
+                <Undo2 size={16} />
               </button>
             )}
             {/* ⭐ Abre el FORMULARIO DE EDICIÓN de la casa (el de Houses) para rectificar información */}
@@ -1262,97 +1164,61 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
       {/* ═══════════ PESTAÑA 2: NÓMINAS SEMANALES POR EMPLEADO ═══════════ */}
       {tab === 'nominas' && (
         <>
-          {/* Semana (PeriodBar solo Week, con su estado de pago) + búsqueda + orden */}
+          {/* Semana (PeriodBar solo Week); sin búsqueda ni orden: la tabla va directo debajo (pedido de Omar). */}
           <div className="pnw-period">
-            <PeriodBar
-              period={payrollWeekPeriod}
-              onChange={setPayrollWeekPeriod}
-              allowedKinds={['week']}
-              trailingActions={selectedWeek && (
-                <span className={`pnw-week-state${selectedWeek.isPaid ? ' paid' : ''}`}>{selectedWeek.paymentStatusLabel}</span>
-              )}
-            >
-              <div className="pnw-toolbar">
-                <div className="pnw-toolbar-row">
-                  <div className="pnw-field grow">
-                    <label className="pv-label" htmlFor="pnw-search">Buscar</label>
-                    <div className="pv-input-wrap">
-                      <Search size={16} color="#9ca3af" className="pv-input-icon" />
-                      <input id="pnw-search" className="pv-input" placeholder="Nombre..." value={weekSearch} onChange={e => setWeekSearch(e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-                <div className="pnw-toolbar-row bottom">
-                  <div className="pnw-field">
-                    <span className="pv-label">Ordenar por</span>
-                    <div className="pnw-sort-group">
-                      <button className={`pnw-sort-btn${weekSort === 'name' ? ' active' : ''}`} onClick={() => setWeekSort('name')}>Nombre (A-Z)</button>
-                      <button className={`pnw-sort-btn${weekSort === 'amount' ? ' active' : ''}`} onClick={() => setWeekSort('amount')}>Payroll (mayor a menor)</button>
-                    </div>
-                  </div>
-                  <button className="pnw-clear-btn" onClick={handleClearWeekFilters}>
-                    Limpiar filtros
-                  </button>
-                </div>
-              </div>
-            </PeriodBar>
+            <PeriodBar period={payrollWeekPeriod} onChange={setPayrollWeekPeriod} allowedKinds={['week']} />
           </div>
 
-          {isLoading || !usersLive.loaded ? (
-            <div className="skel-card" />
-          ) : weeks.length === 0 ? (
-            <div className="pnw-empty">
-              Aún no hay nóminas asignadas. Ve a la pestaña "Asignar nómina", elige un empleado, marca sus casas con el check y presiona "Pagar seleccionadas" — el pago aparecerá aquí agrupado por semana.
-            </div>
-          ) : (
-            <ul className="pnw-grid">
-              {weekCards.map(card => {
-                const stateCls = card.allPaid ? ' paid' : ' pending';
-                return (
-                  <li
-                    key={card.emp.id}
-                    className={`pnw-card${stateCls}`}
-                    onClick={() => setWeekDetail({ employee: card.emp, records: card.recs })}
-                  >
-                    <div className="pnw-card-top">
-                      <div className="pnw-card-head-row">
-                        <h3 className="pnw-card-name">{empName(card.emp) || 'Sin nombre'}</h3>
-                        <div className="pnw-card-actions">
-                          <button
-                            className="pnw-card-icon-btn edit"
-                            title="Editar nómina (fecha, bonus, descuento, status)"
-                            onClick={(e) => { e.stopPropagation(); openBatchEdit(card.emp, card.recs); }}
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          <button
-                            className="pnw-card-icon-btn delete"
-                            title="Eliminar nómina — las casas vuelven a Asignar nómina"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteBatch(card.emp, card.recs); }}
-                            disabled={isSaving}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="pnw-card-range">
-                        <CalendarDays size={13} /> {selectedWeekLabel}
-                      </div>
-                    </div>
-                    <div className="pnw-card-divider" />
-                    <div className="pnw-card-body">
-                      <div className="pnw-amount">${card.total.toFixed(2)}</div>
-                      <div className="pnw-card-bottom">
-                        {card.allPaid
-                          ? <span className="pnw-status-chip paid">● Pagado</span>
-                          : <span className="pnw-status-chip pending">● No Pagado</span>}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-              {weekCards.length === 0 && <li className="pnw-empty">No hay nóminas asignadas en esta semana (o ninguna coincide con la búsqueda).</li>}
-            </ul>
+          {weekStartIso && (
+            <WeeklyPayrollTable
+              rows={sortedWeeklyRows}
+              weekStart={weekStartIso}
+              isLoading={isLoading || !usersLive.loaded}
+              isBusy={isSaving}
+              getEmployeeName={getEmployeeName}
+              onOpenDetail={row => setOpenedWeeklyEmployeeId(row.employeeId)}
+              onSetSent={canPayWeek ? handleSetSent : undefined}
+              onPayWeek={canPayWeek ? () => setPayTarget('all') : undefined}
+              onMarkWeekPending={canPayWeek && recordsPaidThisWeek.length > 0 ? handleMarkWeekPending : undefined}
+            />
+          )}
+          {openedWeeklyRow && weekStartIso && (
+            <WeeklyPayrollDetail
+              row={openedWeeklyRow}
+              employeeName={getEmployeeName(openedWeeklyRow.employeeId)}
+              weekStart={weekStartIso}
+              getWorkDay={getRecordWorkDay}
+              getPropertyInfo={propertyId => {
+                const house = propById.get(propertyId);
+                return house ? { client: getClientName(house.client), address: house.address } : null;
+              }}
+              onOpenProperty={propertyId => setSelectedHouse(propById.get(propertyId) ?? null)}
+              onAdjust={canManagePayroll ? row => setAdjustingEmployeeId(row.employeeId) : undefined}
+              canEditPropertyPayments={canManagePayroll}
+              onPay={canPayWeek ? row => setPayTarget(row.employeeId) : undefined}
+              currentUser={currentUser}
+              onClose={() => setOpenedWeeklyEmployeeId('')}
+            />
+          )}
+          {canManagePayroll && payTarget && payRows.length > 0 && weekStartIso && (
+            <WeeklyPayForm
+              key={payTarget}
+              weekStart={weekStartIso}
+              pendingRows={payRows}
+              isSingleEmployee={payTarget !== 'all'}
+              getEmployeeName={getEmployeeName}
+              currentUser={currentUser}
+              onClose={() => setPayTarget(null)}
+            />
+          )}
+          {canManagePayroll && adjustingRow && weekStartIso && (
+            <WeeklyAdjustmentForm
+              row={adjustingRow}
+              employeeName={getEmployeeName(adjustingRow.employeeId)}
+              weekStart={weekStartIso}
+              currentUser={currentUser}
+              onClose={() => setAdjustingEmployeeId('')}
+            />
           )}
         </>
       )}
@@ -1446,181 +1312,6 @@ export default function PayrollView({ onOpenMenu, properties, currentUser, activ
           </div>
         );
       })()}
-
-      {/* --- MODAL: EDITAR NÓMINA ASIGNADA (fecha, bonus, descuento, status) --- */}
-      {batchEdit && (() => {
-        const housesInBatch = batchEdit.records.filter(r => r.propertyId);
-        const subtotal = housesInBatch.reduce((s, r) => s + getPayrollTotal(r), 0);
-        const bonus = Number(batchEdit.bonus || 0);
-        const discount = Number(batchEdit.discount || 0);
-        const totalPay = subtotal + bonus - discount;
-        return (
-          <div className="modal-overlay-centered" onClick={() => setBatchEdit(null)}>
-            <div className="modal-70 pv-edit-modal pvp-modal" onClick={e => e.stopPropagation()}>
-              <header className="pv-modal-header">
-                <h3 className="pv-modal-title">Editar nómina — {empName(batchEdit.employee)}</h3>
-                <button className="pv-modal-close" onClick={() => setBatchEdit(null)}><X size={24} /></button>
-              </header>
-              <div className="pv-modal-body">
-                <div className="pv-edit-grid">
-                  <div className="pv-edit-row">
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Fecha del pago</label>
-                      <DateInput className="pv-input pvp-input-plain" value={batchEdit.date} onChange={iso => setBatchEdit({ ...batchEdit, date: iso })} />
-                    </div>
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Status</label>
-                      <select className="pv-input pvp-input-plain" value={batchEdit.status} onChange={e => setBatchEdit({ ...batchEdit, status: e.target.value as 'Pending' | 'Paid' })}>
-                        <option value="Pending">Pending</option>
-                        <option value="Paid">Paid</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="pv-edit-row">
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Subtotal (casas)</label>
-                      <input className="pv-input pvp-input-plain" value={`$${subtotal.toFixed(2)}`} readOnly />
-                    </div>
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Bonus (+)</label>
-                      <input type="number" min={0} className="pv-input pvp-input-plain" value={batchEdit.bonus} onChange={e => setBatchEdit({ ...batchEdit, bonus: Number(e.target.value) })} />
-                    </div>
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Discount (−)</label>
-                      <input type="number" min={0} className="pv-input pvp-input-plain" value={batchEdit.discount} onChange={e => setBatchEdit({ ...batchEdit, discount: Number(e.target.value) })} />
-                    </div>
-                  </div>
-                  <div className="pv-edit-row">
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Nota del bonus</label>
-                      <input className="pv-input pvp-input-plain" placeholder="Motivo del bonus..." value={batchEdit.bonusNote} onChange={e => setBatchEdit({ ...batchEdit, bonusNote: e.target.value })} />
-                    </div>
-                    <div className="pv-edit-field">
-                      <label className="pv-label">Nota del descuento</label>
-                      <input className="pv-input pvp-input-plain" placeholder="Motivo del descuento..." value={batchEdit.discountNote} onChange={e => setBatchEdit({ ...batchEdit, discountNote: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="pv-total-row">
-                    <span className="pv-total-label">Total a pagar</span>
-                    <span className="pv-total-value">${totalPay.toFixed(2)}</span>
-                  </div>
-                  <div>
-                    <span className="pv-label">Casas incluidas ({housesInBatch.length})</span>
-                    <ul className="pvp-house-list">
-                      {housesInBatch.map(rec => {
-                        const prop = propById.get(rec.propertyId);
-                        return (
-                          <li key={rec.id} className="pvp-house">
-                            <div className="pvp-house-info">
-                              <div className="pv-client-name">{prop ? getClientName(prop.client) : 'Unknown Property'}</div>
-                              <div className="pv-client-address"><MapPin size={12} /> {prop?.address || '—'} · {fmtDate(prop?.scheduleDate || rec.date)}</div>
-                            </div>
-                            <div className="pvp-house-amount">${getPayrollTotal(rec).toFixed(2)}</div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              <footer className="pv-modal-footer">
-                <button className="pv-btn-outline-modal" onClick={() => setBatchEdit(null)}>Cancel</button>
-                <button className="pv-btn-primary-modal green" onClick={handleSaveBatchEdit} disabled={isSaving}>
-                  <Save size={16} /> {isSaving ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </footer>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* --- MODAL: DETALLE DE NÓMINA SEMANAL (qué casas, extras y descuentos) --- */}
-      {weekDetail && (
-        <div className="modal-overlay-centered" onClick={() => setWeekDetail(null)}>
-          <div className="modal-70 pnw-detail-modal" onClick={e => e.stopPropagation()}>
-            <header className="pv-modal-header">
-              <h3 className="pv-modal-title">Nómina — {empName(weekDetail.employee)}</h3>
-              <button className="pv-modal-close" onClick={() => setWeekDetail(null)}><X size={24} /></button>
-            </header>
-            <div className="pv-modal-body">
-              {(() => {
-                const houses = weekDetail.records.filter(r => r.propertyId);
-                const adjustments = weekDetail.records.filter(r => !r.propertyId);
-                const subtotal = houses.reduce((s, r) => s + getPayrollTotal(r), 0);
-                const bonus = adjustments.reduce((s, r) => s + Number(r.extraAmount || 0), 0);
-                const discount = adjustments.reduce((s, r) => s + Number(r.discountAmount || 0), 0);
-                const totalPay = subtotal + bonus - discount;
-                const payDate = weekDetail.records.find(r => r.paymentDate)?.paymentDate || weekDetail.records[0]?.date;
-                const allPaid = weekDetail.records.length > 0 && weekDetail.records.every(r => r.status === 'Paid');
-                return (
-                  <>
-                    {/* Resumen del pago */}
-                    <dl className="pnw-summary-dl">
-                      <div className="pnw-sum-pair"><dt>Fecha</dt><dd>{fmtDate(payDate)}</dd></div>
-                      <div className="pnw-sum-pair"><dt>Empleado</dt><dd>{empName(weekDetail.employee)}</dd></div>
-                      <div className="pnw-sum-pair">
-                        <dt>Status</dt>
-                        <dd>{allPaid
-                          ? <span className="pnw-status-chip paid">● Pagado</span>
-                          : <span className="pnw-status-chip pending">● No Pagado</span>}</dd>
-                      </div>
-                      <div className="pnw-sum-pair"><dt>Subtotal (casas)</dt><dd>${subtotal.toFixed(2)}</dd></div>
-                      <div className="pnw-sum-pair extra"><dt>Bonus</dt><dd>+${bonus.toFixed(2)}</dd></div>
-                      <div className="pnw-sum-pair discount"><dt>Descuento</dt><dd>−${discount.toFixed(2)}</dd></div>
-                    </dl>
-
-                    <div className="pv-total-row">
-                      <span className="pv-total-label">Total a pagar</span>
-                      <span className="pv-total-value">${totalPay.toFixed(2)}</span>
-                    </div>
-
-                    {/* Subtabla de casas asignadas (clic en la fila = detalle de la casa) */}
-                    <span className="pv-label pnw-table-label">Casas asignadas ({houses.length})</span>
-                    <div className="pnw-subtable-wrap">
-                      <table className="pnw-subtable">
-                        <thead>
-                          <tr>
-                            <th>Cliente</th>
-                            <th>Dirección</th>
-                            <th>Schedule</th>
-                            <th className="right">Monto</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {houses.map(rec => {
-                            const prop = propById.get(rec.propertyId);
-                            return (
-                              <tr
-                                key={rec.id}
-                                className={prop ? 'clickable' : ''}
-                                onClick={() => { if (prop) setSelectedHouse(prop); }}
-                                title={prop ? 'Ver detalle de la casa' : undefined}
-                              >
-                                <td className="client">{prop ? getClientName(prop.client) : 'Unknown Property'}</td>
-                                <td className="addr">{prop?.address || '—'}</td>
-                                <td>{fmtDate(prop?.scheduleDate || rec.date)}</td>
-                                <td className="right amount">${getPayrollTotal(rec).toFixed(2)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-            <footer className="pv-modal-footer">
-              {weekDetail.records.some(r => r.status !== 'Paid') && (
-                <button className="pv-btn-primary-modal green" onClick={() => handleMarkWeekPaid(weekDetail.records, empName(weekDetail.employee))} disabled={isSaving}>
-                  <CheckCircle size={16} /> Marcar nómina como pagada
-                </button>
-              )}
-              <button className="pv-btn-close-plain" onClick={() => setWeekDetail(null)}>Cerrar</button>
-            </footer>
-          </div>
-        </div>
-      )}
 
       {/* --- MODAL DETALLE DEL PAGO --- */}
       {selectedPayroll && (
