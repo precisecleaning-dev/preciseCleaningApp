@@ -7,7 +7,7 @@
 import { CheckCircle, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
-import { formatDate } from '../../../utils/dateFormat';
+import { dateSortValue, formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getFixedPayPeriodLabel } from '../fixedPay';
 import { PayrollTableRow, PayrollTableSkeleton } from './PayrollTable';
@@ -90,7 +90,7 @@ const FixedPaymentList = ({
   payments, isLoading, getEmployeeName, canMarkPaid, onMarkPaid, onMarkPending, onEdit, onDelete, onOpenDetail,
 }: FixedPaymentListProps) => {
   const hasActions = !!(onEdit || onDelete);
-  const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
+  const sortedPayments = [...payments].sort((paymentA, paymentB) => dateSortValue(paymentB.date) - dateSortValue(paymentA.date));
 
   if (isLoading) return <PayrollTableSkeleton />;
 

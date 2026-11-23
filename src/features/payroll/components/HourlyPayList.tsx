@@ -8,7 +8,7 @@
 import { CheckCircle, RotateCcw, FileText, Pencil, Trash2 } from 'lucide-react';
 import type { PayrollRecord } from '../../../types/index';
 import VirtualItems from '../../../shared/components/VirtualItems';
-import { formatDate } from '../../../utils/dateFormat';
+import { dateSortValue, formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { PayrollTableRow, PayrollTableSkeleton, PayrollTableToolbar } from './PayrollTable';
 import './HourlyPayList.css';
@@ -100,7 +100,7 @@ const HourlyPayList = ({
   payments, isLoading, getEmployeeName, canMarkPaid, onMarkPaid, onMarkPending, onNewPayment, onEdit, onDelete, onOpenDetail,
 }: HourlyPayListProps) => {
   const hasActions = !!(onEdit || onDelete);
-  const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
+  const sortedPayments = [...payments].sort((paymentA, paymentB) => dateSortValue(paymentB.date) - dateSortValue(paymentA.date));
   const toolbar = <PayrollTableToolbar title="Hourly payments" actionText="New hourly payment" onAction={onNewPayment} />;
 
   if (isLoading) {

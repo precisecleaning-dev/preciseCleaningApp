@@ -18,7 +18,7 @@ import { formatDate, formatDateRange, todayIso } from '../../../utils/dateFormat
 import { getPayrollTotal, money, roundToCents } from '../../../utils/jobFinancials';
 import {
   WEEK_DAY_NAMES, getPaidWeekStart, getUnpaidTotal, getWeekDays, getWeekPayDay, isBeforeWeeklyPayroll,
-  isReceiptOnlyRecord, parseOptionalAmount, pluralize,
+  getRecordReceiptPhotos, isReceiptOnlyRecord, parseOptionalAmount, pluralize,
 } from '../weeklyPayroll';
 import {
   NEGATIVE_PAYMENT_ERROR, addWeekReceiptPhotos, removeWeekReceiptPhoto, updatePropertyPayment,
@@ -223,7 +223,7 @@ const ReceiptPhotos = ({ row, weekStart, employeeName, canEdit, currentUser }: R
   const [uploadingCount, setUploadingCount] = useState(0);
   const [removingUrl, setRemovingUrl] = useState('');
   const [errorText, setErrorText] = useState('');
-  const photos = row.records.flatMap((record) => (record.receiptPhotos ?? []).map((photo) => ({ record, photo })));
+  const photos = row.records.flatMap((record) => getRecordReceiptPhotos(record).map((photo) => ({ record, photo })));
   const addText = uploadingCount ? `Uploading ${uploadingCount}…` : 'Add photos';
 
   const handleFilesChosen = async (event: ChangeEvent<HTMLInputElement>) => {

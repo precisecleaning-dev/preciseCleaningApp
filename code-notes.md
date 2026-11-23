@@ -3635,3 +3635,8 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   (`isChunkLoadError`). Cualquier otro error es del código: lo dice y muestra "Details" (pestaña + mensaje
   técnico) para poder reportarlo con una captura. Antes todo error salía como problema de conexión y no había
   forma de saber qué falló sin abrir la consola.
+- Payroll · datos con tipos inesperados (11/2026): la nómina semanal se calcula al abrir Payroll con TODOS los
+  registros de `payroll` (también los viejos o importados), así que un solo dato raro tumbaba la pantalla entera
+  ("This screen couldn't load"). Por eso `getBatchWeekStart` revisa que `batchId` sea texto, las fotos pasan por
+  `getRecordReceiptPhotos` (solo un arreglo de fotos con url) y Hourly / Fixed pay ordenan por fecha con
+  `dateSortValue` en vez de `date.localeCompare`. No quitar esas revisiones aunque el tipo diga `string`.

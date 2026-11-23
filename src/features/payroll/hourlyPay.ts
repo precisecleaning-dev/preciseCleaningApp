@@ -1,6 +1,7 @@
 // src/features/payroll/hourlyPay.ts
 // Reglas del pago por horas (pestaña Hourly de Payroll): total = horas × rate.
 import type { PayrollRecord } from '../../types/index';
+import { dateSortValue } from '../../utils/dateFormat';
 import { roundToCents } from '../../utils/jobFinancials';
 
 export const computeHourlyTotal = (hours: number, hourlyRate: number): number => roundToCents(hours * hourlyRate);
@@ -11,6 +12,6 @@ export const isHourlyPayment = (record: Pick<PayrollRecord, 'payType'>): boolean
 export const getLastHourlyRate = (records: readonly PayrollRecord[], employeeId: string): number | null => {
   const [lastPayment] = records
     .filter((record) => isHourlyPayment(record) && record.employeeId === employeeId && record.hourlyRate)
-    .sort((recordA, recordB) => recordB.date.localeCompare(recordA.date));
+    .sort((recordA, recordB) => dateSortValue(recordB.date) - dateSortValue(recordA.date));
   return lastPayment?.hourlyRate ?? null;
 };

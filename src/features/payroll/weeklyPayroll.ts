@@ -52,8 +52,8 @@ export const getWeekPayDay = (weekStart: string): string => addDays(weekStart, 9
 export const getWeekBatchId = (weekStart: string): string => `${WEEK_BATCH_PREFIX}${weekStart}`;
 
 /** Semana (lunes AAAA-MM-DD) de un batchId `week_…`; '' si no es de esta pestaña. */
-const getBatchWeekStart = (record: PayrollRecord): string =>
-  (record.batchId?.startsWith(WEEK_BATCH_PREFIX) ? record.batchId.slice(WEEK_BATCH_PREFIX.length) : '');
+const getBatchWeekStart = ({ batchId }: PayrollRecord): string =>
+  (typeof batchId === 'string' && batchId.startsWith(WEEK_BATCH_PREFIX) ? batchId.slice(WEEK_BATCH_PREFIX.length) : '');
 
 /**
  * Semana en que se PAGÓ una casa desde esta pestaña ('' si no). Una casa pagada
@@ -170,6 +170,9 @@ export const pluralize = (count: number, word: string): string => `${count} ${wo
 export const getWeekRecord = (row: WeeklyPayrollRow, weekStart: string): PayrollRecord | undefined =>
   row.records.find((record) => !record.propertyId && record.batchId === getWeekBatchId(weekStart));
 
+/** Fotos de un registro; ignora lo que no sea una foto con url (dato dañado o editado a mano en Firestore). */
+export const getRecordReceiptPhotos = (record: PayrollRecord): WeeklyReceiptPhoto[] =>
+  (Array.isArray(record.receiptPhotos) ? record.receiptPhotos.filter((photo) => typeof photo?.url === 'string' && photo.url) : []);
+
 /** Fotos del comprobante del pago semanal del empleado. */
-export const getReceiptPhotos = (row: WeeklyPayrollRow): WeeklyReceiptPhoto[] =>
-  row.records.flatMap((record) => record.receiptPhotos ?? []);
+export const getReceiptPhotos = (row: WeeklyPayrollRow): WeeklyReceiptPhoto[] => row.records.flatMap(getRecordReceiptPhotos);

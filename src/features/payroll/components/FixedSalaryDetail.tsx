@@ -5,7 +5,7 @@
 // Solo lectura. La vista le pasa el sueldo y los pagos EN VIVO.
 import { CalendarDays } from 'lucide-react';
 import type { FixedSalary, PayrollRecord } from '../../../types/index';
-import { formatDate } from '../../../utils/dateFormat';
+import { dateSortValue, formatDate } from '../../../utils/dateFormat';
 import { money } from '../../../utils/jobFinancials';
 import { getBiweeklyAmounts, getFixedPayPeriodLabel } from '../fixedPay';
 import PayrollDialog from './PayrollDialog';
@@ -22,7 +22,7 @@ interface FixedSalaryDetailProps {
 
 const FixedSalaryDetail = ({ salary, employeeName, payments, onClose }: FixedSalaryDetailProps) => {
   const { firstHalf, secondHalf } = getBiweeklyAmounts(salary.monthlyAmount);
-  const sortedPayments = [...payments].sort((paymentA, paymentB) => paymentB.date.localeCompare(paymentA.date));
+  const sortedPayments = [...payments].sort((paymentA, paymentB) => dateSortValue(paymentB.date) - dateSortValue(paymentA.date));
   const lastChangeText = `${formatDate(salary.updatedAt)}${salary.updatedByUserName ? ` · ${salary.updatedByUserName}` : ''}`;
 
   const footer = (
