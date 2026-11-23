@@ -45,3 +45,30 @@
 .veb-reload-btn:hover {
   background: #1e40af;
 }
+
+/* Mensaje técnico del error, cerrado por defecto: para reportarlo con una captura. */
+.veb-details {
+  color: #64748b;
+  font-size: 0.8rem;
+  margin-top: 4px;
+  max-width: 100%;
+  text-align: left;
+  width: 100%;
+}
+
+.veb-details-summary {
+  cursor: pointer;
+  text-align: center;
+}
+
+.veb-details-text {
+  background: #f8fafc;
+  border: 1px solid #e9eef5;
+  border-radius: 8px;
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}

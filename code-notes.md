@@ -3631,3 +3631,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   bono / descuento, `saveWeekAdjustment` lo deja en 0 en vez de borrarlo, para no perder las fotos. Archivos en
   Storage `payroll_receipts/{empleado}/week_…`, comprimidos; quitar una foto solo la saca de la lista (las reglas de
   Storage no dejan borrar a Payroll). Sin cambios de reglas.
+- ViewErrorBoundary (11/2026): el aviso solo dice "revisa tu internet" si el error es de carga de archivos
+  (`isChunkLoadError`). Cualquier otro error es del código: lo dice y muestra "Details" (pestaña + mensaje
+  técnico) para poder reportarlo con una captura. Antes todo error salía como problema de conexión y no había
+  forma de saber qué falló sin abrir la consola.
