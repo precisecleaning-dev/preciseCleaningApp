@@ -3640,3 +3640,7 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   ("This screen couldn't load"). Por eso `getBatchWeekStart` revisa que `batchId` sea texto, las fotos pasan por
   `getRecordReceiptPhotos` (solo un arreglo de fotos con url) y Hourly / Fixed pay ordenan por fecha con
   `dateSortValue` en vez de `date.localeCompare`. No quitar esas revisiones aunque el tipo diga `string`.
+- Traducción automática apagada (11/2026): Houses tronaba con "NotFoundError: Failed to execute 'removeChild' on
+  'Node'". Es el traductor del navegador (Chrome / Edge): cambia los textos por etiquetas `<font>` y React ya no
+  encuentra el nodo que quiere quitar. `index.html` lleva `translate="no"` en `<html>` y
+  `<meta name="google" content="notranslate">`. No quitarlos: el error vuelve en cualquier pantalla.

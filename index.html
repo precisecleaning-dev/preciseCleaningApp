@@ -1,7 +1,16 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Sin traducción automática (11/2026). El traductor de Chrome / Edge cambia
+      los textos de la página por etiquetas <font> propias; cuando React quiere
+      actualizar o quitar ese texto ya no lo encuentra y la pantalla truena con
+      "NotFoundError: Failed to execute 'removeChild' on 'Node'" (pasó en
+      Houses). translate="no" + esta etiqueta le dicen al navegador que no
+      ofrezca traducir. No quitar ninguna de las dos.
+    -->
+    <meta name="google" content="notranslate" />
 
     <!--
       ⭐ PANTALLA EN BLANCO QUE SOLO SE ARREGLA EN INCÓGNITO (10/2026).
