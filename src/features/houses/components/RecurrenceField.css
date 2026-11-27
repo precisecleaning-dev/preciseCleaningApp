@@ -1,0 +1,91 @@
+/* Campo "Repeat" del formulario de la casa (RecurrenceField.tsx). */
+.rcf-day {
+  background: #fff;
+  border: 1px solid #d5dbe5;
+  border-radius: 999px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 0;
+  padding: 6px 10px;
+}
+
+.rcf-day:hover {
+  border-color: #94a3b8;
+}
+
+.rcf-day.is-selected {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+/* Ocupa todo el ancho de la fila del formulario: lleva varios controles. */
+.rcf-field {
+  grid-column: 1 / -1;
+}
+
+.rcf-hint {
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 8px 0 0;
+}
+
+.rcf-inline {
+  align-items: center;
+  color: #475569;
+  display: flex;
+  font-size: 0.85rem;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* La hora (shared/components/TimeInput) no se estira a todo el ancho. */
+.rcf-inline .dti {
+  flex: 0 0 132px;
+}
+
+.rcf-options {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e9eef5;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 10px;
+  padding: 12px 14px;
+}
+
+.rcf-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rcf-select,
+.rcf-time {
+  background: #fff;
+  border: 1px solid #d5dbe5;
+  border-radius: 8px;
+  color: #0f172a;
+  font-size: 0.85rem;
+  min-height: 0;
+  padding: 6px 8px;
+}
+
+.rcf-value {
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .rcf-options {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

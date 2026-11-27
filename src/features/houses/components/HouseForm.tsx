@@ -43,6 +43,8 @@ import SearchableSelect from "../../../shared/components/SearchableSelect";
 import CarpetServiceNotice from "./CarpetServiceNotice";
 import ServiceTypePicker from "./ServiceTypePicker";
 import CustomerQuickModal from "./CustomerQuickModal";
+import RecurrenceField from "./RecurrenceField";
+import { NEXT_CREATE_NOT_CALCULATED, normalizeRecurrence } from "../houseRecurrence";
 import FieldConfigModal from "./FieldConfigModal";
 import BurstCamera from "./BurstCamera";
 import ServiceModal from "./ServiceModal";
@@ -106,6 +108,8 @@ function initialForm(init: HouseFormInit, defaultStatus: string): InitialForm {
       };
       delete duplicated.gcalEventId;
       delete duplicated.gcalSyncedAt;
+      // Tampoco la recurrencia: una copia manual no debe abrir otra serie de visitas.
+      delete duplicated.recurrence;
       return {
         formData: { ...duplicated, id: "", beforePhotos: [], afterPhotos: [] },
         formServices: init.services.map((s) => ({
@@ -481,12 +485,17 @@ const HouseForm = ({
     const nextStatusId = getStatusIdForCustomer(customerId);
     const selectedCustomer = customersList.find((customer) => customer.id === customerId);
     if (selectedCustomer) {
-      // ⭐ Regla AppSheet: if([Type]="Private customer", lookup(client, Address), "")
-      //    Si el cliente es "Private customer", trae su dirección (queda editable); si no, vacío.
-      const isPrivateCustomer =
-        String(selectedCustomer.type || "")
-          .toLowerCase()
-          .trim() === "private customer";
+      // ⭐ Trae la dirección guardada del cliente (queda editable). Antes solo
+      //    para "Private customer" (regla de AppSheet); desde 11/2026, para todo
+      //    cliente que tenga dirección en Customers: los residenciales
+      //    recurrentes obligaban a buscarla a mano. Un property manager sin
+      //    dirección guardada sigue quedando en blanco.
+      const streetAddress = String(selectedCustomer.address ?? "").trim();
+      const cityStateZip = String(selectedCustomer.cityStateZip ?? "").trim();
+      const hasCustomerAddress = streetAddress !== "";
+      // City/State/Zip va aparte en Customers: se agrega si la dirección no lo trae ya.
+      const isCityInAddress = streetAddress.toLowerCase().includes(cityStateZip.toLowerCase());
+      const customerAddress = cityStateZip && !isCityInAddress ? `${streetAddress}, ${cityStateZip}` : streetAddress;
       // ⭐ De igual manera, trae la NOTA guardada del cliente al campo General Note
       //    (queda editable). Solo si el cliente tiene nota; si no, conserva la actual.
       const customerNote = String(
@@ -496,8 +505,8 @@ const HouseForm = ({
         ...formData,
         client: customerId,
         statusId: nextStatusId,
-        address: isPrivateCustomer ? String(selectedCustomer.address ?? "") : "",
-        note: isPrivateCustomer && customerNote ? customerNote : formData.note,
+        address: hasCustomerAddress ? customerAddress : "",
+        note: hasCustomerAddress && customerNote ? customerNote : formData.note,
       });
     } else {
       setFormData({ ...formData, client: customerId, statusId: nextStatusId });
@@ -514,6 +523,11 @@ const HouseForm = ({
       return alert("Client is required.");
     if (!String(formData.address || "").trim())
       return alert("Address is required.");
+    const recurrence = normalizeRecurrence(formData.recurrence, formData.scheduleDate);
+    if (recurrence && !String(formData.scheduleDate || "").trim())
+      return alert("Schedule Date is required for a recurring visit: the next one is counted from it.");
+    if (recurrence?.pattern === "weekly" && !recurrence.weekdays?.length)
+      return alert("Choose at least one day of the week for the recurring visit.");
 
     // El catalogo de statuses tiene que estar cargado para poder validar.
     if (statuses.length === 0)
@@ -617,8 +631,23 @@ const HouseForm = ({
         );
       const hasStatusChanged = String(formData.statusId || "") !== previousStatusId;
 
+      // Casa recurrente: la primera visita queda como ancla de la serie y
+      // `nextCreateAt` se deja sin calcular para que la función lo recalcule con
+      // lo que se guardó. Si la orden de la siguiente visita se creó mientras
+      // el formulario estaba abierto, se conserva ese enlace (si no, se crearía otra).
+      const liveNextHouseId = properties.find((property) => property.id === workingId)?.recurrence?.nextHouseId;
+      const nextHouseId = liveNextHouseId ?? recurrence?.nextHouseId;
+      const recurrenceToSave = recurrence
+        ? {
+          ...recurrence,
+          anchorDate: recurrence.anchorDate ?? formData.scheduleDate,
+          ...(nextHouseId ? { nextHouseId } : { nextCreateAt: NEXT_CREATE_NOT_CALCULATED }),
+        }
+        : formData.recurrence;
+
       const finalDataToUpdate = {
         ...formData,
+        ...(recurrenceToSave !== undefined ? { recurrence: recurrenceToSave } : {}),
         assignedWorkers: finalAssignedWorkers,
         beforePhotos: [...(formData.beforePhotos || []), ...uploadedBeforeUrls],
         afterPhotos: [...(formData.afterPhotos || []), ...uploadedAfterUrls],
@@ -1156,6 +1185,14 @@ const HouseForm = ({
                         />
                       </div>
                     </div>
+                  )}
+                  {isElementVisible("scheduleDate") && (
+                    <RecurrenceField
+                      recurrence={formData.recurrence}
+                      scheduleDate={formData.scheduleDate}
+                      isReadOnly={isFieldRO("scheduleDate")}
+                      onChange={(recurrence) => setFormData({ ...formData, recurrence })}
+                    />
                   )}
                   {isElementVisible("dateOfIssue") && (
                     <div>

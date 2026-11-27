@@ -3644,3 +3644,34 @@ top 3 y la fila para agregar tareas: en su lugar un botón "Add Task" que abre e
   'Node'". Es el traductor del navegador (Chrome / Edge): cambia los textos por etiquetas `<font>` y React ya no
   encuentra el nodo que quiere quitar. `index.html` lleva `translate="no"` en `<html>` y
   `<meta name="google" content="notranslate">`. No quitarlos: el error vuelve en cualquier pantalla.
+- Houses · dirección del cliente al crear una casa (11/2026, pedido de Omar): al elegir el cliente se trae su
+  dirección de Customers (Address + City/State/Zip si no viene ya en la dirección) y su nota, para TODO cliente con
+  dirección guardada; queda editable. Antes solo para el tipo "Private customer" (regla heredada de AppSheet) y a
+  los residenciales había que buscarles la dirección a mano. Un cliente sin dirección (property managers) deja el
+  campo en blanco, como antes.
+- Houses · casas recurrentes (11/2026, pedido de Omar): el campo "Repeat" del formulario (junto a Schedule Date)
+  guarda `recurrence.freq` en la casa (diario, cada 1-4 semanas, mensual). Cuando llega el día de la visita, la app
+  crea SOLA la orden de la siguiente, se haya terminado o no la anterior: así siempre hay una visita futura y el
+  tablero no se llena de órdenes adelantadas. La nueva nace en "Needs to be schedule" de su empresa con la fecha
+  calculada, y copia cliente, dirección, notas, servicio, equipo, Billed Services y pagos de nómina (pendientes);
+  no copia fotos, horas, Mark Finished, factura ni evento de Calendar. Las visitas que ya pasaron no se crean.
+  Quién la crea: `RecurringHousesRunner` (App.tsx), en el navegador de cualquier persona con permiso de crear
+  casas; NO es una Cloud Function (no hay que desplegar nada), así que si nadie abre la app ese día se crea al
+  siguiente ingreso. `createNextVisit` va en una transacción que revisa `recurrence.nextHouseId`: dos sesiones
+  abiertas no crean la orden dos veces; no quitar esa revisión. Para dejar de repetir: "None" en Repeat de la
+  ÚLTIMA orden de la serie. Duplicate no copia la recurrencia. Reglas en features/houses/houseRecurrence.ts.
+- Houses · casas recurrentes (11/2026, pedido de Omar): el campo "Repeat" del formulario (bajo Schedule Date) guarda
+  `recurrence` en la casa: todos los días, ciertos días de la semana (uno, dos, tres… y cada 1-8 semanas) o un día
+  del mes, más la HORA DE TEXAS a la que debe aparecer la orden y con cuántos días de anticipación a la visita. La
+  orden de la siguiente visita la crea SOLA la Cloud Function `createrecurringhouses` (cada 15 min), se haya
+  terminado o no la anterior. La nueva nace en "Needs to be schedule" con la fecha de la visita y copia cliente,
+  dirección, notas, servicio, equipo, Billed Services y pagos de nómina (pendientes); no copia fotos, horas, Mark
+  Finished, factura ni evento de Calendar. Las visitas que ya pasaron no se crean. Serie en cadena: la orden nueva
+  hereda la recurrencia y genera la siguiente; la anterior queda con `recurrence.nextHouseId`. Para dejar de
+  repetir: "None" en Repeat de la ÚLTIMA orden. Duplicate no copia la recurrencia.
+  - `recurrence.nextCreateAt` (ISO UTC) lo escribe la FUNCIÓN; el formulario lo guarda vacío ('') en cada guardado
+    para que se recalcule. La función consulta `recurrence.nextCreateAt <= ahora`: no quitar ese campo ni cambiarle
+    el tipo, o las casas dejan de crearse (o se lee la colección entera).
+  - Las reglas de fechas están DOS veces: src/features/houses/houseRecurrence.ts (pantalla) y
+    functions/src/houseRecurrenceRules.ts (función). Si cambia una, cambia la otra.
+  - Sin la función desplegada no se crea nada: el campo Repeat solo guarda la configuración.

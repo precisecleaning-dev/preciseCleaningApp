@@ -20,6 +20,9 @@
    8) createfixedpayroll     (scheduled) : crea a diario los pagos fijos
       quincenales (el 15 y el último día del mes) de fixed_salaries
       (fixedPayroll.ts).
+   9) createrecurringhouses  (scheduled) : cada 15 minutos crea la orden de la
+      siguiente visita de las casas recurrentes, a la hora de Texas elegida en
+      el campo Repeat de la casa (recurringHouses.ts).
 
    AUTENTICACIÓN — OAuth de usuario con refresh token
    La cuenta account@precisecleaningtx.com autoriza la app UNA SOLA VEZ desde
@@ -55,6 +58,7 @@ export {
 // ⭐ Invoices New: Send / Resend por correo (PDF y/o enlace de Stripe).
 export { sendinvoiceemail } from "./invoiceEmail";
 export { createfixedpayroll } from "./fixedPayroll";
+export { createrecurringhouses } from "./recurringHouses";
 
 admin.initializeApp();
 const db = admin.firestore();

@@ -54,6 +54,7 @@ import BurstCamera from "./BurstCamera";
 import ServiceModal from "./ServiceModal";
 import PayrollModal from "./PayrollModal";
 import CarpetServiceNotice from "./CarpetServiceNotice";
+import { describeRecurrence, normalizeRecurrence } from "../houseRecurrence";
 import { formatServiceTypes, isCarpetServiceMissing } from "../../../shared/utils/houseServiceType";
 
 export type DetailTab = "overview" | "financials" | "media" | "history" | "quality";
@@ -872,6 +873,11 @@ export default function HouseDetail({
   // Carpet sin servicio cobrado de carpet: aviso en Job Specifications (cuando ya llegaron los servicios).
   const isCarpetNoticeVisible = isElementVisible("serviceTypes") && records.loaded
     && isCarpetServiceMissing(selectedHouse, houseServices, getServiceName);
+  // Casa recurrente: su frecuencia y si la orden de la siguiente visita ya existe.
+  const houseRecurrence = normalizeRecurrence(selectedHouse.recurrence, selectedHouse.scheduleDate);
+  const recurrenceText = houseRecurrence?.nextHouseId
+    ? `${describeRecurrence(houseRecurrence)} · next visit already created`
+    : describeRecurrence(houseRecurrence);
 
   return (
     <>
@@ -1141,6 +1147,12 @@ export default function HouseDetail({
                                 ? formatDate(selectedHouse.scheduleDate)
                                 : "-"}
                             </span>
+                          </div>
+                        )}
+                        {isElementVisible("scheduleDate") && houseRecurrence && (
+                          <div className="hv-info-row">
+                            <span className="hv-info-label">Repeat</span>
+                            <span className="hv-info-value">{recurrenceText}</span>
                           </div>
                         )}
                         {isElementVisible("dateOfIssue") && (

@@ -70,12 +70,44 @@ export interface NoteHistoryEntry {
 /** Tipos de servicio de una casa: Carpet, Normal o Cavalry. */
 export type HouseServiceType = 'Carpet' | 'Normal' | 'Cavalry';
 
+/** Cómo se repite una casa recurrente: todos los días, ciertos días de la semana o un día del mes. */
+export type HouseRecurrencePattern = 'daily' | 'weekly' | 'monthly';
+
+/**
+ * Casa recurrente: la Cloud Function `createrecurringhouses` crea sola la orden
+ * de la siguiente visita. Reglas en features/houses/houseRecurrence.ts (y su
+ * copia functions/src/houseRecurrenceRules.ts).
+ */
+export interface HouseRecurrence {
+  pattern: HouseRecurrencePattern;
+  /** Semanal: días de visita, 0 = domingo … 6 = sábado (uno, dos, tres… por semana). */
+  weekdays?: number[];
+  /** Semanal: cada cuántas semanas (1 = todas, 2 = una sí y una no…). */
+  intervalWeeks?: number;
+  /** Mensual: día del mes (1-31; en un mes más corto cae en su último día). */
+  monthDay?: number;
+  /** Hora de Texas (HH:mm) a la que debe aparecer la orden. */
+  createTime: string;
+  /** Con cuántos días de anticipación a la visita aparece la orden (0 = el mismo día). */
+  leadDays: number;
+  /** Primera visita de la serie (AAAA-MM-DD): de ahí se cuentan las semanas alternas. */
+  anchorDate?: string;
+  /** Momento (ISO, UTC) en que la función debe crear la siguiente orden; '' = aún sin calcular. La función lo escribe. */
+  nextCreateAt?: string;
+  /** Id de la orden de la siguiente visita, cuando ya se creó (evita crearla dos veces). */
+  nextHouseId?: string;
+  /** Id de la orden anterior de la serie (la que originó esta). */
+  previousHouseId?: string;
+}
+
 export interface Property {
   id: string;
   statusId: string;
   invoiceStatus: string | 'Needs Invoice' | 'Pending' | 'Paid';
   receiveDate: string;
   scheduleDate: string;
+  /** Visita recurrente (null o sin campo = no se repite). */
+  recurrence?: HouseRecurrence | null;
   client: string;
   note: string;
   /** Nota general de las casas importadas de AppSheet (las de la app usan `note`). */
